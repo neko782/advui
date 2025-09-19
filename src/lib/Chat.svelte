@@ -510,6 +510,8 @@
     width: auto;
     max-width: 100%;
   }
+  /* Ensure editing state always takes full width, even for system */
+  .bubble.system.editing { display: block; width: 100%; max-width: none; padding: 0; background: transparent; box-shadow: none; }
 
   /* Inline bubble editor */
   .bubble-editor {
