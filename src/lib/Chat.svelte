@@ -198,6 +198,12 @@
     const roles = new Set(['user', 'assistant', 'system'])
     if (!roles.has(role)) return
     messages = messages.map(m => (m.id === id ? { ...m, role } : m))
+    // Nudge layout and keep view anchored
+    queueMicrotask(() => {
+      // Read to force reflow then scroll
+      try { void listEl?.offsetHeight } catch {}
+      scrollToBottom()
+    })
   }
   function moveUp(id) {
     const i = messages.findIndex(m => m.id === id)
@@ -285,6 +291,7 @@
   <div class="messages" bind:this={listEl}>
     {#each messages as m, i (m.id)}
       <div class={`row ${m.role}`}>
+        {#key m.role}
         <div class={`stack ${m.role} ${m.id === editingId ? 'editing' : ''}`}>
           <div class={`meta ${m.role}`}>
             <div class="role-switch" aria-haspopup="menu">
@@ -354,6 +361,7 @@
             {/if}
           </div>
         </div>
+        {/key}
       </div>
     {/each}
   </div>
@@ -460,6 +468,7 @@
     padding-inline: var(--page-gutter);
     padding-top: 0;
     padding-bottom: 0;
+    overflow-x: hidden;
   }
 
   .topbar {
@@ -528,7 +537,7 @@
 
   /* Ensure a consistent line length for message content */
   /* Use grid so bubble and actions share the same content-width column */
-  .stack { display: grid; grid-auto-flow: row; grid-auto-rows: max-content; grid-template-columns: max-content; gap: 2px; width: min(720px, 92%); }
+  .stack { display: grid; grid-auto-flow: row; grid-auto-rows: max-content; grid-template-columns: minmax(0, 1fr); gap: 2px; width: min(720px, 92%); }
   /* Keep width consistent while editing (inline) */
   /* .stack.editing { width: 100%; max-width: var(--page-max); } */
   .stack.assistant { justify-content: start; }
@@ -575,7 +584,6 @@
   .role-menu {
     position: absolute;
     top: calc(100% + 8px);
-    left: 0;
     display: grid;
     gap: 6px;
     padding: 8px;
@@ -588,15 +596,20 @@
     transition: opacity .12s ease, transform .12s ease;
     pointer-events: none;
     min-width: 160px;
+    max-width: min(90vw, 240px);
     z-index: 10;
   }
+  /* Side-aware anchoring to keep menu in bounds */
+  .stack.assistant .role-menu { left: 0; right: auto; }
+  .stack.user .role-menu { right: 0; left: auto; }
+  .stack.system .role-menu { left: 50%; right: auto; transform: translate(-50%, 6px); }
   .role-switch:hover .role-menu,
   .role-switch:focus-within .role-menu { opacity: 1; transform: translateY(0); pointer-events: auto; }
 
   .bubble {
     /* Hug content up to the stack's max width */
-    display: inline-block;
-    max-width: min(720px, 92%);
+    display: block;
+    max-width: 100%;
     padding: 10px var(--bubble-pad-x);
     border-radius: 14px;
     border: none;
@@ -618,15 +631,7 @@
   .bubble.assistant { justify-self: start; }
   .bubble.user { justify-self: end; }
   .bubble.system { justify-self: center; }
-  .bubble.system {
-    background: transparent;
-    color: var(--muted);
-    border: 1px dashed var(--border);
-    /* Grow with content up to full chat width */
-    display: inline-block;
-    width: auto;
-    max-width: 100%;
-  }
+  .bubble.system { background: transparent; color: var(--muted); border: 1px dashed var(--border); }
   /* Keep system bubble width while editing */
   /* .bubble.system.editing { display: block; width: 100%; max-width: none; padding: 0; background: transparent; box-shadow: none; } */
 
