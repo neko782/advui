@@ -131,6 +131,48 @@
       send()
     }
   }
+  // Message actions
+  async function copyMessage(text) {
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(text)
+        return
+      }
+    } catch {}
+    // Fallback
+    try {
+      const ta = document.createElement('textarea')
+      ta.value = text
+      ta.style.position = 'fixed'
+      ta.style.opacity = '0'
+      document.body.appendChild(ta)
+      ta.select()
+      document.execCommand('copy')
+      document.body.removeChild(ta)
+    } catch {}
+  }
+  function deleteMessage(id) {
+    messages = messages.filter(m => m.id !== id)
+  }
+  function moveUp(id) {
+    const i = messages.findIndex(m => m.id === id)
+    if (i > 0) {
+      const arr = messages.slice()
+      ;[arr[i - 1], arr[i]] = [arr[i], arr[i - 1]]
+      messages = arr
+    }
+  }
+  function moveDown(id) {
+    const i = messages.findIndex(m => m.id === id)
+    if (i >= 0 && i < messages.length - 1) {
+      const arr = messages.slice()
+      ;[arr[i], arr[i + 1]] = [arr[i + 1], arr[i]]
+      messages = arr
+    }
+  }
+  function editMessage(/* id */) {
+    // Not implemented per request
+  }
   // small sanitizer to avoid HTML injection in placeholder echo
   function sanitize(text) {
     return String(text)
@@ -173,7 +215,7 @@
   </header>
 
   <div class="messages" bind:this={listEl}>
-    {#each messages as m (m.id)}
+    {#each messages as m, i (m.id)}
       <div class={`row ${m.role}`}>
         <div class={`stack ${m.role}`}>
           <div class={`meta ${m.role}`}>
@@ -187,14 +229,20 @@
             {/if}
           </div>
           <div class={`actions ${m.role}`}>
-            <button class="action-btn" onclick={() => navigator.clipboard?.writeText(m.content).catch(()=>{})} aria-label="Copy message" title="Copy">
+            <button class="action-btn" onclick={() => copyMessage(m.content)} aria-label="Copy message" title="Copy" disabled={m.typing}>
               <Icon name="content_copy" size={18} />
             </button>
-            <button class="action-btn" onclick={() => { /* noop */ }} aria-label="Like message" title="Like">
-              <Icon name="favorite" size={18} />
+            <button class="action-btn" onclick={() => deleteMessage(m.id)} aria-label="Delete message" title="Delete" disabled={m.typing}>
+              <Icon name="delete" size={18} />
             </button>
-            <button class="action-btn" onclick={() => { /* noop */ }} aria-label="More actions" title="More">
-              <Icon name="more_horiz" size={18} />
+            <button class="action-btn" onclick={() => editMessage(m.id)} aria-label="Edit message" title="Edit" disabled>
+              <Icon name="edit" size={18} />
+            </button>
+            <button class="action-btn" onclick={() => moveDown(m.id)} aria-label="Move down" title="Down" disabled={m.typing || i === messages.length - 1}>
+              <Icon name="arrow_downward" size={18} />
+            </button>
+            <button class="action-btn" onclick={() => moveUp(m.id)} aria-label="Move up" title="Up" disabled={m.typing || i === 0}>
+              <Icon name="arrow_upward" size={18} />
             </button>
           </div>
         </div>
@@ -427,6 +475,7 @@
   }
   .action-btn:hover { color: #ffffff; }
   .action-btn:focus-visible { color: #ffffff; }
+  .action-btn:disabled { opacity: .5; cursor: not-allowed; }
 
   .composer {
     position: sticky;
