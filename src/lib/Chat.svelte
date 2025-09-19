@@ -11,6 +11,9 @@
   let nextId = $state(1)
   let showSettings = $state(false)
   let settings = $state(loadSettings())
+  let editingId = $state(null)
+  let editingText = $state('')
+  let editingEl
 
   // Seed each chat with a system prologue
   function addSystemPrologue() {
@@ -170,8 +173,33 @@
       messages = arr
     }
   }
-  function editMessage(/* id */) {
-    // Not implemented per request
+  function editMessage(id) {
+    const msg = messages.find(m => m.id === id)
+    if (!msg || msg.typing) return
+    editingId = id
+    editingText = msg.content || ''
+    // focus textarea on next tick
+    queueMicrotask(() => {
+      if (editingEl) {
+        autoGrow(editingEl)
+        editingEl.focus()
+        // Move caret to end
+        const len = editingEl.value.length
+        editingEl.setSelectionRange(len, len)
+      }
+    })
+  }
+  function commitEdit() {
+    if (editingId == null) return
+    const val = String(editingText)
+    messages = messages.map(m => (m.id === editingId ? { ...m, content: val } : m))
+    editingId = null
+    editingText = ''
+    queueMicrotask(() => scrollToBottom())
+  }
+  function cancelEdit() {
+    editingId = null
+    editingText = ''
   }
   // small sanitizer to avoid HTML injection in placeholder echo
   function sanitize(text) {
@@ -224,26 +252,43 @@
           <div class={`bubble ${m.role}`} data-typing={m.typing ? true : undefined}>
             {#if m.typing}
               <span class="dots"><i></i><i></i><i></i></span>
+            {:else if m.id === editingId}
+              <textarea
+                class="bubble-editor"
+                bind:value={editingText}
+                oninput={(e) => autoGrow(e.currentTarget)}
+                rows="1"
+                bind:this={editingEl}
+              ></textarea>
             {:else}
               {@html sanitize(m.content)}
             {/if}
           </div>
           <div class={`actions ${m.role}`}>
-            <button class="action-btn" onclick={() => copyMessage(m.content)} aria-label="Copy message" title="Copy" disabled={m.typing}>
-              <Icon name="content_copy" size={18} />
-            </button>
-            <button class="action-btn" onclick={() => deleteMessage(m.id)} aria-label="Delete message" title="Delete" disabled={m.typing}>
-              <Icon name="delete" size={18} />
-            </button>
-            <button class="action-btn" onclick={() => editMessage(m.id)} aria-label="Edit message" title="Edit" disabled>
-              <Icon name="edit" size={18} />
-            </button>
-            <button class="action-btn" onclick={() => moveDown(m.id)} aria-label="Move down" title="Down" disabled={m.typing || i === messages.length - 1}>
-              <Icon name="arrow_downward" size={18} />
-            </button>
-            <button class="action-btn" onclick={() => moveUp(m.id)} aria-label="Move up" title="Up" disabled={m.typing || i === 0}>
-              <Icon name="arrow_upward" size={18} />
-            </button>
+            {#if m.id === editingId}
+              <button class="action-btn" onclick={commitEdit} aria-label="Save edit" title="Save">
+                <Icon name="check" size={18} />
+              </button>
+              <button class="action-btn" onclick={cancelEdit} aria-label="Cancel edit" title="Cancel">
+                <Icon name="close" size={18} />
+              </button>
+            {:else}
+              <button class="action-btn" onclick={() => copyMessage(m.content)} aria-label="Copy message" title="Copy" disabled={m.typing}>
+                <Icon name="content_copy" size={18} />
+              </button>
+              <button class="action-btn" onclick={() => deleteMessage(m.id)} aria-label="Delete message" title="Delete" disabled={m.typing}>
+                <Icon name="delete" size={18} />
+              </button>
+              <button class="action-btn" onclick={() => editMessage(m.id)} aria-label="Edit message" title="Edit" disabled={m.typing}>
+                <Icon name="edit" size={18} />
+              </button>
+              <button class="action-btn" onclick={() => moveDown(m.id)} aria-label="Move down" title="Down" disabled={m.typing || i === messages.length - 1}>
+                <Icon name="arrow_downward" size={18} />
+              </button>
+              <button class="action-btn" onclick={() => moveUp(m.id)} aria-label="Move up" title="Up" disabled={m.typing || i === 0}>
+                <Icon name="arrow_upward" size={18} />
+              </button>
+            {/if}
           </div>
         </div>
       </div>
@@ -452,6 +497,25 @@
     background: transparent;
     color: var(--muted);
     border: 1px dashed var(--border);
+  }
+
+  /* Inline bubble editor */
+  .bubble-editor {
+    width: 100%;
+    box-sizing: border-box;
+    display: block;
+    resize: none;
+    min-height: 28px;
+    height: 28px; /* autoGrow adjusts */
+    max-height: 240px;
+    overflow: hidden;
+    padding: 6px 8px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.35;
+    font: inherit;
   }
 
   .actions { display: flex; gap: 6px; }
