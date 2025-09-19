@@ -258,6 +258,23 @@
       .replaceAll('\n', '<br/>')
   }
 
+  import MarkdownIt from 'markdown-it'
+  const md = new MarkdownIt({ html: false, linkify: true, typographer: false, breaks: false })
+  // Open links in a new tab and add rel; basic scheme guard left to the browser
+  const defaultRenderLink = md.renderer.rules.link_open || function(tokens, idx, options, env, self) {
+    return self.renderToken(tokens, idx, options)
+  }
+  md.renderer.rules.link_open = function(tokens, idx, options, env, self) {
+    const a = tokens[idx]
+    // add target and rel
+    const targetIndex = a.attrIndex('target')
+    if (targetIndex < 0) a.attrPush(['target', '_blank']); else a.attrs[targetIndex][1] = '_blank'
+    const relIndex = a.attrIndex('rel')
+    if (relIndex < 0) a.attrPush(['rel', 'noopener noreferrer']); else a.attrs[relIndex][1] = 'noopener noreferrer'
+    return defaultRenderLink(tokens, idx, options, env, self)
+  }
+  function renderMarkdown(src) { return md.render(String(src || '')) }
+
   // keep view anchored to the latest messages
   $effect(() => {
     // Run when messages or layout change
@@ -316,6 +333,7 @@
               class={`bubble ${m.role} editing`}
               contenteditable="true"
               role="textbox"
+              tabindex="0"
               aria-multiline="true"
               oninput={onEditableInput}
               onkeydown={onEditableKeydown}
@@ -330,7 +348,7 @@
               {#if m.typing}
                 <span class="dots"><i></i><i></i><i></i></span>
               {:else}
-                {m.content}
+                {@html renderMarkdown(m.content)}
               {/if}
             </div>
           {/if}
@@ -613,14 +631,34 @@
     padding: 10px var(--bubble-pad-x);
     border-radius: 14px;
     border: none;
-    /* Keep author-inserted newlines, but allow breaking long tokens */
-    white-space: pre-wrap;
+    /* For rendered Markdown, rely on block/inline flow */
+    white-space: normal;
     overflow-wrap: anywhere; /* handles long unbroken strings */
     word-break: break-word;  /* fallback for older engines */
     line-height: 1.4;
     font-size: 0.98rem;
     box-shadow: 0 1px 0 rgba(0,0,0,0.04);
   }
+  /* When editing, preserve user newlines */
+  .bubble.editing { white-space: pre-wrap; }
+  /* Basic Markdown styles inside bubbles */
+  .bubble h1, .bubble h2, .bubble h3, .bubble h4, .bubble h5, .bubble h6 {
+    margin: 0.2em 0 0.4em;
+    line-height: 1.25;
+  }
+  .bubble h1 { font-size: 1.35rem; }
+  .bubble h2 { font-size: 1.25rem; }
+  .bubble h3 { font-size: 1.15rem; }
+  .bubble p { margin: 0.2em 0; }
+  .bubble ul { margin: 0.2em 0 0.2em 1.2em; padding: 0; }
+  .bubble li { margin: 0.2em 0; }
+  .bubble a { color: var(--accent); text-decoration: underline; }
+  .bubble code { background: color-mix(in srgb, var(--panel), #ffffff 8%); padding: 0 3px; border-radius: 4px; }
+  .bubble pre { background: color-mix(in srgb, var(--panel), #ffffff 6%); padding: 10px; border-radius: 10px; overflow: auto; }
+  .bubble pre code { background: transparent; padding: 0; }
+  /* Trim top/bottom margins inside the bubble to avoid extra space */
+  .bubble > :first-child { margin-top: 0; }
+  .bubble > :last-child { margin-bottom: 0; }
   /* Keep bubble look while editing (inline editing) */
   /* .bubble.editing { display: block; max-width: none; width: 100%; padding: 0; background: transparent; box-shadow: none; } */
   .bubble.assistant {
