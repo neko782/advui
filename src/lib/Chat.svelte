@@ -178,14 +178,17 @@
     if (!msg || msg.typing) return
     editingId = id
     editingText = msg.content || ''
-    // focus textarea on next tick
+    // focus textarea and ensure height matches content after layout
     queueMicrotask(() => {
       if (editingEl) {
+        // First pass: once element exists
         autoGrow(editingEl)
         editingEl.focus()
         // Move caret to end
         const len = editingEl.value.length
         editingEl.setSelectionRange(len, len)
+        // Second pass: after a paint to ensure scrollHeight is correct
+        requestAnimationFrame(() => editingEl && autoGrow(editingEl))
       }
     })
   }
@@ -245,11 +248,11 @@
   <div class="messages" bind:this={listEl}>
     {#each messages as m, i (m.id)}
       <div class={`row ${m.role}`}>
-        <div class={`stack ${m.role}`}>
+        <div class={`stack ${m.role} ${m.id === editingId ? 'editing' : ''}`}>
           <div class={`meta ${m.role}`}>
             <span class="role-name">{formatRole(m.role)}</span>
           </div>
-          <div class={`bubble ${m.role}`} data-typing={m.typing ? true : undefined}>
+          <div class={`bubble ${m.role} ${m.id === editingId ? 'editing' : ''}`} data-typing={m.typing ? true : undefined}>
             {#if m.typing}
               <span class="dots"><i></i><i></i><i></i></span>
             {:else if m.id === editingId}
@@ -465,6 +468,8 @@
 
   /* Ensure a consistent line length for message content */
   .stack { display: flex; flex-direction: column; gap: 2px; width: min(720px, 92%); }
+  /* When editing, let the editor span the full chat width */
+  .stack.editing { width: 100%; max-width: var(--page-max); }
   .stack.assistant { align-items: flex-start; }
   .stack.user { align-items: flex-end; }
   .stack.system { align-items: center; }
@@ -489,6 +494,8 @@
     font-size: 0.98rem;
     box-shadow: 0 1px 0 rgba(0,0,0,0.04);
   }
+  /* Remove bubble constraints/padding when editing so the textarea can fill width */
+  .bubble.editing { display: block; max-width: none; width: 100%; padding: 0; background: transparent; box-shadow: none; }
   .bubble.assistant {
     background: transparent;
   }
