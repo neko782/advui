@@ -14,6 +14,43 @@
   let editingId = $state(null)
   let editingText = $state('')
   let editingEl
+  function placeCaretAtEnd(el) {
+    try {
+      const range = document.createRange()
+      range.selectNodeContents(el)
+      range.collapse(false)
+      const sel = window.getSelection()
+      sel.removeAllRanges()
+      sel.addRange(range)
+    } catch {}
+  }
+  function onEditableInput(e) {
+    if (editingId == null) return
+    // Keep state in sync without re-rendering content
+    try { editingText = e.currentTarget.innerText } catch {}
+  }
+  function onEditableKeydown(e) {
+    // Ctrl/Cmd+Enter to save, Escape to cancel; Enter alone inserts newline
+    if ((e.key === 'Enter') && (e.metaKey || e.ctrlKey)) {
+      e.preventDefault()
+      commitEdit()
+      return
+    }
+    if (e.key === 'Escape') {
+      e.preventDefault()
+      cancelEdit()
+    }
+  }
+  function onEditablePaste(e) {
+    // Force paste as plain text
+    try {
+      const text = e.clipboardData?.getData('text/plain')
+      if (text != null) {
+        e.preventDefault()
+        document.execCommand('insertText', false, text)
+      }
+    } catch {}
+  }
 
   // Seed each chat with a system prologue
   function addSystemPrologue() {
@@ -178,23 +215,18 @@
     if (!msg || msg.typing) return
     editingId = id
     editingText = msg.content || ''
-    // focus textarea and ensure height matches content after layout
+    // Focus bubble and set its text inline
     queueMicrotask(() => {
       if (editingEl) {
-        // First pass: once element exists
-        autoGrow(editingEl)
+        editingEl.textContent = editingText
         editingEl.focus()
-        // Move caret to end
-        const len = editingEl.value.length
-        editingEl.setSelectionRange(len, len)
-        // Second pass: after a paint to ensure scrollHeight is correct
-        requestAnimationFrame(() => editingEl && autoGrow(editingEl))
+        placeCaretAtEnd(editingEl)
       }
     })
   }
   function commitEdit() {
     if (editingId == null) return
-    const val = String(editingText)
+    const val = String(editingEl?.innerText ?? editingText)
     messages = messages.map(m => (m.id === editingId ? { ...m, content: val } : m))
     editingId = null
     editingText = ''
@@ -252,21 +284,29 @@
           <div class={`meta ${m.role}`}>
             <span class="role-name">{formatRole(m.role)}</span>
           </div>
-          <div class={`bubble ${m.role} ${m.id === editingId ? 'editing' : ''}`} data-typing={m.typing ? true : undefined}>
-            {#if m.typing}
-              <span class="dots"><i></i><i></i><i></i></span>
-            {:else if m.id === editingId}
-              <textarea
-                class="bubble-editor"
-                bind:value={editingText}
-                oninput={(e) => autoGrow(e.currentTarget)}
-                rows="1"
-                bind:this={editingEl}
-              ></textarea>
-            {:else}
-              {@html sanitize(m.content)}
-            {/if}
-          </div>
+          {#if m.id === editingId}
+            <div
+              class={`bubble ${m.role} editing`}
+              contenteditable="true"
+              role="textbox"
+              aria-multiline="true"
+              oninput={onEditableInput}
+              onkeydown={onEditableKeydown}
+              onpaste={onEditablePaste}
+              bind:this={editingEl}
+            ></div>
+          {:else}
+            <div
+              class={`bubble ${m.role}`}
+              data-typing={m.typing ? true : undefined}
+            >
+              {#if m.typing}
+                <span class="dots"><i></i><i></i><i></i></span>
+              {:else}
+                {m.content}
+              {/if}
+            </div>
+          {/if}
           <div class={`actions ${m.role}`}>
             {#if m.id === editingId}
               <button class="action-btn" onclick={commitEdit} aria-label="Save edit" title="Save">
@@ -468,8 +508,8 @@
 
   /* Ensure a consistent line length for message content */
   .stack { display: flex; flex-direction: column; gap: 2px; width: min(720px, 92%); }
-  /* When editing, let the editor span the full chat width */
-  .stack.editing { width: 100%; max-width: var(--page-max); }
+  /* Keep width consistent while editing (inline) */
+  /* .stack.editing { width: 100%; max-width: var(--page-max); } */
   .stack.assistant { align-items: flex-start; }
   .stack.user { align-items: flex-end; }
   /* System rows can expand up to full chat width but not forced */
@@ -495,8 +535,8 @@
     font-size: 0.98rem;
     box-shadow: 0 1px 0 rgba(0,0,0,0.04);
   }
-  /* Remove bubble constraints/padding when editing so the textarea can fill width */
-  .bubble.editing { display: block; max-width: none; width: 100%; padding: 0; background: transparent; box-shadow: none; }
+  /* Keep bubble look while editing (inline editing) */
+  /* .bubble.editing { display: block; max-width: none; width: 100%; padding: 0; background: transparent; box-shadow: none; } */
   .bubble.assistant {
     background: transparent;
   }
@@ -510,10 +550,10 @@
     width: auto;
     max-width: 100%;
   }
-  /* Ensure editing state always takes full width, even for system */
-  .bubble.system.editing { display: block; width: 100%; max-width: none; padding: 0; background: transparent; box-shadow: none; }
+  /* Keep system bubble width while editing */
+  /* .bubble.system.editing { display: block; width: 100%; max-width: none; padding: 0; background: transparent; box-shadow: none; } */
 
-  /* Inline bubble editor */
+  /* Inline bubble editor — looks like text inside the bubble */
   .bubble-editor {
     width: 100%;
     box-sizing: border-box;
@@ -523,12 +563,12 @@
     height: 28px; /* autoGrow adjusts */
     max-height: 240px;
     overflow: hidden;
-    padding: 6px 8px;
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    background: var(--bg);
-    color: var(--text);
-    line-height: 1.35;
+    padding: 0; /* use the bubble's own padding */
+    border: none;
+    border-radius: 0;
+    background: transparent;
+    color: inherit;
+    line-height: inherit;
     font: inherit;
   }
 
