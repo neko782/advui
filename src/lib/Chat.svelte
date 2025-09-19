@@ -1,0 +1,557 @@
+<script>
+  // Svelte 5 runes API
+  import Icon from './Icon.svelte'
+  import SettingsModal from './SettingsModal.svelte'
+  import { loadSettings } from './settingsStore.js'
+  import { respond } from './openaiClient.js'
+
+  let messages = $state([])
+  let input = $state('')
+  let sending = $state(false)
+  let nextId = $state(1)
+  let showSettings = $state(false)
+  let settings = $state(loadSettings())
+
+  // Seed each chat with a system prologue
+  function addSystemPrologue() {
+    const sysMsg = {
+      id: nextId++,
+      role: 'system',
+      content: 'You are a helpful assistant.',
+      time: Date.now()
+    }
+    messages = [sysMsg]
+  }
+
+  function newChat() {
+    messages = []
+    nextId = 1
+    addSystemPrologue()
+  }
+
+  // Initialize on load
+  addSystemPrologue()
+
+  function autoGrow(el) {
+    if (!el) return
+    const max = 240
+    const min = 44
+    // Reset height to measure accurate scrollHeight
+    el.style.height = 'auto'
+    const content = el.scrollHeight
+    const next = Math.min(content, max)
+    el.style.height = Math.max(next, min) + 'px'
+    // Hide scrollbar while content fits under max; show once capped
+    el.style.overflowY = content > max ? 'auto' : 'hidden'
+  }
+
+  function formatRole(role) {
+    if (role === 'assistant') return 'Assistant'
+    if (role === 'system') return 'System'
+    return 'User'
+  }
+
+  // Send a message (with chosen role) and request an assistant reply via API
+  async function sendWithRole(role = 'user') {
+    const text = input.trim()
+    if (!text || sending) return
+
+    sending = true
+    const firstMsg = { id: nextId++, role, content: text, time: Date.now() }
+    messages = [...messages, firstMsg]
+    input = ''
+    // Refresh input height after clearing
+    queueMicrotask(() => autoGrow(inputEl))
+
+    // Typing placeholder
+    const typingMsg = { id: nextId++, role: 'assistant', content: 'typing', time: Date.now(), typing: true }
+    messages = [...messages, typingMsg]
+    try {
+      let reply
+      const { apiKey } = settings
+      if (apiKey) {
+        // Build message history (exclude typing placeholder)
+        const history = messages
+          .filter(m => !m.typing)
+          .map(({ role, content }) => ({ role, content }))
+        reply = await respond({ messages: history, model: settings.model })
+      } else {
+        // if no key set, provide a friendly hint + echo
+        reply = generatePlaceholderReply(firstMsg.content) +
+          '\n\nTip: Add your OpenAI API key in Settings to get real answers.'
+      }
+      messages = messages.map(m => (m.id === typingMsg.id ? { ...m, content: reply, typing: false } : m))
+    } catch (err) {
+      const msg = err?.message || 'Something went wrong.'
+      messages = messages.map(m => (m.id === typingMsg.id ? { ...m, content: `Error: ${msg}`, typing: false } : m))
+    } finally {
+      sending = false
+      // Auto scroll to bottom after response
+      queueMicrotask(() => scrollToBottom())
+    }
+  }
+
+  // Default send: as user
+  function send() { return sendWithRole('user') }
+
+  // Add a message locally without sending to the API
+  function addToChat(role = 'user') {
+    const text = input.trim()
+    if (!text) return
+    const direct = { id: nextId++, role, content: text, time: Date.now() }
+    messages = [...messages, direct]
+    input = ''
+    queueMicrotask(() => autoGrow(inputEl))
+    queueMicrotask(() => scrollToBottom())
+  }
+
+  function generatePlaceholderReply(text) {
+    const canned = [
+      'Interesting — tell me more.',
+      'Noted. What should we try next?',
+      'I\'m thinking… maybe break it down?',
+      'Got it. Here\'s a simple take:',
+      'Okay! A quick summary:'
+    ]
+    const lead = canned[Math.floor(Math.random() * canned.length)]
+    const echo = text.length > 140 ? text.slice(0, 140) + '…' : text
+    return `${lead}\n\nYou said: “${echo}”`
+  }
+
+  let listEl
+  let inputEl
+  function scrollToBottom() {
+    if (!listEl) return
+    listEl.scrollTo({ top: listEl.scrollHeight, behavior: 'smooth' })
+  }
+
+  function onKey(e) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      send()
+    }
+  }
+  // small sanitizer to avoid HTML injection in placeholder echo
+  function sanitize(text) {
+    return String(text)
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;')
+      .replaceAll("'", '&#39;')
+      .replaceAll('\n', '<br/>')
+  }
+
+  // keep view anchored to the latest messages
+  $effect(() => {
+    // Run when messages or layout change
+    scrollToBottom()
+  })
+</script>
+
+<section class="chat-shell">
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="titlebox">AI Chat</div>
+      <button
+        class="icon-btn"
+        title="Settings"
+        onclick={() => (showSettings = true)}
+        aria-label="Settings"
+      >
+        <Icon name="settings" size={22} />
+      </button>
+      <button
+        class="icon-btn"
+        title="New chat"
+        onclick={newChat}
+        aria-label="New chat"
+      >
+        <Icon name="add" size={22} />
+      </button>
+    </div>
+  </header>
+
+  <div class="messages" bind:this={listEl}>
+    {#each messages as m (m.id)}
+      <div class={`row ${m.role}`}>
+        <div class={`stack ${m.role}`}>
+          <div class={`meta ${m.role}`}>
+            <span class="role-name">{formatRole(m.role)}</span>
+          </div>
+          <div class={`bubble ${m.role}`} data-typing={m.typing ? true : undefined}>
+            {#if m.typing}
+              <span class="dots"><i></i><i></i><i></i></span>
+            {:else}
+              {@html sanitize(m.content)}
+            {/if}
+          </div>
+          <div class={`actions ${m.role}`}>
+            <button class="action-btn" onclick={() => navigator.clipboard?.writeText(m.content).catch(()=>{})} aria-label="Copy message" title="Copy">
+              <Icon name="content_copy" size={18} />
+            </button>
+            <button class="action-btn" onclick={() => { /* noop */ }} aria-label="Like message" title="Like">
+              <Icon name="favorite" size={18} />
+            </button>
+            <button class="action-btn" onclick={() => { /* noop */ }} aria-label="More actions" title="More">
+              <Icon name="more_horiz" size={18} />
+            </button>
+          </div>
+        </div>
+      </div>
+    {/each}
+  </div>
+
+  <footer class="composer">
+    <div class="composer-inner">
+      <textarea
+        class="composer-input"
+        placeholder="Type a message…"
+        bind:value={input}
+        oninput={(e) => autoGrow(e.currentTarget)}
+        onkeydown={onKey}
+        rows="1"
+        bind:this={inputEl}
+      ></textarea>
+      <!-- Add-to-chat group (now first, swapped) -->
+      <div class="send-group" aria-haspopup="menu">
+        <button class="float-btn" onclick={() => addToChat('user')} disabled={!input.trim()} aria-label="Add to chat">
+          <Icon name="add_comment" size={22} />
+        </button>
+        <div class="send-menu" role="menu" aria-label="Add to chat as">
+          <button role="menuitem" class="menu-item" onclick={() => addToChat('user')} disabled={!input.trim()} aria-label="Add as user">
+            <Icon name="person" size={18} />
+            User
+          </button>
+          <button role="menuitem" class="menu-item" onclick={() => addToChat('assistant')} disabled={!input.trim()} aria-label="Add as assistant">
+            <Icon name="smart_toy" size={18} />
+            Assistant
+          </button>
+          <button role="menuitem" class="menu-item" onclick={() => addToChat('system')} disabled={!input.trim()} aria-label="Add as system">
+            <Icon name="tune" size={18} />
+            System
+          </button>
+        </div>
+      </div>
+
+      <!-- Send group (with full role menu) -->
+      <div class="send-group" aria-haspopup="menu">
+        <button class="float-btn" onclick={() => sendWithRole('user')} disabled={!input.trim() || sending} aria-label="Send">
+          <Icon name="send" size={22} />
+        </button>
+        <div class="send-menu" role="menu" aria-label="Send as">
+          <button role="menuitem" class="menu-item" onclick={() => sendWithRole('user')} disabled={!input.trim() || sending} aria-label="Send as user">
+            <Icon name="send" size={18} />
+            User
+          </button>
+          <button role="menuitem" class="menu-item" onclick={() => sendWithRole('assistant')} disabled={!input.trim() || sending} aria-label="Send as assistant">
+            <Icon name="send" size={18} />
+            Assistant
+          </button>
+          <button role="menuitem" class="menu-item" onclick={() => sendWithRole('system')} disabled={!input.trim() || sending} aria-label="Send as system">
+            <Icon name="send" size={18} />
+            System
+          </button>
+        </div>
+      </div>
+    </div>
+  </footer>
+
+  <SettingsModal open={showSettings} onClose={() => { showSettings = false; settings = loadSettings() }} />
+</section>
+
+<style>
+  /* Grayscale UI with accent reserved for buttons */
+  :global(:root) {
+    --bg: color-mix(in oklab, canvas, #f3f4f6 10%);
+    --panel: color-mix(in srgb, #ffffff 92%, #e6e6e6);
+    --border: color-mix(in srgb, #c8c8c8 60%, #0000);
+    --text: color-mix(in srgb, #1b1f24 92%, #0000);
+    --muted: #6b7280;
+    --accent: #3584e4; /* Accent reserved for actionable buttons */
+    --assistant: #f3f4f6; /* neutral gray */
+    --user: #e5e7eb;      /* neutral gray (no color) */
+
+    /* Layout + floaty look */
+    --page-gutter: clamp(14px, 4vw, 32px);
+    --page-max: 980px;
+    --float-shadow: 0 10px 30px rgba(0,0,0,0.08), 0 2px 10px rgba(0,0,0,0.06);
+    --float-border: color-mix(in srgb, var(--border), transparent 55%);
+    --bubble-pad-x: 12px; /* bubble text horizontal padding */
+    /* Action buttons sit 4px closer than text padding on the button side */
+    --actions-inset-x: clamp(0px, calc(var(--bubble-pad-x) - 4px), 100vw);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :global(:root) {
+      /* Neutral grays only */
+      --bg: #0f0f10;
+      --panel: #141414;
+      --border: #2a2a2a;
+      --text: #e6e6e6;
+      --muted: #a3a3a3;
+      --assistant: #1c1c1c;
+      --user: #222222;
+    }
+  }
+
+  .chat-shell {
+    height: 100%;
+    display: grid;
+    grid-template-rows: auto 1fr auto;
+    background: var(--bg);
+    color: var(--text);
+    padding-inline: var(--page-gutter);
+    padding-top: 0;
+    padding-bottom: 0;
+  }
+
+  .topbar {
+    position: sticky;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 5;
+    background: transparent;
+  }
+  .topbar-inner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 10px 0;
+    max-width: var(--page-max);
+    margin-inline: auto;
+    /* no background/border here — keep only title box + button */
+    padding-inline: 0; /* chat-shell already provides horizontal gutter */
+  }
+  .titlebox {
+    font-weight: 600;
+    letter-spacing: 0.2px;
+    padding: 0 12px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--bg);
+    flex: 1;
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+  }
+  .icon-btn {
+    flex: none;
+    min-width: 44px;
+    height: 44px;
+    display: grid;
+    place-items: center;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: transparent;
+    color: var(--text);
+    line-height: 1;
+  }
+  .icon-btn :global(.icon) { font-size: 22px; }
+
+  .messages {
+    overflow: auto;
+    /* vertical breathing room; horizontal handled by shell */
+    padding: 16px 0 8px;
+    display: grid;
+    align-content: start;
+    gap: 8px;
+  }
+  .row {
+    display: flex;
+    max-width: var(--page-max);
+    margin-inline: auto;
+    width: 100%;
+    padding-inline: 0;
+  }
+  .row.user { justify-content: flex-end; }
+  .row.assistant { justify-content: flex-start; }
+  .row.system { justify-content: center; }
+
+  /* Ensure a consistent line length for message content */
+  .stack { display: flex; flex-direction: column; gap: 2px; width: min(720px, 92%); }
+  .stack.assistant { align-items: flex-start; }
+  .stack.user { align-items: flex-end; }
+  .stack.system { align-items: center; }
+
+  .meta { font-size: .8rem; color: var(--muted); padding: 0 2px; }
+  .meta.user { align-self: flex-end; }
+  .meta.assistant { align-self: flex-start; }
+  .meta.system { align-self: center; }
+
+  .bubble {
+    /* Hug content up to the stack's max width */
+    display: inline-block;
+    max-width: min(720px, 92%);
+    padding: 10px var(--bubble-pad-x);
+    border-radius: 14px;
+    border: none;
+    /* Keep author-inserted newlines, but allow breaking long tokens */
+    white-space: pre-wrap;
+    overflow-wrap: anywhere; /* handles long unbroken strings */
+    word-break: break-word;  /* fallback for older engines */
+    line-height: 1.4;
+    font-size: 0.98rem;
+    box-shadow: 0 1px 0 rgba(0,0,0,0.04);
+  }
+  .bubble.assistant {
+    background: transparent;
+  }
+  .bubble.user { background: var(--user); color: var(--text); }
+  .bubble.system {
+    background: transparent;
+    color: var(--muted);
+    border: 1px dashed var(--border);
+  }
+
+  .actions { display: flex; gap: 6px; }
+  /* Button-side spacing is 10px less than bubble text padding */
+  .actions.user { justify-content: flex-end; align-self: flex-end; margin-right: var(--actions-inset-x); }
+  .actions.assistant { justify-content: flex-start; align-self: flex-start; margin-left: var(--actions-inset-x); }
+  .actions.system { justify-content: center; align-self: center; }
+  .action-btn {
+    width: 28px;
+    height: 28px;
+    display: grid;
+    place-items: center;
+    color: var(--muted);
+    background: transparent;
+    border: none;
+    border-radius: 8px;
+    line-height: 1;
+    padding: 0;
+    cursor: default;
+    transition: color .15s ease;
+  }
+  .action-btn:hover { color: #ffffff; }
+  .action-btn:focus-visible { color: #ffffff; }
+
+  .composer {
+    position: sticky;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 5;
+    background: transparent;
+  }
+  .composer-inner {
+    max-width: var(--page-max);
+    margin-inline: auto;
+    padding: 12px 0;
+    display: grid;
+    grid-template-columns: 1fr auto auto;
+    align-items: center;
+    gap: 10px;
+  }
+  .composer-input {
+    resize: none;
+    width: 100%;
+    min-height: 44px;
+    height: 44px; /* start at 44px */
+    max-height: 240px;
+    overflow: hidden; /* avoid showing scrollbar until needed */
+    padding: 12px; /* simple padding; button is now separate */
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.35;
+    font: inherit;
+    box-sizing: border-box;
+  }
+  .float-btn {
+    position: static;
+    width: 44px;
+    height: 44px;
+    display: grid;
+    place-items: center;
+    border-radius: 10px;
+    border: none;
+    background: var(--accent);
+    color: #fff;
+    line-height: 1;
+    transition: background-color .15s ease, color .15s ease, border-color .15s ease, opacity .15s ease;
+  }
+  .float-btn :global(.icon) { font-size: 22px; }
+  .float-btn:disabled {
+    background: #9ca3af;
+    border-color: transparent;
+    color: #ffffff;
+    cursor: not-allowed;
+  }
+
+  /* Send-as hover menu */
+  .send-group { position: relative; display: grid; place-items: center; z-index: 0; }
+  /* Ensure the active group's hover bridge/menu sits above neighbors */
+  .send-group:hover,
+  .send-group:focus-within { z-index: 20; }
+  /* Hover bridge to prevent flicker when moving from button to menu */
+  .send-group::before {
+    content: '';
+    position: absolute;
+    right: 0;
+    bottom: 100%;
+    /* Wide enough to cover the menu width so hover doesn't drop */
+    width: 220px;
+    /* Taller than the vertical gap so there is no dead zone */
+    height: 12px;
+  }
+  .send-menu {
+    position: absolute;
+    /* 10px gap above the button */
+    bottom: calc(100% + 10px);
+    right: 0;
+    display: grid;
+    gap: 6px;
+    padding: 8px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    box-shadow: var(--float-shadow);
+    opacity: 0;
+    transform: translateY(6px);
+    transition: opacity .12s ease, transform .12s ease;
+    pointer-events: none;
+    min-width: 160px;
+    z-index: 10;
+  }
+  .send-group:hover .send-menu,
+  .send-group:focus-within .send-menu { opacity: 1; transform: translateY(0); pointer-events: auto; }
+  .menu-item {
+    width: 100%;
+    text-align: left;
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    padding: 8px 10px;
+    font: inherit;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .menu-item:disabled { opacity: .6; cursor: not-allowed; }
+
+  /* Typing dots */
+  .dots {
+    display: inline-flex;
+    gap: 6px;
+    align-items: center;
+  }
+  .dots i {
+    width: 6px; height: 6px;
+    display: inline-block;
+    background: currentColor;
+    opacity: 0.5;
+    border-radius: 999px;
+    animation: pop 1.2s infinite ease-in-out;
+  }
+  .dots i:nth-child(2) { animation-delay: .15s; }
+  .dots i:nth-child(3) { animation-delay: .30s; }
+  @keyframes pop {
+    0%, 80%, 100% { transform: translateY(0); opacity: .45 }
+    40% { transform: translateY(-3px); opacity: .9 }
+  }
+</style>
