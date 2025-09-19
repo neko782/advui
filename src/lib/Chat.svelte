@@ -472,12 +472,13 @@
   .stack.editing { width: 100%; max-width: var(--page-max); }
   .stack.assistant { align-items: flex-start; }
   .stack.user { align-items: flex-end; }
-  .stack.system { align-items: center; }
+  /* System rows can span the full chat width */
+  .stack.system { align-items: stretch; width: 100%; max-width: none; }
 
   .meta { font-size: .8rem; color: var(--muted); padding: 0 2px; }
   .meta.user { align-self: flex-end; }
   .meta.assistant { align-self: flex-start; }
-  .meta.system { align-self: center; }
+  .meta.system { align-self: stretch; text-align: center; }
 
   .bubble {
     /* Hug content up to the stack's max width */
@@ -504,6 +505,10 @@
     background: transparent;
     color: var(--muted);
     border: 1px dashed var(--border);
+    /* Let system prompts take the full row width */
+    display: block;
+    width: 100%;
+    max-width: none;
   }
 
   /* Inline bubble editor */
