@@ -573,9 +573,9 @@
   }
 
   .actions { display: flex; gap: 6px; }
-  /* Button-side spacing is 10px less than bubble text padding */
-  .actions.user { justify-content: flex-end; align-self: flex-end; margin-right: var(--actions-inset-x); }
-  .actions.assistant { justify-content: flex-start; align-self: flex-start; margin-left: var(--actions-inset-x); }
+  /* Align actions with bubble edges (no text inset) */
+  .actions.user { justify-content: flex-end; align-self: flex-end; }
+  .actions.assistant { justify-content: flex-start; align-self: flex-start; }
   .actions.system { justify-content: center; align-self: center; }
   .action-btn {
     width: 28px;
