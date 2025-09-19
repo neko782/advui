@@ -310,26 +310,26 @@
           <div class={`actions ${m.role}`}>
             {#if m.id === editingId}
               <button class="action-btn" onclick={commitEdit} aria-label="Save edit" title="Save">
-                <Icon name="check" size={18} />
+                <Icon name="check" size={20} />
               </button>
               <button class="action-btn" onclick={cancelEdit} aria-label="Cancel edit" title="Cancel">
-                <Icon name="close" size={18} />
+                <Icon name="close" size={20} />
               </button>
             {:else}
               <button class="action-btn" onclick={() => copyMessage(m.content)} aria-label="Copy message" title="Copy" disabled={m.typing}>
-                <Icon name="content_copy" size={18} />
+                <Icon name="content_copy" size={20} />
               </button>
               <button class="action-btn" onclick={() => deleteMessage(m.id)} aria-label="Delete message" title="Delete" disabled={m.typing}>
-                <Icon name="delete" size={18} />
+                <Icon name="delete" size={20} />
               </button>
               <button class="action-btn" onclick={() => editMessage(m.id)} aria-label="Edit message" title="Edit" disabled={m.typing}>
-                <Icon name="edit" size={18} />
+                <Icon name="edit" size={20} />
               </button>
               <button class="action-btn" onclick={() => moveDown(m.id)} aria-label="Move down" title="Down" disabled={m.typing || i === messages.length - 1}>
-                <Icon name="arrow_downward" size={18} />
+                <Icon name="arrow_downward" size={20} />
               </button>
               <button class="action-btn" onclick={() => moveUp(m.id)} aria-label="Move up" title="Up" disabled={m.typing || i === 0}>
-                <Icon name="arrow_upward" size={18} />
+                <Icon name="arrow_upward" size={20} />
               </button>
             {/if}
           </div>
@@ -507,18 +507,19 @@
   .row.system { justify-content: center; }
 
   /* Ensure a consistent line length for message content */
-  .stack { display: flex; flex-direction: column; gap: 2px; width: min(720px, 92%); }
+  /* Use grid so bubble and actions share the same content-width column */
+  .stack { display: grid; grid-auto-flow: row; grid-auto-rows: max-content; grid-template-columns: max-content; gap: 2px; width: min(720px, 92%); }
   /* Keep width consistent while editing (inline) */
   /* .stack.editing { width: 100%; max-width: var(--page-max); } */
-  .stack.assistant { align-items: flex-start; }
-  .stack.user { align-items: flex-end; }
+  .stack.assistant { justify-content: start; }
+  .stack.user { justify-content: end; }
   /* System rows can expand up to full chat width but not forced */
-  .stack.system { align-items: center; width: 100%; max-width: var(--page-max); }
+  .stack.system { justify-content: center; width: 100%; max-width: var(--page-max); }
 
   .meta { font-size: .8rem; color: var(--muted); padding: 0 2px; }
-  .meta.user { align-self: flex-end; }
-  .meta.assistant { align-self: flex-start; }
-  .meta.system { align-self: stretch; text-align: center; }
+  .meta.user { justify-self: end; }
+  .meta.assistant { justify-self: start; }
+  .meta.system { justify-self: center; text-align: center; }
 
   .bubble {
     /* Hug content up to the stack's max width */
@@ -541,6 +542,10 @@
     background: transparent;
   }
   .bubble.user { background: var(--user); color: var(--text); }
+  /* Align bubbles within the grid column */
+  .bubble.assistant { justify-self: start; }
+  .bubble.user { justify-self: end; }
+  .bubble.system { justify-self: center; }
   .bubble.system {
     background: transparent;
     color: var(--muted);
@@ -573,10 +578,10 @@
   }
 
   .actions { display: flex; gap: 6px; }
-  /* Align actions with bubble edges (no text inset) */
-  .actions.user { justify-content: flex-end; align-self: flex-end; }
-  .actions.assistant { justify-content: flex-start; align-self: flex-start; }
-  .actions.system { justify-content: center; align-self: center; }
+  /* Align actions with bubble edges by sharing the same grid column */
+  .actions.user { justify-self: end; }
+  .actions.assistant { justify-self: start; }
+  .actions.system { justify-self: center; }
   .action-btn {
     width: 28px;
     height: 28px;
