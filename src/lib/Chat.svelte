@@ -545,7 +545,7 @@
   /* System rows can expand up to full chat width but not forced */
   .stack.system { justify-content: center; width: 100%; max-width: var(--page-max); }
 
-  .meta { font-size: .8rem; color: var(--muted); padding: 0 2px; }
+  .meta { font-size: .8rem; color: var(--muted); padding: 0 2px; margin-bottom: 6px; }
   .meta.user { justify-self: end; }
   .meta.assistant { justify-self: start; }
   .meta.system { justify-self: center; text-align: center; }
@@ -654,7 +654,7 @@
     font: inherit;
   }
 
-  .actions { display: flex; gap: 6px; }
+  .actions { display: flex; gap: 6px; margin-top: 6px; }
   /* Align actions with bubble edges by sharing the same grid column */
   .actions.user { justify-self: end; }
   .actions.assistant { justify-self: start; }
