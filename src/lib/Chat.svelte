@@ -194,6 +194,11 @@
   function deleteMessage(id) {
     messages = messages.filter(m => m.id !== id)
   }
+  function setMessageRole(id, role) {
+    const roles = new Set(['user', 'assistant', 'system'])
+    if (!roles.has(role)) return
+    messages = messages.map(m => (m.id === id ? { ...m, role } : m))
+  }
   function moveUp(id) {
     const i = messages.findIndex(m => m.id === id)
     if (i > 0) {
@@ -282,7 +287,22 @@
       <div class={`row ${m.role}`}>
         <div class={`stack ${m.role} ${m.id === editingId ? 'editing' : ''}`}>
           <div class={`meta ${m.role}`}>
-            <span class="role-name">{formatRole(m.role)}</span>
+            <div class="role-switch" aria-haspopup="menu">
+              <button class="role-badge" aria-label={`Role: ${formatRole(m.role)}`} title="Change role">
+                {formatRole(m.role)}
+              </button>
+              <div class="role-menu" role="menu" aria-label="Change role">
+                <button role="menuitem" class="menu-item" onclick={() => setMessageRole(m.id, 'user')} aria-label="Set role user">
+                  User
+                </button>
+                <button role="menuitem" class="menu-item" onclick={() => setMessageRole(m.id, 'assistant')} aria-label="Set role assistant">
+                  Assistant
+                </button>
+                <button role="menuitem" class="menu-item" onclick={() => setMessageRole(m.id, 'system')} aria-label="Set role system">
+                  System
+                </button>
+              </div>
+            </div>
           </div>
           {#if m.id === editingId}
             <div
@@ -520,6 +540,58 @@
   .meta.user { justify-self: end; }
   .meta.assistant { justify-self: start; }
   .meta.system { justify-self: center; text-align: center; }
+
+  /* Role badge as a textish ghost button */
+  .role-switch { position: relative; display: inline-grid; place-items: center; z-index: 0; }
+  .role-switch:hover, .role-switch:focus-within { z-index: 20; }
+  /* Small hover bridge to keep the menu open when moving pointer */
+  .role-switch::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 100%;
+    width: 180px;
+    height: 8px;
+  }
+  .role-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: transparent;
+    color: var(--muted);
+    line-height: 1.2;
+    font: inherit;
+    cursor: default;
+    transition: color .12s ease, border-color .12s ease, background-color .12s ease;
+  }
+  .role-badge:hover, .role-badge:focus-visible {
+    color: var(--text);
+    border-color: color-mix(in srgb, var(--border), #ffffff 16%);
+    background: transparent;
+  }
+  .role-menu {
+    position: absolute;
+    top: calc(100% + 8px);
+    left: 0;
+    display: grid;
+    gap: 6px;
+    padding: 8px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    box-shadow: var(--float-shadow);
+    opacity: 0;
+    transform: translateY(6px);
+    transition: opacity .12s ease, transform .12s ease;
+    pointer-events: none;
+    min-width: 160px;
+    z-index: 10;
+  }
+  .role-switch:hover .role-menu,
+  .role-switch:focus-within .role-menu { opacity: 1; transform: translateY(0); pointer-events: auto; }
 
   .bubble {
     /* Hug content up to the stack's max width */
