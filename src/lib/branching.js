@@ -79,12 +79,22 @@ export function injectAnchorToken(messages, startIndex, parentChain, anchorId, o
   const token = `${anchorId}:${originalVariantIndex}`
   function inject(path) {
     if (path == null) return path
+    // Root-level injection (no parent chain)
     if (!parentChain) {
+      // Idempotent: if token already at start, keep as-is
+      if (path === token || path.startsWith(token + '|')) return path
       return token + (path ? `|${path}` : '')
     }
+    // Exact parent: append token once
     if (path === parentChain) return `${parentChain}|${token}`
     const prefix = `${parentChain}|`
-    if (path.startsWith(prefix)) return `${parentChain}|${token}${path.slice(parentChain.length)}`
+    if (path.startsWith(prefix)) {
+      const rest = path.slice(prefix.length)
+      // If token already immediately follows parent, leave unchanged
+      if (rest === token || rest.startsWith(`${token}|`)) return path
+      // Otherwise insert token between parent and rest
+      return `${parentChain}|${token}` + (rest ? `|${rest}` : '')
+    }
     return path
   }
   const arr = messages.slice()
@@ -98,4 +108,3 @@ export function injectAnchorToken(messages, startIndex, parentChain, anchorId, o
   }
   return arr
 }
-

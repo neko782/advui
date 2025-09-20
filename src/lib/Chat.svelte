@@ -272,11 +272,29 @@
       scrollToBottom()
     })
   }
+  // Align a message's branching metadata to the chain at its current index
+  function alignMessageToChainAt(arr, idx) {
+    const m = arr[idx]
+    if (!m) return m
+    const parentChain = _chainFromVisibleUpTo(arr, idx)
+    if (isAnchor(m)) {
+      // Anchored messages (assistant or branched user/system) gate visibility via branchPathBefore
+      return { ...m, branchPathBefore: parentChain }
+    }
+    // Only update branchPath for messages that already participate in branching
+    if (Object.prototype.hasOwnProperty.call(m, 'branchPath')) {
+      return { ...m, branchPath: parentChain }
+    }
+    return m
+  }
   function moveUp(id) {
     const i = messages.findIndex(m => m.id === id)
     if (i > 0) {
       const arr = messages.slice()
       ;[arr[i - 1], arr[i]] = [arr[i], arr[i - 1]]
+      // Re-sync branching for both swapped messages (earlier index first)
+      arr[i - 1] = alignMessageToChainAt(arr, i - 1)
+      arr[i] = alignMessageToChainAt(arr, i)
       messages = arr
     }
   }
@@ -285,6 +303,9 @@
     if (i >= 0 && i < messages.length - 1) {
       const arr = messages.slice()
       ;[arr[i], arr[i + 1]] = [arr[i + 1], arr[i]]
+      // Re-sync branching for both swapped messages (earlier index first)
+      arr[i] = alignMessageToChainAt(arr, i)
+      arr[i + 1] = alignMessageToChainAt(arr, i + 1)
       messages = arr
     }
   }
