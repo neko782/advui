@@ -596,8 +596,16 @@
     const target = messages[idx]
     if (!target || target.role !== 'assistant' || target.typing) return
 
-    // Mark as typing on the target message
-    messages = messages.map(m => (m.id === id ? { ...m, typing: true } : m))
+    // Mark as typing on the target message and preselect a new variant index
+    // so off-branch messages hide immediately.
+    messages = messages.map(m => {
+      if (m.id !== id) return m
+      const base = Array.isArray(m.variants) ? m.variants.slice() : [m.content]
+      const nextIndex = base.length
+      // Add a placeholder slot for the in-flight variant so counts line up
+      base.push('')
+      return { ...m, typing: true, variants: base, variantIndex: nextIndex }
+    })
     try {
       let reply
       const { apiKey } = settings
@@ -616,8 +624,10 @@
       messages = messages.map(m => {
         if (m.id !== id) return m
         const arr = Array.isArray(m.variants) ? m.variants.slice() : [m.content]
-        arr.push(reply)
-        const vi = arr.length - 1
+        const vi = typeof m.variantIndex === 'number' ? m.variantIndex : arr.length
+        // Ensure the slot exists, then fill it with reply
+        if (vi >= arr.length) arr.length = vi + 1
+        arr[vi] = reply
         return { ...m, typing: false, content: reply, variants: arr, variantIndex: vi }
       })
     } catch (err) {
@@ -626,12 +636,68 @@
       messages = messages.map(m => {
         if (m.id !== id) return m
         const arr = Array.isArray(m.variants) ? m.variants.slice() : [m.content]
-        arr.push(errText)
-        const vi = arr.length - 1
+        const vi = typeof m.variantIndex === 'number' ? m.variantIndex : arr.length
+        if (vi >= arr.length) arr.length = vi + 1
+        arr[vi] = errText
         return { ...m, typing: false, content: errText, variants: arr, variantIndex: vi }
       })
     } finally {
       // keep view anchored
+      queueMicrotask(() => scrollToBottom())
+    }
+  }
+
+  // Generate a new assistant reply directly after a given user message index
+  // (used when refreshing a user message with no following assistant)
+  async function refreshAfterUserIndex(i) {
+    if (i == null || i < 0 || i >= messages.length) return
+    const cur = messages[i]
+    if (!cur || cur.role !== 'user') return
+    // If an assistant already follows, delegate to refreshAssistant
+    const next = messages[i + 1]
+    if (next && next.role === 'assistant') {
+      return refreshAssistant(next.id)
+    }
+    const insertIndex = i
+    const parentChain = chainFromVisibleUpTo(insertIndex + 1)
+    // Insert a typing assistant anchor immediately so off-branch messages hide now
+    const typingMsg = {
+      id: nextId++,
+      role: 'assistant',
+      content: 'typing',
+      time: Date.now(),
+      typing: true,
+      variants: [''],
+      variantIndex: 0,
+      branchPathBefore: parentChain
+    }
+    const arr = messages.slice()
+    arr.splice(insertIndex + 1, 0, typingMsg)
+    messages = arr
+
+    try {
+      let reply
+      const { apiKey } = settings
+      const history = buildVisibleUpTo(insertIndex + 1)
+        .filter(m => !m.typing)
+        .map(({ role, content }) => ({ role, content }))
+      if (apiKey) {
+        reply = await respond({ messages: history, model: chatModel })
+      } else {
+        const lastUser = [...buildVisibleUpTo(insertIndex + 1)].reverse().find(m => m.role === 'user')
+        reply = generatePlaceholderReply(lastUser?.content || cur.content) +
+          '\n\nTip: Add your OpenAI API key in Settings to get real answers.'
+      }
+      messages = messages.map(m => (m.id === typingMsg.id
+        ? { ...m, content: reply, typing: false, variants: [reply], variantIndex: 0 }
+        : m))
+    } catch (err) {
+      const msg = err?.message || 'Something went wrong.'
+      const errText = `Error: ${msg}`
+      messages = messages.map(m => (m.id === typingMsg.id
+        ? { ...m, content: errText, typing: false, variants: [errText], variantIndex: 0 }
+        : m))
+    } finally {
       queueMicrotask(() => scrollToBottom())
     }
   }
@@ -756,6 +822,11 @@
               {:else if vm.m.role === 'user' && messages[vm.i + 1] && messages[vm.i + 1].role === 'assistant'}
                 <!-- Allow refresh from the preceding user message when it has a following assistant reply -->
                 <button class="action-btn" onclick={() => refreshAssistant(messages[vm.i + 1].id)} aria-label="Regenerate following response" title="Regenerate following response" disabled={messages[vm.i + 1].typing}>
+                  <Icon name="autorenew" size={20} />
+                </button>
+              {:else if vm.m.role === 'user'}
+                <!-- If there's no following assistant, create a new assistant reply -->
+                <button class="action-btn" onclick={() => refreshAfterUserIndex(vm.i)} aria-label="Generate following response" title="Generate following response">
                   <Icon name="autorenew" size={20} />
                 </button>
               {/if}
