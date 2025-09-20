@@ -497,7 +497,8 @@
   }
 
   import MarkdownIt from 'markdown-it'
-  const md = new MarkdownIt({ html: false, linkify: true, typographer: false, breaks: false })
+  // Enable single line breaks in Markdown (treat "\n" as <br>)
+  const md = new MarkdownIt({ html: false, linkify: true, typographer: false, breaks: true })
   // Open links in a new tab and add rel; basic scheme guard left to the browser
   const defaultRenderLink = md.renderer.rules.link_open || function(tokens, idx, options, env, self) {
     return self.renderToken(tokens, idx, options)
@@ -1069,7 +1070,8 @@
   .bubble h2 { font-size: 1.25rem; }
   .bubble h3 { font-size: 1.15rem; }
   .bubble p { margin: 0.2em 0; }
-  .bubble ul { margin: 0.2em 0 0.2em 1.2em; padding: 0; }
+  /* Normalize list spacing and indent for Markdown lists */
+  .bubble ul, .bubble ol { margin: 0.2em 0; padding-left: 1.2em; }
   .bubble li { margin: 0.2em 0; }
   .bubble a { color: var(--accent); text-decoration: underline; }
   .bubble code { background: color-mix(in srgb, var(--panel), #ffffff 8%); padding: 0 3px; border-radius: 4px; }
