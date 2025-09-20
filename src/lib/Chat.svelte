@@ -592,9 +592,6 @@
               </button>
             {:else}
               {#if vm.m.role === 'assistant'}
-                <button class="action-btn" onclick={() => refreshAssistant(vm.m.id)} aria-label="Regenerate response" title="Regenerate" disabled={vm.m.typing}>
-                  <Icon name="autorenew" size={20} />
-                </button>
                 {#if Array.isArray(vm.m.variants) && vm.m.variants.length > 1}
                   <button class="action-btn" onclick={() => changeVariant(vm.m.id, -1)} aria-label="Previous variant" title="Previous" disabled={vm.m.typing || (vm.m.variantIndex || 0) <= 0}>
                     <Icon name="chevron_left" size={20} />
@@ -604,6 +601,9 @@
                     <Icon name="chevron_right" size={20} />
                   </button>
                 {/if}
+                <button class="action-btn" onclick={() => refreshAssistant(vm.m.id)} aria-label="Regenerate response" title="Regenerate" disabled={vm.m.typing}>
+                  <Icon name="autorenew" size={20} />
+                </button>
               {:else if vm.m.role === 'user' && messages[vm.i + 1] && messages[vm.i + 1].role === 'assistant'}
                 <!-- Allow refresh from the preceding user message when it has a following assistant reply -->
                 <button class="action-btn" onclick={() => refreshAssistant(messages[vm.i + 1].id)} aria-label="Regenerate following response" title="Regenerate following response" disabled={messages[vm.i + 1].typing}>
