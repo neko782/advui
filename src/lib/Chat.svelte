@@ -596,6 +596,9 @@
     const target = messages[idx]
     if (!target || target.role !== 'assistant' || target.typing) return
 
+    // Determine the parent chain up to (but not including) this assistant
+    const parentChain = chainFromVisibleUpTo(idx)
+
     // Mark as typing on the target message and preselect a new variant index
     // so off-branch messages hide immediately.
     messages = messages.map(m => {
@@ -604,7 +607,8 @@
       const nextIndex = base.length
       // Add a placeholder slot for the in-flight variant so counts line up
       base.push('')
-      return { ...m, typing: true, variants: base, variantIndex: nextIndex }
+      // Ensure this assistant is anchored to its parent chain
+      return { ...m, typing: true, variants: base, variantIndex: nextIndex, branchPathBefore: parentChain }
     })
     try {
       let reply
@@ -628,7 +632,7 @@
         // Ensure the slot exists, then fill it with reply
         if (vi >= arr.length) arr.length = vi + 1
         arr[vi] = reply
-        return { ...m, typing: false, content: reply, variants: arr, variantIndex: vi }
+        return { ...m, typing: false, content: reply, variants: arr, variantIndex: vi, branchPathBefore: parentChain }
       })
     } catch (err) {
       const msg = err?.message || 'Something went wrong.'
@@ -639,7 +643,7 @@
         const vi = typeof m.variantIndex === 'number' ? m.variantIndex : arr.length
         if (vi >= arr.length) arr.length = vi + 1
         arr[vi] = errText
-        return { ...m, typing: false, content: errText, variants: arr, variantIndex: vi }
+        return { ...m, typing: false, content: errText, variants: arr, variantIndex: vi, branchPathBefore: parentChain }
       })
     } finally {
       // keep view anchored
