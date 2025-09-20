@@ -1070,6 +1070,8 @@
   .bubble :global(h2) { font-size: 1.25rem; }
   .bubble :global(h3) { font-size: 1.15rem; }
   .bubble :global(p) { margin: 0.2em 0; }
+  /* Extra spacing only between adjacent paragraphs */
+  .bubble :global(p + p) { margin-top: 0.8em; }
   /* Normalize list spacing and indent for Markdown lists */
   /* Indent lists inside the bubble (visible insets) */
   .bubble :global(ul), .bubble :global(ol) { margin: 0; padding-left: 2em; list-style-position: inside; }
