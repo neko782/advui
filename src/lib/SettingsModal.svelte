@@ -46,11 +46,6 @@
           </div>
         </label>
 
-        <label class="field">
-          <span>Model</span>
-          <input type="text" placeholder="gpt-4o-mini" bind:value={local.model} />
-        </label>
-
         <p class="hint">Your key is stored locally in this browser.</p>
       </div>
       <footer class="modal-foot">

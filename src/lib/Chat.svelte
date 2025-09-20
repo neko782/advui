@@ -11,6 +11,8 @@
   let nextId = $state(1)
   let showSettings = $state(false)
   let settings = $state(loadSettings())
+  // Per-chat setting: model (default from global)
+  let chatModel = $state(settings.model || 'gpt-4o-mini')
   let editingId = $state(null)
   let editingText = $state('')
   let editingEl
@@ -114,7 +116,7 @@
         const history = messages
           .filter(m => !m.typing)
           .map(({ role, content }) => ({ role, content }))
-        reply = await respond({ messages: history, model: settings.model })
+        reply = await respond({ messages: history, model: chatModel })
       } else {
         // if no key set, provide a friendly hint + echo
         reply = generatePlaceholderReply(firstMsg.content) +
@@ -311,18 +313,21 @@
         {#key m.role}
         <div class={`stack ${m.role} ${m.id === editingId ? 'editing' : ''}`}>
           <div class={`meta ${m.role}`}>
-            <div class="role-switch" aria-haspopup="menu">
-              <button class="role-badge" aria-label={`Role: ${formatRole(m.role)}`} title="Change role">
+            <div class="send-group" aria-haspopup="menu" title="Change role">
+              <button class="role-badge" aria-label={`Role: ${formatRole(m.role)}`}>
                 {formatRole(m.role)}
               </button>
-              <div class="role-menu" role="menu" aria-label="Change role">
+              <div class="send-menu" role="menu" aria-label="Change role">
                 <button role="menuitem" class="menu-item" onclick={() => setMessageRole(m.id, 'user')} aria-label="Set role user">
+                  <Icon name="person" size={18} />
                   User
                 </button>
                 <button role="menuitem" class="menu-item" onclick={() => setMessageRole(m.id, 'assistant')} aria-label="Set role assistant">
+                  <Icon name="smart_toy" size={18} />
                   Assistant
                 </button>
                 <button role="menuitem" class="menu-item" onclick={() => setMessageRole(m.id, 'system')} aria-label="Set role system">
+                  <Icon name="tune" size={18} />
                   System
                 </button>
               </div>
@@ -386,6 +391,19 @@
 
   <footer class="composer">
     <div class="composer-inner">
+      <!-- Per-chat settings (before input) -->
+      <div class="send-group chat-settings-group" aria-haspopup="menu" title="Chat settings">
+        <button class="icon-btn" aria-label="Chat settings">
+          <!-- Different icon from top settings -->
+          <Icon name="tune" size={22} />
+        </button>
+        <div class="send-menu chat-settings-menu" role="menu" aria-label="Chat settings">
+          <div class="menu-section">
+            <div class="menu-label">Model</div>
+            <input type="text" placeholder="gpt-4o-mini" bind:value={chatModel} aria-label="Model" />
+          </div>
+        </div>
+      </div>
       <textarea
         class="composer-input"
         placeholder="Type a message…"
@@ -569,17 +587,7 @@
   .meta.system { justify-self: center; text-align: center; }
 
   /* Role badge as a textish ghost button */
-  .role-switch { position: relative; display: inline-grid; place-items: center; z-index: 0; }
-  .role-switch:hover, .role-switch:focus-within { z-index: 20; }
-  /* Small hover bridge to keep the menu open when moving pointer */
-  .role-switch::before {
-    content: '';
-    position: absolute;
-    left: 0;
-    top: 100%;
-    width: 180px;
-    height: 8px;
-  }
+  /* Now reusing .send-group + .send-menu for the dropdown behavior */
   .role-badge {
     display: inline-flex;
     align-items: center;
@@ -599,30 +607,36 @@
     border-color: color-mix(in srgb, var(--border), #ffffff 16%);
     background: transparent;
   }
-  .role-menu {
-    position: absolute;
+  /* Message role menu: open DOWN and sit above all UI */
+  .meta .send-group { z-index: 1000; }
+  .meta .send-group:hover,
+  .meta .send-group:focus-within { z-index: 1000; }
+  .meta .send-group .send-menu {
     top: calc(100% + 8px);
-    display: grid;
-    gap: 6px;
-    padding: 8px;
-    background: var(--panel);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    box-shadow: var(--float-shadow);
-    opacity: 0;
-    transform: translateY(6px);
-    transition: opacity .12s ease, transform .12s ease;
-    pointer-events: none;
-    min-width: 160px;
-    max-width: min(90vw, 240px);
-    z-index: 10;
+    bottom: auto;
+    z-index: 1000; /* above composer/topbar */
+    transform: translateY(-6px); /* animate up into place */
   }
-  /* Side-aware anchoring to keep menu in bounds */
-  .stack.assistant .role-menu { left: 0; right: auto; }
-  .stack.user .role-menu { right: 0; left: auto; }
-  .stack.system .role-menu { left: 50%; right: auto; transform: translate(-50%, 6px); }
-  .role-switch:hover .role-menu,
-  .role-switch:focus-within .role-menu { opacity: 1; transform: translateY(0); pointer-events: auto; }
+  /* Hover bridge below the trigger (since menu opens downward)
+     Make it side-aware so it doesn't create a hover zone on the wrong side. */
+  .meta .send-group::before {
+    top: 100%;
+    bottom: auto;
+    width: 180px; /* roughly matches menu width without overshooting */
+    height: 12px;
+    right: 0; /* default for right-anchored (user) messages */
+    left: auto;
+  }
+  /* Assistant messages anchor menu to the left; bridge should align left too */
+  .stack.assistant .meta .send-group::before { left: 0; right: auto; }
+  /* Centered (system) rows: center the bridge to match centered menu */
+  .stack.system .meta .send-group::before { left: 50%; right: auto; transform: translateX(-50%); }
+  /* Side-aware anchoring for the reused .send-menu in message meta */
+  .stack.assistant .meta .send-group .send-menu { left: 0; right: auto; }
+  .stack.user .meta .send-group .send-menu { right: 0; left: auto; }
+  .stack.system .meta .send-group .send-menu { left: 50%; right: auto; transform: translate(-50%, -6px); }
+  .stack.system .meta .send-group:hover .send-menu,
+  .stack.system .meta .send-group:focus-within .send-menu { transform: translate(-50%, 0); }
 
   .bubble {
     /* Hug content up to the stack's max width */
@@ -728,9 +742,9 @@
     margin-inline: auto;
     padding: 12px 0;
     display: grid;
-    grid-template-columns: 1fr auto auto;
+    grid-template-columns: auto 1fr auto auto;
     align-items: center;
-    gap: 10px;
+    gap: 14px; /* a bit more spacing between controls */
   }
   .composer-input {
     resize: none;
@@ -820,6 +834,43 @@
     gap: 8px;
   }
   .menu-item:disabled { opacity: .6; cursor: not-allowed; }
+
+  /* Per-chat settings popover */
+  .chat-settings-menu { min-width: 260px; gap: 12px; padding: 12px; }
+  .chat-settings-menu .menu-section { display: grid; gap: 6px; }
+  .chat-settings-menu .menu-label { font-size: .9rem; color: var(--muted); }
+  .chat-settings-menu input {
+    width: 100%;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+    background: var(--bg);
+    color: var(--text);
+    font: inherit;
+    box-sizing: border-box;
+  }
+
+  /* Per-chat settings: open UP but slightly to the RIGHT */
+  .chat-settings-group .chat-settings-menu {
+    top: auto;
+    bottom: calc(100% + 10px);
+    left: 8px;   /* nudge to the right of the button */
+    right: auto;
+    transform: translateY(6px);
+  }
+  .chat-settings-group:hover .chat-settings-menu,
+  .chat-settings-group:focus-within .chat-settings-menu {
+    transform: translateY(0);
+  }
+  /* Hover bridge above the button to the menu (aligned for left-anchored menu) */
+  .chat-settings-group::before {
+    right: auto;
+    left: 0;          /* bridge from left edge so it covers the menu area */
+    bottom: 100%;
+    top: auto;
+    width: 220px;     /* wide enough to span the menu */
+    height: 12px;     /* gap height */
+  }
 
   /* Typing dots */
   .dots {
