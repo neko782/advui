@@ -51,6 +51,25 @@
 <style>
   .bubble { display: block; max-width: 100%; padding: 10px var(--bubble-pad-x); border-radius: 14px; border: none; white-space: normal; overflow-wrap: anywhere; word-break: break-word; line-height: 1.4; font-size: 0.98rem; box-shadow: 0 1px 0 rgba(0,0,0,0.04); }
   .bubble.editing { white-space: pre-wrap; }
+  /* Markdown content inside bubbles rendered via {@html} */
+  .bubble :global(h1), .bubble :global(h2), .bubble :global(h3), .bubble :global(h4), .bubble :global(h5), .bubble :global(h6) { margin: 0.2em 0 0.4em; line-height: 1.25; }
+  .bubble :global(h1) { font-size: 1.35rem; }
+  .bubble :global(h2) { font-size: 1.25rem; }
+  .bubble :global(h3) { font-size: 1.15rem; }
+  .bubble :global(p) { margin: 0.2em 0; }
+  .bubble :global(p + p) { margin-top: 0.8em; }
+  .bubble :global(ul), .bubble :global(ol) { margin: 0; padding-left: 2em; list-style-position: inside; }
+  .bubble :global(ul) { list-style: disc; }
+  .bubble :global(ol) { list-style: decimal; }
+  .bubble :global(li) { margin: 0.2em 0; }
+  .bubble :global(ul > li:first-child), .bubble :global(ol > li:first-child) { margin-top: 0; }
+  .bubble :global(ul > li:last-child), .bubble :global(ol > li:last-child) { margin-bottom: 0; }
+  .bubble :global(a) { color: var(--accent); text-decoration: underline; }
+  .bubble :global(code) { background: color-mix(in srgb, var(--panel), #ffffff 8%); padding: 0 3px; border-radius: 4px; }
+  .bubble :global(pre) { background: color-mix(in srgb, var(--panel), #ffffff 6%); padding: 10px; border-radius: 10px; overflow: auto; }
+  .bubble :global(pre code) { background: transparent; padding: 0; }
+  .bubble :global(p:first-child), .bubble :global(ul:first-child), .bubble :global(ol:first-child), .bubble :global(pre:first-child), .bubble :global(h1:first-child), .bubble :global(h2:first-child), .bubble :global(h3:first-child), .bubble :global(h4:first-child), .bubble :global(h5:first-child), .bubble :global(h6:first-child) { margin-top: 0; }
+  .bubble :global(p:last-child), .bubble :global(ul:last-child), .bubble :global(ol:last-child), .bubble :global(pre:last-child), .bubble :global(h1:last-child), .bubble :global(h2:last-child), .bubble :global(h3:last-child), .bubble :global(h4:last-child), .bubble :global(h5:last-child), .bubble :global(h6:last-child) { margin-bottom: 0; }
   .bubble.assistant { background: transparent; justify-self: start; }
   .bubble.user { background: var(--user); color: var(--text); justify-self: end; }
   .bubble.system { justify-self: center; background: transparent; color: var(--muted); border: 1px dashed var(--border); }

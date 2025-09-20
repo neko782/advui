@@ -658,7 +658,7 @@
 
 <style>
   /* Grayscale UI with accent reserved for buttons */
-  :global(:root) {
+  .chat-shell {
     --bg: color-mix(in oklab, canvas, #f3f4f6 10%);
     --panel: color-mix(in srgb, #ffffff 92%, #e6e6e6);
     --border: color-mix(in srgb, #c8c8c8 60%, #0000);
@@ -679,7 +679,7 @@
   }
 
   @media (prefers-color-scheme: dark) {
-    :global(:root) {
+    .chat-shell {
       /* Neutral grays only */
       --bg: #0f0f10;
       --panel: #141414;
