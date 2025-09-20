@@ -22,6 +22,68 @@
   let editingId = $state(null)
   let editingText = $state('')
   let editingEl
+  // Branching helpers: messages after an assistant "anchor" belong to a branch path
+  function buildSelectedChainUpTo(indexExclusive) {
+    let chain = ''
+    const upto = Math.max(0, Math.min(indexExclusive ?? messages.length, messages.length))
+    for (let i = 0; i < upto; i++) {
+      const m = messages[i]
+      if (m && m.role === 'assistant' && Array.isArray(m.variants)) {
+        const vi = typeof m.variantIndex === 'number' ? m.variantIndex : 0
+        chain = chain ? `${chain}|${m.id}:${vi}` : `${m.id}:${vi}`
+      }
+    }
+    return chain
+  }
+  function buildCurrentSelectedChain() {
+    return buildSelectedChainUpTo(messages.length)
+  }
+  function buildVisible() {
+    const out = []
+    let chain = ''
+    for (let i = 0; i < messages.length; i++) {
+      const m = messages[i]
+      if (m?.role === 'assistant' && Array.isArray(m.variants)) {
+        // Show this anchor only if it belongs to the current chain at this point
+        const parent = m.branchPathBefore ?? ''
+        if (parent === chain) {
+          out.push({ m, i })
+          const vi = typeof m.variantIndex === 'number' ? m.variantIndex : 0
+          chain = chain ? `${chain}|${m.id}:${vi}` : `${m.id}:${vi}`
+        }
+        continue
+      }
+      if (m?.branchPath != null) {
+        if (m.branchPath === chain) out.push({ m, i })
+      } else {
+        out.push({ m, i })
+      }
+    }
+    return out
+  }
+  function buildVisibleUpTo(indexExclusive) {
+    const upto = Math.max(0, Math.min(indexExclusive ?? 0, messages.length))
+    const out = []
+    let chain = ''
+    for (let i = 0; i < upto; i++) {
+      const m = messages[i]
+      if (m?.role === 'assistant' && Array.isArray(m.variants)) {
+        const parent = m.branchPathBefore ?? ''
+        if (parent === chain) {
+          out.push(m)
+          const vi = typeof m.variantIndex === 'number' ? m.variantIndex : 0
+          chain = chain ? `${chain}|${m.id}:${vi}` : `${m.id}:${vi}`
+        }
+        continue
+      }
+      if (m?.branchPath != null) {
+        if (m.branchPath === chain) out.push(m)
+      } else {
+        out.push(m)
+      }
+    }
+    return out
+  }
   function placeCaretAtEnd(el) {
     try {
       const range = document.createRange()
@@ -118,7 +180,7 @@
     if (!text || sending) return
 
     sending = true
-    const firstMsg = { id: nextId++, role, content: text, time: Date.now() }
+    const firstMsg = { id: nextId++, role, content: text, time: Date.now(), branchPath: buildCurrentSelectedChain() }
     messages = [...messages, firstMsg]
     input = ''
     // Refresh input height after clearing
@@ -132,7 +194,8 @@
       const { apiKey } = settings
       if (apiKey) {
         // Build message history (exclude typing placeholder)
-        const history = messages
+        const history = buildVisible()
+          .map(vm => vm.m)
           .filter(m => !m.typing)
           .map(({ role, content }) => ({ role, content }))
         reply = await respond({ messages: history, model: chatModel })
@@ -141,11 +204,13 @@
         reply = generatePlaceholderReply(firstMsg.content) +
           '\n\nTip: Add your OpenAI API key in Settings to get real answers.'
       }
-      messages = messages.map(m => (m.id === typingMsg.id ? { ...m, content: reply, typing: false, variants: [reply], variantIndex: 0 } : m))
+      const parentChain = buildCurrentSelectedChain()
+      messages = messages.map(m => (m.id === typingMsg.id ? { ...m, content: reply, typing: false, variants: [reply], variantIndex: 0, branchPathBefore: parentChain } : m))
     } catch (err) {
       const msg = err?.message || 'Something went wrong.'
       const errText = `Error: ${msg}`
-      messages = messages.map(m => (m.id === typingMsg.id ? { ...m, content: errText, typing: false, variants: [errText], variantIndex: 0 } : m))
+      const parentChain = buildCurrentSelectedChain()
+      messages = messages.map(m => (m.id === typingMsg.id ? { ...m, content: errText, typing: false, variants: [errText], variantIndex: 0, branchPathBefore: parentChain } : m))
     } finally {
       sending = false
       // Auto scroll to bottom after response
@@ -161,8 +226,8 @@
     const text = input.trim()
     if (!text) return
     const direct = role === 'assistant'
-      ? { id: nextId++, role, content: text, time: Date.now(), variants: [text], variantIndex: 0 }
-      : { id: nextId++, role, content: text, time: Date.now() }
+      ? { id: nextId++, role, content: text, time: Date.now(), variants: [text], variantIndex: 0, branchPathBefore: buildCurrentSelectedChain() }
+      : { id: nextId++, role, content: text, time: Date.now(), branchPath: buildCurrentSelectedChain() }
     messages = [...messages, direct]
     input = ''
     queueMicrotask(() => autoGrow(inputEl))
@@ -255,6 +320,9 @@
   function setMessageRole(id, role) {
     const roles = new Set(['user', 'assistant', 'system'])
     if (!roles.has(role)) return
+    const i = messages.findIndex(m => m.id === id)
+    if (i < 0) return
+    const parentChain = buildSelectedChainUpTo(i)
     messages = messages.map(m => {
       if (m.id !== id) return m
       if (role === 'assistant') {
@@ -262,11 +330,12 @@
         const base = Array.isArray(m.variants) && typeof m.variantIndex === 'number'
           ? m
           : { ...m, variants: [m.content], variantIndex: 0 }
-        return { ...base, role }
+        const { branchPath, ...rest } = base
+        return { ...rest, role, branchPathBefore: parentChain }
       }
-      // Drop variants when changing away from assistant to keep model simple
-      const { variants, variantIndex, ...rest } = m
-      return { ...rest, role }
+      // Drop variants when changing away from assistant and tag with parent branch
+      const { variants, variantIndex, branchPathBefore, ...rest } = m
+      return { ...rest, role, branchPath: parentChain }
     })
     // Nudge layout and keep view anchored
     queueMicrotask(() => {
@@ -374,8 +443,7 @@
       const { apiKey } = settings
       if (apiKey) {
         // Build history up to (but not including) this assistant message
-        const history = messages
-          .slice(0, idx)
+        const history = buildVisibleUpTo(idx)
           .filter(m => !m.typing)
           .map(({ role, content }) => ({ role, content }))
         reply = await respond({ messages: history, model: chatModel })
@@ -448,34 +516,34 @@
   </header>
 
   <div class="messages" bind:this={listEl}>
-    {#each messages as m, i (m.id)}
-      <div class={`row ${m.role}`}>
-        {#key m.role}
-        <div class={`stack ${m.role} ${m.id === editingId ? 'editing' : ''}`}>
-          <div class={`meta ${m.role}`}>
+    {#each buildVisible() as vm, vi (vm.m.id)}
+      <div class={`row ${vm.m.role}`}>
+        {#key vm.m.role}
+        <div class={`stack ${vm.m.role} ${vm.m.id === editingId ? 'editing' : ''}`}>
+          <div class={`meta ${vm.m.role}`}>
             <div class="send-group" aria-haspopup="menu" title="Change role">
-              <button class="role-badge" aria-label={`Role: ${formatRole(m.role)}`}>
-                {formatRole(m.role)}
+              <button class="role-badge" aria-label={`Role: ${formatRole(vm.m.role)}`}>
+                {formatRole(vm.m.role)}
               </button>
               <div class="send-menu" role="menu" aria-label="Change role">
-                <button role="menuitem" class="menu-item" onclick={() => setMessageRole(m.id, 'user')} aria-label="Set role user">
+                <button role="menuitem" class="menu-item" onclick={() => setMessageRole(vm.m.id, 'user')} aria-label="Set role user">
                   <Icon name="person" size={18} />
                   User
                 </button>
-                <button role="menuitem" class="menu-item" onclick={() => setMessageRole(m.id, 'assistant')} aria-label="Set role assistant">
+                <button role="menuitem" class="menu-item" onclick={() => setMessageRole(vm.m.id, 'assistant')} aria-label="Set role assistant">
                   <Icon name="smart_toy" size={18} />
                   Assistant
                 </button>
-                <button role="menuitem" class="menu-item" onclick={() => setMessageRole(m.id, 'system')} aria-label="Set role system">
+                <button role="menuitem" class="menu-item" onclick={() => setMessageRole(vm.m.id, 'system')} aria-label="Set role system">
                   <Icon name="tune" size={18} />
                   System
                 </button>
               </div>
             </div>
           </div>
-          {#if m.id === editingId}
+          {#if vm.m.id === editingId}
             <div
-              class={`bubble ${m.role} editing`}
+              class={`bubble ${vm.m.role} editing`}
               contenteditable="true"
               role="textbox"
               tabindex="0"
@@ -487,18 +555,18 @@
             ></div>
           {:else}
             <div
-              class={`bubble ${m.role}`}
-              data-typing={m.typing ? true : undefined}
+              class={`bubble ${vm.m.role}`}
+              data-typing={vm.m.typing ? true : undefined}
             >
-              {#if m.typing}
+              {#if vm.m.typing}
                 <span class="dots"><i></i><i></i><i></i></span>
               {:else}
-                {@html renderMarkdown(m.content)}
+                {@html renderMarkdown(vm.m.content)}
               {/if}
             </div>
           {/if}
-          <div class={`actions ${m.role}`}>
-            {#if m.id === editingId}
+          <div class={`actions ${vm.m.role}`}>
+            {#if vm.m.id === editingId}
               <button class="action-btn" onclick={commitEdit} aria-label="Save edit" title="Save">
                 <Icon name="check" size={20} />
               </button>
@@ -506,38 +574,38 @@
                 <Icon name="close" size={20} />
               </button>
             {:else}
-              {#if m.role === 'assistant'}
-                <button class="action-btn" onclick={() => refreshAssistant(m.id)} aria-label="Regenerate response" title="Regenerate" disabled={m.typing}>
+              {#if vm.m.role === 'assistant'}
+                <button class="action-btn" onclick={() => refreshAssistant(vm.m.id)} aria-label="Regenerate response" title="Regenerate" disabled={vm.m.typing}>
                   <Icon name="autorenew" size={20} />
                 </button>
-                {#if Array.isArray(m.variants) && m.variants.length > 1}
-                  <button class="action-btn" onclick={() => changeVariant(m.id, -1)} aria-label="Previous variant" title="Previous" disabled={m.typing || (m.variantIndex || 0) <= 0}>
+                {#if Array.isArray(vm.m.variants) && vm.m.variants.length > 1}
+                  <button class="action-btn" onclick={() => changeVariant(vm.m.id, -1)} aria-label="Previous variant" title="Previous" disabled={vm.m.typing || (vm.m.variantIndex || 0) <= 0}>
                     <Icon name="chevron_left" size={20} />
                   </button>
-                  <span class="variant-counter" aria-live="polite">{(m.variantIndex || 0) + 1}/{m.variants.length}</span>
-                  <button class="action-btn" onclick={() => changeVariant(m.id, +1)} aria-label="Next variant" title="Next" disabled={m.typing || (m.variantIndex || 0) >= (m.variants.length - 1)}>
+                  <span class="variant-counter" aria-live="polite">{(vm.m.variantIndex || 0) + 1}/{vm.m.variants.length}</span>
+                  <button class="action-btn" onclick={() => changeVariant(vm.m.id, +1)} aria-label="Next variant" title="Next" disabled={vm.m.typing || (vm.m.variantIndex || 0) >= (vm.m.variants.length - 1)}>
                     <Icon name="chevron_right" size={20} />
                   </button>
                 {/if}
-              {:else if m.role === 'user' && messages[i + 1] && messages[i + 1].role === 'assistant'}
+              {:else if vm.m.role === 'user' && messages[vm.i + 1] && messages[vm.i + 1].role === 'assistant'}
                 <!-- Allow refresh from the preceding user message when it has a following assistant reply -->
-                <button class="action-btn" onclick={() => refreshAssistant(messages[i + 1].id)} aria-label="Regenerate following response" title="Regenerate following response" disabled={messages[i + 1].typing}>
+                <button class="action-btn" onclick={() => refreshAssistant(messages[vm.i + 1].id)} aria-label="Regenerate following response" title="Regenerate following response" disabled={messages[vm.i + 1].typing}>
                   <Icon name="autorenew" size={20} />
                 </button>
               {/if}
-              <button class="action-btn" onclick={() => copyMessage(m.content)} aria-label="Copy message" title="Copy" disabled={m.typing}>
+              <button class="action-btn" onclick={() => copyMessage(vm.m.content)} aria-label="Copy message" title="Copy" disabled={vm.m.typing}>
                 <Icon name="content_copy" size={20} />
               </button>
-              <button class="action-btn" onclick={() => deleteMessage(m.id)} aria-label="Delete message" title="Delete" disabled={m.typing}>
+              <button class="action-btn" onclick={() => deleteMessage(vm.m.id)} aria-label="Delete message" title="Delete" disabled={vm.m.typing}>
                 <Icon name="delete" size={20} />
               </button>
-              <button class="action-btn" onclick={() => editMessage(m.id)} aria-label="Edit message" title="Edit" disabled={m.typing}>
+              <button class="action-btn" onclick={() => editMessage(vm.m.id)} aria-label="Edit message" title="Edit" disabled={vm.m.typing}>
                 <Icon name="edit" size={20} />
               </button>
-              <button class="action-btn" onclick={() => moveDown(m.id)} aria-label="Move down" title="Down" disabled={m.typing || i === messages.length - 1}>
+              <button class="action-btn" onclick={() => moveDown(vm.m.id)} aria-label="Move down" title="Down" disabled={vm.m.typing || vm.i === messages.length - 1}>
                 <Icon name="arrow_downward" size={20} />
               </button>
-              <button class="action-btn" onclick={() => moveUp(m.id)} aria-label="Move up" title="Up" disabled={m.typing || i === 0}>
+              <button class="action-btn" onclick={() => moveUp(vm.m.id)} aria-label="Move up" title="Up" disabled={vm.m.typing || vm.i === 0}>
                 <Icon name="arrow_upward" size={20} />
               </button>
             {/if}
