@@ -43,10 +43,7 @@ export async function listModels() {
   if (!client?.models?.list) throw new Error('OpenAI SDK does not support listing models.')
   const res = await client.models.list()
   const items = Array.isArray(res?.data) ? res.data : []
-  // Return model ids only (strings)
-  return items
-    .map(m => (typeof m?.id === 'string' ? m.id : null))
-    .filter(Boolean)
+  return sortModels(items).map(m => m.id)
 }
 
 // List models using a provided API key (without saving it)
@@ -56,9 +53,21 @@ export async function listModelsWithKey(apiKey) {
   if (!client?.models?.list) throw new Error('OpenAI SDK does not support listing models.')
   const res = await client.models.list()
   const items = Array.isArray(res?.data) ? res.data : []
-  return items
-    .map(m => (typeof m?.id === 'string' ? m.id : null))
-    .filter(Boolean)
+  return sortModels(items).map(m => m.id)
+}
+
+function sortModels(items) {
+  const arr = items
+    .map(m => ({ id: String(m?.id || ''), created: Number(m?.created) || 0 }))
+    .filter(m => m.id)
+  arr.sort((a, b) => (b.created - a.created))
+  // Deduplicate by id while preserving order
+  const seen = new Set()
+  const out = []
+  for (const m of arr) {
+    if (!seen.has(m.id)) { seen.add(m.id); out.push(m) }
+  }
+  return out
 }
 
 function extractOutputText(res) {
