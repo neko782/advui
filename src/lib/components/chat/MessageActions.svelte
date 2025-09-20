@@ -67,6 +67,22 @@
   .actions.assistant { justify-self: start; }
   .actions.system { justify-self: center; }
   .variant-counter { align-self: center; font-size: .8rem; color: var(--muted); min-width: 36px; text-align: center; }
-  .action-btn { min-width: 40px; height: 36px; display: grid; place-items: center; border: 1px solid var(--border); border-radius: 8px; background: transparent; color: var(--text); }
+  /* Compact icon-only action buttons (match Chat.svelte design) */
+  .action-btn {
+    width: 28px;
+    height: 28px;
+    display: grid;
+    place-items: center;
+    color: var(--muted);
+    background: transparent;
+    border: none;
+    border-radius: 8px;
+    line-height: 1;
+    padding: 0;
+    cursor: default;
+    transition: color .15s ease;
+  }
+  .action-btn:hover { color: #ffffff; }
+  .action-btn:focus-visible { color: #ffffff; }
+  .action-btn:disabled { opacity: .5; cursor: not-allowed; }
 </style>
-
