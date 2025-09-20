@@ -22,88 +22,12 @@
   let editingId = $state(null)
   let editingText = $state('')
   let editingEl
-  // Branching helpers: messages after an anchor (assistant or a user with variants) belong to a branch path
-  function isAnchor(m) {
-    return !!(m && Array.isArray(m.variants))
-  }
-  function buildSelectedChainUpTo(indexExclusive) {
-    let chain = ''
-    const upto = Math.max(0, Math.min(indexExclusive ?? messages.length, messages.length))
-    for (let i = 0; i < upto; i++) {
-      const m = messages[i]
-      if (isAnchor(m)) {
-        const vi = typeof m.variantIndex === 'number' ? m.variantIndex : 0
-        chain = chain ? `${chain}|${m.id}:${vi}` : `${m.id}:${vi}`
-      }
-    }
-    return chain
-  }
-  function buildCurrentSelectedChain() {
-    return buildSelectedChainUpTo(messages.length)
-  }
-  function buildVisible() {
-    const out = []
-    let chain = ''
-    for (let i = 0; i < messages.length; i++) {
-      const m = messages[i]
-      if (isAnchor(m)) {
-        // Show this anchor if it belongs to the current chain at this point.
-        // If it's legacy (no branchPathBefore), treat as wildcard (always include).
-        const parent = m.branchPathBefore
-        if (parent == null || parent === chain) {
-          out.push({ m, i })
-          const vi = typeof m.variantIndex === 'number' ? m.variantIndex : 0
-          chain = chain ? `${chain}|${m.id}:${vi}` : `${m.id}:${vi}`
-        }
-        continue
-      }
-      if (m?.branchPath != null) {
-        if (m.branchPath === chain) out.push({ m, i })
-      } else {
-        out.push({ m, i })
-      }
-    }
-    return out
-  }
-  function buildVisibleUpTo(indexExclusive) {
-    const upto = Math.max(0, Math.min(indexExclusive ?? 0, messages.length))
-    const out = []
-    let chain = ''
-    for (let i = 0; i < upto; i++) {
-      const m = messages[i]
-      if (isAnchor(m)) {
-        const parent = m.branchPathBefore
-        if (parent == null || parent === chain) {
-          out.push(m)
-          const vi = typeof m.variantIndex === 'number' ? m.variantIndex : 0
-          chain = chain ? `${chain}|${m.id}:${vi}` : `${m.id}:${vi}`
-        }
-        continue
-      }
-      if (m?.branchPath != null) {
-        if (m.branchPath === chain) out.push(m)
-      } else {
-        out.push(m)
-      }
-    }
-    return out
-  }
-  function chainFromVisibleList(list) {
-    const parts = []
-    for (const m of list) {
-      if (isAnchor(m)) {
-        const vi = typeof m.variantIndex === 'number' ? m.variantIndex : 0
-        parts.push(`${m.id}:${vi}`)
-      }
-    }
-    return parts.join('|')
-  }
-  function currentVisibleChain() {
-    return chainFromVisibleList(buildVisible().map(vm => vm.m))
-  }
-  function chainFromVisibleUpTo(indexExclusive) {
-    return chainFromVisibleList(buildVisibleUpTo(indexExclusive))
-  }
+  // Branching helpers
+  import { isAnchor, buildVisible as _buildVisible, buildVisibleUpTo as _buildVisibleUpTo, chainFromVisibleUpTo as _chainFromVisibleUpTo, currentVisibleChain as _currentVisibleChain, injectAnchorToken } from './branching.js'
+  function buildVisible() { return _buildVisible(messages) }
+  function buildVisibleUpTo(indexExclusive) { return _buildVisibleUpTo(messages, indexExclusive) }
+  function currentVisibleChain() { return _currentVisibleChain(messages) }
+  function chainFromVisibleUpTo(indexExclusive) { return _chainFromVisibleUpTo(messages, indexExclusive) }
   function placeCaretAtEnd(el) {
     try {
       const range = document.createRange()
@@ -425,27 +349,8 @@
     // Update the edited message into an anchor with branchPathBefore
     let arr = messages.slice()
     arr[i] = { ...cur, content: val, variants: base, variantIndex: vi, branchPathBefore: parent }
-    // Helper to inject the new anchor token into downstream branch paths and anchor parents
-    const token = `${arr[i].id}:0` // original branch keeps variant 0
-    function injectToken(path) {
-      if (path == null) return path
-      if (!parent) {
-        return token + (path ? `|${path}` : '')
-      }
-      if (path === parent) return `${parent}|${token}`
-      const prefix = `${parent}|`
-      if (path.startsWith(prefix)) return `${parent}|${token}${path.slice(parent.length)}`
-      return path
-    }
-    for (let k = i + 1; k < arr.length; k++) {
-      const m = arr[k]
-      if (isAnchor(m)) {
-        arr[k] = { ...m, branchPathBefore: injectToken(m.branchPathBefore) }
-      } else if (m.branchPath != null) {
-        arr[k] = { ...m, branchPath: injectToken(m.branchPath) }
-      }
-    }
-    messages = arr
+    // Inject token for downstream branch paths and anchor parents
+    messages = injectAnchorToken(arr, i, parent, arr[i].id, 0)
     editingId = null
     editingText = ''
     queueMicrotask(() => scrollToBottom())
@@ -515,27 +420,8 @@
     base.push(val)
     const vi = base.length - 1
     arr[i0] = { ...cur, content: val, variants: base, variantIndex: vi, branchPathBefore: parent }
-    // Inject token for downstream branch paths and anchor parents so old content stays on variant 0
-    const token = `${arr[i0].id}:0`
-    function injectToken(path) {
-      if (path == null) return path
-      if (!parent) {
-        return token + (path ? `|${path}` : '')
-      }
-      if (path === parent) return `${parent}|${token}`
-      const prefix = `${parent}|`
-      if (path.startsWith(prefix)) return `${parent}|${token}${path.slice(parent.length)}`
-      return path
-    }
-    for (let k = i0 + 1; k < arr.length; k++) {
-      const m = arr[k]
-      if (isAnchor(m)) {
-        arr[k] = { ...m, branchPathBefore: injectToken(m.branchPathBefore) }
-      } else if (m.branchPath != null) {
-        arr[k] = { ...m, branchPath: injectToken(m.branchPath) }
-      }
-    }
-    messages = arr
+    // Inject token downstream and update messages
+    messages = injectAnchorToken(arr, i0, parent, arr[i0].id, 0)
     editingId = null
     editingText = ''
 
