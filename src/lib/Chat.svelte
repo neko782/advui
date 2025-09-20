@@ -22,13 +22,16 @@
   let editingId = $state(null)
   let editingText = $state('')
   let editingEl
-  // Branching helpers: messages after an assistant "anchor" belong to a branch path
+  // Branching helpers: messages after an anchor (assistant or a user with variants) belong to a branch path
+  function isAnchor(m) {
+    return !!(m && Array.isArray(m.variants))
+  }
   function buildSelectedChainUpTo(indexExclusive) {
     let chain = ''
     const upto = Math.max(0, Math.min(indexExclusive ?? messages.length, messages.length))
     for (let i = 0; i < upto; i++) {
       const m = messages[i]
-      if (m && m.role === 'assistant' && Array.isArray(m.variants)) {
+      if (isAnchor(m)) {
         const vi = typeof m.variantIndex === 'number' ? m.variantIndex : 0
         chain = chain ? `${chain}|${m.id}:${vi}` : `${m.id}:${vi}`
       }
@@ -43,7 +46,7 @@
     let chain = ''
     for (let i = 0; i < messages.length; i++) {
       const m = messages[i]
-      if (m?.role === 'assistant' && Array.isArray(m.variants)) {
+      if (isAnchor(m)) {
         // Show this anchor if it belongs to the current chain at this point.
         // If it's legacy (no branchPathBefore), treat as wildcard (always include).
         const parent = m.branchPathBefore
@@ -68,7 +71,7 @@
     let chain = ''
     for (let i = 0; i < upto; i++) {
       const m = messages[i]
-      if (m?.role === 'assistant' && Array.isArray(m.variants)) {
+      if (isAnchor(m)) {
         const parent = m.branchPathBefore
         if (parent == null || parent === chain) {
           out.push(m)
@@ -88,7 +91,7 @@
   function chainFromVisibleList(list) {
     const parts = []
     for (const m of list) {
-      if (m?.role === 'assistant' && Array.isArray(m.variants)) {
+      if (isAnchor(m)) {
         const vi = typeof m.variantIndex === 'number' ? m.variantIndex : 0
         parts.push(`${m.id}:${vi}`)
       }
@@ -429,37 +432,35 @@
       queueMicrotask(() => scrollToBottom())
       return
     }
-    // For user/system: branch off the most recent assistant anchor before this message.
-    const oldChain = chainFromVisibleUpTo(i)
-    let prevAnchor = -1
-    for (let j = i - 1; j >= 0; j--) {
-      const m = messages[j]
-      if (m && m.role === 'assistant' && Array.isArray(m.variants)) { prevAnchor = j; break }
-    }
-    if (prevAnchor < 0) {
-      // No anchor to branch from — fallback to replace
-      applyEditReplace()
-      return
-    }
-    // Duplicate current variant on the previous assistant to create a new branch selection
-    const anchor = messages[prevAnchor]
-    const aVars = Array.isArray(anchor.variants) ? anchor.variants.slice() : [anchor.content]
-    const curIdx = Math.max(0, Math.min(aVars.length - 1, anchor.variantIndex || 0))
-    aVars.push(aVars[curIdx])
-    const newVi = aVars.length - 1
-    // Update anchor selection to the new variant
+    // For user/system: make the message itself an anchor (variants) and select the new variant.
+    const parent = chainFromVisibleUpTo(i)
+    // Prepare variants
+    const base = Array.isArray(cur.variants) ? cur.variants.slice() : [cur.content]
+    base.push(val)
+    const vi = base.length - 1
+    // Update the edited message into an anchor with branchPathBefore
     let arr = messages.slice()
-    arr[prevAnchor] = { ...anchor, variants: aVars, variantIndex: newVi, content: aVars[newVi] }
-    messages = arr
-    // Compute new chain at the edit position after switching variant
-    const newChain = chainFromVisibleUpTo(i)
-    // Split the edited message into two: old content pinned to oldChain, new content pinned to newChain
-    const original = messages[i]
-    const oldPinned = { ...original, branchPath: oldChain }
-    const newMsg = { ...original, id: nextId++, content: val, time: Date.now(), branchPath: newChain }
-    arr = messages.slice()
-    arr[i] = oldPinned
-    arr.splice(i + 1, 0, newMsg)
+    arr[i] = { ...cur, content: val, variants: base, variantIndex: vi, branchPathBefore: parent }
+    // Helper to inject the new anchor token into downstream branch paths and anchor parents
+    const token = `${arr[i].id}:0` // original branch keeps variant 0
+    function injectToken(path) {
+      if (path == null) return path
+      if (!parent) {
+        return token + (path ? `|${path}` : '')
+      }
+      if (path === parent) return `${parent}|${token}`
+      const prefix = `${parent}|`
+      if (path.startsWith(prefix)) return `${parent}|${token}${path.slice(parent.length)}`
+      return path
+    }
+    for (let k = i + 1; k < arr.length; k++) {
+      const m = arr[k]
+      if (isAnchor(m)) {
+        arr[k] = { ...m, branchPathBefore: injectToken(m.branchPathBefore) }
+      } else if (m.branchPath != null) {
+        arr[k] = { ...m, branchPath: injectToken(m.branchPath) }
+      }
+    }
     messages = arr
     editingId = null
     editingText = ''
@@ -484,44 +485,32 @@
       queueMicrotask(() => scrollToBottom())
       return
     }
-
-    // Locate previous assistant anchor to branch from (if any)
-    const oldChain = chainFromVisibleUpTo(i0)
-    let prevAnchor = -1
-    for (let j = i0 - 1; j >= 0; j--) {
-      const m = messages[j]
-      if (m && m.role === 'assistant' && Array.isArray(m.variants)) { prevAnchor = j; break }
-    }
-
+    // For user/system: turn the message into an anchor and generate a fresh assistant reply for the new branch.
+    const parent = chainFromVisibleUpTo(i0)
     let arr = messages.slice()
-    if (prevAnchor >= 0) {
-      const anchor = arr[prevAnchor]
-      const aVars = Array.isArray(anchor.variants) ? anchor.variants.slice() : [anchor.content]
-      const curIdx = Math.max(0, Math.min(aVars.length - 1, anchor.variantIndex || 0))
-      aVars.push(aVars[curIdx])
-      const newVi = aVars.length - 1
-      arr[prevAnchor] = { ...anchor, variants: aVars, variantIndex: newVi, content: aVars[newVi] }
-      messages = arr
+    const base = Array.isArray(cur.variants) ? cur.variants.slice() : [cur.content]
+    base.push(val)
+    const vi = base.length - 1
+    arr[i0] = { ...cur, content: val, variants: base, variantIndex: vi, branchPathBefore: parent }
+    // Inject token for downstream branch paths and anchor parents so old content stays on variant 0
+    const token = `${arr[i0].id}:0`
+    function injectToken(path) {
+      if (path == null) return path
+      if (!parent) {
+        return token + (path ? `|${path}` : '')
+      }
+      if (path === parent) return `${parent}|${token}`
+      const prefix = `${parent}|`
+      if (path.startsWith(prefix)) return `${parent}|${token}${path.slice(parent.length)}`
+      return path
     }
-
-    // Compute new chain after possibly switching anchor variant
-    const newChain = chainFromVisibleUpTo(i0)
-
-    // Prepare edited message placement and determine where to insert the reply
-    let insertIndex
-    arr = messages.slice()
-    if (prevAnchor >= 0) {
-      // Split edited message across old/new chains
-      const original = arr[i0]
-      const oldPinned = { ...original, branchPath: oldChain }
-      const newMsg = { ...original, id: nextId++, content: val, time: Date.now(), branchPath: newChain }
-      arr[i0] = oldPinned
-      arr.splice(i0 + 1, 0, newMsg)
-      insertIndex = i0 + 1
-    } else {
-      // No anchor to branch from — replace in place and continue
-      arr[i0] = { ...arr[i0], content: val }
-      insertIndex = i0
+    for (let k = i0 + 1; k < arr.length; k++) {
+      const m = arr[k]
+      if (isAnchor(m)) {
+        arr[k] = { ...m, branchPathBefore: injectToken(m.branchPathBefore) }
+      } else if (m.branchPath != null) {
+        arr[k] = { ...m, branchPath: injectToken(m.branchPath) }
+      }
     }
     messages = arr
     editingId = null
@@ -530,7 +519,8 @@
     // Insert typing placeholder after the edited message (in new chain)
     const typingMsg = { id: nextId++, role: 'assistant', content: 'typing', time: Date.now(), typing: true }
     arr = messages.slice()
-    arr.splice(insertIndex + 1, 0, typingMsg)
+    const insertIndex = i0
+    arr.splice(i0 + 1, 0, typingMsg)
     messages = arr
 
     try {
