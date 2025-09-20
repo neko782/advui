@@ -26,9 +26,9 @@
     />
 
     <textarea
-      class="input"
+      class="composer-input"
       rows="1"
-      placeholder="Message..."
+      placeholder="Type a message…"
       value={props.input}
       oninput={(e) => { props.onInput?.(e.currentTarget.value); queueMicrotask(() => autoGrow(inputEl)) }}
       onkeydown={onKey}
@@ -55,9 +55,10 @@
       </div>
     </div>
 
+    <!-- Send group (single send button shows the menu on hover/focus) -->
     <div class="send-group" aria-haspopup="menu" title="Send as">
-      <button class="icon-btn" aria-label="Send as">
-        <Icon name="unfold_more" size={22} />
+      <button class="float-btn" onclick={() => props.onSend?.('user')} disabled={!props.input?.trim() || props.sending} aria-label="Send">
+        <Icon name="send" size={22} />
       </button>
       <div class="send-menu" role="menu" aria-label="Send as">
         <button role="menuitem" class="menu-item" onclick={() => props.onSend?.('user')} disabled={!props.input?.trim() || props.sending} aria-label="Send as user">
@@ -74,34 +75,36 @@
         </button>
       </div>
     </div>
-
-    <button class="float-btn" title="Send" aria-label="Send" onclick={() => props.onSend?.('user')} disabled={!props.input?.trim() || props.sending}>
-      <Icon name="send" size={22} />
-    </button>
   </div>
 </footer>
 
 <style>
-  .composer { position: sticky; bottom: 0; left: 0; right: 0; background: var(--bg); }
+  .composer { position: sticky; bottom: 0; left: 0; right: 0; background: transparent; }
   .composer-inner {
-    display: grid;
-    grid-template-columns: auto 1fr auto auto;
-    gap: 10px;
-    padding: 10px 0 12px;
     max-width: var(--page-max);
     margin-inline: auto;
+    padding: 12px 0;
+    display: grid;
+    grid-template-columns: auto 1fr auto auto;
+    align-items: center;
+    gap: 14px;
   }
   .icon-btn { border: 1px solid var(--border); border-radius: 10px; background: transparent; min-width: 44px; height: 44px; display: grid; place-items: center; line-height: 1; }
-  .input {
+  .composer-input {
+    resize: none;
+    width: 100%;
     min-height: 44px;
+    height: 44px;
     max-height: 240px;
-    padding: 10px 12px;
+    overflow: hidden;
+    padding: 12px;
     border-radius: 12px;
     border: 1px solid var(--border);
-    background: var(--panel);
+    background: var(--bg);
     color: var(--text);
-    resize: none;
-    overflow: hidden;
+    line-height: 1.35;
+    font: inherit;
+    box-sizing: border-box;
   }
   .float-btn {
     min-width: 44px;
@@ -113,6 +116,7 @@
     background: var(--accent);
     color: #fff;
     line-height: 1;
+    transition: background-color .15s ease, color .15s ease, border-color .15s ease, opacity .15s ease;
   }
   .float-btn:disabled { background: #9ca3af; color: #ffffff; cursor: not-allowed; }
   .send-group { position: relative; display: grid; place-items: center; z-index: 0; }
