@@ -5,6 +5,13 @@
   import { loadSettings } from './settingsStore.js'
   import { ensureModels, loadModelsCache } from './modelsStore.js'
   import { respond } from './openaiClient.js'
+  import { autoGrow, placeCaretAtEnd } from './utils/dom.js'
+  import { copyText as copyToClipboard } from './utils/clipboard.js'
+  import { formatRole } from './utils/format.js'
+  import { renderMarkdown } from './utils/markdown.js'
+  import TopBar from './components/chat/TopBar.svelte'
+  import MessageList from './components/chat/MessageList.svelte'
+  import Composer from './components/chat/Composer.svelte'
 
   let messages = $state([])
   let input = $state('')
@@ -28,20 +35,27 @@
   function buildVisibleUpTo(indexExclusive) { return _buildVisibleUpTo(messages, indexExclusive) }
   function currentVisibleChain() { return _currentVisibleChain(messages) }
   function chainFromVisibleUpTo(indexExclusive) { return _chainFromVisibleUpTo(messages, indexExclusive) }
-  function placeCaretAtEnd(el) {
-    try {
-      const range = document.createRange()
-      range.selectNodeContents(el)
-      range.collapse(false)
-      const sel = window.getSelection()
-      sel.removeAllRanges()
-      sel.addRange(range)
-    } catch {}
+  function computeFollowingMap() {
+    const map = {}
+    for (let i = 0; i < messages.length; i++) {
+      const next = messages[i + 1]
+      if (next && next.role === 'assistant') {
+        map[i] = { has: true, id: next.id, typing: !!next.typing }
+      } else {
+        map[i] = { has: false, id: null, typing: false }
+      }
+    }
+    return map
   }
-  function onEditableInput(e) {
+  function onEditableInput(eOrText) {
     if (editingId == null) return
-    // Keep state in sync without re-rendering content
-    try { editingText = e.currentTarget.innerText } catch {}
+    try {
+      if (typeof eOrText === 'string') {
+        editingText = eOrText
+      } else {
+        editingText = eOrText?.currentTarget?.innerText ?? editingText
+      }
+    } catch {}
   }
   function onEditableKeydown(e) {
     // Ctrl/Cmd+Enter to save, Escape to cancel; Enter alone inserts newline
@@ -99,24 +113,7 @@
     } catch {}
   })
 
-  function autoGrow(el) {
-    if (!el) return
-    const max = 240
-    const min = 44
-    // Reset height to measure accurate scrollHeight
-    el.style.height = 'auto'
-    const content = el.scrollHeight
-    const next = Math.min(content, max)
-    el.style.height = Math.max(next, min) + 'px'
-    // Hide scrollbar while content fits under max; show once capped
-    el.style.overflowY = content > max ? 'auto' : 'hidden'
-  }
-
-  function formatRole(role) {
-    if (role === 'assistant') return 'Assistant'
-    if (role === 'system') return 'System'
-    return 'User'
-  }
+  
 
   // Send a message (with chosen role) and request an assistant reply via API
   async function sendWithRole(role = 'user') {
@@ -191,11 +188,10 @@
     return `${lead}\n\nYou said: “${echo}”`
   }
 
-  let listEl
+  let listCmp
   let inputEl
   function scrollToBottom() {
-    if (!listEl) return
-    listEl.scrollTo({ top: listEl.scrollHeight, behavior: 'smooth' })
+    try { listCmp?.scrollToBottom?.() } catch {}
   }
 
   function onKey(e) {
@@ -239,25 +235,7 @@
     }
   })
   // Message actions
-  async function copyMessage(text) {
-    try {
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        await navigator.clipboard.writeText(text)
-        return
-      }
-    } catch {}
-    // Fallback
-    try {
-      const ta = document.createElement('textarea')
-      ta.value = text
-      ta.style.position = 'fixed'
-      ta.style.opacity = '0'
-      document.body.appendChild(ta)
-      ta.select()
-      document.execCommand('copy')
-      document.body.removeChild(ta)
-    } catch {}
-  }
+  async function copyMessage(text) { try { await copyToClipboard(text) } catch {} }
   function deleteMessage(id) {
     messages = messages.filter(m => m.id !== id)
   }
@@ -267,10 +245,7 @@
     if (!roles.has(role)) return
     messages = messages.map(m => (m.id === id ? { ...m, role } : m))
     // Keep view anchored
-    queueMicrotask(() => {
-      try { void listEl?.offsetHeight } catch {}
-      scrollToBottom()
-    })
+    queueMicrotask(() => { scrollToBottom() })
   }
   // Align a message's branching metadata to the chain at its current index
   function alignMessageToChainAt(arr, idx) {
@@ -496,23 +471,7 @@
       .replaceAll('\n', '<br/>')
   }
 
-  import MarkdownIt from 'markdown-it'
-  // Enable single line breaks in Markdown (treat "\n" as <br>)
-  const md = new MarkdownIt({ html: false, linkify: true, typographer: false, breaks: true })
-  // Open links in a new tab and add rel; basic scheme guard left to the browser
-  const defaultRenderLink = md.renderer.rules.link_open || function(tokens, idx, options, env, self) {
-    return self.renderToken(tokens, idx, options)
-  }
-  md.renderer.rules.link_open = function(tokens, idx, options, env, self) {
-    const a = tokens[idx]
-    // add target and rel
-    const targetIndex = a.attrIndex('target')
-    if (targetIndex < 0) a.attrPush(['target', '_blank']); else a.attrs[targetIndex][1] = '_blank'
-    const relIndex = a.attrIndex('rel')
-    if (relIndex < 0) a.attrPush(['rel', 'noopener noreferrer']); else a.attrs[relIndex][1] = 'noopener noreferrer'
-    return defaultRenderLink(tokens, idx, options, env, self)
-  }
-  function renderMarkdown(src) { return md.render(String(src || '')) }
+  
 
   // keep view anchored to the latest messages
   $effect(() => {
@@ -654,214 +613,45 @@
 </script>
 
 <section class="chat-shell">
-  <header class="topbar">
-    <div class="topbar-inner">
-      <div class="titlebox">AI Chat</div>
-      <button
-        class="icon-btn"
-        title="Settings"
-        onclick={() => (showSettings = true)}
-        aria-label="Settings"
-      >
-        <Icon name="settings" size={22} />
-      </button>
-      <button
-        class="icon-btn"
-        title="New chat"
-        onclick={newChat}
-        aria-label="New chat"
-      >
-        <Icon name="add" size={22} />
-      </button>
-    </div>
-  </header>
+  <TopBar onOpenSettings={() => (showSettings = true)} onNewChat={newChat} />
 
-  <div class="messages" bind:this={listEl}>
-    {#each buildVisible() as vm, vi (vm.m.id)}
-      <div class={`row ${vm.m.role}`}>
-        {#key vm.m.role}
-        <div class={`stack ${vm.m.role} ${vm.m.id === editingId ? 'editing' : ''}`}>
-          <div class={`meta ${vm.m.role}`}>
-            <div class="send-group" aria-haspopup="menu" title="Change role">
-              <button class="role-badge" aria-label={`Role: ${formatRole(vm.m.role)}`}>
-                {formatRole(vm.m.role)}
-              </button>
-              <div class="send-menu" role="menu" aria-label="Change role">
-                <button role="menuitem" class="menu-item" onclick={() => setMessageRole(vm.m.id, 'user')} aria-label="Set role user">
-                  <Icon name="person" size={18} />
-                  User
-                </button>
-                <button role="menuitem" class="menu-item" onclick={() => setMessageRole(vm.m.id, 'assistant')} aria-label="Set role assistant">
-                  <Icon name="smart_toy" size={18} />
-                  Assistant
-                </button>
-                <button role="menuitem" class="menu-item" onclick={() => setMessageRole(vm.m.id, 'system')} aria-label="Set role system">
-                  <Icon name="tune" size={18} />
-                  System
-                </button>
-              </div>
-            </div>
-          </div>
-          {#if vm.m.id === editingId}
-            <div
-              class={`bubble ${vm.m.role} editing`}
-              contenteditable="true"
-              role="textbox"
-              tabindex="0"
-              aria-multiline="true"
-              oninput={onEditableInput}
-              onkeydown={onEditableKeydown}
-              onpaste={onEditablePaste}
-              bind:this={editingEl}
-            ></div>
-          {:else}
-            <div
-              class={`bubble ${vm.m.role}`}
-              data-typing={vm.m.typing ? true : undefined}
-            >
-              {#if vm.m.typing}
-                <span class="dots"><i></i><i></i><i></i></span>
-              {:else}
-                {@html renderMarkdown(vm.m.content)}
-              {/if}
-            </div>
-          {/if}
-          <div class={`actions ${vm.m.role}`}>
-            {#if vm.m.id === editingId}
-              <button class="action-btn" onclick={applyEditSend} aria-label="Send (branch + reply)" title="Send (branch + reply)">
-                <Icon name="send" size={20} />
-              </button>
-              <button class="action-btn" onclick={applyEditBranch} aria-label="Branch (no reply)" title="Branch (no reply)">
-                <Icon name="call_split" size={20} />
-              </button>
-              <button class="action-btn" onclick={applyEditReplace} aria-label="Replace in current branch" title="Replace in current branch">
-                <Icon name="published_with_changes" size={20} />
-              </button>
-              <button class="action-btn" onclick={cancelEdit} aria-label="Cancel edit" title="Cancel">
-                <Icon name="close" size={20} />
-              </button>
-            {:else}
-              {#if Array.isArray(vm.m.variants) && vm.m.variants.length > 1}
-                <button class="action-btn" onclick={() => changeVariant(vm.m.id, -1)} aria-label="Previous variant" title="Previous" disabled={vm.m.typing || (vm.m.variantIndex || 0) <= 0}>
-                  <Icon name="chevron_left" size={20} />
-                </button>
-                <span class="variant-counter" aria-live="polite">{(vm.m.variantIndex || 0) + 1}/{vm.m.variants.length}</span>
-                <button class="action-btn" onclick={() => changeVariant(vm.m.id, +1)} aria-label="Next variant" title="Next" disabled={vm.m.typing || (vm.m.variantIndex || 0) >= (vm.m.variants.length - 1)}>
-                  <Icon name="chevron_right" size={20} />
-                </button>
-              {/if}
-              {#if vm.m.role === 'assistant'}
-                <button class="action-btn" onclick={() => refreshAssistant(vm.m.id)} aria-label="Regenerate response" title="Regenerate" disabled={vm.m.typing}>
-                  <Icon name="autorenew" size={20} />
-                </button>
-              {:else if vm.m.role === 'user' && messages[vm.i + 1] && messages[vm.i + 1].role === 'assistant'}
-                <!-- Allow refresh from the preceding user message when it has a following assistant reply -->
-                <button class="action-btn" onclick={() => refreshAssistant(messages[vm.i + 1].id)} aria-label="Regenerate following response" title="Regenerate following response" disabled={messages[vm.i + 1].typing}>
-                  <Icon name="autorenew" size={20} />
-                </button>
-              {:else if vm.m.role === 'user'}
-                <!-- If there's no following assistant, create a new assistant reply -->
-                <button class="action-btn" onclick={() => refreshAfterUserIndex(vm.i)} aria-label="Generate following response" title="Generate following response">
-                  <Icon name="autorenew" size={20} />
-                </button>
-              {/if}
-              <button class="action-btn" onclick={() => copyMessage(vm.m.content)} aria-label="Copy message" title="Copy" disabled={vm.m.typing}>
-                <Icon name="content_copy" size={20} />
-              </button>
-              <button class="action-btn" onclick={() => deleteMessage(vm.m.id)} aria-label="Delete message" title="Delete" disabled={vm.m.typing}>
-                <Icon name="delete" size={20} />
-              </button>
-              <button class="action-btn" onclick={() => editMessage(vm.m.id)} aria-label="Edit message" title="Edit" disabled={vm.m.typing}>
-                <Icon name="edit" size={20} />
-              </button>
-              <button class="action-btn" onclick={() => moveDown(vm.m.id)} aria-label="Move down" title="Down" disabled={vm.m.typing || vm.i === messages.length - 1}>
-                <Icon name="arrow_downward" size={20} />
-              </button>
-              <button class="action-btn" onclick={() => moveUp(vm.m.id)} aria-label="Move up" title="Up" disabled={vm.m.typing || vm.i === 0}>
-                <Icon name="arrow_upward" size={20} />
-              </button>
-            {/if}
-          </div>
-        </div>
-        {/key}
-      </div>
-    {/each}
-  </div>
+  <MessageList
+    bind:this={listCmp}
+    items={buildVisible()}
+    total={messages.length}
+    editingId={editingId}
+    editingText={editingText}
+    followingMap={computeFollowingMap()}
+    onSetRole={(id, role) => setMessageRole(id, role)}
+    onEditInput={(t) => onEditableInput(t)}
+    onEditKeydown={onEditableKeydown}
+    onApplyEditSend={applyEditSend}
+    onApplyEditBranch={applyEditBranch}
+    onApplyEditReplace={applyEditReplace}
+    onCancelEdit={cancelEdit}
+    onChangeVariant={(id, d) => changeVariant(id, d)}
+    onRefreshAssistant={(id) => refreshAssistant(id)}
+    onRefreshAfterUserIndex={(i) => refreshAfterUserIndex(i)}
+    onCopy={(text) => copyMessage(text)}
+    onDelete={(id) => deleteMessage(id)}
+    onEdit={(id) => editMessage(id)}
+    onMoveDown={(id) => moveDown(id)}
+    onMoveUp={(id) => moveUp(id)}
+  />
 
-  <footer class="composer">
-    <div class="composer-inner">
-      <!-- Per-chat settings (before input) -->
-      <div class={`send-group chat-settings-group ${chatSettingsOpen ? 'open' : ''}`} aria-haspopup="menu" title="Chat settings" bind:this={chatSettingsEl}>
-        <button class="icon-btn" aria-label="Chat settings" onclick={toggleChatSettings}>
-          <!-- Different icon from top settings -->
-          <Icon name="tune" size={22} />
-        </button>
-        <div class="send-menu chat-settings-menu" role="menu" aria-label="Chat settings">
-          <div class="menu-section">
-            <div class="menu-label">Model</div>
-            <input type="text" placeholder="gpt-4o-mini" bind:value={chatModel} aria-label="Model" list="model-suggestions" />
-            {#if modelIds?.length}
-              <datalist id="model-suggestions">
-                {#each modelIds as mid}
-                  <option value={mid}></option>
-                {/each}
-              </datalist>
-            {/if}
-          </div>
-        </div>
-      </div>
-      <textarea
-        class="composer-input"
-        placeholder="Type a message…"
-        bind:value={input}
-        oninput={(e) => autoGrow(e.currentTarget)}
-        onkeydown={onKey}
-        rows="1"
-        bind:this={inputEl}
-      ></textarea>
-      <!-- Add-to-chat group (now first, swapped) -->
-      <div class="send-group" aria-haspopup="menu">
-        <button class="float-btn" onclick={() => addToChat('user')} disabled={!input.trim()} aria-label="Add to chat">
-          <Icon name="add_comment" size={22} />
-        </button>
-        <div class="send-menu" role="menu" aria-label="Add to chat as">
-          <button role="menuitem" class="menu-item" onclick={() => addToChat('user')} disabled={!input.trim()} aria-label="Add as user">
-            <Icon name="person" size={18} />
-            User
-          </button>
-          <button role="menuitem" class="menu-item" onclick={() => addToChat('assistant')} disabled={!input.trim()} aria-label="Add as assistant">
-            <Icon name="smart_toy" size={18} />
-            Assistant
-          </button>
-          <button role="menuitem" class="menu-item" onclick={() => addToChat('system')} disabled={!input.trim()} aria-label="Add as system">
-            <Icon name="tune" size={18} />
-            System
-          </button>
-        </div>
-      </div>
-
-      <!-- Send group (with full role menu) -->
-      <div class="send-group" aria-haspopup="menu">
-        <button class="float-btn" onclick={() => sendWithRole('user')} disabled={!input.trim() || sending} aria-label="Send">
-          <Icon name="send" size={22} />
-        </button>
-        <div class="send-menu" role="menu" aria-label="Send as">
-          <button role="menuitem" class="menu-item" onclick={() => sendWithRole('user')} disabled={!input.trim() || sending} aria-label="Send as user">
-            <Icon name="send" size={18} />
-            User
-          </button>
-          <button role="menuitem" class="menu-item" onclick={() => sendWithRole('assistant')} disabled={!input.trim() || sending} aria-label="Send as assistant">
-            <Icon name="send" size={18} />
-            Assistant
-          </button>
-          <button role="menuitem" class="menu-item" onclick={() => sendWithRole('system')} disabled={!input.trim() || sending} aria-label="Send as system">
-            <Icon name="send" size={18} />
-            System
-          </button>
-        </div>
-      </div>
-    </div>
-  </footer>
+  <Composer
+    input={input}
+    sending={sending}
+    chatSettingsOpen={chatSettingsOpen}
+    chatModel={chatModel}
+    modelIds={modelIds}
+    onToggleChatSettings={toggleChatSettings}
+    onCloseChatSettings={() => (chatSettingsOpen = false)}
+    onChangeModel={(val) => (chatModel = val)}
+    onInput={(val) => (input = val)}
+    onAdd={(role) => addToChat(role)}
+    onSend={(role) => sendWithRole(role)}
+  />
 
   <SettingsModal open={showSettings} onClose={() => { showSettings = false; settings = loadSettings() }} />
 </section>

@@ -1,6 +1,24 @@
 # Svelte + Vite
 
-This template should help get you started developing with Svelte in Vite.
+This app has been refactored into atomic Svelte components. The Chat UI is now composed of small, reusable pieces with clear data/event flow.
+
+Component map (under `src/lib`):
+- `components/chat/TopBar.svelte` – header with title, settings, new chat
+- `components/chat/Composer.svelte` – input area, send and add-as menus, per-chat settings popover
+- `components/chat/MessageList.svelte` – scrollable list of visible messages
+- `components/chat/MessageItem.svelte` – one message row (meta, bubble, actions)
+- `components/chat/MessageMeta.svelte` – role badge + change-role menu
+- `components/chat/MessageBubble.svelte` – message content or inline editor
+- `components/chat/MessageActions.svelte` – copy, delete, edit, move, regenerate, variants
+- `components/common/IconButton.svelte` – consistent icon button wrapper
+- `components/common/SendMenu.svelte` – generic hover/focus popover container
+- `utils/dom.js` – `autoGrow`, `placeCaretAtEnd`
+- `utils/clipboard.js` – `copyText`
+- `utils/format.js` – `formatRole`
+- `utils/markdown.js` – `renderMarkdown`
+
+Stateful container: `src/lib/Chat.svelte` retains branching logic, API calls, and state. Children communicate via props and events.
+
 
 ## Recommended IDE Setup
 
