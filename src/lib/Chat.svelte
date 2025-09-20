@@ -141,10 +141,11 @@
         reply = generatePlaceholderReply(firstMsg.content) +
           '\n\nTip: Add your OpenAI API key in Settings to get real answers.'
       }
-      messages = messages.map(m => (m.id === typingMsg.id ? { ...m, content: reply, typing: false } : m))
+      messages = messages.map(m => (m.id === typingMsg.id ? { ...m, content: reply, typing: false, variants: [reply], variantIndex: 0 } : m))
     } catch (err) {
       const msg = err?.message || 'Something went wrong.'
-      messages = messages.map(m => (m.id === typingMsg.id ? { ...m, content: `Error: ${msg}`, typing: false } : m))
+      const errText = `Error: ${msg}`
+      messages = messages.map(m => (m.id === typingMsg.id ? { ...m, content: errText, typing: false, variants: [errText], variantIndex: 0 } : m))
     } finally {
       sending = false
       // Auto scroll to bottom after response
@@ -159,7 +160,9 @@
   function addToChat(role = 'user') {
     const text = input.trim()
     if (!text) return
-    const direct = { id: nextId++, role, content: text, time: Date.now() }
+    const direct = role === 'assistant'
+      ? { id: nextId++, role, content: text, time: Date.now(), variants: [text], variantIndex: 0 }
+      : { id: nextId++, role, content: text, time: Date.now() }
     messages = [...messages, direct]
     input = ''
     queueMicrotask(() => autoGrow(inputEl))
@@ -252,7 +255,19 @@
   function setMessageRole(id, role) {
     const roles = new Set(['user', 'assistant', 'system'])
     if (!roles.has(role)) return
-    messages = messages.map(m => (m.id === id ? { ...m, role } : m))
+    messages = messages.map(m => {
+      if (m.id !== id) return m
+      if (role === 'assistant') {
+        // Ensure variants structure exists for assistant messages
+        const base = Array.isArray(m.variants) && typeof m.variantIndex === 'number'
+          ? m
+          : { ...m, variants: [m.content], variantIndex: 0 }
+        return { ...base, role }
+      }
+      // Drop variants when changing away from assistant to keep model simple
+      const { variants, variantIndex, ...rest } = m
+      return { ...rest, role }
+    })
     // Nudge layout and keep view anchored
     queueMicrotask(() => {
       // Read to force reflow then scroll
@@ -293,7 +308,16 @@
   function commitEdit() {
     if (editingId == null) return
     const val = String(editingEl?.innerText ?? editingText)
-    messages = messages.map(m => (m.id === editingId ? { ...m, content: val } : m))
+    messages = messages.map(m => {
+      if (m.id !== editingId) return m
+      if (m.role === 'assistant' && Array.isArray(m.variants) && typeof m.variantIndex === 'number') {
+        const arr = m.variants.slice()
+        const idx = Math.max(0, Math.min(arr.length - 1, m.variantIndex || 0))
+        arr[idx] = val
+        return { ...m, content: val, variants: arr }
+      }
+      return { ...m, content: val }
+    })
     editingId = null
     editingText = ''
     queueMicrotask(() => scrollToBottom())
@@ -335,6 +359,69 @@
     // Run when messages or layout change
     scrollToBottom()
   })
+
+  // Branching: regenerate an assistant message and keep variants locally
+  async function refreshAssistant(id) {
+    const idx = messages.findIndex(m => m.id === id)
+    if (idx < 0) return
+    const target = messages[idx]
+    if (!target || target.role !== 'assistant' || target.typing) return
+
+    // Mark as typing on the target message
+    messages = messages.map(m => (m.id === id ? { ...m, typing: true } : m))
+    try {
+      let reply
+      const { apiKey } = settings
+      if (apiKey) {
+        // Build history up to (but not including) this assistant message
+        const history = messages
+          .slice(0, idx)
+          .filter(m => !m.typing)
+          .map(({ role, content }) => ({ role, content }))
+        reply = await respond({ messages: history, model: chatModel })
+      } else {
+        // No key: generate a placeholder reply based on last user input
+        const lastUser = [...messages.slice(0, idx)].reverse().find(m => m.role === 'user')
+        reply = generatePlaceholderReply(lastUser?.content || 'Regenerated response') +
+          '\n\nTip: Add your OpenAI API key in Settings to get real answers.'
+      }
+      messages = messages.map(m => {
+        if (m.id !== id) return m
+        const arr = Array.isArray(m.variants) ? m.variants.slice() : [m.content]
+        arr.push(reply)
+        const vi = arr.length - 1
+        return { ...m, typing: false, content: reply, variants: arr, variantIndex: vi }
+      })
+    } catch (err) {
+      const msg = err?.message || 'Something went wrong.'
+      const errText = `Error: ${msg}`
+      messages = messages.map(m => {
+        if (m.id !== id) return m
+        const arr = Array.isArray(m.variants) ? m.variants.slice() : [m.content]
+        arr.push(errText)
+        const vi = arr.length - 1
+        return { ...m, typing: false, content: errText, variants: arr, variantIndex: vi }
+      })
+    } finally {
+      // keep view anchored
+      queueMicrotask(() => scrollToBottom())
+    }
+  }
+
+  function changeVariant(id, delta) {
+    const i = messages.findIndex(m => m.id === id)
+    if (i < 0) return
+    const m = messages[i]
+    if (m.role !== 'assistant' || !Array.isArray(m.variants) || !m.variants.length) return
+    const len = m.variants.length
+    const cur = typeof m.variantIndex === 'number' ? m.variantIndex : 0
+    const next = Math.max(0, Math.min(len - 1, cur + delta))
+    if (next === cur) return
+    const updated = { ...m, variantIndex: next, content: m.variants[next] }
+    const arr = messages.slice()
+    arr[i] = updated
+    messages = arr
+  }
 </script>
 
 <section class="chat-shell">
@@ -419,6 +506,25 @@
                 <Icon name="close" size={20} />
               </button>
             {:else}
+              {#if m.role === 'assistant'}
+                <button class="action-btn" onclick={() => refreshAssistant(m.id)} aria-label="Regenerate response" title="Regenerate" disabled={m.typing}>
+                  <Icon name="autorenew" size={20} />
+                </button>
+                {#if Array.isArray(m.variants) && m.variants.length > 1}
+                  <button class="action-btn" onclick={() => changeVariant(m.id, -1)} aria-label="Previous variant" title="Previous" disabled={m.typing || (m.variantIndex || 0) <= 0}>
+                    <Icon name="chevron_left" size={20} />
+                  </button>
+                  <span class="variant-counter" aria-live="polite">{(m.variantIndex || 0) + 1}/{m.variants.length}</span>
+                  <button class="action-btn" onclick={() => changeVariant(m.id, +1)} aria-label="Next variant" title="Next" disabled={m.typing || (m.variantIndex || 0) >= (m.variants.length - 1)}>
+                    <Icon name="chevron_right" size={20} />
+                  </button>
+                {/if}
+              {:else if m.role === 'user' && messages[i + 1] && messages[i + 1].role === 'assistant'}
+                <!-- Allow refresh from the preceding user message when it has a following assistant reply -->
+                <button class="action-btn" onclick={() => refreshAssistant(messages[i + 1].id)} aria-label="Regenerate following response" title="Regenerate following response" disabled={messages[i + 1].typing}>
+                  <Icon name="autorenew" size={20} />
+                </button>
+              {/if}
               <button class="action-btn" onclick={() => copyMessage(m.content)} aria-label="Copy message" title="Copy" disabled={m.typing}>
                 <Icon name="content_copy" size={20} />
               </button>
@@ -788,6 +894,7 @@
   .action-btn:hover { color: #ffffff; }
   .action-btn:focus-visible { color: #ffffff; }
   .action-btn:disabled { opacity: .5; cursor: not-allowed; }
+  .variant-counter { align-self: center; font-size: .8rem; color: var(--muted); min-width: 36px; text-align: center; }
 
   .composer {
     position: sticky;
