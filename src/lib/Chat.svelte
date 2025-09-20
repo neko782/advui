@@ -44,9 +44,10 @@
     for (let i = 0; i < messages.length; i++) {
       const m = messages[i]
       if (m?.role === 'assistant' && Array.isArray(m.variants)) {
-        // Show this anchor only if it belongs to the current chain at this point
-        const parent = m.branchPathBefore ?? ''
-        if (parent === chain) {
+        // Show this anchor if it belongs to the current chain at this point.
+        // If it's legacy (no branchPathBefore), treat as wildcard (always include).
+        const parent = m.branchPathBefore
+        if (parent == null || parent === chain) {
           out.push({ m, i })
           const vi = typeof m.variantIndex === 'number' ? m.variantIndex : 0
           chain = chain ? `${chain}|${m.id}:${vi}` : `${m.id}:${vi}`
@@ -68,8 +69,8 @@
     for (let i = 0; i < upto; i++) {
       const m = messages[i]
       if (m?.role === 'assistant' && Array.isArray(m.variants)) {
-        const parent = m.branchPathBefore ?? ''
-        if (parent === chain) {
+        const parent = m.branchPathBefore
+        if (parent == null || parent === chain) {
           out.push(m)
           const vi = typeof m.variantIndex === 'number' ? m.variantIndex : 0
           chain = chain ? `${chain}|${m.id}:${vi}` : `${m.id}:${vi}`
@@ -83,6 +84,22 @@
       }
     }
     return out
+  }
+  function chainFromVisibleList(list) {
+    const parts = []
+    for (const m of list) {
+      if (m?.role === 'assistant' && Array.isArray(m.variants)) {
+        const vi = typeof m.variantIndex === 'number' ? m.variantIndex : 0
+        parts.push(`${m.id}:${vi}`)
+      }
+    }
+    return parts.join('|')
+  }
+  function currentVisibleChain() {
+    return chainFromVisibleList(buildVisible().map(vm => vm.m))
+  }
+  function chainFromVisibleUpTo(indexExclusive) {
+    return chainFromVisibleList(buildVisibleUpTo(indexExclusive))
   }
   function placeCaretAtEnd(el) {
     try {
@@ -180,7 +197,8 @@
     if (!text || sending) return
 
     sending = true
-    const firstMsg = { id: nextId++, role, content: text, time: Date.now(), branchPath: buildCurrentSelectedChain() }
+    const parentChain = currentVisibleChain()
+    const firstMsg = { id: nextId++, role, content: text, time: Date.now(), branchPath: parentChain }
     messages = [...messages, firstMsg]
     input = ''
     // Refresh input height after clearing
@@ -204,12 +222,10 @@
         reply = generatePlaceholderReply(firstMsg.content) +
           '\n\nTip: Add your OpenAI API key in Settings to get real answers.'
       }
-      const parentChain = buildCurrentSelectedChain()
       messages = messages.map(m => (m.id === typingMsg.id ? { ...m, content: reply, typing: false, variants: [reply], variantIndex: 0, branchPathBefore: parentChain } : m))
     } catch (err) {
       const msg = err?.message || 'Something went wrong.'
       const errText = `Error: ${msg}`
-      const parentChain = buildCurrentSelectedChain()
       messages = messages.map(m => (m.id === typingMsg.id ? { ...m, content: errText, typing: false, variants: [errText], variantIndex: 0, branchPathBefore: parentChain } : m))
     } finally {
       sending = false
@@ -225,9 +241,10 @@
   function addToChat(role = 'user') {
     const text = input.trim()
     if (!text) return
+    const parentChain = currentVisibleChain()
     const direct = role === 'assistant'
-      ? { id: nextId++, role, content: text, time: Date.now(), variants: [text], variantIndex: 0, branchPathBefore: buildCurrentSelectedChain() }
-      : { id: nextId++, role, content: text, time: Date.now(), branchPath: buildCurrentSelectedChain() }
+      ? { id: nextId++, role, content: text, time: Date.now(), variants: [text], variantIndex: 0, branchPathBefore: parentChain }
+      : { id: nextId++, role, content: text, time: Date.now(), branchPath: parentChain }
     messages = [...messages, direct]
     input = ''
     queueMicrotask(() => autoGrow(inputEl))
@@ -322,7 +339,7 @@
     if (!roles.has(role)) return
     const i = messages.findIndex(m => m.id === id)
     if (i < 0) return
-    const parentChain = buildSelectedChainUpTo(i)
+    const parentChain = chainFromVisibleUpTo(i)
     messages = messages.map(m => {
       if (m.id !== id) return m
       if (role === 'assistant') {
