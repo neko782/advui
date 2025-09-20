@@ -1,7 +1,8 @@
 <script>
   import Icon from '../../Icon.svelte'
   const props = $props()
-  const m = props.message
+  // Ensure message reference stays reactive with Svelte 5 runes
+  const m = $derived(props.message)
 </script>
 
 <div class={`actions ${m.role}`}>

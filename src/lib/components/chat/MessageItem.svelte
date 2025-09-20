@@ -4,11 +4,12 @@
   import MessageBubble from './MessageBubble.svelte'
   import MessageActions from './MessageActions.svelte'
   const props = $props()
-  const vm = props.vm
-  const m = vm.m
-  const isEditing = props.editingId === m.id
-  const variantsLength = Array.isArray(m.variants) ? m.variants.length : 0
-  const variantIndex = typeof m.variantIndex === 'number' ? m.variantIndex : 0
+  // Keep these derived from props so they update when parent data changes
+  const vm = $derived(props.vm)
+  const m = $derived(vm.m)
+  const isEditing = $derived(props.editingId === m.id)
+  const variantsLength = $derived(Array.isArray(m.variants) ? m.variants.length : 0)
+  const variantIndex = $derived(typeof m.variantIndex === 'number' ? m.variantIndex : 0)
 </script>
 
 <div class={`row ${m.role}`}>
