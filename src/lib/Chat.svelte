@@ -458,54 +458,51 @@
     if (i0 < 0) return
     const val = String(editingEl?.innerText ?? editingText)
     const cur = messages[i0]
-    // Assistant: branch and regenerate this assistant (like refresh with a new variant)
+    // Assistant: branch (selector on assistant), replace with edited content, then generate a new assistant after it
     if (cur.role === 'assistant') {
-      const parentChain = chainFromVisibleUpTo(i0)
-      // Prepare a new variant slot and mark as typing
+      // 1) Branch + replace content on the assistant itself
+      const parentChainA = chainFromVisibleUpTo(i0)
       messages = messages.map((m, idx) => {
         if (idx !== i0) return m
         const arr = Array.isArray(m.variants) ? m.variants.slice() : [m.content]
-        const nextIndex = arr.length
-        // Use empty placeholder; generation will fill it
-        arr.push('')
-        return { ...m, typing: true, variants: arr, variantIndex: nextIndex, branchPathBefore: parentChain }
+        arr.push(val)
+        const vi = arr.length - 1
+        return { ...m, content: val, variants: arr, variantIndex: vi, branchPathBefore: m.branchPathBefore ?? parentChainA }
       })
-      // Exit editing mode
+      // Exit editing state now that the edit is applied
       editingId = null
       editingText = ''
-      // Generate reply based on history up to (but not including) this assistant
+
+      // 2) Generate a new assistant message directly after the edited assistant
+      const insertIndex = i0
+      const parentChainB = chainFromVisibleUpTo(insertIndex + 1)
+      const typingMsg = { id: nextId++, role: 'assistant', content: 'typing', time: Date.now(), typing: true, variants: [''], variantIndex: 0, branchPathBefore: parentChainB }
+      let arr2 = messages.slice()
+      arr2.splice(insertIndex + 1, 0, typingMsg)
+      messages = arr2
+
       try {
         let reply
         const { apiKey } = settings
+        const history = buildVisibleUpTo(insertIndex + 1)
+          .filter(m => !m.typing)
+          .map(({ role, content }) => ({ role, content }))
         if (apiKey) {
-          const history = buildVisibleUpTo(i0)
-            .filter(m => !m.typing)
-            .map(({ role, content }) => ({ role, content }))
           reply = await respond({ messages: history, model: chatModel })
         } else {
-          const lastUser = [...messages.slice(0, i0)].reverse().find(m => m.role === 'user')
-          reply = generatePlaceholderReply(lastUser?.content || 'Regenerated response') +
+          const lastUser = [...buildVisibleUpTo(insertIndex + 1)].reverse().find(m => m.role === 'user')
+          reply = generatePlaceholderReply(lastUser?.content || val) +
             '\n\nTip: Add your OpenAI API key in Settings to get real answers.'
         }
-        messages = messages.map((m, idx) => {
-          if (idx !== i0) return m
-          const arr = Array.isArray(m.variants) ? m.variants.slice() : [m.content]
-          const vi = typeof m.variantIndex === 'number' ? m.variantIndex : arr.length - 1
-          if (vi >= arr.length) arr.length = vi + 1
-          arr[vi] = reply
-          return { ...m, typing: false, content: reply, variants: arr, variantIndex: vi }
-        })
+        messages = messages.map(m => (m.id === typingMsg.id
+          ? { ...m, content: reply, typing: false, variants: [reply], variantIndex: 0 }
+          : m))
       } catch (err) {
         const msg = err?.message || 'Something went wrong.'
         const errText = `Error: ${msg}`
-        messages = messages.map((m, idx) => {
-          if (idx !== i0) return m
-          const arr = Array.isArray(m.variants) ? m.variants.slice() : [m.content]
-          const vi = typeof m.variantIndex === 'number' ? m.variantIndex : arr.length - 1
-          if (vi >= arr.length) arr.length = vi + 1
-          arr[vi] = errText
-          return { ...m, typing: false, content: errText, variants: arr, variantIndex: vi }
-        })
+        messages = messages.map(m => (m.id === typingMsg.id
+          ? { ...m, content: errText, typing: false, variants: [errText], variantIndex: 0 }
+          : m))
       } finally {
         queueMicrotask(() => scrollToBottom())
       }
