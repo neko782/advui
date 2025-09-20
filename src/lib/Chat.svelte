@@ -338,28 +338,12 @@
     messages = messages.filter(m => m.id !== id)
   }
   function setMessageRole(id, role) {
+    // Role change should behave like content change: do not alter branching.
     const roles = new Set(['user', 'assistant', 'system'])
     if (!roles.has(role)) return
-    const i = messages.findIndex(m => m.id === id)
-    if (i < 0) return
-    const parentChain = chainFromVisibleUpTo(i)
-    messages = messages.map(m => {
-      if (m.id !== id) return m
-      if (role === 'assistant') {
-        // Ensure variants structure exists for assistant messages
-        const base = Array.isArray(m.variants) && typeof m.variantIndex === 'number'
-          ? m
-          : { ...m, variants: [m.content], variantIndex: 0 }
-        const { branchPath, ...rest } = base
-        return { ...rest, role, branchPathBefore: parentChain }
-      }
-      // Drop variants when changing away from assistant and tag with parent branch
-      const { variants, variantIndex, branchPathBefore, ...rest } = m
-      return { ...rest, role, branchPath: parentChain }
-    })
-    // Nudge layout and keep view anchored
+    messages = messages.map(m => (m.id === id ? { ...m, role } : m))
+    // Keep view anchored
     queueMicrotask(() => {
-      // Read to force reflow then scroll
       try { void listEl?.offsetHeight } catch {}
       scrollToBottom()
     })
@@ -474,15 +458,57 @@
     if (i0 < 0) return
     const val = String(editingEl?.innerText ?? editingText)
     const cur = messages[i0]
-    // Assistant: treat as branch-only (new variant) — no follow-up reply generation
+    // Assistant: branch and regenerate this assistant (like refresh with a new variant)
     if (cur.role === 'assistant') {
-      const base = Array.isArray(cur.variants) ? cur.variants.slice() : [cur.content]
-      base.push(val)
-      const vi = base.length - 1
-      messages = messages.map((m, idx) => idx === i0 ? { ...m, content: val, variants: base, variantIndex: vi } : m)
+      const parentChain = chainFromVisibleUpTo(i0)
+      // Prepare a new variant slot and mark as typing
+      messages = messages.map((m, idx) => {
+        if (idx !== i0) return m
+        const arr = Array.isArray(m.variants) ? m.variants.slice() : [m.content]
+        const nextIndex = arr.length
+        // Use empty placeholder; generation will fill it
+        arr.push('')
+        return { ...m, typing: true, variants: arr, variantIndex: nextIndex, branchPathBefore: parentChain }
+      })
+      // Exit editing mode
       editingId = null
       editingText = ''
-      queueMicrotask(() => scrollToBottom())
+      // Generate reply based on history up to (but not including) this assistant
+      try {
+        let reply
+        const { apiKey } = settings
+        if (apiKey) {
+          const history = buildVisibleUpTo(i0)
+            .filter(m => !m.typing)
+            .map(({ role, content }) => ({ role, content }))
+          reply = await respond({ messages: history, model: chatModel })
+        } else {
+          const lastUser = [...messages.slice(0, i0)].reverse().find(m => m.role === 'user')
+          reply = generatePlaceholderReply(lastUser?.content || 'Regenerated response') +
+            '\n\nTip: Add your OpenAI API key in Settings to get real answers.'
+        }
+        messages = messages.map((m, idx) => {
+          if (idx !== i0) return m
+          const arr = Array.isArray(m.variants) ? m.variants.slice() : [m.content]
+          const vi = typeof m.variantIndex === 'number' ? m.variantIndex : arr.length - 1
+          if (vi >= arr.length) arr.length = vi + 1
+          arr[vi] = reply
+          return { ...m, typing: false, content: reply, variants: arr, variantIndex: vi }
+        })
+      } catch (err) {
+        const msg = err?.message || 'Something went wrong.'
+        const errText = `Error: ${msg}`
+        messages = messages.map((m, idx) => {
+          if (idx !== i0) return m
+          const arr = Array.isArray(m.variants) ? m.variants.slice() : [m.content]
+          const vi = typeof m.variantIndex === 'number' ? m.variantIndex : arr.length - 1
+          if (vi >= arr.length) arr.length = vi + 1
+          arr[vi] = errText
+          return { ...m, typing: false, content: errText, variants: arr, variantIndex: vi }
+        })
+      } finally {
+        queueMicrotask(() => scrollToBottom())
+      }
       return
     }
     // For user/system: turn the message into an anchor and generate a fresh assistant reply for the new branch.
