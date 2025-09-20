@@ -1061,25 +1061,51 @@
   }
   /* When editing, preserve user newlines */
   .bubble.editing { white-space: pre-wrap; }
-  /* Basic Markdown styles inside bubbles */
-  .bubble h1, .bubble h2, .bubble h3, .bubble h4, .bubble h5, .bubble h6 {
+  /* Basic Markdown styles inside bubbles (use :global for {@html} content) */
+  .bubble :global(h1), .bubble :global(h2), .bubble :global(h3), .bubble :global(h4), .bubble :global(h5), .bubble :global(h6) {
     margin: 0.2em 0 0.4em;
     line-height: 1.25;
   }
-  .bubble h1 { font-size: 1.35rem; }
-  .bubble h2 { font-size: 1.25rem; }
-  .bubble h3 { font-size: 1.15rem; }
-  .bubble p { margin: 0.2em 0; }
+  .bubble :global(h1) { font-size: 1.35rem; }
+  .bubble :global(h2) { font-size: 1.25rem; }
+  .bubble :global(h3) { font-size: 1.15rem; }
+  .bubble :global(p) { margin: 0.2em 0; }
   /* Normalize list spacing and indent for Markdown lists */
-  .bubble ul, .bubble ol { margin: 0.2em 0; padding-left: 1.2em; }
-  .bubble li { margin: 0.2em 0; }
-  .bubble a { color: var(--accent); text-decoration: underline; }
-  .bubble code { background: color-mix(in srgb, var(--panel), #ffffff 8%); padding: 0 3px; border-radius: 4px; }
-  .bubble pre { background: color-mix(in srgb, var(--panel), #ffffff 6%); padding: 10px; border-radius: 10px; overflow: auto; }
-  .bubble pre code { background: transparent; padding: 0; }
+  /* Indent lists inside the bubble (visible insets) */
+  .bubble :global(ul), .bubble :global(ol) { margin: 0; padding-left: 2em; list-style-position: inside; }
+  .bubble :global(ul) { list-style: disc; }
+  .bubble :global(ol) { list-style: decimal; }
+  .bubble :global(li) { margin: 0.2em 0; }
+  /* Remove extra gap at the start/end of lists */
+  .bubble :global(ul > li:first-child),
+  .bubble :global(ol > li:first-child) { margin-top: 0; }
+  .bubble :global(ul > li:last-child),
+  .bubble :global(ol > li:last-child) { margin-bottom: 0; }
+  .bubble :global(a) { color: var(--accent); text-decoration: underline; }
+  .bubble :global(code) { background: color-mix(in srgb, var(--panel), #ffffff 8%); padding: 0 3px; border-radius: 4px; }
+  .bubble :global(pre) { background: color-mix(in srgb, var(--panel), #ffffff 6%); padding: 10px; border-radius: 10px; overflow: auto; }
+  .bubble :global(pre code) { background: transparent; padding: 0; }
   /* Trim top/bottom margins inside the bubble to avoid extra space */
-  .bubble > :first-child { margin-top: 0; }
-  .bubble > :last-child { margin-bottom: 0; }
+  .bubble :global(p:first-child),
+  .bubble :global(ul:first-child),
+  .bubble :global(ol:first-child),
+  .bubble :global(pre:first-child),
+  .bubble :global(h1:first-child),
+  .bubble :global(h2:first-child),
+  .bubble :global(h3:first-child),
+  .bubble :global(h4:first-child),
+  .bubble :global(h5:first-child),
+  .bubble :global(h6:first-child) { margin-top: 0; }
+  .bubble :global(p:last-child),
+  .bubble :global(ul:last-child),
+  .bubble :global(ol:last-child),
+  .bubble :global(pre:last-child),
+  .bubble :global(h1:last-child),
+  .bubble :global(h2:last-child),
+  .bubble :global(h3:last-child),
+  .bubble :global(h4:last-child),
+  .bubble :global(h5:last-child),
+  .bubble :global(h6:last-child) { margin-bottom: 0; }
   /* Keep bubble look while editing (inline editing) */
   /* .bubble.editing { display: block; max-width: none; width: 100%; padding: 0; background: transparent; box-shadow: none; } */
   .bubble.assistant {
