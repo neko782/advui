@@ -408,6 +408,159 @@
     editingText = ''
     queueMicrotask(() => scrollToBottom())
   }
+  // Replace the current message content in-place (no branching)
+  function applyEditReplace() { commitEdit() }
+
+  // Create a branch for the edited message without generating a new reply
+  function applyEditBranch() {
+    if (editingId == null) return
+    const i = messages.findIndex(m => m.id === editingId)
+    if (i < 0) return
+    const val = String(editingEl?.innerText ?? editingText)
+    const cur = messages[i]
+    // Assistant: add a new variant with edited content and switch to it
+    if (cur.role === 'assistant') {
+      const base = Array.isArray(cur.variants) ? cur.variants.slice() : [cur.content]
+      base.push(val)
+      const vi = base.length - 1
+      messages = messages.map((m, idx) => idx === i ? { ...m, content: val, variants: base, variantIndex: vi } : m)
+      editingId = null
+      editingText = ''
+      queueMicrotask(() => scrollToBottom())
+      return
+    }
+    // For user/system: branch off the most recent assistant anchor before this message.
+    const oldChain = chainFromVisibleUpTo(i)
+    let prevAnchor = -1
+    for (let j = i - 1; j >= 0; j--) {
+      const m = messages[j]
+      if (m && m.role === 'assistant' && Array.isArray(m.variants)) { prevAnchor = j; break }
+    }
+    if (prevAnchor < 0) {
+      // No anchor to branch from — fallback to replace
+      applyEditReplace()
+      return
+    }
+    // Duplicate current variant on the previous assistant to create a new branch selection
+    const anchor = messages[prevAnchor]
+    const aVars = Array.isArray(anchor.variants) ? anchor.variants.slice() : [anchor.content]
+    const curIdx = Math.max(0, Math.min(aVars.length - 1, anchor.variantIndex || 0))
+    aVars.push(aVars[curIdx])
+    const newVi = aVars.length - 1
+    // Update anchor selection to the new variant
+    let arr = messages.slice()
+    arr[prevAnchor] = { ...anchor, variants: aVars, variantIndex: newVi, content: aVars[newVi] }
+    messages = arr
+    // Compute new chain at the edit position after switching variant
+    const newChain = chainFromVisibleUpTo(i)
+    // Split the edited message into two: old content pinned to oldChain, new content pinned to newChain
+    const original = messages[i]
+    const oldPinned = { ...original, branchPath: oldChain }
+    const newMsg = { ...original, id: nextId++, content: val, time: Date.now(), branchPath: newChain }
+    arr = messages.slice()
+    arr[i] = oldPinned
+    arr.splice(i + 1, 0, newMsg)
+    messages = arr
+    editingId = null
+    editingText = ''
+    queueMicrotask(() => scrollToBottom())
+  }
+
+  // Branch and generate a new assistant reply starting after the edited message
+  async function applyEditSend() {
+    if (editingId == null) return
+    const i0 = messages.findIndex(m => m.id === editingId)
+    if (i0 < 0) return
+    const val = String(editingEl?.innerText ?? editingText)
+    const cur = messages[i0]
+    // Assistant: treat as branch-only (new variant) — no follow-up reply generation
+    if (cur.role === 'assistant') {
+      const base = Array.isArray(cur.variants) ? cur.variants.slice() : [cur.content]
+      base.push(val)
+      const vi = base.length - 1
+      messages = messages.map((m, idx) => idx === i0 ? { ...m, content: val, variants: base, variantIndex: vi } : m)
+      editingId = null
+      editingText = ''
+      queueMicrotask(() => scrollToBottom())
+      return
+    }
+
+    // Locate previous assistant anchor to branch from (if any)
+    const oldChain = chainFromVisibleUpTo(i0)
+    let prevAnchor = -1
+    for (let j = i0 - 1; j >= 0; j--) {
+      const m = messages[j]
+      if (m && m.role === 'assistant' && Array.isArray(m.variants)) { prevAnchor = j; break }
+    }
+
+    let arr = messages.slice()
+    if (prevAnchor >= 0) {
+      const anchor = arr[prevAnchor]
+      const aVars = Array.isArray(anchor.variants) ? anchor.variants.slice() : [anchor.content]
+      const curIdx = Math.max(0, Math.min(aVars.length - 1, anchor.variantIndex || 0))
+      aVars.push(aVars[curIdx])
+      const newVi = aVars.length - 1
+      arr[prevAnchor] = { ...anchor, variants: aVars, variantIndex: newVi, content: aVars[newVi] }
+      messages = arr
+    }
+
+    // Compute new chain after possibly switching anchor variant
+    const newChain = chainFromVisibleUpTo(i0)
+
+    // Prepare edited message placement and determine where to insert the reply
+    let insertIndex
+    arr = messages.slice()
+    if (prevAnchor >= 0) {
+      // Split edited message across old/new chains
+      const original = arr[i0]
+      const oldPinned = { ...original, branchPath: oldChain }
+      const newMsg = { ...original, id: nextId++, content: val, time: Date.now(), branchPath: newChain }
+      arr[i0] = oldPinned
+      arr.splice(i0 + 1, 0, newMsg)
+      insertIndex = i0 + 1
+    } else {
+      // No anchor to branch from — replace in place and continue
+      arr[i0] = { ...arr[i0], content: val }
+      insertIndex = i0
+    }
+    messages = arr
+    editingId = null
+    editingText = ''
+
+    // Insert typing placeholder after the edited message (in new chain)
+    const typingMsg = { id: nextId++, role: 'assistant', content: 'typing', time: Date.now(), typing: true }
+    arr = messages.slice()
+    arr.splice(insertIndex + 1, 0, typingMsg)
+    messages = arr
+
+    try {
+      let reply
+      const { apiKey } = settings
+      const history = buildVisibleUpTo(insertIndex + 1)
+        .filter(m => !m.typing)
+        .map(({ role, content }) => ({ role, content }))
+      if (apiKey) {
+        reply = await respond({ messages: history, model: chatModel })
+      } else {
+        const lastUser = [...buildVisibleUpTo(insertIndex + 1)].reverse().find(m => m.role === 'user')
+        reply = generatePlaceholderReply(lastUser?.content || val) +
+          '\n\nTip: Add your OpenAI API key in Settings to get real answers.'
+      }
+      const parentChain = chainFromVisibleUpTo(insertIndex + 1)
+      messages = messages.map(m => (m.id === typingMsg.id
+        ? { ...m, content: reply, typing: false, variants: [reply], variantIndex: 0, branchPathBefore: parentChain }
+        : m))
+    } catch (err) {
+      const msg = err?.message || 'Something went wrong.'
+      const errText = `Error: ${msg}`
+      const parentChain = chainFromVisibleUpTo(insertIndex + 1)
+      messages = messages.map(m => (m.id === typingMsg.id
+        ? { ...m, content: errText, typing: false, variants: [errText], variantIndex: 0, branchPathBefore: parentChain }
+        : m))
+    } finally {
+      queueMicrotask(() => scrollToBottom())
+    }
+  }
   function cancelEdit() {
     editingId = null
     editingText = ''
@@ -584,8 +737,14 @@
           {/if}
           <div class={`actions ${vm.m.role}`}>
             {#if vm.m.id === editingId}
-              <button class="action-btn" onclick={commitEdit} aria-label="Save edit" title="Save">
-                <Icon name="check" size={20} />
+              <button class="action-btn" onclick={applyEditSend} aria-label="Send (branch + reply)" title="Send (branch + reply)">
+                <Icon name="send" size={20} />
+              </button>
+              <button class="action-btn" onclick={applyEditBranch} aria-label="Branch (no reply)" title="Branch (no reply)">
+                <Icon name="call_split" size={20} />
+              </button>
+              <button class="action-btn" onclick={applyEditReplace} aria-label="Replace in current branch" title="Replace in current branch">
+                <Icon name="published_with_changes" size={20} />
               </button>
               <button class="action-btn" onclick={cancelEdit} aria-label="Cancel edit" title="Cancel">
                 <Icon name="close" size={20} />
