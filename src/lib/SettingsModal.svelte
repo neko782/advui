@@ -1,11 +1,15 @@
 <script>
   import { loadSettings, saveSettings } from './settingsStore.js'
+  import { setModelsCache } from './modelsStore.js'
+  import { listModelsWithKey } from './openaiClient.js'
   import Icon from './Icon.svelte'
 
   const props = $props()
 
   let local = $state(loadSettings())
   let revealKey = $state(false)
+  let refreshing = $state(false)
+  let refreshMsg = $state('')
 
   function close() {
     props.onClose?.()
@@ -16,6 +20,25 @@
   }
   function clearKey() {
     local.apiKey = ''
+  }
+
+  async function refreshModelsNow() {
+    refreshMsg = ''
+    if (!local.apiKey) {
+      refreshMsg = 'Enter an API key first.'
+      return
+    }
+    refreshing = true
+    try {
+      const ids = await listModelsWithKey(local.apiKey)
+      setModelsCache(ids)
+      refreshMsg = `Connected ✓ Fetched ${ids.length} models.`
+    } catch (err) {
+      const msg = err?.message || 'Failed to refresh models.'
+      refreshMsg = `Error: ${msg}`
+    } finally {
+      refreshing = false
+    }
   }
 </script>
 
@@ -43,10 +66,16 @@
               {revealKey ? 'Hide' : 'Show'}
             </button>
             <button class="btn" onclick={clearKey} aria-label="Clear key">Clear</button>
+            <button class="btn" onclick={refreshModelsNow} aria-label="Refresh models" disabled={refreshing}>
+              {refreshing ? 'Refreshing…' : 'Refresh'}
+            </button>
           </div>
         </label>
 
         <p class="hint">Your key is stored locally in this browser.</p>
+        {#if refreshMsg}
+          <p class="hint" aria-live="polite">{refreshMsg}</p>
+        {/if}
       </div>
       <footer class="modal-foot">
         <button class="btn" onclick={close}>Cancel</button>

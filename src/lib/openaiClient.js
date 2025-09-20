@@ -36,6 +36,31 @@ export async function respond({ prompt, messages, model }) {
   return extractOutputText(res)
 }
 
+// List available models via the official SDK
+export async function listModels() {
+  const client = await getClient()
+  if (!client) throw new Error('Missing OpenAI API key. Set it in Settings.')
+  if (!client?.models?.list) throw new Error('OpenAI SDK does not support listing models.')
+  const res = await client.models.list()
+  const items = Array.isArray(res?.data) ? res.data : []
+  // Return model ids only (strings)
+  return items
+    .map(m => (typeof m?.id === 'string' ? m.id : null))
+    .filter(Boolean)
+}
+
+// List models using a provided API key (without saving it)
+export async function listModelsWithKey(apiKey) {
+  if (!apiKey) throw new Error('Missing OpenAI API key.')
+  const client = new OpenAI({ apiKey, dangerouslyAllowBrowser: true })
+  if (!client?.models?.list) throw new Error('OpenAI SDK does not support listing models.')
+  const res = await client.models.list()
+  const items = Array.isArray(res?.data) ? res.data : []
+  return items
+    .map(m => (typeof m?.id === 'string' ? m.id : null))
+    .filter(Boolean)
+}
+
 function extractOutputText(res) {
   // SDK convenience property
   if (res && typeof res.output_text === 'string' && res.output_text.length) return res.output_text

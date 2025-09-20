@@ -3,6 +3,7 @@
   import Icon from './Icon.svelte'
   import SettingsModal from './SettingsModal.svelte'
   import { loadSettings } from './settingsStore.js'
+  import { ensureModels, loadModelsCache } from './modelsStore.js'
   import { respond } from './openaiClient.js'
 
   let messages = $state([])
@@ -13,6 +14,11 @@
   let settings = $state(loadSettings())
   // Per-chat setting: model (default from global)
   let chatModel = $state(settings.model || 'gpt-4o-mini')
+  // Per-chat settings popover open state
+  let chatSettingsOpen = $state(false)
+  let chatSettingsEl
+  // Cached models (for datalist)
+  let modelIds = $state(loadModelsCache().ids || [])
   let editingId = $state(null)
   let editingText = $state('')
   let editingEl
@@ -73,6 +79,19 @@
 
   // Initialize on load
   addSystemPrologue()
+  // Load models once if not cached
+  import { onMount } from 'svelte'
+  onMount(async () => {
+    try {
+      const cached = loadModelsCache()
+      if (!cached.ids?.length) {
+        const fresh = await ensureModels()
+        modelIds = fresh.ids || []
+      } else {
+        modelIds = cached.ids
+      }
+    } catch {}
+  })
 
   function autoGrow(el) {
     if (!el) return
@@ -173,6 +192,40 @@
       send()
     }
   }
+  // Toggle per-chat settings popover (click to open/close)
+  function toggleChatSettings() {
+    chatSettingsOpen = !chatSettingsOpen
+  }
+  function closeChatSettings() { chatSettingsOpen = false }
+  // Close chat settings when clicking outside or pressing Escape
+  $effect(() => {
+    function onDocClick(e) {
+      try {
+        const el = chatSettingsEl
+        if (!el) return
+        if (chatSettingsOpen && !el.contains(e.target)) {
+          chatSettingsOpen = false
+        }
+      } catch {}
+    }
+    function onKeydown(e) {
+      if (e.key === 'Escape' && chatSettingsOpen) {
+        chatSettingsOpen = false
+      }
+    }
+    window.addEventListener('click', onDocClick, true)
+    window.addEventListener('keydown', onKeydown)
+    return () => {
+      window.removeEventListener('click', onDocClick, true)
+      window.removeEventListener('keydown', onKeydown)
+    }
+  })
+  // When opening the chat settings, refresh datalist from cache (in case Settings changed it)
+  $effect(() => {
+    if (chatSettingsOpen) {
+      try { modelIds = loadModelsCache().ids || [] } catch {}
+    }
+  })
   // Message actions
   async function copyMessage(text) {
     try {
@@ -392,15 +445,22 @@
   <footer class="composer">
     <div class="composer-inner">
       <!-- Per-chat settings (before input) -->
-      <div class="send-group chat-settings-group" aria-haspopup="menu" title="Chat settings">
-        <button class="icon-btn" aria-label="Chat settings">
+      <div class={`send-group chat-settings-group ${chatSettingsOpen ? 'open' : ''}`} aria-haspopup="menu" title="Chat settings" bind:this={chatSettingsEl}>
+        <button class="icon-btn" aria-label="Chat settings" onclick={toggleChatSettings}>
           <!-- Different icon from top settings -->
           <Icon name="tune" size={22} />
         </button>
         <div class="send-menu chat-settings-menu" role="menu" aria-label="Chat settings">
           <div class="menu-section">
             <div class="menu-label">Model</div>
-            <input type="text" placeholder="gpt-4o-mini" bind:value={chatModel} aria-label="Model" />
+            <input type="text" placeholder="gpt-4o-mini" bind:value={chatModel} aria-label="Model" list="model-suggestions" />
+            {#if modelIds?.length}
+              <datalist id="model-suggestions">
+                {#each modelIds as mid}
+                  <option value={mid}></option>
+                {/each}
+              </datalist>
+            {/if}
           </div>
         </div>
       </div>
@@ -858,10 +918,10 @@
     right: auto;
     transform: translateY(6px);
   }
-  .chat-settings-group:hover .chat-settings-menu,
-  .chat-settings-group:focus-within .chat-settings-menu {
-    transform: translateY(0);
-  }
+  /* Open on click (not hover): override default hover behavior */
+  .chat-settings-group:not(.open) .chat-settings-menu { opacity: 0 !important; pointer-events: none !important; transform: translateY(6px) !important; }
+  .chat-settings-group.open { z-index: 20; }
+  .chat-settings-group.open .chat-settings-menu { opacity: 1 !important; pointer-events: auto !important; transform: translateY(0) !important; }
   /* Hover bridge above the button to the menu (aligned for left-anchored menu) */
   .chat-settings-group::before {
     right: auto;
