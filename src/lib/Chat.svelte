@@ -640,7 +640,7 @@
     const i = messages.findIndex(m => m.id === id)
     if (i < 0) return
     const m = messages[i]
-    if (m.role !== 'assistant' || !Array.isArray(m.variants) || !m.variants.length) return
+    if (!isAnchor(m) || !Array.isArray(m.variants) || !m.variants.length) return
     const len = m.variants.length
     const cur = typeof m.variantIndex === 'number' ? m.variantIndex : 0
     const next = Math.max(0, Math.min(len - 1, cur + delta))
@@ -740,16 +740,16 @@
                 <Icon name="close" size={20} />
               </button>
             {:else}
+              {#if Array.isArray(vm.m.variants) && vm.m.variants.length > 1}
+                <button class="action-btn" onclick={() => changeVariant(vm.m.id, -1)} aria-label="Previous variant" title="Previous" disabled={vm.m.typing || (vm.m.variantIndex || 0) <= 0}>
+                  <Icon name="chevron_left" size={20} />
+                </button>
+                <span class="variant-counter" aria-live="polite">{(vm.m.variantIndex || 0) + 1}/{vm.m.variants.length}</span>
+                <button class="action-btn" onclick={() => changeVariant(vm.m.id, +1)} aria-label="Next variant" title="Next" disabled={vm.m.typing || (vm.m.variantIndex || 0) >= (vm.m.variants.length - 1)}>
+                  <Icon name="chevron_right" size={20} />
+                </button>
+              {/if}
               {#if vm.m.role === 'assistant'}
-                {#if Array.isArray(vm.m.variants) && vm.m.variants.length > 1}
-                  <button class="action-btn" onclick={() => changeVariant(vm.m.id, -1)} aria-label="Previous variant" title="Previous" disabled={vm.m.typing || (vm.m.variantIndex || 0) <= 0}>
-                    <Icon name="chevron_left" size={20} />
-                  </button>
-                  <span class="variant-counter" aria-live="polite">{(vm.m.variantIndex || 0) + 1}/{vm.m.variants.length}</span>
-                  <button class="action-btn" onclick={() => changeVariant(vm.m.id, +1)} aria-label="Next variant" title="Next" disabled={vm.m.typing || (vm.m.variantIndex || 0) >= (vm.m.variants.length - 1)}>
-                    <Icon name="chevron_right" size={20} />
-                  </button>
-                {/if}
                 <button class="action-btn" onclick={() => refreshAssistant(vm.m.id)} aria-label="Regenerate response" title="Regenerate" disabled={vm.m.typing}>
                   <Icon name="autorenew" size={20} />
                 </button>
