@@ -93,7 +93,7 @@
   .sidebar.collapsed .brand { display: none; }
   .sidebar.collapsed .chat-list { display: none; }
   .top-nav { display: grid; gap: 6px; padding: 6px 8px 2px; }
-  .nav-item { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; padding: 8px 10px; border: 0; border-radius: 8px; background: transparent; color: var(--text); }
+  .nav-item { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; padding: 8px 10px 8px 9px; border: 0; border-radius: 8px; background: transparent; color: var(--text); }
   .nav-item:hover { background: var(--panel); }
   .nav-item .label { white-space: nowrap; }
   .sidebar.collapsed .nav-item .label { display: none; }
