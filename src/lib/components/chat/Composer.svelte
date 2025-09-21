@@ -89,7 +89,6 @@
     align-items: center;
     gap: 14px;
   }
-  .icon-btn { border: 1px solid var(--border); border-radius: 10px; background: transparent; min-width: 44px; height: 44px; display: grid; place-items: center; line-height: 1; }
   .composer-input {
     resize: none;
     width: 100%;

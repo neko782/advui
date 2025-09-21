@@ -1,14 +1,11 @@
 <script>
   // Svelte 5 runes API
-  import Icon from './Icon.svelte'
   import SettingsModal from './SettingsModal.svelte'
   import { loadSettings } from './settingsStore.js'
   import { ensureModels, loadModelsCache } from './modelsStore.js'
   import { respond } from './openaiClient.js'
-  import { autoGrow, placeCaretAtEnd } from './utils/dom.js'
+  // dom utils used within child components
   import { copyText as copyToClipboard } from './utils/clipboard.js'
-  import { formatRole } from './utils/format.js'
-  import { renderMarkdown } from './utils/markdown.js'
   import TopBar from './components/chat/TopBar.svelte'
   import MessageList from './components/chat/MessageList.svelte'
   import Composer from './components/chat/Composer.svelte'
@@ -23,12 +20,11 @@
   let chatModel = $state(loadSettings().model || 'gpt-4o-mini')
   // Per-chat settings popover open state
   let chatSettingsOpen = $state(false)
-  let chatSettingsEl
   // Cached models (for datalist)
   let modelIds = $state(loadModelsCache().ids || [])
   let editingId = $state(null)
   let editingText = $state('')
-  let editingEl
+  // editing DOM is handled in MessageBubble
   // Branching helpers
   import { isAnchor, buildVisible as _buildVisible, buildVisibleUpTo as _buildVisibleUpTo, chainFromVisibleUpTo as _chainFromVisibleUpTo, currentVisibleChain as _currentVisibleChain, injectAnchorToken } from './branching.js'
   function buildVisible() { return _buildVisible(messages) }
@@ -69,16 +65,7 @@
       cancelEdit()
     }
   }
-  function onEditablePaste(e) {
-    // Force paste as plain text
-    try {
-      const text = e.clipboardData?.getData('text/plain')
-      if (text != null) {
-        e.preventDefault()
-        document.execCommand('insertText', false, text)
-      }
-    } catch {}
-  }
+  // paste handling occurs inside MessageBubble while editing
 
   // Seed each chat with a system prologue
   function addSystemPrologue() {
@@ -125,8 +112,7 @@
     const firstMsg = { id: nextId++, role, content: text, time: Date.now(), branchPath: parentChain }
     messages = [...messages, firstMsg]
     input = ''
-    // Refresh input height after clearing
-    queueMicrotask(() => autoGrow(inputEl))
+    // Composer handles input auto-grow on its own
 
     // Typing placeholder
     const typingMsg = { id: nextId++, role: 'assistant', content: 'typing', time: Date.now(), typing: true }
@@ -171,7 +157,6 @@
       : { id: nextId++, role, content: text, time: Date.now(), branchPath: parentChain }
     messages = [...messages, direct]
     input = ''
-    queueMicrotask(() => autoGrow(inputEl))
     queueMicrotask(() => scrollToBottom())
   }
 
@@ -189,45 +174,17 @@
   }
 
   let listCmp
-  let inputEl
   function scrollToBottom() {
     try { listCmp?.scrollToBottom?.() } catch {}
   }
 
-  function onKey(e) {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
-      send()
-    }
-  }
+  // keyboard handling lives in Composer
   // Toggle per-chat settings popover (click to open/close)
   function toggleChatSettings() {
     chatSettingsOpen = !chatSettingsOpen
   }
   function closeChatSettings() { chatSettingsOpen = false }
-  // Close chat settings when clicking outside or pressing Escape
-  $effect(() => {
-    function onDocClick(e) {
-      try {
-        const el = chatSettingsEl
-        if (!el) return
-        if (chatSettingsOpen && !el.contains(e.target)) {
-          chatSettingsOpen = false
-        }
-      } catch {}
-    }
-    function onKeydown(e) {
-      if (e.key === 'Escape' && chatSettingsOpen) {
-        chatSettingsOpen = false
-      }
-    }
-    window.addEventListener('click', onDocClick, true)
-    window.addEventListener('keydown', onKeydown)
-    return () => {
-      window.removeEventListener('click', onDocClick, true)
-      window.removeEventListener('keydown', onKeydown)
-    }
-  })
+  // Outside click + Escape handled in ChatSettingsPopover
   // When opening the chat settings, refresh datalist from cache (in case Settings changed it)
   $effect(() => {
     if (chatSettingsOpen) {
@@ -289,18 +246,11 @@
     if (!msg || msg.typing) return
     editingId = id
     editingText = msg.content || ''
-    // Focus bubble and set its text inline
-    queueMicrotask(() => {
-      if (editingEl) {
-        editingEl.textContent = editingText
-        editingEl.focus()
-        placeCaretAtEnd(editingEl)
-      }
-    })
+    // Focus/caret handled by MessageBubble when entering edit mode
   }
   function commitEdit() {
     if (editingId == null) return
-    const val = String(editingEl?.innerText ?? editingText)
+    const val = String(editingText)
     messages = messages.map(m => {
       if (m.id !== editingId) return m
       if (m.role === 'assistant' && Array.isArray(m.variants) && typeof m.variantIndex === 'number') {
@@ -323,7 +273,7 @@
     if (editingId == null) return
     const i = messages.findIndex(m => m.id === editingId)
     if (i < 0) return
-    const val = String(editingEl?.innerText ?? editingText)
+    const val = String(editingText)
     const cur = messages[i]
     // Assistant: add a new variant with edited content and switch to it
     if (cur.role === 'assistant') {
@@ -357,7 +307,7 @@
     if (editingId == null) return
     const i0 = messages.findIndex(m => m.id === editingId)
     if (i0 < 0) return
-    const val = String(editingEl?.innerText ?? editingText)
+    const val = String(editingText)
     const cur = messages[i0]
     // Assistant: branch (selector on assistant), replace with edited content, then generate a new assistant after it
     if (cur.role === 'assistant') {
@@ -459,16 +409,6 @@
   function cancelEdit() {
     editingId = null
     editingText = ''
-  }
-  // small sanitizer to avoid HTML injection in placeholder echo
-  function sanitize(text) {
-    return String(text)
-      .replaceAll('&', '&amp;')
-      .replaceAll('<', '&lt;')
-      .replaceAll('>', '&gt;')
-      .replaceAll('"', '&quot;')
-      .replaceAll("'", '&#39;')
-      .replaceAll('\n', '<br/>')
   }
 
   
@@ -703,419 +643,28 @@
     overflow-x: hidden;
   }
 
-  .topbar {
-    position: sticky;
-    top: 0;
-    left: 0;
-    right: 0;
-    z-index: 5;
-    background: transparent;
-  }
-  .topbar-inner {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-    padding: 10px 0;
-    max-width: var(--page-max);
-    margin-inline: auto;
-    /* no background/border here — keep only title box + button */
-    padding-inline: 0; /* chat-shell already provides horizontal gutter */
-  }
-  .titlebox {
-    font-weight: 600;
-    letter-spacing: 0.2px;
-    padding: 0 12px;
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    background: var(--bg);
-    flex: 1;
-    min-height: 44px;
-    display: flex;
-    align-items: center;
-  }
-  .icon-btn {
-    flex: none;
-    min-width: 44px;
-    height: 44px;
-    display: grid;
-    place-items: center;
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    background: transparent;
-    color: var(--text);
-    line-height: 1;
-  }
-  .icon-btn :global(.icon) { font-size: 22px; }
+  /* Top bar styles live in TopBar.svelte */
 
-  .messages {
-    overflow: auto;
-    /* vertical breathing room; horizontal handled by shell */
-    padding: 16px 0 8px;
-    display: grid;
-    align-content: start;
-    gap: 8px;
-  }
-  .row {
-    display: flex;
-    max-width: var(--page-max);
-    margin-inline: auto;
-    width: 100%;
-    padding-inline: 0;
-  }
-  .row.user { justify-content: flex-end; }
-  .row.assistant { justify-content: flex-start; }
-  .row.system { justify-content: center; }
+  /* .messages block removed: styled in MessageList.svelte */
+  /* .row* classes removed: styled in MessageItem.svelte */
 
-  /* Ensure a consistent line length for message content */
-  /* Use grid so bubble and actions share the same content-width column */
-  .stack { display: grid; grid-auto-flow: row; grid-auto-rows: max-content; grid-template-columns: minmax(0, 1fr); gap: 2px; width: min(720px, 92%); }
-  /* Keep width consistent while editing (inline) */
-  /* .stack.editing { width: 100%; max-width: var(--page-max); } */
-  .stack.assistant { justify-content: start; }
-  .stack.user { justify-content: end; }
-  /* System rows can expand up to full chat width but not forced */
-  .stack.system { justify-content: center; width: 100%; max-width: var(--page-max); }
+  /* .stack* classes removed: styled in MessageItem.svelte */
 
-  .meta { font-size: .8rem; color: var(--muted); padding: 0 2px; margin-bottom: 6px; }
-  .meta.user { justify-self: end; }
-  .meta.assistant { justify-self: start; }
-  .meta.system { justify-self: center; text-align: center; }
+  /* .meta* classes removed: styled in MessageMeta.svelte */
 
-  /* Role badge as a textish ghost button */
-  /* Now reusing .send-group + .send-menu for the dropdown behavior */
-  .role-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 4px 10px;
-    border: 1px solid var(--border);
-    border-radius: 999px;
-    background: transparent;
-    color: var(--muted);
-    line-height: 1.2;
-    font: inherit;
-    cursor: default;
-    transition: color .12s ease, border-color .12s ease, background-color .12s ease;
-  }
-  .role-badge:hover, .role-badge:focus-visible {
-    color: var(--text);
-    border-color: color-mix(in srgb, var(--border), #ffffff 16%);
-    background: transparent;
-  }
-  /* Message role menu: open DOWN and sit above all UI */
-  .meta .send-group { z-index: 1000; }
-  .meta .send-group:hover,
-  .meta .send-group:focus-within { z-index: 1000; }
-  .meta .send-group .send-menu {
-    top: calc(100% + 8px);
-    bottom: auto;
-    z-index: 1000; /* above composer/topbar */
-    transform: translateY(-6px); /* animate up into place */
-  }
-  /* Hover bridge below the trigger (since menu opens downward)
-     Make it side-aware so it doesn't create a hover zone on the wrong side. */
-  .meta .send-group::before {
-    top: 100%;
-    bottom: auto;
-    width: 180px; /* roughly matches menu width without overshooting */
-    height: 12px;
-    right: 0; /* default for right-anchored (user) messages */
-    left: auto;
-  }
-  /* Assistant messages anchor menu to the left; bridge should align left too */
-  .stack.assistant .meta .send-group::before { left: 0; right: auto; }
-  /* Centered (system) rows: center the bridge to match centered menu */
-  .stack.system .meta .send-group::before { left: 50%; right: auto; transform: translateX(-50%); }
-  /* Side-aware anchoring for the reused .send-menu in message meta */
-  .stack.assistant .meta .send-group .send-menu { left: 0; right: auto; }
-  .stack.user .meta .send-group .send-menu { right: 0; left: auto; }
-  .stack.system .meta .send-group .send-menu { left: 50%; right: auto; transform: translate(-50%, -6px); }
-  .stack.system .meta .send-group:hover .send-menu,
-  .stack.system .meta .send-group:focus-within .send-menu { transform: translate(-50%, 0); }
+  /* Role badge/menu styles removed: styled in MessageMeta.svelte */
 
-  .bubble {
-    /* Hug content up to the stack's max width */
-    display: block;
-    max-width: 100%;
-    padding: 10px var(--bubble-pad-x);
-    border-radius: 14px;
-    border: none;
-    /* For rendered Markdown, rely on block/inline flow */
-    white-space: normal;
-    overflow-wrap: anywhere; /* handles long unbroken strings */
-    word-break: break-word;  /* fallback for older engines */
-    line-height: 1.4;
-    font-size: 0.98rem;
-    box-shadow: 0 1px 0 rgba(0,0,0,0.04);
-  }
-  /* When editing, preserve user newlines */
-  .bubble.editing { white-space: pre-wrap; }
-  /* Basic Markdown styles inside bubbles (use :global for {@html} content) */
-  .bubble :global(h1), .bubble :global(h2), .bubble :global(h3), .bubble :global(h4), .bubble :global(h5), .bubble :global(h6) {
-    margin: 0.2em 0 0.4em;
-    line-height: 1.25;
-  }
-  .bubble :global(h1) { font-size: 1.35rem; }
-  .bubble :global(h2) { font-size: 1.25rem; }
-  .bubble :global(h3) { font-size: 1.15rem; }
-  .bubble :global(p) { margin: 0.2em 0; }
-  /* Extra spacing only between adjacent paragraphs */
-  .bubble :global(p + p) { margin-top: 0.8em; }
-  /* Normalize list spacing and indent for Markdown lists */
-  /* Indent lists inside the bubble (visible insets) */
-  .bubble :global(ul), .bubble :global(ol) { margin: 0; padding-left: 2em; list-style-position: inside; }
-  .bubble :global(ul) { list-style: disc; }
-  .bubble :global(ol) { list-style: decimal; }
-  .bubble :global(li) { margin: 0.2em 0; }
-  /* Remove extra gap at the start/end of lists */
-  .bubble :global(ul > li:first-child),
-  .bubble :global(ol > li:first-child) { margin-top: 0; }
-  .bubble :global(ul > li:last-child),
-  .bubble :global(ol > li:last-child) { margin-bottom: 0; }
-  .bubble :global(a) { color: var(--accent); text-decoration: underline; }
-  .bubble :global(code) { background: color-mix(in srgb, var(--panel), #ffffff 8%); padding: 0 3px; border-radius: 4px; }
-  .bubble :global(pre) { background: color-mix(in srgb, var(--panel), #ffffff 6%); padding: 10px; border-radius: 10px; overflow: auto; }
-  .bubble :global(pre code) { background: transparent; padding: 0; }
-  /* Trim top/bottom margins inside the bubble to avoid extra space */
-  .bubble :global(p:first-child),
-  .bubble :global(ul:first-child),
-  .bubble :global(ol:first-child),
-  .bubble :global(pre:first-child),
-  .bubble :global(h1:first-child),
-  .bubble :global(h2:first-child),
-  .bubble :global(h3:first-child),
-  .bubble :global(h4:first-child),
-  .bubble :global(h5:first-child),
-  .bubble :global(h6:first-child) { margin-top: 0; }
-  .bubble :global(p:last-child),
-  .bubble :global(ul:last-child),
-  .bubble :global(ol:last-child),
-  .bubble :global(pre:last-child),
-  .bubble :global(h1:last-child),
-  .bubble :global(h2:last-child),
-  .bubble :global(h3:last-child),
-  .bubble :global(h4:last-child),
-  .bubble :global(h5:last-child),
-  .bubble :global(h6:last-child) { margin-bottom: 0; }
-  /* Keep bubble look while editing (inline editing) */
-  /* .bubble.editing { display: block; max-width: none; width: 100%; padding: 0; background: transparent; box-shadow: none; } */
-  .bubble.assistant {
-    background: transparent;
-  }
-  .bubble.user { background: var(--user); color: var(--text); }
-  /* Align bubbles within the grid column */
-  .bubble.assistant { justify-self: start; }
-  .bubble.user { justify-self: end; }
-  .bubble.system { justify-self: center; }
-  .bubble.system { background: transparent; color: var(--muted); border: 1px dashed var(--border); }
-  /* Keep system bubble width while editing */
-  /* .bubble.system.editing { display: block; width: 100%; max-width: none; padding: 0; background: transparent; box-shadow: none; } */
+  /* Bubble styles removed: styled in MessageBubble.svelte */
 
-  /* Inline bubble editor — looks like text inside the bubble */
-  .bubble-editor {
-    width: 100%;
-    box-sizing: border-box;
-    display: block;
-    resize: none;
-    min-height: 28px;
-    height: 28px; /* autoGrow adjusts */
-    max-height: 240px;
-    overflow: hidden;
-    padding: 0; /* use the bubble's own padding */
-    border: none;
-    border-radius: 0;
-    background: transparent;
-    color: inherit;
-    line-height: inherit;
-    font: inherit;
-  }
+  /* Bubble editor styles removed: handled in MessageBubble.svelte */
 
-  .actions { display: flex; gap: 6px; margin-top: 6px; }
-  /* Align actions with bubble edges by sharing the same grid column */
-  .actions.user { justify-self: end; }
-  .actions.assistant { justify-self: start; }
-  .actions.system { justify-self: center; }
-  .action-btn {
-    width: 28px;
-    height: 28px;
-    display: grid;
-    place-items: center;
-    color: var(--muted);
-    background: transparent;
-    border: none;
-    border-radius: 8px;
-    line-height: 1;
-    padding: 0;
-    cursor: default;
-    transition: color .15s ease;
-  }
-  .action-btn:hover { color: #ffffff; }
-  .action-btn:focus-visible { color: #ffffff; }
-  .action-btn:disabled { opacity: .5; cursor: not-allowed; }
-  .variant-counter { align-self: center; font-size: .8rem; color: var(--muted); min-width: 36px; text-align: center; }
+  /* Action row styles removed: styled in MessageActions.svelte */
 
-  .composer {
-    position: sticky;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    z-index: 5;
-    background: transparent;
-  }
-  .composer-inner {
-    max-width: var(--page-max);
-    margin-inline: auto;
-    padding: 12px 0;
-    display: grid;
-    grid-template-columns: auto 1fr auto auto;
-    align-items: center;
-    gap: 14px; /* a bit more spacing between controls */
-  }
-  .composer-input {
-    resize: none;
-    width: 100%;
-    min-height: 44px;
-    height: 44px; /* start at 44px */
-    max-height: 240px;
-    overflow: hidden; /* avoid showing scrollbar until needed */
-    padding: 12px; /* simple padding; button is now separate */
-    border-radius: 12px;
-    border: 1px solid var(--border);
-    background: var(--bg);
-    color: var(--text);
-    line-height: 1.35;
-    font: inherit;
-    box-sizing: border-box;
-  }
-  .float-btn {
-    position: static;
-    width: 44px;
-    height: 44px;
-    display: grid;
-    place-items: center;
-    border-radius: 10px;
-    border: none;
-    background: var(--accent);
-    color: #fff;
-    line-height: 1;
-    transition: background-color .15s ease, color .15s ease, border-color .15s ease, opacity .15s ease;
-  }
-  .float-btn :global(.icon) { font-size: 22px; }
-  .float-btn:disabled {
-    background: #9ca3af;
-    border-color: transparent;
-    color: #ffffff;
-    cursor: not-allowed;
-  }
+  /* Composer styles removed: styled in Composer.svelte */
 
-  /* Send-as hover menu */
-  .send-group { position: relative; display: grid; place-items: center; z-index: 0; }
-  /* Ensure the active group's hover bridge/menu sits above neighbors */
-  .send-group:hover,
-  .send-group:focus-within { z-index: 20; }
-  /* Hover bridge to prevent flicker when moving from button to menu */
-  .send-group::before {
-    content: '';
-    position: absolute;
-    right: 0;
-    bottom: 100%;
-    /* Wide enough to cover the menu width so hover doesn't drop */
-    width: 220px;
-    /* Taller than the vertical gap so there is no dead zone */
-    height: 12px;
-  }
-  .send-menu {
-    position: absolute;
-    /* 10px gap above the button */
-    bottom: calc(100% + 10px);
-    right: 0;
-    display: grid;
-    gap: 6px;
-    padding: 8px;
-    background: var(--panel);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    box-shadow: var(--float-shadow);
-    opacity: 0;
-    transform: translateY(6px);
-    transition: opacity .12s ease, transform .12s ease;
-    pointer-events: none;
-    min-width: 160px;
-    z-index: 10;
-  }
-  .send-group:hover .send-menu,
-  .send-group:focus-within .send-menu { opacity: 1; transform: translateY(0); pointer-events: auto; }
-  .menu-item {
-    width: 100%;
-    text-align: left;
-    background: transparent;
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    color: var(--text);
-    padding: 8px 10px;
-    font: inherit;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-  .menu-item:disabled { opacity: .6; cursor: not-allowed; }
+  /* Send menu styles removed: styled where used */
 
-  /* Per-chat settings popover */
-  .chat-settings-menu { min-width: 260px; gap: 12px; padding: 12px; }
-  .chat-settings-menu .menu-section { display: grid; gap: 6px; }
-  .chat-settings-menu .menu-label { font-size: .9rem; color: var(--muted); }
-  .chat-settings-menu input {
-    width: 100%;
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 10px 12px;
-    background: var(--bg);
-    color: var(--text);
-    font: inherit;
-    box-sizing: border-box;
-  }
+  /* Per-chat settings menu styles removed: styled in ChatSettingsPopover.svelte */
 
-  /* Per-chat settings: open UP but slightly to the RIGHT */
-  .chat-settings-group .chat-settings-menu {
-    top: auto;
-    bottom: calc(100% + 10px);
-    left: 8px;   /* nudge to the right of the button */
-    right: auto;
-    transform: translateY(6px);
-  }
-  /* Open on click (not hover): override default hover behavior */
-  .chat-settings-group:not(.open) .chat-settings-menu { opacity: 0 !important; pointer-events: none !important; transform: translateY(6px) !important; }
-  .chat-settings-group.open { z-index: 20; }
-  .chat-settings-group.open .chat-settings-menu { opacity: 1 !important; pointer-events: auto !important; transform: translateY(0) !important; }
-  /* Hover bridge above the button to the menu (aligned for left-anchored menu) */
-  .chat-settings-group::before {
-    right: auto;
-    left: 0;          /* bridge from left edge so it covers the menu area */
-    bottom: 100%;
-    top: auto;
-    width: 220px;     /* wide enough to span the menu */
-    height: 12px;     /* gap height */
-  }
-
-  /* Typing dots */
-  .dots {
-    display: inline-flex;
-    gap: 6px;
-    align-items: center;
-  }
-  .dots i {
-    width: 6px; height: 6px;
-    display: inline-block;
-    background: currentColor;
-    opacity: 0.5;
-    border-radius: 999px;
-    animation: pop 1.2s infinite ease-in-out;
-  }
-  .dots i:nth-child(2) { animation-delay: .15s; }
-  .dots i:nth-child(3) { animation-delay: .30s; }
-  @keyframes pop {
-    0%, 80%, 100% { transform: translateY(0); opacity: .45 }
-    40% { transform: translateY(-3px); opacity: .9 }
-  }
+  /* Typing indicator styles removed: styled in MessageBubble.svelte */
 </style>

@@ -43,7 +43,7 @@
 </script>
 
 {#if props.open}
-  <div class="backdrop" onclick={close}></div>
+  <button type="button" class="backdrop" aria-label="Close settings overlay" onclick={close}></button>
   <div class="modal" role="dialog" aria-modal="true" aria-label="Settings">
     <div class="panel">
       <header class="modal-head">
@@ -90,6 +90,8 @@
     position: fixed; inset: 0;
     background: rgba(0,0,0,0.5);
     z-index: 1000;
+    border: 0;
+    padding: 0;
   }
   .modal {
     position: fixed; inset: 0;

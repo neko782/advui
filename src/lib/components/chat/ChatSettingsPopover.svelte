@@ -1,5 +1,4 @@
 <script>
-  import SendMenu from '../common/SendMenu.svelte'
   const props = $props()
   let root
 
@@ -80,4 +79,3 @@
   .chat-settings-group.open .chat-settings-menu { opacity: 1; pointer-events: auto; transform: translateY(0); }
   .chat-settings-group::before { content: ''; position: absolute; left: 0; bottom: 100%; width: 220px; height: 12px; }
 </style>
-
