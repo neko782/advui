@@ -16,40 +16,42 @@
         <Icon name="menu" size={20} />
       </button>
       {#if props.open}
-        <div class="brand">Chats</div>
+        <div class="brand">AI Chat</div>
       {/if}
     </div>
 
     {#if props.open}
-    <!-- Primary nav actions -->
-    <nav class="top-nav" aria-label="Primary">
-      <button class="nav-item" onclick={() => props.onNewChat?.()} title="New chat" aria-label="New chat">
-        <Icon name="edit_square" size={20} />
-        <span class="label">New chat</span>
-      </button>
-      <!-- Additional actions could live here (search/library/etc) -->
-    </nav>
-
-    <!-- Chat list as simple ghost-text buttons -->
-    <div class="section-label">Chats</div>
-    <nav class="chat-list" aria-label="Chats">
-      {#each (props.chats || []) as c (c.id)}
-        <button
-          class="chat-link {props.selectedId === c.id ? 'active' : ''}"
-          title={c.title || 'Chat'}
-          onclick={() => props.onSelect?.(c.id)}
-        >
-          <span class="chat-title">{c.title || 'New Chat'}</span>
+    <div class="side-body">
+      <!-- Primary nav actions -->
+      <nav class="top-nav" aria-label="Primary">
+        <button class="nav-item" onclick={() => props.onNewChat?.()} title="New chat" aria-label="New chat">
+          <Icon name="edit_square" size={20} />
+          <span class="label">New chat</span>
         </button>
-      {/each}
-    </nav>
+        <!-- Additional actions could live here (search/library/etc) -->
+      </nav>
 
-    <!-- Footer actions pinned at the bottom -->
-    <div class="side-footer">
-      <button class="nav-item" onclick={() => props.onOpenSettings?.()} title="Settings" aria-label="Settings">
-        <Icon name="settings" size={20} />
-        <span class="label">Settings</span>
-      </button>
+      <!-- Chat list as simple ghost-text buttons -->
+      <div class="section-label">AI Chat</div>
+      <nav class="chat-list" aria-label="AI Chat">
+        {#each (props.chats || []) as c (c.id)}
+          <button
+            class="chat-link {props.selectedId === c.id ? 'active' : ''}"
+            title={c.title || 'Chat'}
+            onclick={() => props.onSelect?.(c.id)}
+          >
+            <span class="chat-title">{c.title || 'New Chat'}</span>
+          </button>
+        {/each}
+      </nav>
+
+      <!-- Footer actions pinned at the bottom -->
+      <div class="side-footer">
+        <button class="nav-item" onclick={() => props.onOpenSettings?.()} title="Settings" aria-label="Settings">
+          <Icon name="settings" size={20} />
+          <span class="label">Settings</span>
+        </button>
+      </div>
     </div>
     {/if}
   </div>
@@ -87,6 +89,7 @@
     }
   }
   .sidebar-inner { height: 100%; display: grid; grid-template-rows: auto 1fr auto; }
+  .side-body { display: flex; flex-direction: column; min-height: 0; }
   .side-header { display: flex; align-items: center; gap: 8px; padding: 8px; }
   .brand { font-weight: 600; padding: 6px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); }
   .icon-btn { min-width: 36px; height: 36px; display: grid; place-items: center; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); color: var(--text); }
@@ -99,7 +102,7 @@
   .sidebar.collapsed .nav-item .label { display: none; }
 
   .section-label { font-size: .85rem; color: var(--muted); padding: 8px 12px 4px; }
-  .chat-list { display: grid; gap: 2px; padding: 0 6px 10px; overflow: auto; align-content: start; }
+  .chat-list { display: grid; gap: 2px; padding: 0 6px 10px; overflow: auto; align-content: start; flex: 1; min-height: 0; }
   .chat-link { text-align: left; display: block; width: 100%; padding: 6px 10px; border: 0; background: transparent; color: var(--muted); border-radius: 8px; font: inherit; }
   .chat-link:hover { background: var(--panel); color: var(--text); }
   .chat-link.active { color: var(--text); }

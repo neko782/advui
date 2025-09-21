@@ -6,7 +6,6 @@
   import { getChat as loadChatById, saveChatContent } from './chatsStore.js'
   // dom utils used within child components
   import { copyText as copyToClipboard } from './utils/clipboard.js'
-  import TopBar from './components/chat/TopBar.svelte'
   import MessageList from './components/chat/MessageList.svelte'
   import Composer from './components/chat/Composer.svelte'
   const props = $props()
@@ -703,8 +702,6 @@
 </script>
 
 <section class="chat-shell">
-  <TopBar />
-
   <MessageList
     bind:this={listCmp}
     items={buildVisible()}
@@ -784,7 +781,7 @@
   .chat-shell {
     height: 100%;
     display: grid;
-    grid-template-rows: auto 1fr auto;
+    grid-template-rows: 1fr auto;
     background: var(--bg);
     color: var(--text);
     padding-inline: var(--page-gutter);
