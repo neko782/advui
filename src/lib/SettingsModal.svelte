@@ -13,6 +13,10 @@
   let refreshMsg = $state('')
 
   function close() {
+    // Revert any unsaved changes back to the last saved settings
+    local = loadSettings()
+    revealKey = false
+    refreshMsg = ''
     props.onClose?.()
   }
   function save() {
