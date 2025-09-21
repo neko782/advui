@@ -1,14 +1,10 @@
 <script>
-  import IconButton from '../common/IconButton.svelte'
   const props = $props()
 </script>
 
 <header class="topbar">
   <div class="topbar-inner">
-    <IconButton name="menu" title="Toggle chats" ariaLabel="Toggle chats" onclick={props.onToggleSidebar} />
     <div class="titlebox">AI Chat</div>
-    <IconButton name="settings" title="Settings" ariaLabel="Settings" onclick={props.onOpenSettings} />
-    <IconButton name="add" title="New chat" ariaLabel="New chat" onclick={props.onNewChat} />
   </div>
 </header>
 
@@ -22,7 +18,7 @@
   .topbar-inner {
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    justify-content: flex-start;
     gap: 10px;
     padding: 10px 0;
     max-width: var(--page-max);

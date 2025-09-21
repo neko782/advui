@@ -1,6 +1,5 @@
 <script>
   // Svelte 5 runes API
-  import SettingsModal from './SettingsModal.svelte'
   import { loadSettings } from './settingsStore.js'
   import { ensureModels, loadModelsCache } from './modelsStore.js'
   import { respond } from './openaiClient.js'
@@ -16,7 +15,6 @@
   let input = $state('')
   let sending = $state(false)
   let nextId = $state(1)
-  let showSettings = $state(false)
   let settings = $state(loadSettings())
   // Group per-chat settings in a single object (seeded from global defaults)
   let chatSettings = $state({
@@ -245,6 +243,8 @@
     messages = [...messages, typingMsg]
     try {
       let reply
+      // Always read current settings so API key changes apply immediately
+      settings = loadSettings()
       const { apiKey } = settings
       if (apiKey) {
         // Build message history (exclude typing placeholder)
@@ -473,6 +473,7 @@
 
       try {
         let reply
+        settings = loadSettings()
         const { apiKey } = settings
         const history = buildVisibleUpTo(insertIndex + 1)
           .filter(m => !m.typing)
@@ -523,6 +524,7 @@
 
     try {
       let reply
+      settings = loadSettings()
       const { apiKey } = settings
       const history = buildVisibleUpTo(insertIndex + 1)
         .filter(m => !m.typing)
@@ -583,6 +585,7 @@
     })
     try {
       let reply
+      settings = loadSettings()
       const { apiKey } = settings
       if (apiKey) {
         // Build history up to (but not including) this assistant message
@@ -654,6 +657,7 @@
 
     try {
       let reply
+      settings = loadSettings()
       const { apiKey } = settings
       const history = buildVisibleUpTo(insertIndex + 1)
         .filter(m => !m.typing)
@@ -699,7 +703,7 @@
 </script>
 
 <section class="chat-shell">
-  <TopBar onToggleSidebar={props.onToggleSidebar} onOpenSettings={() => (showSettings = true)} onNewChat={() => newChat()} />
+  <TopBar />
 
   <MessageList
     bind:this={listCmp}
@@ -739,7 +743,7 @@
     onSend={(role) => sendWithRole(role)}
   />
 
-  <SettingsModal open={showSettings} onClose={() => { showSettings = false; settings = loadSettings() }} />
+  
 </section>
 
 <style>

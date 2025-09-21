@@ -1,11 +1,13 @@
 <script>
   import Chat from './lib/Chat.svelte'
   import Sidebar from './lib/components/Sidebar.svelte'
+  import SettingsModal from './lib/SettingsModal.svelte'
   import { loadAll, getChats, createChat, setSelected, getChat } from './lib/chatsStore.js'
 
   let chats = $state([])
   let selectedId = $state(null)
   let sidebarOpen = $state(true)
+  let showSettings = $state(false)
 
   const SIDEBAR_KEY = 'ui.sidebar.open.v1'
   function loadSidebarPref() {
@@ -85,20 +87,29 @@
     sidebarOpen = next
     saveSidebarPref(next)
   }
+
+  function onOpenSettings() { showSettings = true }
 </script>
 
 <div class="app-shell">
-  {#if sidebarOpen}
-    <Sidebar chats={chats} selectedId={selectedId} onSelect={onSelectChat} onNewChat={onNewChat} onClose={() => { sidebarOpen = false; saveSidebarPref(false) }} />
-  {/if}
+  <Sidebar
+    open={sidebarOpen}
+    chats={chats}
+    selectedId={selectedId}
+    onSelect={onSelectChat}
+    onNewChat={onNewChat}
+    onToggle={toggleSidebar}
+    onOpenSettings={onOpenSettings}
+  />
   <div class="chat-pane">
     {#if selectedId}
       {#key selectedId}
-        <Chat chatId={selectedId} onNewChat={onNewChat} onChatUpdated={onChatUpdated} onToggleSidebar={toggleSidebar} />
+        <Chat chatId={selectedId} onNewChat={onNewChat} onChatUpdated={onChatUpdated} />
       {/key}
     {/if}
   </div>
   <div class="app-fade"></div>
+  <SettingsModal open={showSettings} onClose={() => (showSettings = false)} />
 </div>
 
 <style>

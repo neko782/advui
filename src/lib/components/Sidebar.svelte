@@ -2,41 +2,60 @@
   import Icon from '../Icon.svelte'
   const props = $props()
 
+  // Minimal timestamp helper kept for potential future use
   function fmtTime(ts) {
-    try {
-      const d = new Date(ts)
-      return d.toLocaleString()
-    } catch { return '' }
+    try { return new Date(ts).toLocaleString() } catch { return '' }
   }
 </script>
 
-<aside class="sidebar">
+<aside class="sidebar {props.open ? '' : 'collapsed'}">
   <div class="sidebar-inner">
+    <!-- Compact header with only the collapse toggle -->
     <div class="side-header">
-      <div class="title">Chats</div>
-      <button class="icon-btn" title="Hide" aria-label="Hide chats" onclick={() => props.onClose?.()}>
-        <Icon name="close" size={20} />
+      <button class="icon-btn" title="Toggle sidebar" aria-label="Toggle sidebar" aria-expanded={props.open ? 'true' : 'false'} onclick={() => props.onToggle?.()}>
+        <Icon name="menu" size={20} />
       </button>
-      <button class="icon-btn" title="New chat" aria-label="New chat" onclick={() => props.onNewChat?.()}>
-        <Icon name="add" size={20} />
-      </button>
+      {#if props.open}
+        <div class="brand">Chats</div>
+      {/if}
     </div>
+
+    {#if props.open}
+    <!-- Primary nav actions -->
+    <nav class="top-nav" aria-label="Primary">
+      <button class="nav-item" onclick={() => props.onNewChat?.()} title="New chat" aria-label="New chat">
+        <Icon name="edit_square" size={20} />
+        <span class="label">New chat</span>
+      </button>
+      <!-- Additional actions could live here (search/library/etc) -->
+    </nav>
+
+    <!-- Chat list as simple ghost-text buttons -->
+    <div class="section-label">Chats</div>
     <nav class="chat-list" aria-label="Chats">
       {#each (props.chats || []) as c (c.id)}
         <button
-          class="chat-item {props.selectedId === c.id ? 'active' : ''}"
+          class="chat-link {props.selectedId === c.id ? 'active' : ''}"
           title={c.title || 'Chat'}
           onclick={() => props.onSelect?.(c.id)}
         >
-          <div class="chat-title">{c.title || 'New Chat'}</div>
-          {#if c.updatedAt}
-            <div class="chat-meta">{fmtTime(c.updatedAt)}</div>
-          {/if}
+          <span class="chat-title">{c.title || 'New Chat'}</span>
         </button>
       {/each}
     </nav>
+
+    <!-- Footer actions pinned at the bottom -->
+    <div class="side-footer">
+      <button class="nav-item" onclick={() => props.onOpenSettings?.()} title="Settings" aria-label="Settings">
+        <Icon name="settings" size={20} />
+        <span class="label">Settings</span>
+      </button>
+    </div>
+    {/if}
   </div>
-  <div class="side-fade"></div>
+  {#if props.open}
+    <div class="side-fade"></div>
+  {/if}
 </aside>
 
 <style>
@@ -57,6 +76,7 @@
     height: 100%;
     z-index: 10;
   }
+  .sidebar.collapsed { width: 56px; }
   @media (prefers-color-scheme: dark) {
     .sidebar {
       --bg: #0f0f10;
@@ -66,37 +86,25 @@
       --muted: #a3a3a3;
     }
   }
-  .sidebar-inner { height: 100%; display: grid; grid-template-rows: auto 1fr; }
-  .side-header { display: flex; align-items: center; justify-content: space-between; padding: 10px; gap: 8px; }
-  .title { font-weight: 600; padding: 6px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); }
+  .sidebar-inner { height: 100%; display: grid; grid-template-rows: auto 1fr auto; }
+  .side-header { display: flex; align-items: center; gap: 8px; padding: 8px; }
+  .brand { font-weight: 600; padding: 6px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); }
   .icon-btn { min-width: 36px; height: 36px; display: grid; place-items: center; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); color: var(--text); }
-  .chat-list {
-    display: grid;
-    gap: 6px;
-    /* Add top padding so selected ring isn't clipped at the top */
-    padding: 8px 8px 10px;
-    overflow: auto;
-    /* Prevent auto-rows from stretching to fill the column; enable scroll instead */
-    align-content: start;
-  }
-  .chat-item {
-    text-align: left;
-    display: grid;
-    gap: 2px;
-    /* Slightly bigger touch target */
-    padding: 10px 12px;
-    border-radius: 10px;
-    border: 1px solid var(--border);
-    background: var(--panel);
-    color: var(--text);
-    font: inherit;
-    /* Even, fixed item size so the list scrolls instead of stretching */
-    height: 64px;
-    align-content: center;
-  }
-  /* Draw selection ring inside to avoid clipping and layout shifts */
-  .chat-item.active { box-shadow: inset 0 0 0 2px #3584e4; border-color: #3584e4; }
+  .sidebar.collapsed .brand { display: none; }
+  .sidebar.collapsed .chat-list { display: none; }
+  .top-nav { display: grid; gap: 6px; padding: 6px 8px 2px; }
+  .nav-item { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; padding: 8px 10px; border: 0; border-radius: 8px; background: transparent; color: var(--text); }
+  .nav-item:hover { background: var(--panel); }
+  .nav-item .label { white-space: nowrap; }
+  .sidebar.collapsed .nav-item .label { display: none; }
+
+  .section-label { font-size: .85rem; color: var(--muted); padding: 8px 12px 4px; }
+  .chat-list { display: grid; gap: 2px; padding: 0 6px 10px; overflow: auto; align-content: start; }
+  .chat-link { text-align: left; display: block; width: 100%; padding: 6px 10px; border: 0; background: transparent; color: var(--muted); border-radius: 8px; font: inherit; }
+  .chat-link:hover { background: var(--panel); color: var(--text); }
+  .chat-link.active { color: var(--text); }
   .chat-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .chat-meta { font-size: 12px; color: var(--muted); }
+
+  .side-footer { padding: 8px; border-top: 1px solid var(--border); }
   .side-fade { position: absolute; inset: 0; pointer-events: none; background: linear-gradient(180deg, transparent, transparent 40%, rgba(0,0,0,0.04) 100%); mix-blend-mode: multiply; opacity: .35; }
 </style>
