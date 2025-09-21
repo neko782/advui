@@ -32,8 +32,8 @@
       </nav>
 
       <!-- Chat list as simple ghost-text buttons -->
-      <div class="section-label">AI Chat</div>
-      <nav class="chat-list" aria-label="AI Chat">
+      <div class="section-label">Chats</div>
+      <nav class="chat-list" aria-label="Chats">
         {#each (props.chats || []) as c (c.id)}
           <button
             class="chat-link {props.selectedId === c.id ? 'active' : ''}"
