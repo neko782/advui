@@ -3,7 +3,6 @@
 This app has been refactored into atomic Svelte components. The Chat UI is now composed of small, reusable pieces with clear data/event flow.
 
 Component map (under `src/lib`):
-- `components/chat/TopBar.svelte` – header with title, settings, new chat
 - `components/chat/Composer.svelte` – input area, send and add-as menus, per-chat settings popover
 - `components/chat/MessageList.svelte` – scrollable list of visible messages
 - `components/chat/MessageItem.svelte` – one message row (meta, bubble, actions)

@@ -2,10 +2,7 @@
   import Icon from '../Icon.svelte'
   const props = $props()
 
-  // Minimal timestamp helper kept for potential future use
-  function fmtTime(ts) {
-    try { return new Date(ts).toLocaleString() } catch { return '' }
-  }
+  // (cleaned) no local utilities currently needed
 </script>
 
 <aside class="sidebar {props.open ? '' : 'collapsed'}">
@@ -88,7 +85,7 @@
       --muted: #a3a3a3;
     }
   }
-  .sidebar-inner { height: 100%; display: grid; grid-template-rows: auto 1fr auto; }
+  .sidebar-inner { height: 100%; display: grid; grid-template-rows: auto 1fr; }
   .side-body { display: flex; flex-direction: column; min-height: 0; }
   .side-header { display: flex; align-items: center; gap: 8px; padding: 8px; }
   .brand { font-weight: 600; padding: 6px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); }

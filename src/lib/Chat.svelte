@@ -790,7 +790,6 @@
     overflow-x: hidden;
   }
 
-  /* Top bar styles live in TopBar.svelte */
 
   /* .messages block removed: styled in MessageList.svelte */
   /* .row* classes removed: styled in MessageItem.svelte */
