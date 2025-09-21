@@ -19,6 +19,11 @@ Component map (under `src/lib`):
 
 Stateful container: `src/lib/Chat.svelte` retains branching logic, API calls, and state. Children communicate via props and events.
 
+## Settings
+
+- Global settings include a “Default Chat” section where you can set the default model. This applies to every new chat.
+- Per-chat settings (like model) are grouped and can be adjusted from the tune (chat settings) button near the composer.
+
 
 ## Recommended IDE Setup
 

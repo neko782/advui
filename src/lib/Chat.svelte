@@ -16,8 +16,10 @@
   let nextId = $state(1)
   let showSettings = $state(false)
   let settings = $state(loadSettings())
-  // Per-chat setting: model (seed from global once; user can change per chat)
-  let chatModel = $state(loadSettings().model || 'gpt-4o-mini')
+  // Group per-chat settings in a single object (seeded from global defaults)
+  let chatSettings = $state({
+    model: (settings?.defaultChat?.model) || 'gpt-4o-mini',
+  })
   // Per-chat settings popover open state
   let chatSettingsOpen = $state(false)
   // Cached models (for datalist)
@@ -82,6 +84,9 @@
     messages = []
     nextId = 1
     addSystemPrologue()
+    // Reset per-chat settings from global defaults
+    settings = loadSettings()
+    chatSettings = { model: (settings?.defaultChat?.model) || 'gpt-4o-mini' }
   }
 
   // Initialize on load
@@ -113,6 +118,8 @@
     messages = [...messages, firstMsg]
     input = ''
     // Composer handles input auto-grow on its own
+    // Scroll on send (after appending your message)
+    queueMicrotask(() => scrollToBottom())
 
     // Typing placeholder
     const typingMsg = { id: nextId++, role: 'assistant', content: 'typing', time: Date.now(), typing: true }
@@ -126,7 +133,7 @@
           .map(vm => vm.m)
           .filter(m => !m.typing)
           .map(({ role, content }) => ({ role, content }))
-        reply = await respond({ messages: history, model: chatModel })
+        reply = await respond({ messages: history, model: chatSettings.model })
       } else {
         // if no key set, provide a friendly hint + echo
         reply = generatePlaceholderReply(firstMsg.content) +
@@ -139,8 +146,7 @@
       messages = messages.map(m => (m.id === typingMsg.id ? { ...m, content: errText, typing: false, variants: [errText], variantIndex: 0, branchPathBefore: parentChain } : m))
     } finally {
       sending = false
-      // Auto scroll to bottom after response
-      queueMicrotask(() => scrollToBottom())
+      // Do not auto-scroll on reply
     }
   }
 
@@ -201,8 +207,7 @@
     const roles = new Set(['user', 'assistant', 'system'])
     if (!roles.has(role)) return
     messages = messages.map(m => (m.id === id ? { ...m, role } : m))
-    // Keep view anchored
-    queueMicrotask(() => { scrollToBottom() })
+    // Do not scroll when switching roles
   }
   // Align a message's branching metadata to the chain at its current index
   function alignMessageToChainAt(arr, idx) {
@@ -339,7 +344,7 @@
           .filter(m => !m.typing)
           .map(({ role, content }) => ({ role, content }))
         if (apiKey) {
-          reply = await respond({ messages: history, model: chatModel })
+          reply = await respond({ messages: history, model: chatSettings.model })
         } else {
           const lastUser = [...buildVisibleUpTo(insertIndex + 1)].reverse().find(m => m.role === 'user')
           reply = generatePlaceholderReply(lastUser?.content || val) +
@@ -355,7 +360,7 @@
           ? { ...m, content: errText, typing: false, variants: [errText], variantIndex: 0 }
           : m))
       } finally {
-        queueMicrotask(() => scrollToBottom())
+        // Do not auto-scroll on reply
       }
       return
     }
@@ -385,7 +390,7 @@
         .filter(m => !m.typing)
         .map(({ role, content }) => ({ role, content }))
       if (apiKey) {
-        reply = await respond({ messages: history, model: chatModel })
+        reply = await respond({ messages: history, model: chatSettings.model })
       } else {
         const lastUser = [...buildVisibleUpTo(insertIndex + 1)].reverse().find(m => m.role === 'user')
         reply = generatePlaceholderReply(lastUser?.content || val) +
@@ -403,7 +408,7 @@
         ? { ...m, content: errText, typing: false, variants: [errText], variantIndex: 0, branchPathBefore: parentChain }
         : m))
     } finally {
-      queueMicrotask(() => scrollToBottom())
+      // Do not auto-scroll on reply
     }
   }
   function cancelEdit() {
@@ -413,11 +418,7 @@
 
   
 
-  // keep view anchored to the latest messages
-  $effect(() => {
-    // Run when messages or layout change
-    scrollToBottom()
-  })
+  // Removed global auto-scroll effect to avoid scrolling on replies/role changes
 
   // Branching: regenerate an assistant message and keep variants locally
   async function refreshAssistant(id) {
@@ -448,7 +449,7 @@
         const history = buildVisibleUpTo(idx)
           .filter(m => !m.typing)
           .map(({ role, content }) => ({ role, content }))
-        reply = await respond({ messages: history, model: chatModel })
+        reply = await respond({ messages: history, model: chatSettings.model })
       } else {
         // No key: generate a placeholder reply based on last user input
         const lastUser = [...messages.slice(0, idx)].reverse().find(m => m.role === 'user')
@@ -476,8 +477,7 @@
         return { ...m, typing: false, content: errText, variants: arr, variantIndex: vi, branchPathBefore: parentChain }
       })
     } finally {
-      // keep view anchored
-      queueMicrotask(() => scrollToBottom())
+      // Do not auto-scroll on reply
     }
   }
 
@@ -516,7 +516,7 @@
         .filter(m => !m.typing)
         .map(({ role, content }) => ({ role, content }))
       if (apiKey) {
-        reply = await respond({ messages: history, model: chatModel })
+        reply = await respond({ messages: history, model: chatSettings.model })
       } else {
         const lastUser = [...buildVisibleUpTo(insertIndex + 1)].reverse().find(m => m.role === 'user')
         reply = generatePlaceholderReply(lastUser?.content || cur.content) +
@@ -532,7 +532,7 @@
         ? { ...m, content: errText, typing: false, variants: [errText], variantIndex: 0 }
         : m))
     } finally {
-      queueMicrotask(() => scrollToBottom())
+      // Do not auto-scroll on reply
     }
   }
 
@@ -583,11 +583,11 @@
     input={input}
     sending={sending}
     chatSettingsOpen={chatSettingsOpen}
-    chatModel={chatModel}
+    chatModel={chatSettings.model}
     modelIds={modelIds}
     onToggleChatSettings={toggleChatSettings}
     onCloseChatSettings={() => (chatSettingsOpen = false)}
-    onChangeModel={(val) => (chatModel = val)}
+    onChangeModel={(val) => (chatSettings = { ...chatSettings, model: val })}
     onInput={(val) => (input = val)}
     onAdd={(role) => addToChat(role)}
     onSend={(role) => sendWithRole(role)}

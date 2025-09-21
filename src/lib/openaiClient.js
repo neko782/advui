@@ -15,7 +15,8 @@ export async function getClient() {
 export async function respond({ prompt, messages, model }) {
   const { apiKey } = loadSettings()
   if (!apiKey) throw new Error('Missing OpenAI API key. Set it in Settings.')
-  const useModel = model || loadSettings().model || 'gpt-4o-mini'
+  const s = loadSettings()
+  const useModel = model || s?.defaultChat?.model || s?.model || 'gpt-4o-mini'
 
   // SDK call only
   const client = await getClient()

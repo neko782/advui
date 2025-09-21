@@ -1,12 +1,13 @@
 <script>
   import { loadSettings, saveSettings } from './settingsStore.js'
-  import { setModelsCache } from './modelsStore.js'
+  import { setModelsCache, loadModelsCache } from './modelsStore.js'
   import { listModelsWithKey } from './openaiClient.js'
   import Icon from './Icon.svelte'
 
   const props = $props()
 
   let local = $state(loadSettings())
+  let modelIds = $state(loadModelsCache().ids || [])
   let revealKey = $state(false)
   let refreshing = $state(false)
   let refreshMsg = $state('')
@@ -32,6 +33,7 @@
     try {
       const ids = await listModelsWithKey(local.apiKey)
       setModelsCache(ids)
+      modelIds = ids
       refreshMsg = `Connected ✓ Fetched ${ids.length} models.`
     } catch (err) {
       const msg = err?.message || 'Failed to refresh models.'
@@ -78,6 +80,30 @@
         {#if refreshMsg}
           <p class="hint" aria-live="polite">{refreshMsg}</p>
         {/if}
+
+        <hr class="section" />
+
+        <div class="group">
+          <div class="group-title">Default Chat</div>
+          <label class="field">
+            <span>Default model</span>
+            <input
+              type="text"
+              placeholder="gpt-4o-mini"
+              bind:value={local.defaultChat.model}
+              list="global-model-suggestions"
+              aria-label="Default model"
+            />
+            {#if modelIds?.length}
+              <datalist id="global-model-suggestions">
+                {#each modelIds as mid}
+                  <option value={mid}>{mid}</option>
+                {/each}
+              </datalist>
+            {/if}
+          </label>
+          <p class="hint">These settings apply to every new chat.</p>
+        </div>
       </div>
       <footer class="modal-foot">
         <button class="icon-btn" title="Cancel" aria-label="Cancel" onclick={close}>
@@ -130,4 +156,7 @@
   .hint { color: var(--muted); font-size: .9rem; margin-top: 4px; }
   /* API key action buttons size */
   .row .icon-btn { height: 38px; width: 38px; }
+  .section { border: 0; border-top: 1px solid var(--border); margin: 8px 0; }
+  .group { display: grid; gap: 8px; }
+  .group-title { font-weight: 600; }
 </style>
