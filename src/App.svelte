@@ -5,6 +5,19 @@
 
   let chats = $state([])
   let selectedId = $state(null)
+  let sidebarOpen = $state(true)
+
+  const SIDEBAR_KEY = 'ui.sidebar.open.v1'
+  function loadSidebarPref() {
+    try {
+      const raw = localStorage.getItem(SIDEBAR_KEY)
+      if (raw == null) return true
+      return raw === '1'
+    } catch { return true }
+  }
+  function saveSidebarPref(val) {
+    try { localStorage.setItem(SIDEBAR_KEY, val ? '1' : '0') } catch {}
+  }
 
   function refresh() {
     try {
@@ -38,6 +51,7 @@
   onMount(() => {
     // Defer initial population to avoid mutating state during mount flush
     setTimeout(() => {
+      sidebarOpen = loadSidebarPref()
       ensureOneChat()
       refresh()
     }, 0)
@@ -65,13 +79,23 @@
     // Refresh list/titles without re-entrant updates during reconciliation
     scheduleRefresh()
   }
+
+  function toggleSidebar() {
+    const next = !sidebarOpen
+    sidebarOpen = next
+    saveSidebarPref(next)
+  }
 </script>
 
 <div class="app-shell">
-  <Sidebar chats={chats} selectedId={selectedId} onSelect={onSelectChat} onNewChat={onNewChat} />
+  {#if sidebarOpen}
+    <Sidebar chats={chats} selectedId={selectedId} onSelect={onSelectChat} onNewChat={onNewChat} onClose={() => { sidebarOpen = false; saveSidebarPref(false) }} />
+  {/if}
   <div class="chat-pane">
     {#if selectedId}
-      <Chat chatId={selectedId} onNewChat={onNewChat} onChatUpdated={onChatUpdated} />
+      {#key selectedId}
+        <Chat chatId={selectedId} onNewChat={onNewChat} onChatUpdated={onChatUpdated} onToggleSidebar={toggleSidebar} />
+      {/key}
     {/if}
   </div>
   <div class="app-fade"></div>
@@ -82,8 +106,6 @@
   .app-shell {
     position: relative;
     height: 100dvh;
-    display: grid;
-    grid-template-columns: 260px 1fr;
     overflow: hidden;
   }
   .chat-pane { height: 100%; overflow: hidden; }

@@ -92,10 +92,19 @@
 
   // Initialize when a chatId is provided/changes
   let ready = false
+  // Track last chat id to flush unsaved changes when switching away
+  let lastChatId = null
   $effect(() => {
     const cid = props.chatId
+    // If we are switching away from a chat, flush its latest state immediately
+    if (lastChatId && lastChatId !== cid && mounted) {
+      try { saveChatContent(lastChatId, { messages, settings: chatSettings }) } catch {}
+    }
+    lastChatId = cid
     // Reset runtime state whenever switching chats
     ready = false
+    // Reset persistence signature to avoid carrying it across chats
+    persistSig = ''
     if (!cid) return
     // Compute the new state first, then apply it in a macrotask to avoid
     // mutating state during the current reconciliation/flush.
@@ -103,6 +112,7 @@
     let nextSettings = loadSettings()
     let nextChatSettings = { model: (nextSettings?.defaultChat?.model) || 'gpt-4o-mini' }
     let nextNextId = 1
+    let nextPersistSig = ''
     try {
       const loaded = loadChatById(cid)
       if (loaded) {
@@ -128,6 +138,11 @@
       nextNextId = 2
       nextChatSettings = { model: (nextSettings?.defaultChat?.model) || 'gpt-4o-mini' }
     }
+    // Precompute a persist signature for the loaded chat content
+    try {
+      const mini = (nextMessages || []).map(m => `${m.id}|${m.role}|${m.content?.length||0}|${m.variantIndex||0}`)
+      nextPersistSig = JSON.stringify({ m: mini, model: nextChatSettings?.model || '' })
+    } catch { nextPersistSig = '' }
     // Apply computed state after the current tick
     setTimeout(() => {
       try {
@@ -137,6 +152,8 @@
         chatSettings = nextChatSettings
         editingId = null
         editingText = ''
+        // Align persistence signature to loaded state
+        persistSig = nextPersistSig
       } finally {
         ready = true
       }
@@ -166,6 +183,17 @@
       const mini = (messages || []).map(m => `${m.id}|${m.role}|${m.content?.length||0}|${m.variantIndex||0}`)
       return JSON.stringify({ m: mini, model: chatSettings?.model || '' })
     } catch { return String(Math.random()) }
+  }
+  // Immediate persistence helper to avoid relying solely on the reactive effect
+  function persistNow() {
+    try {
+      const cid = props.chatId
+      if (!cid || !mounted) return
+      const updated = saveChatContent(cid, { messages, settings: chatSettings })
+      // Update signature to current snapshot so the effect does not double-save
+      persistSig = computePersistSig()
+      scheduleParentRefresh(updated)
+    } catch {}
   }
   // Coalesce and defer parent refresh notification to avoid re-entrant updates
   let refreshScheduled = false
@@ -206,6 +234,8 @@
     const firstMsg = { id: nextId++, role, content: text, time: Date.now(), branchPath: parentChain }
     messages = [...messages, firstMsg]
     input = ''
+    // Persist immediately after adding the user's message
+    persistNow()
     // Composer handles input auto-grow on its own
     // Scroll on send (after appending your message)
     queueMicrotask(() => scrollToBottom())
@@ -229,10 +259,13 @@
           '\n\nTip: Add your OpenAI API key in Settings to get real answers.'
       }
       messages = messages.map(m => (m.id === typingMsg.id ? { ...m, content: reply, typing: false, variants: [reply], variantIndex: 0, branchPathBefore: parentChain } : m))
+      // Persist after receiving the assistant reply
+      persistNow()
     } catch (err) {
       const msg = err?.message || 'Something went wrong.'
       const errText = `Error: ${msg}`
       messages = messages.map(m => (m.id === typingMsg.id ? { ...m, content: errText, typing: false, variants: [errText], variantIndex: 0, branchPathBefore: parentChain } : m))
+      persistNow()
     } finally {
       sending = false
       // Do not auto-scroll on reply
@@ -251,6 +284,7 @@
       ? { id: nextId++, role, content: text, time: Date.now(), variants: [text], variantIndex: 0, branchPathBefore: parentChain }
       : { id: nextId++, role, content: text, time: Date.now(), branchPath: parentChain }
     messages = [...messages, direct]
+    persistNow()
     input = ''
     queueMicrotask(() => scrollToBottom())
   }
@@ -290,12 +324,14 @@
   async function copyMessage(text) { try { await copyToClipboard(text) } catch {} }
   function deleteMessage(id) {
     messages = messages.filter(m => m.id !== id)
+    persistNow()
   }
   function setMessageRole(id, role) {
     // Role change should behave like content change: do not alter branching.
     const roles = new Set(['user', 'assistant', 'system'])
     if (!roles.has(role)) return
     messages = messages.map(m => (m.id === id ? { ...m, role } : m))
+    persistNow()
     // Do not scroll when switching roles
   }
   // Align a message's branching metadata to the chain at its current index
@@ -313,15 +349,22 @@
     }
     return m
   }
+  // After any reorder, re-sync branching metadata across the entire list
+  function realignAll(arr) {
+    const out = arr.slice()
+    for (let k = 0; k < out.length; k++) {
+      out[k] = alignMessageToChainAt(out, k)
+    }
+    return out
+  }
   function moveUp(id) {
     const i = messages.findIndex(m => m.id === id)
     if (i > 0) {
       const arr = messages.slice()
       ;[arr[i - 1], arr[i]] = [arr[i], arr[i - 1]]
-      // Re-sync branching for both swapped messages (earlier index first)
-      arr[i - 1] = alignMessageToChainAt(arr, i - 1)
-      arr[i] = alignMessageToChainAt(arr, i)
-      messages = arr
+      // Re-sync branching across the entire list to maintain visibility
+      messages = realignAll(arr)
+      persistNow()
     }
   }
   function moveDown(id) {
@@ -329,10 +372,9 @@
     if (i >= 0 && i < messages.length - 1) {
       const arr = messages.slice()
       ;[arr[i], arr[i + 1]] = [arr[i + 1], arr[i]]
-      // Re-sync branching for both swapped messages (earlier index first)
-      arr[i] = alignMessageToChainAt(arr, i)
-      arr[i + 1] = alignMessageToChainAt(arr, i + 1)
-      messages = arr
+      // Re-sync branching across the entire list to maintain visibility
+      messages = realignAll(arr)
+      persistNow()
     }
   }
   function editMessage(id) {
@@ -358,6 +400,7 @@
     editingId = null
     editingText = ''
     queueMicrotask(() => scrollToBottom())
+    persistNow()
   }
   // Replace the current message content in-place (no branching)
   function applyEditReplace() { commitEdit() }
@@ -391,6 +434,7 @@
     arr[i] = { ...cur, content: val, variants: base, variantIndex: vi, branchPathBefore: parent }
     // Inject token for downstream branch paths and anchor parents
     messages = injectAnchorToken(arr, i, parent, arr[i].id, 0)
+    persistNow()
     editingId = null
     editingText = ''
     queueMicrotask(() => scrollToBottom())
@@ -425,6 +469,7 @@
       let arr2 = messages.slice()
       arr2.splice(insertIndex + 1, 0, typingMsg)
       messages = arr2
+      persistNow()
 
       try {
         let reply
@@ -442,12 +487,14 @@
         messages = messages.map(m => (m.id === typingMsg.id
           ? { ...m, content: reply, typing: false, variants: [reply], variantIndex: 0 }
           : m))
+        persistNow()
       } catch (err) {
         const msg = err?.message || 'Something went wrong.'
         const errText = `Error: ${msg}`
         messages = messages.map(m => (m.id === typingMsg.id
           ? { ...m, content: errText, typing: false, variants: [errText], variantIndex: 0 }
           : m))
+        persistNow()
       } finally {
         // Do not auto-scroll on reply
       }
@@ -462,6 +509,7 @@
     arr[i0] = { ...cur, content: val, variants: base, variantIndex: vi, branchPathBefore: parent }
     // Inject token downstream and update messages
     messages = injectAnchorToken(arr, i0, parent, arr[i0].id, 0)
+    persistNow()
     editingId = null
     editingText = ''
 
@@ -471,6 +519,7 @@
     const insertIndex = i0
     arr.splice(i0 + 1, 0, typingMsg)
     messages = arr
+    persistNow()
 
     try {
       let reply
@@ -489,6 +538,7 @@
       messages = messages.map(m => (m.id === typingMsg.id
         ? { ...m, content: reply, typing: false, variants: [reply], variantIndex: 0, branchPathBefore: parentChain }
         : m))
+      persistNow()
     } catch (err) {
       const msg = err?.message || 'Something went wrong.'
       const errText = `Error: ${msg}`
@@ -496,6 +546,7 @@
       messages = messages.map(m => (m.id === typingMsg.id
         ? { ...m, content: errText, typing: false, variants: [errText], variantIndex: 0, branchPathBefore: parentChain }
         : m))
+      persistNow()
     } finally {
       // Do not auto-scroll on reply
     }
@@ -554,6 +605,7 @@
         arr[vi] = reply
         return { ...m, typing: false, content: reply, variants: arr, variantIndex: vi, branchPathBefore: parentChain }
       })
+      persistNow()
     } catch (err) {
       const msg = err?.message || 'Something went wrong.'
       const errText = `Error: ${msg}`
@@ -565,6 +617,7 @@
         arr[vi] = errText
         return { ...m, typing: false, content: errText, variants: arr, variantIndex: vi, branchPathBefore: parentChain }
       })
+      persistNow()
     } finally {
       // Do not auto-scroll on reply
     }
@@ -597,6 +650,7 @@
     const arr = messages.slice()
     arr.splice(insertIndex + 1, 0, typingMsg)
     messages = arr
+    persistNow()
 
     try {
       let reply
@@ -614,12 +668,14 @@
       messages = messages.map(m => (m.id === typingMsg.id
         ? { ...m, content: reply, typing: false, variants: [reply], variantIndex: 0 }
         : m))
+      persistNow()
     } catch (err) {
       const msg = err?.message || 'Something went wrong.'
       const errText = `Error: ${msg}`
       messages = messages.map(m => (m.id === typingMsg.id
         ? { ...m, content: errText, typing: false, variants: [errText], variantIndex: 0 }
         : m))
+      persistNow()
     } finally {
       // Do not auto-scroll on reply
     }
@@ -638,11 +694,12 @@
     const arr = messages.slice()
     arr[i] = updated
     messages = arr
+    persistNow()
   }
 </script>
 
 <section class="chat-shell">
-  <TopBar onOpenSettings={() => (showSettings = true)} onNewChat={() => newChat()} />
+  <TopBar onToggleSidebar={props.onToggleSidebar} onOpenSettings={() => (showSettings = true)} onNewChat={() => newChat()} />
 
   <MessageList
     bind:this={listCmp}

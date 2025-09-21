@@ -5,6 +5,7 @@
 
 <header class="topbar">
   <div class="topbar-inner">
+    <IconButton name="menu" title="Toggle chats" ariaLabel="Toggle chats" onclick={props.onToggleSidebar} />
     <div class="titlebox">AI Chat</div>
     <IconButton name="settings" title="Settings" ariaLabel="Settings" onclick={props.onOpenSettings} />
     <IconButton name="add" title="New chat" ariaLabel="New chat" onclick={props.onNewChat} />
