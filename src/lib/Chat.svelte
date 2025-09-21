@@ -19,8 +19,8 @@
   let nextId = $state(1)
   let showSettings = $state(false)
   let settings = $state(loadSettings())
-  // Per-chat setting: model (default from global)
-  let chatModel = $state(settings.model || 'gpt-4o-mini')
+  // Per-chat setting: model (seed from global once; user can change per chat)
+  let chatModel = $state(loadSettings().model || 'gpt-4o-mini')
   // Per-chat settings popover open state
   let chatSettingsOpen = $state(false)
   let chatSettingsEl
