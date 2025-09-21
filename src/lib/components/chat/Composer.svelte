@@ -4,7 +4,10 @@
   import ChatSettingsPopover from './ChatSettingsPopover.svelte'
   const props = $props()
   let inputEl
+  // Auto-grow on mount
   $effect(() => { queueMicrotask(() => autoGrow(inputEl)) })
+  // Also auto-grow whenever parent updates the input value (e.g., after send/add clears it)
+  $effect(() => { void props.input; queueMicrotask(() => autoGrow(inputEl)) })
 
   function onKey(e) {
     if (e.key === 'Enter' && !e.shiftKey) {

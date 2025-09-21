@@ -44,7 +44,7 @@
 
 {#if props.open}
   <button type="button" class="backdrop" aria-label="Close settings overlay" onclick={close}></button>
-  <div class="modal" role="dialog" aria-modal="true" aria-label="Settings">
+  <div class="modal" role="dialog" aria-modal="true" aria-label="Settings" onclick={(e) => { if (e.target === e.currentTarget) close() }}>
     <div class="panel">
       <header class="modal-head">
         <div class="title">Settings</div>
@@ -62,12 +62,14 @@
               bind:value={local.apiKey}
               autocomplete="off"
             />
-            <button class="btn" onclick={() => (revealKey = !revealKey)} aria-label="Toggle visibility">
-              {revealKey ? 'Hide' : 'Show'}
+            <button class="icon-btn" title={revealKey ? 'Hide key' : 'Show key'} onclick={() => (revealKey = !revealKey)} aria-label={revealKey ? 'Hide key' : 'Show key'}>
+              <Icon name={revealKey ? 'visibility_off' : 'visibility'} size={20} />
             </button>
-            <button class="btn" onclick={clearKey} aria-label="Clear key">Clear</button>
-            <button class="btn" onclick={refreshModelsNow} aria-label="Refresh models" disabled={refreshing}>
-              {refreshing ? 'Refreshing…' : 'Refresh'}
+            <button class="icon-btn" title="Clear key" onclick={clearKey} aria-label="Clear key">
+              <Icon name="backspace" size={20} />
+            </button>
+            <button class="icon-btn" title="Refresh models" onclick={refreshModelsNow} aria-label="Refresh models" disabled={refreshing}>
+              <Icon name="autorenew" size={20} />
             </button>
           </div>
         </label>
@@ -78,8 +80,12 @@
         {/if}
       </div>
       <footer class="modal-foot">
-        <button class="btn" onclick={close}>Cancel</button>
-        <button class="btn primary" onclick={save}>Save</button>
+        <button class="icon-btn" title="Cancel" aria-label="Cancel" onclick={close}>
+          <Icon name="close" size={20} />
+        </button>
+        <button class="icon-btn primary" title="Save" aria-label="Save" onclick={save}>
+          <Icon name="check" size={20} />
+        </button>
       </footer>
     </div>
   </div>
@@ -112,7 +118,9 @@
   .title { font-weight: 600; }
   .modal-body { padding: 8px 14px 4px; display: grid; gap: 12px; }
   .modal-foot { padding: 12px 14px; display: flex; justify-content: flex-end; gap: 8px; }
-  .icon-btn { border: 1px solid var(--border); border-radius: 8px; background: transparent; width: 32px; height: 32px; display: grid; place-items: center; line-height: 1; }
+  .icon-btn { border: 1px solid var(--border); border-radius: 8px; background: transparent; width: 32px; height: 32px; display: grid; place-items: center; line-height: 1; color: var(--text); }
+  .icon-btn.primary { background: var(--accent); color: #fff; border-color: transparent; }
+  .icon-btn:disabled { opacity: .6; cursor: not-allowed; }
   .btn { border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; background: var(--bg); color: var(--text); }
   .btn.primary { background: var(--accent); color: white; border-color: transparent; }
   .field { display: grid; gap: 6px; }
@@ -120,4 +128,6 @@
   .row { display: flex; gap: 8px; }
   input { flex: 1; border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; background: var(--bg); color: var(--text); }
   .hint { color: var(--muted); font-size: .9rem; margin-top: 4px; }
+  /* API key action buttons size */
+  .row .icon-btn { height: 38px; width: 38px; }
 </style>
