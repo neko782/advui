@@ -71,11 +71,11 @@
     left: 0;
     top: 0;
     bottom: 0;
-    width: 320px;
+    width: 280px;
     height: 100%;
     z-index: 10;
   }
-  .sidebar.collapsed { width: 56px; }
+  .sidebar.collapsed { width: 52px; }
   @media (prefers-color-scheme: dark) {
     .sidebar {
       --bg: #0f0f10;
