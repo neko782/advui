@@ -1,6 +1,30 @@
 :root {
   color-scheme: light dark;
   --font: system-ui, ui-sans-serif, -apple-system, Segoe UI, Roboto, Inter, "Noto Sans", Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+
+  /* Global theme variables (fallbacks for components rendered outside chat/sidebar scopes) */
+  /* Light */
+  --bg: color-mix(in oklab, canvas, #f3f4f6 10%);
+  --panel: color-mix(in srgb, #ffffff 92%, #e6e6e6);
+  --border: color-mix(in srgb, #c8c8c8 60%, #0000);
+  --text: color-mix(in srgb, #1b1f24 92%, #0000);
+  --muted: #6b7280;
+  --accent: #3584e4;
+  --assistant: #f3f4f6;
+  --user: #e5e7eb;
+  --float-shadow: 0 10px 30px rgba(0,0,0,0.08), 0 2px 10px rgba(0,0,0,0.06);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f0f10;
+    --panel: #141414;
+    --border: #2a2a2a;
+    --text: #e6e6e6;
+    --muted: #a3a3a3;
+    --assistant: #1c1c1c;
+    --user: #222222;
+  }
 }
 
 * { box-sizing: border-box; }
