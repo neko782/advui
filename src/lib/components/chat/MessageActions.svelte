@@ -21,13 +21,15 @@
     </button>
   {:else}
     {#if props.variantsLength > 1}
-      <button class="action-btn" onclick={() => props.onChangeVariant?.(-1)} aria-label="Previous variant" title="Previous" disabled={m.typing || props.variantIndex <= 0}>
-        <Icon name="chevron_left" size={20} />
-      </button>
-      <span class="variant-counter" aria-live="polite">{(props.variantIndex || 0) + 1}/{props.variantsLength}</span>
-      <button class="action-btn" onclick={() => props.onChangeVariant?.(1)} aria-label="Next variant" title="Next" disabled={m.typing || props.variantIndex >= (props.variantsLength - 1)}>
-        <Icon name="chevron_right" size={20} />
-      </button>
+      <span class="variants">
+        <button class="action-btn" onclick={() => props.onChangeVariant?.(-1)} aria-label="Previous variant" title="Previous" disabled={m.typing || props.variantIndex <= 0}>
+          <Icon name="chevron_left" size={20} />
+        </button>
+        <span class="variant-counter" aria-live="polite">{(props.variantIndex || 0) + 1}/{props.variantsLength}</span>
+        <button class="action-btn" onclick={() => props.onChangeVariant?.(1)} aria-label="Next variant" title="Next" disabled={m.typing || props.variantIndex >= (props.variantsLength - 1)}>
+          <Icon name="chevron_right" size={20} />
+        </button>
+      </span>
     {/if}
 
     {#if m.role === 'assistant'}
@@ -63,10 +65,13 @@
 </div>
 
 <style>
-  .actions { display: flex; gap: 6px; margin-top: 6px; }
+  .actions { display: flex; gap: 6px; margin-top: 6px; align-items: center; }
   .actions.user { justify-self: end; }
   .actions.assistant { justify-self: start; }
   .actions.system { justify-self: center; }
+  .variants { display: inline-flex; align-items: center; gap: 6px; }
+  /* Place branch/variant selector at end for user messages */
+  .actions.user .variants { order: 99; }
   .variant-counter { align-self: center; font-size: .8rem; color: var(--muted); min-width: 36px; text-align: center; }
   /* Compact icon-only action buttons (match Chat.svelte design) */
   .action-btn {
