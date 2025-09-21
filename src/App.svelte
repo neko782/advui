@@ -13,10 +13,11 @@
       chats = list
       const saved = loadAll().selectedId
       if (saved && getChat(saved)) {
-        selectedId = saved
+        if (selectedId !== saved) selectedId = saved
       } else if (list.length) {
-        selectedId = list[0].id
-      } else {
+        const first = list[0]?.id || null
+        if (selectedId !== first) selectedId = first
+      } else if (selectedId !== null) {
         selectedId = null
       }
     } catch {
@@ -35,8 +36,11 @@
 
   import { onMount } from 'svelte'
   onMount(() => {
-    ensureOneChat()
-    refresh()
+    // Defer initial population to avoid mutating state during mount flush
+    setTimeout(() => {
+      ensureOneChat()
+      refresh()
+    }, 0)
   })
 
   function onSelectChat(id) {
@@ -48,9 +52,18 @@
     selectedId = c.id
     refresh()
   }
+  // Coalesce sidebar refresh triggered by child updates
+  let refreshTimer = null
+  function scheduleRefresh() {
+    if (refreshTimer) return
+    refreshTimer = setTimeout(() => {
+      refreshTimer = null
+      refresh()
+    }, 0)
+  }
   function onChatUpdated() {
-    // Refresh list/titles
-    refresh()
+    // Refresh list/titles without re-entrant updates during reconciliation
+    scheduleRefresh()
   }
 </script>
 

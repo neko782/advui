@@ -19,7 +19,7 @@
       </button>
     </div>
     <nav class="chat-list" aria-label="Chats">
-      {#each (props.chats || []) as c}
+      {#each (props.chats || []) as c (c.id)}
         <button
           class="chat-item {props.selectedId === c.id ? 'active' : ''}"
           title={c.title || 'Chat'}
@@ -68,4 +68,3 @@
   .chat-meta { font-size: 12px; color: var(--muted); }
   .side-fade { position: absolute; inset: 0; pointer-events: none; background: linear-gradient(180deg, transparent, transparent 40%, rgba(0,0,0,0.04) 100%); mix-blend-mode: multiply; opacity: .35; }
 </style>
-

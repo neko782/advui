@@ -71,15 +71,14 @@
   }
   // paste handling occurs inside MessageBubble while editing
 
-  // Seed each chat with a system prologue
-  function addSystemPrologue() {
-    const sysMsg = {
-      id: nextId++,
+  // Build a system prologue message (pure)
+  function makeSystemPrologue(idBase = 1) {
+    return {
+      id: idBase,
       role: 'system',
       content: 'You are a helpful assistant.',
       time: Date.now()
     }
-    messages = [sysMsg]
   }
 
   function recomputeNextId() {
@@ -92,73 +91,106 @@
   function newChat() { props.onNewChat?.() }
 
   // Initialize when a chatId is provided/changes
+  let ready = false
   $effect(() => {
     const cid = props.chatId
     // Reset runtime state whenever switching chats
-    editingId = null
-    editingText = ''
+    ready = false
     if (!cid) return
+    // Compute the new state first, then apply it in a macrotask to avoid
+    // mutating state during the current reconciliation/flush.
+    let nextMessages = []
+    let nextSettings = loadSettings()
+    let nextChatSettings = { model: (nextSettings?.defaultChat?.model) || 'gpt-4o-mini' }
+    let nextNextId = 1
     try {
       const loaded = loadChatById(cid)
-      settings = loadSettings()
       if (loaded) {
-        messages = Array.isArray(loaded.messages) ? loaded.messages.slice() : []
-        // Fall back to global default model if none
-        chatSettings = { model: loaded?.settings?.model || (settings?.defaultChat?.model) || 'gpt-4o-mini' }
-        if (!messages.length) {
-          nextId = 1
-          addSystemPrologue()
+        nextMessages = Array.isArray(loaded.messages) ? loaded.messages.slice() : []
+        nextChatSettings = { model: loaded?.settings?.model || (nextSettings?.defaultChat?.model) || 'gpt-4o-mini' }
+        if (!nextMessages.length) {
+          nextNextId = 2
+          nextMessages = [makeSystemPrologue(1)]
         } else {
-          recomputeNextId()
+          try {
+            const maxId = (nextMessages || []).reduce((mx, m) => Math.max(mx, Number(m?.id) || 0), 0)
+            nextNextId = maxId + 1
+          } catch { nextNextId = 1 }
         }
       } else {
-        // No chat found: start a temporary local session
-        messages = []
-        nextId = 1
-        addSystemPrologue()
-        chatSettings = { model: (settings?.defaultChat?.model) || 'gpt-4o-mini' }
+        nextMessages = [makeSystemPrologue(1)]
+        nextNextId = 2
+        nextChatSettings = { model: (nextSettings?.defaultChat?.model) || 'gpt-4o-mini' }
       }
     } catch {
-      // Fallback to an empty seeded chat
-      settings = loadSettings()
-      messages = []
-      nextId = 1
-      addSystemPrologue()
-      chatSettings = { model: (settings?.defaultChat?.model) || 'gpt-4o-mini' }
+      nextSettings = loadSettings()
+      nextMessages = [makeSystemPrologue(1)]
+      nextNextId = 2
+      nextChatSettings = { model: (nextSettings?.defaultChat?.model) || 'gpt-4o-mini' }
     }
+    // Apply computed state after the current tick
+    setTimeout(() => {
+      try {
+        settings = nextSettings
+        messages = nextMessages
+        nextId = nextNextId
+        chatSettings = nextChatSettings
+        editingId = null
+        editingText = ''
+      } finally {
+        ready = true
+      }
+    }, 0)
   })
   // Load models once if not cached
   import { onMount } from 'svelte'
+  let mounted = false
   onMount(async () => {
+    mounted = true
     try {
       const cached = loadModelsCache()
       if (!cached.ids?.length) {
         const fresh = await ensureModels()
-        modelIds = fresh.ids || []
+        setTimeout(() => { modelIds = fresh.ids || [] }, 0)
       } else {
-        modelIds = cached.ids
+        setTimeout(() => { modelIds = cached.ids }, 0)
       }
     } catch {}
   })
 
   // Persist chat content and settings on change
-  let persistSig = $state('')
+  // Keep the signature non-reactive to avoid effect feedback loops
+  let persistSig = ''
   function computePersistSig() {
     try {
       const mini = (messages || []).map(m => `${m.id}|${m.role}|${m.content?.length||0}|${m.variantIndex||0}`)
       return JSON.stringify({ m: mini, model: chatSettings?.model || '' })
     } catch { return String(Math.random()) }
   }
+  // Coalesce and defer parent refresh notification to avoid re-entrant updates
+  let refreshScheduled = false
+  let refreshTimer = null
+  function scheduleParentRefresh(updated) {
+    if (refreshScheduled) return
+    refreshScheduled = true
+    // Defer to a macrotask so it runs after the current flush/reconcile cycle
+    refreshTimer && clearTimeout(refreshTimer)
+    refreshTimer = setTimeout(() => {
+      refreshScheduled = false
+      refreshTimer = null
+      try { props.onChatUpdated?.(updated) } catch {}
+    }, 0)
+  }
   $effect(() => {
     const cid = props.chatId
-    if (!cid) return
+    if (!cid || !ready || !mounted) return
     try {
       const sig = computePersistSig()
       if (sig === persistSig) return
       persistSig = sig
       const updated = saveChatContent(cid, { messages, settings: chatSettings })
-      // Notify parent (App) to refresh list/sidebar (titles/order)
-      props.onChatUpdated?.(updated)
+      // Notify parent (App) to refresh list/sidebar (titles/order) after commit
+      scheduleParentRefresh(updated)
     } catch {}
   })
 
