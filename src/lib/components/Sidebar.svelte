@@ -17,7 +17,7 @@
       {/if}
     </div>
 
-    {#if props.open}
+    <!-- Body is always present so collapsed mode can show actions -->
     <div class="side-body">
       <!-- Primary nav actions -->
       <nav class="top-nav" aria-label="Primary">
@@ -25,22 +25,23 @@
           <Icon name="edit_square" size={20} />
           <span class="label">New chat</span>
         </button>
-        <!-- Additional actions could live here (search/library/etc) -->
       </nav>
 
-      <!-- Chat list as simple ghost-text buttons -->
-      <div class="section-label">Chats</div>
-      <nav class="chat-list" aria-label="Chats">
-        {#each (props.chats || []) as c (c.id)}
-          <button
-            class="chat-link {props.selectedId === c.id ? 'active' : ''}"
-            title={c.title || 'Chat'}
-            onclick={() => props.onSelect?.(c.id)}
-          >
-            <span class="chat-title">{c.title || 'New Chat'}</span>
-          </button>
-        {/each}
-      </nav>
+      {#if props.open}
+        <!-- Chat list as simple ghost-text buttons -->
+        <div class="section-label">Chats</div>
+        <nav class="chat-list" aria-label="Chats">
+          {#each (props.chats || []) as c (c.id)}
+            <button
+              class="chat-link {props.selectedId === c.id ? 'active' : ''}"
+              title={c.title || 'Chat'}
+              onclick={() => props.onSelect?.(c.id)}
+            >
+              <span class="chat-title">{c.title || 'New Chat'}</span>
+            </button>
+          {/each}
+        </nav>
+      {/if}
 
       <!-- Footer actions pinned at the bottom -->
       <div class="side-footer">
@@ -50,7 +51,6 @@
         </button>
       </div>
     </div>
-    {/if}
   </div>
   {#if props.open}
     <div class="side-fade"></div>
@@ -97,6 +97,18 @@
   .nav-item:hover { background: var(--panel); }
   .nav-item .label { white-space: nowrap; }
   .sidebar.collapsed .nav-item .label { display: none; }
+  /* Make collapsed nav items look like the collapse icon button */
+  .sidebar.collapsed .nav-item {
+    display: grid;
+    place-items: center;
+    padding: 0;
+    min-width: 36px;
+    height: 36px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--panel);
+    color: var(--text);
+  }
 
   /* Align label with chat buttons and add spacing from New chat */
   .section-label {
@@ -113,6 +125,8 @@
   .chat-link.active { color: var(--text); }
   .chat-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-  .side-footer { padding: 8px; border-top: 1px solid var(--border); }
+  .side-footer { padding: 8px; border-top: 1px solid var(--border); margin-top: auto; }
+  /* Remove horizontal separator in collapsed mode */
+  .sidebar.collapsed .side-footer { border-top: 0; }
   .side-fade { position: absolute; inset: 0; pointer-events: none; background: linear-gradient(180deg, transparent, transparent 40%, rgba(0,0,0,0.04) 100%); mix-blend-mode: multiply; opacity: .35; }
 </style>
