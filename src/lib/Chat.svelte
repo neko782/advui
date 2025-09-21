@@ -4,11 +4,13 @@
   import { loadSettings } from './settingsStore.js'
   import { ensureModels, loadModelsCache } from './modelsStore.js'
   import { respond } from './openaiClient.js'
+  import { getChat as loadChatById, saveChatContent } from './chatsStore.js'
   // dom utils used within child components
   import { copyText as copyToClipboard } from './utils/clipboard.js'
   import TopBar from './components/chat/TopBar.svelte'
   import MessageList from './components/chat/MessageList.svelte'
   import Composer from './components/chat/Composer.svelte'
+  const props = $props()
 
   let messages = $state([])
   let input = $state('')
@@ -80,17 +82,51 @@
     messages = [sysMsg]
   }
 
-  function newChat() {
-    messages = []
-    nextId = 1
-    addSystemPrologue()
-    // Reset per-chat settings from global defaults
-    settings = loadSettings()
-    chatSettings = { model: (settings?.defaultChat?.model) || 'gpt-4o-mini' }
+  function recomputeNextId() {
+    try {
+      const maxId = (messages || []).reduce((mx, m) => Math.max(mx, Number(m?.id) || 0), 0)
+      nextId = maxId + 1
+    } catch { nextId = 1 }
   }
 
-  // Initialize on load
-  addSystemPrologue()
+  function newChat() { props.onNewChat?.() }
+
+  // Initialize when a chatId is provided/changes
+  $effect(() => {
+    const cid = props.chatId
+    // Reset runtime state whenever switching chats
+    editingId = null
+    editingText = ''
+    if (!cid) return
+    try {
+      const loaded = loadChatById(cid)
+      settings = loadSettings()
+      if (loaded) {
+        messages = Array.isArray(loaded.messages) ? loaded.messages.slice() : []
+        // Fall back to global default model if none
+        chatSettings = { model: loaded?.settings?.model || (settings?.defaultChat?.model) || 'gpt-4o-mini' }
+        if (!messages.length) {
+          nextId = 1
+          addSystemPrologue()
+        } else {
+          recomputeNextId()
+        }
+      } else {
+        // No chat found: start a temporary local session
+        messages = []
+        nextId = 1
+        addSystemPrologue()
+        chatSettings = { model: (settings?.defaultChat?.model) || 'gpt-4o-mini' }
+      }
+    } catch {
+      // Fallback to an empty seeded chat
+      settings = loadSettings()
+      messages = []
+      nextId = 1
+      addSystemPrologue()
+      chatSettings = { model: (settings?.defaultChat?.model) || 'gpt-4o-mini' }
+    }
+  })
   // Load models once if not cached
   import { onMount } from 'svelte'
   onMount(async () => {
@@ -102,6 +138,27 @@
       } else {
         modelIds = cached.ids
       }
+    } catch {}
+  })
+
+  // Persist chat content and settings on change
+  let persistSig = $state('')
+  function computePersistSig() {
+    try {
+      const mini = (messages || []).map(m => `${m.id}|${m.role}|${m.content?.length||0}|${m.variantIndex||0}`)
+      return JSON.stringify({ m: mini, model: chatSettings?.model || '' })
+    } catch { return String(Math.random()) }
+  }
+  $effect(() => {
+    const cid = props.chatId
+    if (!cid) return
+    try {
+      const sig = computePersistSig()
+      if (sig === persistSig) return
+      persistSig = sig
+      const updated = saveChatContent(cid, { messages, settings: chatSettings })
+      // Notify parent (App) to refresh list/sidebar (titles/order)
+      props.onChatUpdated?.(updated)
     } catch {}
   })
 
@@ -553,7 +610,7 @@
 </script>
 
 <section class="chat-shell">
-  <TopBar onOpenSettings={() => (showSettings = true)} onNewChat={newChat} />
+  <TopBar onOpenSettings={() => (showSettings = true)} onNewChat={() => newChat()} />
 
   <MessageList
     bind:this={listCmp}
