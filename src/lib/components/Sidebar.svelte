@@ -98,7 +98,15 @@
   .nav-item .label { white-space: nowrap; }
   .sidebar.collapsed .nav-item .label { display: none; }
 
-  .section-label { font-size: .85rem; color: var(--muted); padding: 8px 12px 4px; }
+  /* Align label with chat buttons and add spacing from New chat */
+  .section-label {
+    font-size: .85rem;
+    color: var(--muted);
+    /* Left padding matches chat button left edge: chat-list(6px) + chat-link(10px) */
+    padding: 8px 12px 0 16px;
+    margin-top: 10px;
+    margin-bottom: 8px; /* space between label and chat list */
+  }
   .chat-list { display: grid; gap: 2px; padding: 0 6px 10px; overflow: auto; align-content: start; flex: 1; min-height: 0; }
   .chat-link { text-align: left; display: block; width: 100%; padding: 6px 10px; border: 0; background: transparent; color: var(--muted); border-radius: 8px; font: inherit; }
   .chat-link:hover { background: var(--panel); color: var(--text); }
