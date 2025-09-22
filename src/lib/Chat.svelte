@@ -13,11 +13,14 @@
   let messages = $state([])
   let input = $state('')
   let sending = $state(false)
+  // Lock all chat actions while a response is generating (sending or any typing)
+  let locked = $state(false)
   let nextId = $state(1)
   let settings = $state(loadSettings())
   // Group per-chat settings in a single object (seeded from global defaults)
   let chatSettings = $state({
     model: (settings?.defaultChat?.model) || 'gpt-4o-mini',
+    streaming: (typeof settings?.defaultChat?.streaming === 'boolean' ? settings.defaultChat.streaming : true),
   })
   // Per-chat settings popover open state
   let chatSettingsOpen = $state(false)
@@ -107,14 +110,22 @@
     // mutating state during the current reconciliation/flush.
     let nextMessages = []
     let nextSettings = loadSettings()
-    let nextChatSettings = { model: (nextSettings?.defaultChat?.model) || 'gpt-4o-mini' }
+    let nextChatSettings = {
+      model: (nextSettings?.defaultChat?.model) || 'gpt-4o-mini',
+      streaming: (typeof nextSettings?.defaultChat?.streaming === 'boolean' ? nextSettings.defaultChat.streaming : true)
+    }
     let nextNextId = 1
     let nextPersistSig = ''
     try {
       const loaded = loadChatById(cid)
       if (loaded) {
         nextMessages = Array.isArray(loaded.messages) ? loaded.messages.slice() : []
-        nextChatSettings = { model: loaded?.settings?.model || (nextSettings?.defaultChat?.model) || 'gpt-4o-mini' }
+        nextChatSettings = {
+          model: loaded?.settings?.model || (nextSettings?.defaultChat?.model) || 'gpt-4o-mini',
+          streaming: (typeof loaded?.settings?.streaming === 'boolean'
+            ? loaded.settings.streaming
+            : (typeof nextSettings?.defaultChat?.streaming === 'boolean' ? nextSettings.defaultChat.streaming : true))
+        }
         if (!nextMessages.length) {
           nextNextId = 2
           nextMessages = [makeSystemPrologue(1)]
@@ -127,18 +138,24 @@
       } else {
         nextMessages = [makeSystemPrologue(1)]
         nextNextId = 2
-        nextChatSettings = { model: (nextSettings?.defaultChat?.model) || 'gpt-4o-mini' }
+        nextChatSettings = {
+          model: (nextSettings?.defaultChat?.model) || 'gpt-4o-mini',
+          streaming: (typeof nextSettings?.defaultChat?.streaming === 'boolean' ? nextSettings.defaultChat.streaming : true)
+        }
       }
     } catch {
       nextSettings = loadSettings()
       nextMessages = [makeSystemPrologue(1)]
       nextNextId = 2
-      nextChatSettings = { model: (nextSettings?.defaultChat?.model) || 'gpt-4o-mini' }
+      nextChatSettings = {
+        model: (nextSettings?.defaultChat?.model) || 'gpt-4o-mini',
+        streaming: (typeof nextSettings?.defaultChat?.streaming === 'boolean' ? nextSettings.defaultChat.streaming : true)
+      }
     }
     // Precompute a persist signature for the loaded chat content
     try {
       const mini = (nextMessages || []).map(m => `${m.id}|${m.role}|${m.content?.length||0}|${m.variantIndex||0}`)
-      nextPersistSig = JSON.stringify({ m: mini, model: nextChatSettings?.model || '' })
+      nextPersistSig = JSON.stringify({ m: mini, model: nextChatSettings?.model || '', streaming: !!nextChatSettings?.streaming })
     } catch { nextPersistSig = '' }
     // Apply computed state after the current tick
     setTimeout(() => {
@@ -159,6 +176,12 @@
   // Load models once if not cached
   import { onMount } from 'svelte'
   let mounted = false
+  // Derive locked state from sending flag and any in-flight typing messages
+  $effect(() => {
+    try {
+      locked = !!(sending || (Array.isArray(messages) && messages.some(m => m?.typing)))
+    } catch { locked = !!sending }
+  })
   onMount(async () => {
     mounted = true
     try {
@@ -178,7 +201,7 @@
   function computePersistSig() {
     try {
       const mini = (messages || []).map(m => `${m.id}|${m.role}|${m.content?.length||0}|${m.variantIndex||0}`)
-      return JSON.stringify({ m: mini, model: chatSettings?.model || '' })
+      return JSON.stringify({ m: mini, model: chatSettings?.model || '', streaming: !!chatSettings?.streaming })
     } catch { return String(Math.random()) }
   }
   // Immediate persistence helper to avoid relying solely on the reactive effect
@@ -223,6 +246,7 @@
 
   // Send a message (with chosen role) and request an assistant reply via API
   async function sendWithRole(role = 'user') {
+    if (locked) return
     const text = input.trim()
     if (!text || sending) return
 
@@ -251,19 +275,32 @@
           .map(vm => vm.m)
           .filter(m => !m.typing)
           .map(({ role, content }) => ({ role, content }))
-        reply = await respond({ messages: history, model: chatSettings.model })
+        if (chatSettings.streaming) {
+          // Stream into the typing message
+          reply = await respond({
+            messages: history,
+            model: chatSettings.model,
+            stream: true,
+            onTextDelta: (full) => {
+              messages = messages.map(m => (m.id === typingMsg.id ? { ...m, content: full, variants: [full], variantIndex: 0 } : m))
+            }
+          })
+        } else {
+          reply = await respond({ messages: history, model: chatSettings.model })
+        }
       } else {
         // if no key set, provide a friendly hint + echo
         reply = generatePlaceholderReply(firstMsg.content) +
           '\n\nTip: Add your OpenAI API key in Settings to get real answers.'
       }
-      messages = messages.map(m => (m.id === typingMsg.id ? { ...m, content: reply, typing: false, variants: [reply], variantIndex: 0, branchPathBefore: parentChain } : m))
+      messages = messages.map(m => (m.id === typingMsg.id ? { ...m, content: reply, typing: false, error: undefined, variants: [reply], variantIndex: 0, branchPathBefore: parentChain } : m))
       // Persist after receiving the assistant reply
       persistNow()
     } catch (err) {
       const msg = err?.message || 'Something went wrong.'
-      const errText = `Error: ${msg}`
-      messages = messages.map(m => (m.id === typingMsg.id ? { ...m, content: errText, typing: false, variants: [errText], variantIndex: 0, branchPathBefore: parentChain } : m))
+      messages = messages.map(m => (m.id === typingMsg.id
+        ? { ...m, typing: false, error: msg, content: (m.content === 'typing' ? '' : m.content), branchPathBefore: parentChain }
+        : m))
       persistNow()
     } finally {
       sending = false
@@ -276,6 +313,7 @@
 
   // Add a message locally without sending to the API
   function addToChat(role = 'user') {
+    if (locked) return
     const text = input.trim()
     if (!text) return
     const parentChain = currentVisibleChain()
@@ -309,6 +347,7 @@
   // keyboard handling lives in Composer
   // Toggle per-chat settings popover (click to open/close)
   function toggleChatSettings() {
+    if (locked) return
     chatSettingsOpen = !chatSettingsOpen
   }
   function closeChatSettings() { chatSettingsOpen = false }
@@ -322,10 +361,12 @@
   // Message actions
   async function copyMessage(text) { try { await copyToClipboard(text) } catch {} }
   function deleteMessage(id) {
+    if (locked) return
     messages = messages.filter(m => m.id !== id)
     persistNow()
   }
   function setMessageRole(id, role) {
+    if (locked) return
     // Role change should behave like content change: do not alter branching.
     const roles = new Set(['user', 'assistant', 'system'])
     if (!roles.has(role)) return
@@ -357,6 +398,7 @@
     return out
   }
   function moveUp(id) {
+    if (locked) return
     const i = messages.findIndex(m => m.id === id)
     if (i > 0) {
       const arr = messages.slice()
@@ -367,6 +409,7 @@
     }
   }
   function moveDown(id) {
+    if (locked) return
     const i = messages.findIndex(m => m.id === id)
     if (i >= 0 && i < messages.length - 1) {
       const arr = messages.slice()
@@ -377,6 +420,7 @@
     }
   }
   function editMessage(id) {
+    if (locked) return
     const msg = messages.find(m => m.id === id)
     if (!msg || msg.typing) return
     editingId = id
@@ -384,6 +428,7 @@
     // Focus/caret handled by MessageBubble when entering edit mode
   }
   function commitEdit() {
+    if (locked) return
     if (editingId == null) return
     const val = String(editingText)
     messages = messages.map(m => {
@@ -392,9 +437,9 @@
         const arr = m.variants.slice()
         const idx = Math.max(0, Math.min(arr.length - 1, m.variantIndex || 0))
         arr[idx] = val
-        return { ...m, content: val, variants: arr }
+        return { ...m, content: val, variants: arr, error: undefined }
       }
-      return { ...m, content: val }
+      return { ...m, content: val, error: undefined }
     })
     editingId = null
     editingText = ''
@@ -406,6 +451,7 @@
 
   // Create a branch for the edited message without generating a new reply
   function applyEditBranch() {
+    if (locked) return
     if (editingId == null) return
     const i = messages.findIndex(m => m.id === editingId)
     if (i < 0) return
@@ -416,7 +462,7 @@
       const base = Array.isArray(cur.variants) ? cur.variants.slice() : [cur.content]
       base.push(val)
       const vi = base.length - 1
-      messages = messages.map((m, idx) => idx === i ? { ...m, content: val, variants: base, variantIndex: vi } : m)
+      messages = messages.map((m, idx) => idx === i ? { ...m, content: val, variants: base, variantIndex: vi, error: undefined } : m)
       editingId = null
       editingText = ''
       queueMicrotask(() => scrollToBottom())
@@ -430,7 +476,7 @@
     const vi = base.length - 1
     // Update the edited message into an anchor with branchPathBefore
     let arr = messages.slice()
-    arr[i] = { ...cur, content: val, variants: base, variantIndex: vi, branchPathBefore: parent }
+    arr[i] = { ...cur, content: val, variants: base, variantIndex: vi, branchPathBefore: parent, error: undefined }
     // Inject token for downstream branch paths and anchor parents
     messages = injectAnchorToken(arr, i, parent, arr[i].id, 0)
     persistNow()
@@ -441,6 +487,7 @@
 
   // Branch and generate a new assistant reply starting after the edited message
   async function applyEditSend() {
+    if (locked) return
     if (editingId == null) return
     const i0 = messages.findIndex(m => m.id === editingId)
     if (i0 < 0) return
@@ -478,21 +525,33 @@
           .filter(m => !m.typing)
           .map(({ role, content }) => ({ role, content }))
         if (apiKey) {
-          reply = await respond({ messages: history, model: chatSettings.model })
+          if (chatSettings.streaming) {
+            reply = await respond({
+              messages: history,
+              model: chatSettings.model,
+              stream: true,
+              onTextDelta: (full) => {
+                messages = messages.map(m => (m.id === typingMsg.id
+                  ? { ...m, content: full, variants: [full], variantIndex: 0 }
+                  : m))
+              }
+            })
+          } else {
+            reply = await respond({ messages: history, model: chatSettings.model })
+          }
         } else {
           const lastUser = [...buildVisibleUpTo(insertIndex + 1)].reverse().find(m => m.role === 'user')
           reply = generatePlaceholderReply(lastUser?.content || val) +
             '\n\nTip: Add your OpenAI API key in Settings to get real answers.'
         }
         messages = messages.map(m => (m.id === typingMsg.id
-          ? { ...m, content: reply, typing: false, variants: [reply], variantIndex: 0 }
+          ? { ...m, content: reply, typing: false, error: undefined, variants: [reply], variantIndex: 0 }
           : m))
         persistNow()
       } catch (err) {
         const msg = err?.message || 'Something went wrong.'
-        const errText = `Error: ${msg}`
         messages = messages.map(m => (m.id === typingMsg.id
-          ? { ...m, content: errText, typing: false, variants: [errText], variantIndex: 0 }
+          ? { ...m, typing: false, error: msg, content: (m.content === 'typing' ? '' : m.content) }
           : m))
         persistNow()
       } finally {
@@ -529,7 +588,20 @@
         .filter(m => !m.typing)
         .map(({ role, content }) => ({ role, content }))
       if (apiKey) {
-        reply = await respond({ messages: history, model: chatSettings.model })
+        if (chatSettings.streaming) {
+          reply = await respond({
+            messages: history,
+            model: chatSettings.model,
+            stream: true,
+            onTextDelta: (full) => {
+              messages = messages.map(m => (m.id === typingMsg.id
+                ? { ...m, content: full, variants: [full], variantIndex: 0 }
+                : m))
+            }
+          })
+        } else {
+          reply = await respond({ messages: history, model: chatSettings.model })
+        }
       } else {
         const lastUser = [...buildVisibleUpTo(insertIndex + 1)].reverse().find(m => m.role === 'user')
         reply = generatePlaceholderReply(lastUser?.content || val) +
@@ -537,15 +609,14 @@
       }
       const parentChain = chainFromVisibleUpTo(insertIndex + 1)
       messages = messages.map(m => (m.id === typingMsg.id
-        ? { ...m, content: reply, typing: false, variants: [reply], variantIndex: 0, branchPathBefore: parentChain }
+        ? { ...m, content: reply, typing: false, error: undefined, variants: [reply], variantIndex: 0, branchPathBefore: parentChain }
         : m))
       persistNow()
     } catch (err) {
       const msg = err?.message || 'Something went wrong.'
-      const errText = `Error: ${msg}`
       const parentChain = chainFromVisibleUpTo(insertIndex + 1)
       messages = messages.map(m => (m.id === typingMsg.id
-        ? { ...m, content: errText, typing: false, variants: [errText], variantIndex: 0, branchPathBefore: parentChain }
+        ? { ...m, typing: false, error: msg, content: (m.content === 'typing' ? '' : m.content), branchPathBefore: parentChain }
         : m))
       persistNow()
     } finally {
@@ -563,6 +634,7 @@
 
   // Branching: regenerate an assistant message and keep variants locally
   async function refreshAssistant(id) {
+    if (locked) return
     const idx = messages.findIndex(m => m.id === id)
     if (idx < 0) return
     const target = messages[idx]
@@ -580,7 +652,7 @@
       // Add a placeholder slot for the in-flight variant so counts line up
       base.push('')
       // Ensure this assistant is anchored to its parent chain
-      return { ...m, typing: true, variants: base, variantIndex: nextIndex, branchPathBefore: parentChain }
+      return { ...m, typing: true, error: undefined, variants: base, variantIndex: nextIndex, branchPathBefore: parentChain }
     })
     try {
       let reply
@@ -591,7 +663,26 @@
         const history = buildVisibleUpTo(idx)
           .filter(m => !m.typing)
           .map(({ role, content }) => ({ role, content }))
-        reply = await respond({ messages: history, model: chatSettings.model })
+        if (chatSettings.streaming) {
+          // Capture the variant index that was reserved for this streaming run
+          const curVarIndex = (() => { const mm = messages.find(m => m.id === id); return (typeof mm?.variantIndex === 'number') ? mm.variantIndex : 0 })()
+          reply = await respond({
+            messages: history,
+            model: chatSettings.model,
+            stream: true,
+            onTextDelta: (full) => {
+              messages = messages.map(m => {
+                if (m.id !== id) return m
+                const arr = Array.isArray(m.variants) ? m.variants.slice() : [m.content]
+                if (curVarIndex >= arr.length) arr.length = curVarIndex + 1
+                arr[curVarIndex] = full
+                return { ...m, content: full, error: undefined, variants: arr, variantIndex: curVarIndex }
+              })
+            }
+          })
+        } else {
+          reply = await respond({ messages: history, model: chatSettings.model })
+        }
       } else {
         // No key: generate a placeholder reply based on last user input
         const lastUser = [...messages.slice(0, idx)].reverse().find(m => m.role === 'user')
@@ -605,19 +696,21 @@
         // Ensure the slot exists, then fill it with reply
         if (vi >= arr.length) arr.length = vi + 1
         arr[vi] = reply
-        return { ...m, typing: false, content: reply, variants: arr, variantIndex: vi, branchPathBefore: parentChain }
+        return { ...m, typing: false, error: undefined, content: reply, variants: arr, variantIndex: vi, branchPathBefore: parentChain }
       })
       persistNow()
     } catch (err) {
       const msg = err?.message || 'Something went wrong.'
-      const errText = `Error: ${msg}`
       messages = messages.map(m => {
         if (m.id !== id) return m
         const arr = Array.isArray(m.variants) ? m.variants.slice() : [m.content]
-        const vi = typeof m.variantIndex === 'number' ? m.variantIndex : arr.length
-        if (vi >= arr.length) arr.length = vi + 1
-        arr[vi] = errText
-        return { ...m, typing: false, content: errText, variants: arr, variantIndex: vi, branchPathBefore: parentChain }
+        let vi = typeof m.variantIndex === 'number' ? m.variantIndex : (arr.length ? arr.length - 1 : 0)
+        if (arr.length && vi === arr.length - 1 && (arr[vi] == null || arr[vi] === '')) {
+          arr.pop()
+          vi = Math.max(0, arr.length - 1)
+        }
+        const content = arr[vi] ?? ''
+        return { ...m, typing: false, error: msg, content, variants: arr, variantIndex: vi, branchPathBefore: parentChain }
       })
       persistNow()
     } finally {
@@ -628,6 +721,7 @@
   // Generate a new assistant reply directly after a given user message index
   // (used when refreshing a user message with no following assistant)
   async function refreshAfterUserIndex(i) {
+    if (locked) return
     if (i == null || i < 0 || i >= messages.length) return
     const cur = messages[i]
     if (!cur || cur.role !== 'user') return
@@ -662,21 +756,33 @@
         .filter(m => !m.typing)
         .map(({ role, content }) => ({ role, content }))
       if (apiKey) {
-        reply = await respond({ messages: history, model: chatSettings.model })
+        if (chatSettings.streaming) {
+          reply = await respond({
+            messages: history,
+            model: chatSettings.model,
+            stream: true,
+            onTextDelta: (full) => {
+              messages = messages.map(m => (m.id === typingMsg.id
+                ? { ...m, content: full, variants: [full], variantIndex: 0 }
+                : m))
+            }
+          })
+        } else {
+          reply = await respond({ messages: history, model: chatSettings.model })
+        }
       } else {
         const lastUser = [...buildVisibleUpTo(insertIndex + 1)].reverse().find(m => m.role === 'user')
         reply = generatePlaceholderReply(lastUser?.content || cur.content) +
           '\n\nTip: Add your OpenAI API key in Settings to get real answers.'
       }
       messages = messages.map(m => (m.id === typingMsg.id
-        ? { ...m, content: reply, typing: false, variants: [reply], variantIndex: 0 }
+        ? { ...m, content: reply, typing: false, error: undefined, variants: [reply], variantIndex: 0 }
         : m))
       persistNow()
     } catch (err) {
       const msg = err?.message || 'Something went wrong.'
-      const errText = `Error: ${msg}`
       messages = messages.map(m => (m.id === typingMsg.id
-        ? { ...m, content: errText, typing: false, variants: [errText], variantIndex: 0 }
+        ? { ...m, typing: false, error: msg, content: (m.content === 'typing' ? '' : m.content) }
         : m))
       persistNow()
     } finally {
@@ -685,6 +791,7 @@
   }
 
   function changeVariant(id, delta) {
+    if (locked) return
     const i = messages.findIndex(m => m.id === id)
     if (i < 0) return
     const m = messages[i]
@@ -693,7 +800,7 @@
     const cur = typeof m.variantIndex === 'number' ? m.variantIndex : 0
     const next = Math.max(0, Math.min(len - 1, cur + delta))
     if (next === cur) return
-    const updated = { ...m, variantIndex: next, content: m.variants[next] }
+    const updated = { ...m, variantIndex: next, content: m.variants[next], error: undefined }
     const arr = messages.slice()
     arr[i] = updated
     messages = arr
@@ -706,6 +813,7 @@
     bind:this={listCmp}
     items={buildVisible()}
     total={messages.length}
+    locked={locked}
     editingId={editingId}
     editingText={editingText}
     followingMap={computeFollowingMap()}
@@ -729,12 +837,15 @@
   <Composer
     input={input}
     sending={sending}
+    locked={locked}
     chatSettingsOpen={chatSettingsOpen}
     chatModel={chatSettings.model}
+    chatStreaming={chatSettings.streaming}
     modelIds={modelIds}
     onToggleChatSettings={toggleChatSettings}
     onCloseChatSettings={() => (chatSettingsOpen = false)}
     onChangeModel={(val) => (chatSettings = { ...chatSettings, model: val })}
+    onChangeStreaming={(val) => (chatSettings = { ...chatSettings, streaming: !!val })}
     onInput={(val) => (input = val)}
     onAdd={(role) => addToChat(role)}
     onSend={(role) => sendWithRole(role)}

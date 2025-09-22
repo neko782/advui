@@ -7,58 +7,58 @@
 
 <div class={`actions ${m.role}`}>
   {#if props.isEditing}
-    <button class="action-btn" onclick={props.onApplyEditSend} aria-label="Send (branch + reply)" title="Send (branch + reply)">
+    <button class="action-btn" onclick={props.onApplyEditSend} aria-label="Send (branch + reply)" title="Send (branch + reply)" disabled={props.locked}>
       <Icon name="send" size={20} />
     </button>
-    <button class="action-btn" onclick={props.onApplyEditBranch} aria-label="Branch (no reply)" title="Branch (no reply)">
+    <button class="action-btn" onclick={props.onApplyEditBranch} aria-label="Branch (no reply)" title="Branch (no reply)" disabled={props.locked}>
       <Icon name="call_split" size={20} />
     </button>
-    <button class="action-btn" onclick={props.onApplyEditReplace} aria-label="Replace in current branch" title="Replace in current branch">
+    <button class="action-btn" onclick={props.onApplyEditReplace} aria-label="Replace in current branch" title="Replace in current branch" disabled={props.locked}>
       <Icon name="published_with_changes" size={20} />
     </button>
-    <button class="action-btn" onclick={props.onCancelEdit} aria-label="Cancel edit" title="Cancel">
+    <button class="action-btn" onclick={props.onCancelEdit} aria-label="Cancel edit" title="Cancel" disabled={props.locked}>
       <Icon name="close" size={20} />
     </button>
   {:else}
     {#if props.variantsLength > 1}
       <span class="variants">
-        <button class="action-btn" onclick={() => props.onChangeVariant?.(-1)} aria-label="Previous variant" title="Previous" disabled={m.typing || props.variantIndex <= 0}>
+        <button class="action-btn" onclick={() => props.onChangeVariant?.(-1)} aria-label="Previous variant" title="Previous" disabled={props.locked || m.typing || props.variantIndex <= 0}>
           <Icon name="chevron_left" size={20} />
         </button>
         <span class="variant-counter" aria-live="polite">{(props.variantIndex || 0) + 1}/{props.variantsLength}</span>
-        <button class="action-btn" onclick={() => props.onChangeVariant?.(1)} aria-label="Next variant" title="Next" disabled={m.typing || props.variantIndex >= (props.variantsLength - 1)}>
+        <button class="action-btn" onclick={() => props.onChangeVariant?.(1)} aria-label="Next variant" title="Next" disabled={props.locked || m.typing || props.variantIndex >= (props.variantsLength - 1)}>
           <Icon name="chevron_right" size={20} />
         </button>
       </span>
     {/if}
 
     {#if m.role === 'assistant'}
-      <button class="action-btn" onclick={() => props.onRefreshAssistant?.(m.id)} aria-label="Regenerate response" title="Regenerate" disabled={m.typing}>
+      <button class="action-btn" onclick={() => props.onRefreshAssistant?.(m.id)} aria-label="Regenerate response" title="Regenerate" disabled={props.locked || m.typing}>
         <Icon name="autorenew" size={20} />
       </button>
     {:else if m.role === 'user' && props.hasFollowingAssistant}
-      <button class="action-btn" onclick={() => props.onRefreshAssistant?.(props.nextAssistantId)} aria-label="Regenerate following response" title="Regenerate following response" disabled={props.nextAssistantTyping}>
+      <button class="action-btn" onclick={() => props.onRefreshAssistant?.(props.nextAssistantId)} aria-label="Regenerate following response" title="Regenerate following response" disabled={props.locked || props.nextAssistantTyping}>
         <Icon name="autorenew" size={20} />
       </button>
     {:else if m.role === 'user'}
-      <button class="action-btn" onclick={() => props.onRefreshAfterUserIndex?.(props.index)} aria-label="Generate following response" title="Generate following response">
+      <button class="action-btn" onclick={() => props.onRefreshAfterUserIndex?.(props.index)} aria-label="Generate following response" title="Generate following response" disabled={props.locked}>
         <Icon name="autorenew" size={20} />
       </button>
     {/if}
 
-    <button class="action-btn" onclick={() => props.onCopy?.(m.content)} aria-label="Copy message" title="Copy" disabled={m.typing}>
+    <button class="action-btn" onclick={() => props.onCopy?.(m.content)} aria-label="Copy message" title="Copy" disabled={props.locked || m.typing}>
       <Icon name="content_copy" size={20} />
     </button>
-    <button class="action-btn" onclick={() => props.onDelete?.(m.id)} aria-label="Delete message" title="Delete" disabled={m.typing}>
+    <button class="action-btn" onclick={() => props.onDelete?.(m.id)} aria-label="Delete message" title="Delete" disabled={props.locked || m.typing}>
       <Icon name="delete" size={20} />
     </button>
-    <button class="action-btn" onclick={() => props.onEdit?.(m.id)} aria-label="Edit message" title="Edit" disabled={m.typing}>
+    <button class="action-btn" onclick={() => props.onEdit?.(m.id)} aria-label="Edit message" title="Edit" disabled={props.locked || m.typing}>
       <Icon name="edit" size={20} />
     </button>
-    <button class="action-btn" onclick={() => props.onMoveDown?.(m.id)} aria-label="Move down" title="Down" disabled={m.typing || props.index === (props.total - 1)}>
+    <button class="action-btn" onclick={() => props.onMoveDown?.(m.id)} aria-label="Move down" title="Down" disabled={props.locked || m.typing || props.index === (props.total - 1)}>
       <Icon name="arrow_downward" size={20} />
     </button>
-    <button class="action-btn" onclick={() => props.onMoveUp?.(m.id)} aria-label="Move up" title="Up" disabled={m.typing || props.index === 0}>
+    <button class="action-btn" onclick={() => props.onMoveUp?.(m.id)} aria-label="Move up" title="Up" disabled={props.locked || m.typing || props.index === 0}>
       <Icon name="arrow_upward" size={20} />
     </button>
   {/if}

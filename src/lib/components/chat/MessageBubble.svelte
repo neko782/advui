@@ -39,13 +39,19 @@
     bind:this={el}
   ></div>
 {:else}
-  <div class={`bubble ${props.message.role}`} data-typing={props.message.typing ? true : undefined}>
-    {#if props.message.typing}
-      <span class="dots"><i></i><i></i><i></i></span>
-    {:else}
+  {#if props.message.typing}
+    <div class={`bubble ${props.message.role}`} data-typing={true}>
+      {#if props.message.content && props.message.content !== 'typing'}
+        {@html renderMarkdown(props.message.content)}
+      {:else}
+        <span class="dots"><i></i><i></i><i></i></span>
+      {/if}
+    </div>
+  {:else if props.message.content}
+    <div class={`bubble ${props.message.role}`}>
       {@html renderMarkdown(props.message.content)}
-    {/if}
-  </div>
+    </div>
+  {/if}
 {/if}
 
 <style>

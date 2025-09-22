@@ -12,6 +12,7 @@
     <MessageItem
       vm={vm}
       total={props.total}
+      locked={props.locked}
       editingId={props.editingId}
       editingText={props.editingText}
       hasFollowingAssistant={props.followingMap?.[vm.i]?.has}

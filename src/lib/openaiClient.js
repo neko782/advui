@@ -12,7 +12,7 @@ export async function getClient() {
 
 // Create a response using either a single prompt string or an array of messages
 // Messages should be of the form: { role: 'system'|'user'|'assistant', content: string }
-export async function respond({ prompt, messages, model }) {
+export async function respond({ prompt, messages, model, stream = false, onTextDelta, onEvent }) {
   const { apiKey } = loadSettings()
   if (!apiKey) throw new Error('Missing OpenAI API key. Set it in Settings.')
   const s = loadSettings()
@@ -33,8 +33,38 @@ export async function respond({ prompt, messages, model }) {
   } else {
     input = typeof prompt === 'string' ? prompt : ''
   }
-  const res = await client.responses.create({ model: useModel, input })
-  return extractOutputText(res)
+  if (stream) {
+    // Stream via SDK's async iterator
+    const streamIt = await client.responses.create({ model: useModel, input, stream: true })
+    let full = ''
+    try {
+      for await (const event of streamIt) {
+        try { onEvent?.(event) } catch {}
+        const t = event?.type || event?.event || ''
+        if (t === 'response.output_text.delta') {
+          const delta = event?.delta || ''
+          if (typeof delta === 'string' && delta) {
+            full += delta
+            try { onTextDelta?.(full, delta, event) } catch {}
+          }
+        } else if (t === 'response.completed' || t === 'response.text.done' || t === 'response.done') {
+          // Let the SDK finish and close the stream naturally.
+          // Do not break early to avoid aborting the request.
+          continue
+        } else if (t === 'response.failed' || t === 'error') {
+          const msg = event?.error?.message || 'Stream failed.'
+          throw new Error(msg)
+        }
+      }
+    } catch (err) {
+      // Re-throw so callers can handle
+      throw err
+    }
+    return full
+  } else {
+    const res = await client.responses.create({ model: useModel, input })
+    return extractOutputText(res)
+  }
 }
 
 // List available models via the official SDK

@@ -1,7 +1,7 @@
 // LocalStorage-backed multi-chat store
 // Shape:
 // {
-//   chats: Array<{ id: string, title: string, updatedAt: number, settings: { model: string }, messages: any[] }>,
+//   chats: Array<{ id: string, title: string, updatedAt: number, settings: { model: string, streaming: boolean }, messages: any[] }>,
 //   selectedId: string | null
 // }
 
@@ -80,7 +80,12 @@ export function saveChatContent(id, { messages, settings }) {
   const updated = {
     ...cur,
     messages: Array.isArray(messages) ? messages : (cur.messages || []),
-    settings: { model: (settings?.model || cur?.settings?.model || 'gpt-4o-mini') },
+    settings: {
+      model: (settings?.model || cur?.settings?.model || 'gpt-4o-mini'),
+      streaming: (typeof settings?.streaming === 'boolean'
+        ? settings.streaming
+        : (typeof cur?.settings?.streaming === 'boolean' ? cur.settings.streaming : true))
+    },
     title: computeTitle(Array.isArray(messages) ? messages : cur.messages),
     updatedAt: Date.now(),
   }
@@ -100,7 +105,12 @@ export function createChat(initial = {}) {
     id,
     title: computeTitle(messages),
     updatedAt: Date.now(),
-    settings: { model: initial?.settings?.model || initial?.model || (defaults?.defaultChat?.model) || 'gpt-4o-mini' },
+    settings: {
+      model: initial?.settings?.model || initial?.model || (defaults?.defaultChat?.model) || 'gpt-4o-mini',
+      streaming: (typeof initial?.settings?.streaming === 'boolean')
+        ? initial.settings.streaming
+        : (typeof defaults?.defaultChat?.streaming === 'boolean' ? defaults.defaultChat.streaming : true)
+    },
     messages,
   }
   const all = loadAll()

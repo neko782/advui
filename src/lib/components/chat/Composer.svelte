@@ -21,17 +21,21 @@
   <div class="composer-inner">
     <ChatSettingsPopover
       open={props.chatSettingsOpen}
+      disabled={props.locked}
       model={props.chatModel}
+      streaming={props.chatStreaming}
       modelIds={props.modelIds}
       onToggle={props.onToggleChatSettings}
       onClose={props.onCloseChatSettings}
       onInputModel={props.onChangeModel}
+      onInputStreaming={props.onChangeStreaming}
     />
 
     <textarea
       class="composer-input"
       rows="1"
       placeholder="Type a message…"
+      disabled={props.locked}
       value={props.input}
       oninput={(e) => { props.onInput?.(e.currentTarget.value); queueMicrotask(() => autoGrow(inputEl)) }}
       onkeydown={onKey}
@@ -39,19 +43,19 @@
     ></textarea>
 
     <div class="send-group" aria-haspopup="menu" title="Add to chat as">
-      <button class="float-btn" onclick={() => props.onAdd?.('user')} disabled={!props.input?.trim()} aria-label="Add to chat">
+      <button class="float-btn" onclick={() => props.onAdd?.('user')} disabled={props.locked || !props.input?.trim()} aria-label="Add to chat">
         <Icon name="add_comment" size={22} />
       </button>
       <div class="send-menu" role="menu" aria-label="Add to chat as">
-        <button role="menuitem" class="menu-item" onclick={() => props.onAdd?.('user')} disabled={!props.input?.trim()} aria-label="Add as user">
+        <button role="menuitem" class="menu-item" onclick={() => props.onAdd?.('user')} disabled={props.locked || !props.input?.trim()} aria-label="Add as user">
           <Icon name="person" size={18} />
           User
         </button>
-        <button role="menuitem" class="menu-item" onclick={() => props.onAdd?.('assistant')} disabled={!props.input?.trim()} aria-label="Add as assistant">
+        <button role="menuitem" class="menu-item" onclick={() => props.onAdd?.('assistant')} disabled={props.locked || !props.input?.trim()} aria-label="Add as assistant">
           <Icon name="smart_toy" size={18} />
           Assistant
         </button>
-        <button role="menuitem" class="menu-item" onclick={() => props.onAdd?.('system')} disabled={!props.input?.trim()} aria-label="Add as system">
+        <button role="menuitem" class="menu-item" onclick={() => props.onAdd?.('system')} disabled={props.locked || !props.input?.trim()} aria-label="Add as system">
           <Icon name="tune" size={18} />
           System
         </button>
@@ -60,19 +64,19 @@
 
     <!-- Send group (single send button shows the menu on hover/focus) -->
     <div class="send-group" aria-haspopup="menu" title="Send as">
-      <button class="float-btn" onclick={() => props.onSend?.('user')} disabled={!props.input?.trim() || props.sending} aria-label="Send">
+      <button class="float-btn" onclick={() => props.onSend?.('user')} disabled={props.locked || !props.input?.trim() || props.sending} aria-label="Send">
         <Icon name="send" size={22} />
       </button>
       <div class="send-menu" role="menu" aria-label="Send as">
-        <button role="menuitem" class="menu-item" onclick={() => props.onSend?.('user')} disabled={!props.input?.trim() || props.sending} aria-label="Send as user">
+        <button role="menuitem" class="menu-item" onclick={() => props.onSend?.('user')} disabled={props.locked || !props.input?.trim() || props.sending} aria-label="Send as user">
           <Icon name="send" size={18} />
           User
         </button>
-        <button role="menuitem" class="menu-item" onclick={() => props.onSend?.('assistant')} disabled={!props.input?.trim() || props.sending} aria-label="Send as assistant">
+        <button role="menuitem" class="menu-item" onclick={() => props.onSend?.('assistant')} disabled={props.locked || !props.input?.trim() || props.sending} aria-label="Send as assistant">
           <Icon name="send" size={18} />
           Assistant
         </button>
-        <button role="menuitem" class="menu-item" onclick={() => props.onSend?.('system')} disabled={!props.input?.trim() || props.sending} aria-label="Send as system">
+        <button role="menuitem" class="menu-item" onclick={() => props.onSend?.('system')} disabled={props.locked || !props.input?.trim() || props.sending} aria-label="Send as system">
           <Icon name="send" size={18} />
           System
         </button>

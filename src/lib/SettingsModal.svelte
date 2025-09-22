@@ -90,13 +90,13 @@
         <div class="group">
           <div class="group-title">Default Chat</div>
           <label class="field">
-            <span>Default model</span>
+            <span>Model</span>
             <input
               type="text"
               placeholder="gpt-4o-mini"
               bind:value={local.defaultChat.model}
               list="global-model-suggestions"
-              aria-label="Default model"
+              aria-label="Model"
             />
             {#if modelIds?.length}
               <datalist id="global-model-suggestions">
@@ -106,7 +106,15 @@
               </datalist>
             {/if}
           </label>
-          <p class="hint">These settings apply to every new chat.</p>
+          <label class="switch" title="Stream">
+            <input
+              type="checkbox"
+              bind:checked={local.defaultChat.streaming}
+              aria-label="Stream"
+            />
+            <span class="switch-ui" aria-hidden="true"></span>
+            <span class="switch-label">Stream</span>
+          </label>
         </div>
       </div>
       <footer class="modal-foot">
@@ -156,11 +164,23 @@
   .field { display: grid; gap: 6px; }
   .field > span { font-size: .9rem; color: var(--muted); }
   .row { display: flex; gap: 8px; }
-  input { flex: 1; border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; background: var(--bg); color: var(--text); }
+  input[type="text"], input[type="password"] { flex: 1; border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; background: var(--bg); color: var(--text); }
   .hint { color: var(--muted); font-size: .9rem; margin-top: 4px; }
   /* API key action buttons size */
   .row .icon-btn { height: 38px; width: 38px; }
   .section { border: 0; border-top: 1px solid var(--border); margin: 8px 0; }
   .group { display: grid; gap: 8px; }
   .group-title { font-weight: 600; }
+  /* Toggle switch */
+  .switch { display: inline-flex; align-items: center; gap: 10px; cursor: pointer; user-select: none; }
+  .switch > input { position: absolute; opacity: 0; width: 1px; height: 1px; pointer-events: none; }
+  .switch-ui { width: 42px; height: 24px; border-radius: 999px; background: var(--border); position: relative; transition: background-color .15s ease; box-shadow: inset 0 0 0 1px var(--border); }
+  .switch-ui::after { content: ''; position: absolute; top: 2px; left: 2px; width: 20px; height: 20px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,0.15); transition: transform .15s ease, background-color .15s ease; }
+  @media (prefers-color-scheme: dark) {
+    .switch-ui { background: #2a2a2a; box-shadow: inset 0 0 0 1px #2f2f2f; }
+    .switch-ui::after { background: #e6e6e6; }
+  }
+  .switch > input:checked + .switch-ui { background: color-mix(in srgb, var(--accent), #0000 70%); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent), #0000 60%); }
+  .switch > input:checked + .switch-ui::after { transform: translateX(18px); }
+  .switch-label { font-size: .95rem; }
 </style>

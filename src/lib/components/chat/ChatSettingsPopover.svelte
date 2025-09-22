@@ -18,7 +18,7 @@
 </script>
 
 <div class={`chat-settings-group ${props.open ? 'open' : ''}`} bind:this={root}>
-  <button class="icon-btn" aria-label="Chat settings" onclick={() => (props.onToggle?.())}>
+  <button class="icon-btn" aria-label="Chat settings" disabled={props.disabled} onclick={() => (!props.disabled && props.onToggle?.())}>
     <span class="material-symbols-rounded icon">tune</span>
   </button>
   <div class="send-menu chat-settings-menu" role="menu" aria-label="Chat settings">
@@ -28,7 +28,8 @@
         type="text"
         placeholder="gpt-4o-mini"
         value={props.model}
-        oninput={(e) => props.onInputModel?.(e.currentTarget.value)}
+        disabled={props.disabled}
+        oninput={(e) => (!props.disabled && props.onInputModel?.(e.currentTarget.value))}
         list="model-suggestions"
         aria-label="Model"
       />
@@ -40,16 +41,30 @@
         </datalist>
       {/if}
     </div>
+    <div class="menu-section">
+      <label class="switch" title="Stream">
+        <input
+          type="checkbox"
+          checked={!!props.streaming}
+          disabled={props.disabled}
+          onchange={(e) => (!props.disabled && props.onInputStreaming?.(e.currentTarget.checked))}
+          aria-label="Stream"
+        />
+        <span class="switch-ui" aria-hidden="true"></span>
+        <span class="switch-label">Stream</span>
+      </label>
+    </div>
   </div>
 </div>
 
 <style>
   .icon-btn { border: 1px solid var(--border); border-radius: 10px; background: transparent; min-width: 44px; height: 44px; display: grid; place-items: center; line-height: 1; }
+  .icon-btn:disabled { opacity: .6; cursor: not-allowed; }
   .icon { font-size: 22px; }
   .chat-settings-menu { min-width: 260px; gap: 12px; padding: 12px; }
-  .menu-section { display: grid; gap: 6px; }
+  .menu-section { display: grid; gap: 8px; }
   .menu-label { font-size: .9rem; color: var(--muted); }
-  input {
+  input[type="text"] {
     width: 100%;
     border: 1px solid var(--border);
     border-radius: 8px;
@@ -59,8 +74,22 @@
     font: inherit;
     box-sizing: border-box;
   }
+  /* Toggle switch */
+  .switch { display: inline-flex; align-items: center; gap: 10px; cursor: pointer; user-select: none; }
+  .switch > input { position: absolute; opacity: 0; width: 1px; height: 1px; pointer-events: none; }
+  .switch-ui { width: 38px; height: 22px; border-radius: 999px; background: var(--border); position: relative; transition: background-color .15s ease; box-shadow: inset 0 0 0 1px var(--border); }
+  .switch-ui::after { content: ''; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,0.15); transition: transform .15s ease, background-color .15s ease; }
+  @media (prefers-color-scheme: dark) {
+    .switch-ui { background: #2a2a2a; box-shadow: inset 0 0 0 1px #2f2f2f; }
+    .switch-ui::after { background: #e6e6e6; }
+  }
+  .switch > input:checked + .switch-ui { background: color-mix(in srgb, var(--accent), #0000 70%); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent), #0000 60%); }
+  .switch > input:checked + .switch-ui::after { transform: translateX(16px); }
+  .switch-label { font-size: .95rem; }
   .chat-settings-group { position: relative; display: grid; place-items: center; }
   .chat-settings-menu {
+    display: grid;
+    gap: 12px;
     position: absolute;
     top: auto;
     bottom: calc(100% + 10px);

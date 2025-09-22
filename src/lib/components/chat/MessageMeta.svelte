@@ -5,19 +5,19 @@
 
 <div class={`meta ${props.role}`}>
   <div class="send-group" aria-haspopup="menu" title="Change role">
-    <button class="role-badge" aria-label={`Role: ${props.label || props.role}`}>
+    <button class="role-badge" aria-label={`Role: ${props.label || props.role}`} disabled={props.locked}>
       {props.label || props.role}
     </button>
     <div class="send-menu" role="menu" aria-label="Change role">
-      <button role="menuitem" class="menu-item" onclick={() => props.onSetRole?.('user')} aria-label="Set role user">
+      <button role="menuitem" class="menu-item" onclick={() => props.onSetRole?.('user')} aria-label="Set role user" disabled={props.locked}>
         <Icon name="person" size={18} />
         User
       </button>
-      <button role="menuitem" class="menu-item" onclick={() => props.onSetRole?.('assistant')} aria-label="Set role assistant">
+      <button role="menuitem" class="menu-item" onclick={() => props.onSetRole?.('assistant')} aria-label="Set role assistant" disabled={props.locked}>
         <Icon name="smart_toy" size={18} />
         Assistant
       </button>
-      <button role="menuitem" class="menu-item" onclick={() => props.onSetRole?.('system')} aria-label="Set role system">
+      <button role="menuitem" class="menu-item" onclick={() => props.onSetRole?.('system')} aria-label="Set role system" disabled={props.locked}>
         <Icon name="tune" size={18} />
         System
       </button>
@@ -47,4 +47,6 @@
   .meta.user .send-group::before { right: 0; left: auto; }
   .meta.system .send-group::before { left: 50%; right: auto; transform: translateX(-50%); }
   .menu-item { width: 100%; text-align: left; background: transparent; border: 1px solid var(--border); border-radius: 8px; color: var(--text); padding: 8px 10px; font: inherit; display: flex; align-items: center; gap: 8px; }
+  .menu-item:disabled { opacity: .6; cursor: not-allowed; }
+  .role-badge:disabled { opacity: .6; cursor: not-allowed; }
 </style>
