@@ -71,26 +71,31 @@ export async function upsertChat(chat) {
 export async function saveChatContent(id, { messages, settings, rootId, selected }) {
   if (!id) return null
   const existing = await idbGet(id)
-  if (!existing) return null
-  let graph
-  if (rootId != null && selected) {
-    graph = { rootId, selected }
-  } else {
-    // If caller didn't pass, try to preserve existing
-    graph = { rootId: existing.rootId, selected: existing.selected || {} }
+  // Be resilient: if the record doesn't exist (e.g., backend switched from IDB<->LS), create it
+  const defaults = loadSettings()
+  const baseSettings = {
+    model: (settings?.model || existing?.settings?.model || defaults?.defaultChat?.model || 'gpt-4o-mini'),
+    streaming: (typeof settings?.streaming === 'boolean')
+      ? settings.streaming
+      : (typeof existing?.settings?.streaming === 'boolean'
+        ? existing.settings.streaming
+        : (typeof defaults?.defaultChat?.streaming === 'boolean' ? defaults.defaultChat.streaming : true))
   }
+  const nextMessages = Array.isArray(messages) ? messages : (existing?.messages || [])
+  const nextRootId = (rootId != null)
+    ? rootId
+    : (existing?.rootId != null ? existing.rootId : (nextMessages[0]?.id || 1))
+  const nextSelected = (selected != null)
+    ? selected
+    : (existing?.selected || {})
   const updated = {
-    ...existing,
-    messages: Array.isArray(messages) ? messages : (existing.messages || []),
-    rootId: graph.rootId ?? existing.rootId,
-    selected: graph.selected || {},
-    settings: {
-      model: (settings?.model || existing?.settings?.model || 'gpt-4o-mini'),
-      streaming: (typeof settings?.streaming === 'boolean')
-        ? settings.streaming
-        : (typeof existing?.settings?.streaming === 'boolean' ? existing.settings.streaming : true)
-    },
-    title: computeTitle(Array.isArray(messages) ? messages : existing.messages),
+    ...(existing || { id }),
+    id,
+    messages: nextMessages,
+    rootId: nextRootId,
+    selected: nextSelected,
+    settings: baseSettings,
+    title: computeTitle(nextMessages),
     updatedAt: Date.now(),
   }
   await idbPut(updated)
