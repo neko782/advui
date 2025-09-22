@@ -161,13 +161,13 @@
     margin-bottom: 8px; /* space between label and chat list */
   }
   .chat-list {
-    display: grid;
+    display: flex;
+    flex-direction: column;
     gap: 2px;
     padding: 0 6px 10px;
     /* Only vertical scrolling; clip horizontal overflow */
     overflow-y: auto;
     overflow-x: hidden;
-    align-content: start;
     flex: 1;
     min-height: 0;
     /* Allow flex child to shrink and avoid overflow */
@@ -175,7 +175,8 @@
   }
   .chat-link {
     text-align: left;
-    display: block;
+    display: flex;
+    align-items: center;
     width: 100%;
     padding: 6px 10px;
     border: 0;
@@ -187,11 +188,10 @@
     /* Prevent content from forcing the button wider than the list */
     min-width: 0;
     max-width: 100%;
-    overflow: hidden;
   }
   .chat-link:hover { background: var(--panel); color: var(--text); }
   .chat-link.active { color: var(--text); }
-  .chat-title { display: block; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .chat-title { flex: 1 1 auto; min-width: 0; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
   .side-footer { padding: 8px; border-top: 1px solid var(--border); margin-top: auto; }
   /* Remove horizontal separator in collapsed mode */
