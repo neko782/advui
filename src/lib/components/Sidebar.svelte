@@ -64,6 +64,8 @@
     --border: color-mix(in srgb, #c8c8c8 60%, #0000);
     --text: color-mix(in srgb, #1b1f24 92%, #0000);
     --muted: #6b7280;
+    /* Subtle hover surface derived from background + text for good contrast in light/dark */
+    --hover-bg: color-mix(in oklab, var(--bg), var(--text) 8%);
     background: var(--bg);
     border-right: 1px solid var(--border);
     /* Overlay the chat area instead of shifting it */
@@ -98,17 +100,29 @@
   .nav-item:hover { background: var(--panel); }
   .nav-item .label { white-space: nowrap; }
   .sidebar.collapsed .nav-item .label { display: none; }
-  /* Make collapsed nav items look like the collapse icon button */
+  /* Collapsed nav items: icon-only ghost buttons (no border/background) */
   .sidebar.collapsed .nav-item {
     display: grid;
     place-items: center;
     padding: 0;
     min-width: 36px;
     height: 36px;
-    border: 1px solid var(--border);
+    border: 0;
     border-radius: 8px;
-    background: var(--panel);
+    background: transparent;
     color: var(--text);
+  }
+  .sidebar.collapsed .nav-item:hover,
+  .sidebar.collapsed .nav-item:active,
+  .sidebar.collapsed .nav-item:focus-visible {
+    background: var(--hover-bg);
+  }
+
+  /* Give the collapse (menu) button a hover, matching ghost hover tone */
+  .side-header .icon-btn:hover,
+  .side-header .icon-btn:active,
+  .side-header .icon-btn:focus-visible {
+    background: var(--hover-bg);
   }
 
   /* Align label with chat buttons and add spacing from New chat */
