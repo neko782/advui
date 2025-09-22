@@ -142,18 +142,11 @@
     transform: translateY(-1px);
   }
 
-  /* Give the collapse (menu) button a hover, matching ghost hover tone */
+  /* Collapse button hover: animate without changing border or background */
   .side-header .icon-btn:hover,
   .side-header .icon-btn:active,
   .side-header .icon-btn:focus-visible {
-    background: var(--hover-bg);
     transform: translateY(-1px);
-  }
-
-  /* In collapsed mode, make the collapse toggle visually consistent with icon-only items */
-  .sidebar.collapsed .side-header .icon-btn {
-    border: 0;
-    background: var(--bg);
   }
 
   /* Align label with chat buttons and add spacing from New chat */
