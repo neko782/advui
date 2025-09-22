@@ -55,10 +55,12 @@
     <button class="action-btn" onclick={() => props.onEdit?.(m.id)} aria-label="Edit message" title="Edit" disabled={props.locked || m.typing}>
       <Icon name="edit" size={20} />
     </button>
-    <button class="action-btn" onclick={() => props.onMoveDown?.(m.id)} aria-label="Move down" title="Down" disabled={props.locked || m.typing || props.index === ((props.visibleCount || props.total || 1) - 1)}>
+    <!-- Disable moving down across a branch boundary (when current node has multiple children) -->
+    <button class="action-btn" onclick={() => props.onMoveDown?.(m.id)} aria-label="Move down" title="Down" disabled={props.locked || m.typing || props.index === ((props.visibleCount || props.total || 1) - 1) || (props.branchesLength > 1)}>
       <Icon name="arrow_downward" size={20} />
     </button>
-    <button class="action-btn" onclick={() => props.onMoveUp?.(m.id)} aria-label="Move up" title="Up" disabled={props.locked || m.typing || props.index === 0}>
+    <!-- Disable moving up across a branch boundary (when previous node has multiple children) -->
+    <button class="action-btn" onclick={() => props.onMoveUp?.(m.id)} aria-label="Move up" title="Up" disabled={props.locked || m.typing || props.index === 0 || (props.prevBranchesLength > 1)}>
       <Icon name="arrow_upward" size={20} />
     </button>
   {/if}

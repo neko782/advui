@@ -10,6 +10,7 @@
   const isEditing = $derived(props.editingId === m.id)
   const branchesLength = $derived(Number(props.branchesLength) || 0)
   const branchIndex = $derived(Number(props.branchIndex) || 0)
+  const prevBranchesLength = $derived(Number(props.prevBranchesLength) || 0)
   // Move should target the clicked message, not its parent
   function doMoveUp() { props.onMoveUp?.(m.id) }
   function doMoveDown() { props.onMoveDown?.(m.id) }
@@ -33,6 +34,7 @@
       index={vm.i}
       total={props.total}
       visibleCount={props.visibleCount}
+      prevBranchesLength={prevBranchesLength}
       locked={props.locked}
       isEditing={isEditing}
       branchesLength={branchesLength}

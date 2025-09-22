@@ -13,6 +13,7 @@
       vm={vm}
       total={props.total}
       visibleCount={(props.items?.length || 0)}
+      prevBranchesLength={(vm?.i > 0 && Array.isArray(props.items?.[vm.i - 1]?.m?.next)) ? props.items[vm.i - 1].m.next.length : 0}
       locked={props.locked}
       editingId={props.editingId}
       editingText={props.editingText}
