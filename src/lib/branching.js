@@ -1,44 +1,48 @@
-// Branching helpers: Graph-based conversation with explicit next pointers.
+// Branching helpers: node-based conversation graph.
+// New architecture:
+// - nodes: array of { id, variants: Message[], active?: number }
+// - A "Message" (aka variant) is { id, role, content, time, typing?, error?, next?: number|null }
+// - Each variant has at most one `next` (points to the id of the next node)
+// - Each node chooses its active variant via `active` (default 0)
 
-// messages: array of { id, role, content, time, next?: number[], typing?, error? }
-// rootId: id of root message
-// selected: map of messageId -> selected child index
-
-export function indexById(messages) {
+export function indexNodesById(nodes) {
   const map = new Map()
-  for (const m of messages || []) map.set(m.id, m)
+  for (const n of nodes || []) map.set(n.id, n)
   return map
 }
 
-export function buildVisible(messages, rootId, selected) {
-  const byId = indexById(messages)
+export function buildVisible(nodes, rootId) {
+  const byId = indexNodesById(nodes)
   const out = []
   let curId = rootId
   let pathIndex = 0
   const guard = new Set()
   while (curId != null) {
-    const m = byId.get(curId)
-    if (!m || guard.has(curId)) break
+    const node = byId.get(curId)
+    if (!node || guard.has(curId)) break
     guard.add(curId)
-    out.push({ m, i: pathIndex })
+    const variants = Array.isArray(node.variants) ? node.variants : []
+    const vi = Math.max(0, Math.min(variants.length - 1, Number(node.active) || 0))
+    const m = variants[vi]
+    if (!m) break
+    out.push({ m, i: pathIndex, nodeId: node.id, variantIndex: vi, variantsLength: variants.length })
     pathIndex++
-    const children = Array.isArray(m.next) ? m.next : []
-    if (!children.length) break
-    const sel = Math.max(0, Math.min(children.length - 1, Number(selected?.[m.id]) || 0))
-    curId = children[sel]
+    const nxt = (m && m.next != null) ? m.next : null
+    curId = nxt
   }
   return out
 }
 
-export function buildVisibleUpTo(messages, rootId, selected, indexExclusive) {
-  const full = buildVisible(messages, rootId, selected)
+export function buildVisibleUpTo(nodes, rootId, indexExclusive) {
+  const full = buildVisible(nodes, rootId)
   const upto = Math.max(0, Math.min(indexExclusive ?? 0, full.length))
   return full.slice(0, upto).map(vm => vm.m)
 }
 
-export function findParentId(messages, childId) {
-  for (const m of messages || []) {
-    if (Array.isArray(m.next) && m.next.includes(childId)) return m.id
+export function findParentId(nodes, childNodeId) {
+  for (const n of nodes || []) {
+    const variants = Array.isArray(n.variants) ? n.variants : []
+    if (variants.some(v => v?.next === childNodeId)) return n.id
   }
   return null
 }

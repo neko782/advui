@@ -20,8 +20,8 @@
       nextAssistantId={props.followingMap?.[vm.i]?.id}
       nextAssistantTyping={props.followingMap?.[vm.i]?.typing}
       parentId={(vm?.i > 0 && props.items?.[vm.i - 1]?.m?.id) ? props.items[vm.i - 1].m.id : null}
-      branchIndex={(props.selectedMap && vm?.m) ? (Number(props.selectedMap[vm.m.id]) || 0) : 0}
-      branchesLength={(Array.isArray(vm?.m?.next)) ? vm.m.next.length : 0}
+      branchIndex={(typeof vm?.variantIndex === 'number') ? vm.variantIndex : 0}
+      branchesLength={(typeof vm?.variantsLength === 'number') ? vm.variantsLength : 1}
       onSetRole={props.onSetRole}
       onEditInput={props.onEditInput}
       onEditKeydown={props.onEditKeydown}

@@ -10,12 +10,13 @@
   import Composer from './components/chat/Composer.svelte'
   const props = $props()
 
-  let messages = $state([])
+  let nodes = $state([])
   let input = $state('')
   let sending = $state(false)
   // Lock all chat actions while a response is generating (sending or any typing)
   let locked = $state(false)
   let nextId = $state(1)
+  let nextNodeId = $state(1)
   let settings = $state(loadSettings())
   // Group per-chat settings in a single object (seeded from global defaults)
   let chatSettings = $state({
@@ -29,13 +30,12 @@
   let editingId = $state(null)
   let editingText = $state('')
   // editing DOM is handled in MessageBubble
-  // Branching helpers (graph-based)
+  // Branching helpers (node-based)
   import { buildVisible as _buildVisible, buildVisibleUpTo as _buildVisibleUpTo, findParentId } from './branching.js'
-  function buildVisible() { return _buildVisible(messages, rootId, selected) }
-  function buildVisibleUpTo(indexExclusive) { return _buildVisibleUpTo(messages, rootId, selected, indexExclusive) }
-  // Graph selections: root message id and selected child per message
+  function buildVisible() { return _buildVisible(nodes, rootId) }
+  function buildVisibleUpTo(indexExclusive) { return _buildVisibleUpTo(nodes, rootId, indexExclusive) }
+  // Graph root node id (each node stores its active variant index)
   let rootId = $state(1)
-  let selected = $state({})
   function computeFollowingMap() {
     const map = {}
     const visible = buildVisible()
@@ -85,7 +85,10 @@
 
   function recomputeNextId() {
     try {
-      const maxId = (messages || []).reduce((mx, m) => Math.max(mx, Number(m?.id) || 0), 0)
+      const maxId = (nodes || []).reduce((mx, n) => {
+        const vMax = (n?.variants || []).reduce((m2, v) => Math.max(m2, Number(v?.id) || 0), 0)
+        return Math.max(mx, vMax)
+      }, 0)
       nextId = maxId + 1
     } catch { nextId = 1 }
   }
@@ -100,7 +103,7 @@
     const cid = props.chatId
     // If we are switching away from a chat, flush its latest state immediately
     if (lastChatId && lastChatId !== cid && mounted) {
-      try { saveChatContent(lastChatId, { messages, settings: chatSettings }) } catch {}
+      try { saveChatContent(lastChatId, { nodes, settings: chatSettings, rootId }) } catch {}
     }
     lastChatId = cid
     // Reset runtime state whenever switching chats
@@ -110,42 +113,56 @@
     if (!cid) return
     // Compute the new state first, then apply it in a macrotask to avoid
     // mutating state during the current reconciliation/flush.
-    let nextMessages = []
+    let nextNodes = []
     let nextRootId = 1
-    let nextSelected = {}
     let nextSettings = loadSettings()
     let nextChatSettings = {
       model: (nextSettings?.defaultChat?.model) || 'gpt-4o-mini',
       streaming: (typeof nextSettings?.defaultChat?.streaming === 'boolean' ? nextSettings.defaultChat.streaming : true)
     }
     let nextNextId = 1
+    let nextNextNodeId = 1
     let nextPersistSig = ''
     loadChatById(cid).then((loaded) => {
       try {
         if (loaded) {
-          nextMessages = Array.isArray(loaded.messages) ? loaded.messages.slice() : []
-          nextRootId = loaded?.rootId || (nextMessages[0]?.id || 1)
-          nextSelected = loaded?.selected || {}
+          if (Array.isArray(loaded.nodes)) {
+            nextNodes = loaded.nodes.slice()
+            nextRootId = loaded?.rootId || (nextNodes[0]?.id || 1)
+          } else {
+            // Legacy support: migrate flat/graph messages to node-based
+            const msgs = Array.isArray(loaded.messages) ? loaded.messages.slice() : []
+            const mig = migrateLegacyGraphToNodes(msgs, loaded?.rootId, loaded?.selected)
+            nextNodes = mig.nodes
+            nextRootId = mig.rootId
+          }
           nextChatSettings = {
             model: loaded?.settings?.model || (nextSettings?.defaultChat?.model) || 'gpt-4o-mini',
             streaming: (typeof loaded?.settings?.streaming === 'boolean'
               ? loaded.settings.streaming
               : (typeof nextSettings?.defaultChat?.streaming === 'boolean' ? nextSettings.defaultChat.streaming : true))
           }
-          if (!nextMessages.length) {
+          if (!nextNodes.length) {
             nextNextId = 2
-            nextMessages = [{ ...makeSystemPrologue(1), next: [] }]
+            nextNextNodeId = 2
+            nextNodes = [{ id: 1, variants: [{ ...makeSystemPrologue(1) }], active: 0 }]
+            nextRootId = 1
           } else {
             try {
-              const maxId = (nextMessages || []).reduce((mx, m) => Math.max(mx, Number(m?.id) || 0), 0)
-              nextNextId = maxId + 1
-            } catch { nextNextId = 1 }
+              const maxMsgId = (nextNodes || []).reduce((mx, n) => {
+                const vMax = (n?.variants || []).reduce((mm, v) => Math.max(mm, Number(v?.id) || 0), 0)
+                return Math.max(mx, vMax)
+              }, 0)
+              const maxNodeId = (nextNodes || []).reduce((mx, n) => Math.max(mx, Number(n?.id) || 0), 0)
+              nextNextId = maxMsgId + 1
+              nextNextNodeId = maxNodeId + 1
+            } catch { nextNextId = 1; nextNextNodeId = 1 }
           }
         } else {
-          nextMessages = [{ ...makeSystemPrologue(1), next: [] }]
+          nextNodes = [{ id: 1, variants: [{ ...makeSystemPrologue(1) }], active: 0 }]
           nextRootId = 1
-          nextSelected = {}
           nextNextId = 2
+          nextNextNodeId = 2
           nextChatSettings = {
             model: (nextSettings?.defaultChat?.model) || 'gpt-4o-mini',
             streaming: (typeof nextSettings?.defaultChat?.streaming === 'boolean' ? nextSettings.defaultChat.streaming : true)
@@ -153,10 +170,10 @@
         }
       } catch {
         nextSettings = loadSettings()
-        nextMessages = [{ ...makeSystemPrologue(1), next: [] }]
+        nextNodes = [{ id: 1, variants: [{ ...makeSystemPrologue(1) }], active: 0 }]
         nextRootId = 1
-        nextSelected = {}
         nextNextId = 2
+        nextNextNodeId = 2
         nextChatSettings = {
           model: (nextSettings?.defaultChat?.model) || 'gpt-4o-mini',
           streaming: (typeof nextSettings?.defaultChat?.streaming === 'boolean' ? nextSettings.defaultChat.streaming : true)
@@ -164,18 +181,21 @@
       }
       // Precompute a persist signature for the loaded chat content
       try {
-        const mini = (nextMessages || []).map(m => `${m.id}|${m.role}|${m.content?.length||0}|${(Array.isArray(m.next)?m.next.length:0)}`)
-        nextPersistSig = JSON.stringify({ m: mini, model: nextChatSettings?.model || '', streaming: !!nextChatSettings?.streaming, rootId: nextRootId, s: nextSelected })
+        const mini = (nextNodes || []).map(n => {
+          const v = (n?.variants || [])[Number(n?.active) || 0]
+          return `${n.id}|${v?.role||''}|${v?.content?.length||0}|${(v?.next!=null?1:0)}`
+        })
+        nextPersistSig = JSON.stringify({ m: mini, model: nextChatSettings?.model || '', streaming: !!nextChatSettings?.streaming, rootId: nextRootId })
       } catch { nextPersistSig = '' }
       // Apply computed state after the current tick
       setTimeout(() => {
         try {
           settings = nextSettings
-          messages = nextMessages
+          nodes = nextNodes
           nextId = nextNextId
+          nextNodeId = nextNextNodeId
           chatSettings = nextChatSettings
           rootId = nextRootId
-          selected = nextSelected
           editingId = null
           editingText = ''
           // Align persistence signature to loaded state
@@ -186,26 +206,29 @@
       }, 0)
     }).catch(() => {
       nextSettings = loadSettings()
-      nextMessages = [{ ...makeSystemPrologue(1), next: [] }]
+      nextNodes = [{ id: 1, variants: [{ ...makeSystemPrologue(1) }], active: 0 }]
       nextRootId = 1
-      nextSelected = {}
       nextNextId = 2
+      nextNextNodeId = 2
       nextChatSettings = {
         model: (nextSettings?.defaultChat?.model) || 'gpt-4o-mini',
         streaming: (typeof nextSettings?.defaultChat?.streaming === 'boolean' ? nextSettings.defaultChat.streaming : true)
       }
       try {
-        const mini = (nextMessages || []).map(m => `${m.id}|${m.role}|${m.content?.length||0}|${(Array.isArray(m.next)?m.next.length:0)}`)
-        nextPersistSig = JSON.stringify({ m: mini, model: nextChatSettings?.model || '', streaming: !!nextChatSettings?.streaming, rootId: nextRootId, s: nextSelected })
+        const mini = (nextNodes || []).map(n => {
+          const v = (n?.variants || [])[Number(n?.active) || 0]
+          return `${n.id}|${v?.role||''}|${v?.content?.length||0}|${(v?.next!=null?1:0)}`
+        })
+        nextPersistSig = JSON.stringify({ m: mini, model: nextChatSettings?.model || '', streaming: !!nextChatSettings?.streaming, rootId: nextRootId })
       } catch { nextPersistSig = '' }
       setTimeout(() => {
         try {
           settings = nextSettings
-          messages = nextMessages
+          nodes = nextNodes
           nextId = nextNextId
+          nextNodeId = nextNextNodeId
           chatSettings = nextChatSettings
           rootId = nextRootId
-          selected = nextSelected
           editingId = null
           editingText = ''
           persistSig = nextPersistSig
@@ -219,7 +242,7 @@
   // Derive locked state from sending flag and any in-flight typing messages
   $effect(() => {
     try {
-      locked = !!(sending || (Array.isArray(messages) && messages.some(m => m?.typing)))
+      locked = !!(sending || (Array.isArray(nodes) && nodes.some(n => (n?.variants || []).some(v => v?.typing))))
     } catch { locked = !!sending }
   })
   onMount(async () => {
@@ -240,8 +263,11 @@
   let persistSig = ''
   function computePersistSig() {
     try {
-      const mini = (messages || []).map(m => `${m.id}|${m.role}|${m.content?.length||0}|${(Array.isArray(m.next)?m.next.length:0)}`)
-      return JSON.stringify({ m: mini, model: chatSettings?.model || '', streaming: !!chatSettings?.streaming, rootId, s: selected })
+      const mini = (nodes || []).map(n => {
+        const v = (n?.variants || [])[Number(n?.active) || 0]
+        return `${n.id}|${v?.role||''}|${v?.content?.length||0}|${(v?.next!=null?1:0)}`
+      })
+      return JSON.stringify({ m: mini, model: chatSettings?.model || '', streaming: !!chatSettings?.streaming, rootId })
     } catch { return String(Math.random()) }
   }
   // Immediate persistence helper to avoid relying solely on the reactive effect
@@ -250,7 +276,7 @@
       const cid = props.chatId
       if (!cid || !mounted) return
       // Persist full graph
-      const updated = await saveChatContent(cid, { messages, settings: chatSettings, rootId, selected })
+      const updated = await saveChatContent(cid, { nodes, settings: chatSettings, rootId })
       // Update signature to current snapshot so the effect does not double-save
       persistSig = computePersistSig()
       scheduleParentRefresh(updated)
@@ -277,7 +303,7 @@
       const sig = computePersistSig()
       if (sig === persistSig) return
       persistSig = sig
-      const p = saveChatContent(cid, { messages, settings: chatSettings, rootId, selected })
+      const p = saveChatContent(cid, { nodes, settings: chatSettings, rootId })
       p.then(updated => scheduleParentRefresh(updated)).catch(() => {})
     } catch {}
   })
@@ -291,86 +317,82 @@
     if (!text || sending) return
 
     sending = true
-    // Attach new message as a child of the last visible message
+    // Attach new node after the last visible node
     const visible = buildVisible()
-    const last = visible.length ? visible[visible.length - 1].m : null
-    const parentId = last ? last.id : null
-    const newMsg = { id: nextId++, role, content: text, time: Date.now(), next: [] }
-    let arr = messages.slice()
-    arr.push(newMsg)
-    if (parentId != null) {
-      arr = arr.map(m => (m.id === parentId ? { ...m, next: [...(m.next || []), newMsg.id] } : m))
-      selected = { ...selected, [parentId]: ((m => (Array.isArray(m.next) ? m.next.length - 1 : 0))(arr.find(mm => mm.id === parentId) || { next: [newMsg.id] })) }
+    const lastVm = visible.length ? visible[visible.length - 1] : null
+    const parentNodeId = lastVm ? lastVm.nodeId : null
+    const newMsg = { id: nextId++, role, content: text, time: Date.now(), typing: false, error: undefined, next: null }
+    const newNode = { id: nextNodeId++, variants: [newMsg], active: 0 }
+    let arr = nodes.slice()
+    arr.push(newNode)
+    if (parentNodeId != null) {
+      arr = arr.map(n => (n.id === parentNodeId
+        ? { ...n, variants: n.variants.map((v, i) => (i === (Number(n.active)||0) ? { ...v, next: newNode.id } : v)) }
+        : n))
     } else {
-      rootId = newMsg.id
+      rootId = newNode.id
     }
-    messages = arr
+    nodes = arr
     input = ''
-    // Persist immediately after adding the user's message
     persistNow()
-    // Composer handles input auto-grow on its own
-    // Scroll on send (after appending your message)
     queueMicrotask(() => scrollToBottom())
 
-    // Typing placeholder
-    // If user message, add typing assistant child and stream
+    // Typing placeholder + stream if user
+    let typingVariant = null
     if (role === 'user') {
-      const typingMsg = { id: nextId++, role: 'assistant', content: 'typing', time: Date.now(), typing: true, next: [] }
-      // Attach typing message under the new user message
-      messages = messages.map(m => (m.id === newMsg.id ? { ...m, next: [...(m.next || []), typingMsg.id] } : m))
-      messages = [...messages, typingMsg]
-      selected = { ...selected, [newMsg.id]: ((messages.find(mm => mm.id === newMsg.id)?.next || []).length - 1) }
+      typingVariant = { id: nextId++, role: 'assistant', content: 'typing', time: Date.now(), typing: true, error: undefined, next: null }
+      const typingNode = { id: nextNodeId++, variants: [typingVariant], active: 0 }
+      nodes = nodes.map(n => (n.id === newNode.id
+        ? { ...n, variants: n.variants.map((v, i) => (i === 0 ? { ...v, next: typingNode.id } : v)) }
+        : n))
+      nodes = [...nodes, typingNode]
     }
     try {
       let reply
-      // Always read current settings so API key changes apply immediately
       settings = loadSettings()
       const { apiKey } = settings
       if (role === 'user' && apiKey) {
-        // Build message history (exclude typing placeholder)
         const history = buildVisible()
           .map(vm => vm.m)
           .filter(m => !m.typing)
           .map(({ role, content }) => ({ role, content }))
-        if (chatSettings.streaming) {
-          // Stream into the typing message
+        if (chatSettings.streaming && typingVariant) {
           reply = await respond({
             messages: history,
             model: chatSettings.model,
             stream: true,
             onTextDelta: (full) => {
-              messages = messages.map(m => (m.id === typingMsg.id ? { ...m, content: full } : m))
+              nodes = nodes.map(n => ({
+                ...n,
+                variants: (n.variants || []).map(v => (v.id === typingVariant.id ? { ...v, content: full } : v))
+              }))
             }
           })
         } else if (role === 'user') {
           reply = await respond({ messages: history, model: chatSettings.model })
         }
-      } else {
-        // if no key set, provide a friendly hint + echo
-        if (role === 'user') {
-          reply = generatePlaceholderReply(newMsg.content) +
-            '\n\nTip: Add your OpenAI API key in Settings to get real answers.'
-        }
+      } else if (role === 'user') {
+        reply = generatePlaceholderReply(newMsg.content) +
+          '\n\nTip: Add your OpenAI API key in Settings to get real answers.'
       }
-      if (role === 'user') {
-        // Update the typing assistant
-        const lastChildId = (messages.find(mm => mm.id === newMsg.id)?.next || [])[Number(selected?.[newMsg.id]) || 0]
-        messages = messages.map(m => (m.id === lastChildId ? { ...m, content: reply, typing: false, error: undefined } : m))
+      if (role === 'user' && typingVariant) {
+        nodes = nodes.map(n => ({
+          ...n,
+          variants: (n.variants || []).map(v => (v.id === typingVariant.id ? { ...v, content: reply, typing: false, error: undefined } : v))
+        }))
       }
-      // Persist after receiving the assistant reply
       persistNow()
     } catch (err) {
       const msg = err?.message || 'Something went wrong.'
-      if (role === 'user') {
-        const lastChildId = (messages.find(mm => mm.id === newMsg.id)?.next || [])[Number(selected?.[newMsg.id]) || 0]
-        messages = messages.map(m => (m.id === lastChildId
-          ? { ...m, typing: false, error: msg, content: (m.content === 'typing' ? '' : m.content) }
-          : m))
+      if (role === 'user' && typingVariant) {
+        nodes = nodes.map(n => ({
+          ...n,
+          variants: (n.variants || []).map(v => (v.id === typingVariant.id ? { ...v, typing: false, error: msg, content: (v.content === 'typing' ? '' : v.content) } : v))
+        }))
       }
       persistNow()
     } finally {
       sending = false
-      // Do not auto-scroll on reply
     }
   }
 
@@ -382,18 +404,20 @@
     if (locked) return
     const text = input.trim()
     if (!text) return
-    const direct = { id: nextId++, role, content: text, time: Date.now(), next: [] }
+    const variant = { id: nextId++, role, content: text, time: Date.now(), typing: false, error: undefined, next: null }
+    const node = { id: nextNodeId++, variants: [variant], active: 0 }
     const visible = buildVisible()
-    const last = visible.at(-1)?.m
-    let arr = messages.slice()
-    arr.push(direct)
-    if (last) {
-      arr = arr.map(m => (m.id === last.id ? { ...m, next: [...(m.next || []), direct.id] } : m))
-      selected = { ...selected, [last.id]: ((arr.find(mm => mm.id === last.id)?.next || []).length - 1) }
+    const lastVm = visible.at(-1)
+    let arr = nodes.slice()
+    arr.push(node)
+    if (lastVm) {
+      arr = arr.map(n => (n.id === lastVm.nodeId
+        ? { ...n, variants: n.variants.map((v, i) => (i === (Number(n.active)||0) ? { ...v, next: node.id } : v)) }
+        : n))
     } else {
-      rootId = direct.id
+      rootId = node.id
     }
-    messages = arr
+    nodes = arr
     persistNow()
     input = ''
     queueMicrotask(() => scrollToBottom())
@@ -433,42 +457,28 @@
   })
   // Message actions
   async function copyMessage(text) { try { await copyToClipboard(text) } catch {} }
-  function deleteMessage(id) {
+  function deleteMessage(messageId) {
     if (locked) return
-    // Do not allow deleting the root directly
-    if (id === rootId) return
-    // Recursively remove subtree
+    // Find node containing this message id
+    const loc = (function findNodeByMessageId(mid){ for (const n of nodes||[]) { const i=(n?.variants||[]).findIndex(v=>v?.id===mid); if(i>=0) return {node:n,index:i} } return {node:null,index:-1} })(messageId)
+    if (!loc?.node) return
+    if (loc.node.id === rootId) return // do not allow deleting root node
+    // Collect subtree starting from this node by following any variant next pointers
     const toDelete = new Set()
     function collect(nodeId) {
       if (toDelete.has(nodeId)) return
       toDelete.add(nodeId)
-      const node = messages.find(m => m.id === nodeId)
-      for (const child of node?.next || []) collect(child)
+      const n = nodes.find(nn => nn.id === nodeId)
+      for (const v of n?.variants || []) { if (v?.next != null) collect(v.next) }
     }
-    collect(id)
-    // Remove edges from parents and fix selection
-    const arr = messages
-      .filter(m => !toDelete.has(m.id))
-      .map(m => {
-        const next = (m.next || []).filter(cid => !toDelete.has(cid))
-        let sel = selected?.[m.id]
-        if (typeof sel === 'number') {
-          const max = Math.max(0, next.length - 1)
-          sel = Math.max(0, Math.min(sel, max))
-        }
-        return { ...m, next }
-      })
-    messages = arr
-    const nextSel = { ...selected }
-    for (const key of Object.keys(nextSel)) {
-      const mid = Number(key)
-      const parent = arr.find(m => m.id === mid)
-      if (!parent) { delete nextSel[key]; continue }
-      const max = Math.max(0, (parent.next || []).length - 1)
-      let val = Number(nextSel[key]) || 0
-      if (val > max) nextSel[key] = max
-    }
-    selected = nextSel
+    collect(loc.node.id)
+    // Remove nodes and clean dangling next pointers
+    const remaining = nodes.filter(n => !toDelete.has(n.id))
+    const cleaned = remaining.map(n => ({
+      ...n,
+      variants: (n.variants || []).map(v => (toDelete.has(Number(v?.next)) ? { ...v, next: null } : v))
+    }))
+    nodes = cleaned
     persistNow()
   }
   function setMessageRole(id, role) {
@@ -476,13 +486,17 @@
     // Role change should behave like content change: do not alter branching.
     const roles = new Set(['user', 'assistant', 'system'])
     if (!roles.has(role)) return
-    messages = messages.map(m => (m.id === id ? { ...m, role } : m))
+    nodes = nodes.map(n => ({
+      ...n,
+      variants: (n.variants || []).map(v => (v.id === id ? { ...v, role } : v))
+    }))
     persistNow()
     // Do not scroll when switching roles
   }
   // Reorder adjacent messages along the current visible path (graph-aware)
   function moveUp(id) {
     if (locked) return
+    return
     const path = buildVisible()
     const idx = path.findIndex(vm => vm.m.id === id)
     if (idx <= 0) return // cannot move the first visible item up
@@ -583,6 +597,7 @@
   }
   function moveDown(id) {
     if (locked) return
+    return
     const path = buildVisible()
     const idx = path.findIndex(vm => vm.m.id === id)
     if (idx < 0 || idx >= (path.length - 1)) return // cannot move the last visible item down
@@ -676,7 +691,8 @@
   }
   function editMessage(id) {
     if (locked) return
-    const msg = messages.find(m => m.id === id)
+    const loc = (function findNodeByMessageId(mid){ for (const n of nodes||[]) { const i=(n?.variants||[]).findIndex(v=>v?.id===mid); if(i>=0) return {node:n,index:i} } return {node:null,index:-1} })(id)
+    const msg = loc?.node?.variants?.[loc.index]
     if (!msg || msg.typing) return
     editingId = id
     editingText = msg.content || ''
@@ -686,7 +702,10 @@
     if (locked) return
     if (editingId == null) return
     const val = String(editingText)
-    messages = messages.map(m => (m.id === editingId ? { ...m, content: val, error: undefined } : m))
+    nodes = nodes.map(n => ({
+      ...n,
+      variants: (n.variants || []).map(v => (v.id === editingId ? { ...v, content: val, error: undefined } : v))
+    }))
     editingId = null
     editingText = ''
     queueMicrotask(() => scrollToBottom())
@@ -699,22 +718,13 @@
   function applyEditBranch() {
     if (locked) return
     if (editingId == null) return
-    const cur = messages.find(m => m.id === editingId)
-    if (!cur) return
+    const loc = (function findNodeByMessageId(mid){ for (const n of nodes||[]) { const i=(n?.variants||[]).findIndex(v=>v?.id===mid); if(i>=0) return {node:n,index:i} } return {node:null,index:-1} })(editingId)
+    const curNode = loc?.node
+    const cur = curNode?.variants?.[loc.index]
+    if (!curNode || !cur) return
     const val = String(editingText)
-    const parentId = findParentId(messages, cur.id)
-    // Create a sibling branch under the same parent and select it
-    const newNode = { id: nextId++, role: cur.role, content: val, time: Date.now(), next: Array.isArray(cur.next) ? cur.next.slice() : [] }
-    let arr = messages.slice()
-    arr.push(newNode)
-    if (parentId != null) {
-      arr = arr.map(m => (m.id === parentId ? { ...m, next: [...(m.next || []), newNode.id] } : m))
-      selected = { ...selected, [parentId]: ((arr.find(mm => mm.id === parentId)?.next || []).length - 1) }
-    } else {
-      // If no parent, branch at root (replace root selection)
-      rootId = newNode.id
-    }
-    messages = arr
+    const newVariant = { id: nextId++, role: cur.role, content: val, time: Date.now(), typing: false, error: undefined, next: cur.next ?? null }
+    nodes = nodes.map(n => (n.id === curNode.id ? { ...n, variants: [...(n.variants || []), newVariant], active: (n.variants?.length || 0) } : n))
     persistNow()
     editingId = null
     editingText = ''
@@ -725,38 +735,30 @@
   async function applyEditSend() {
     if (locked) return
     if (editingId == null) return
-    const cur = messages.find(m => m.id === editingId)
-    if (!cur) return
+    const loc = (function findNodeByMessageId(mid){ for (const n of nodes||[]) { const i=(n?.variants||[]).findIndex(v=>v?.id===mid); if(i>=0) return {node:n,index:i} } return {node:null,index:-1} })(editingId)
+    const curNode = loc?.node
+    const cur = curNode?.variants?.[loc.index]
+    if (!curNode || !cur) return
     const val = String(editingText)
-    // 1) Branch the edited message (create sibling under same parent) and select it
-    const parentId = findParentId(messages, cur.id)
-    const branched = { id: nextId++, role: cur.role, content: val, time: Date.now(), next: [] }
-    let arr = messages.slice()
-    arr.push(branched)
-    if (parentId != null) {
-      arr = arr.map(m => (m.id === parentId ? { ...m, next: [...(m.next || []), branched.id] } : m))
-      selected = { ...selected, [parentId]: ((arr.find(mm => mm.id === parentId)?.next || []).length - 1) }
-    } else {
-      rootId = branched.id
-    }
-    messages = arr
+    // 1) Add a new variant and select it
+    const branched = { id: nextId++, role: cur.role, content: val, time: Date.now(), typing: false, error: undefined, next: null }
+    nodes = nodes.map(n => (n.id === curNode.id ? { ...n, variants: [...(n.variants || []), branched], active: (n.variants?.length || 0) } : n))
     persistNow()
     editingId = null
     editingText = ''
 
-    // 2) Generate a new assistant reply after the branched message
-    const typingMsg = { id: nextId++, role: 'assistant', content: 'typing', time: Date.now(), typing: true, next: [] }
-    messages = messages.map(m => (m.id === branched.id ? { ...m, next: [...(m.next || []), typingMsg.id] } : m))
-    messages = [...messages, typingMsg]
-    selected = { ...selected, [branched.id]: ((messages.find(mm => mm.id === branched.id)?.next || []).length - 1) }
+    // 2) Generate a new assistant reply after the branched variant
+    const typingMsg = { id: nextId++, role: 'assistant', content: 'typing', time: Date.now(), typing: true, next: null }
+    const typingNode = { id: nextNodeId++, variants: [typingMsg], active: 0 }
+    nodes = nodes.map(n => (n.id === curNode.id ? { ...n, variants: n.variants.map((v, i) => (i === (n.variants.length - 1) ? { ...v, next: typingNode.id } : v)) } : n))
+    nodes = [...nodes, typingNode]
     
     try {
       let reply
       settings = loadSettings()
       const { apiKey } = settings
-      // Build history up to and including branched message
       const path = buildVisible()
-      const insertIndex = path.findIndex(vm => vm.m.id === branched.id)
+      const insertIndex = path.findIndex(vm => vm.nodeId === curNode.id)
       const history = buildVisibleUpTo(insertIndex + 1)
         .filter(m => !m.typing)
         .map(({ role, content }) => ({ role, content }))
@@ -767,7 +769,7 @@
             model: chatSettings.model,
             stream: true,
             onTextDelta: (full) => {
-              messages = messages.map(m => (m.id === typingMsg.id ? { ...m, content: full } : m))
+              nodes = nodes.map(n => ({ ...n, variants: (n.variants || []).map(v => (v.id === typingMsg.id ? { ...v, content: full } : v)) }))
             }
           })
         } else {
@@ -778,13 +780,11 @@
         reply = generatePlaceholderReply(lastUser?.content || val) +
           '\n\nTip: Add your OpenAI API key in Settings to get real answers.'
       }
-      messages = messages.map(m => (m.id === typingMsg.id ? { ...m, content: reply, typing: false, error: undefined } : m))
+      nodes = nodes.map(n => ({ ...n, variants: (n.variants || []).map(v => (v.id === typingMsg.id ? { ...v, content: reply, typing: false, error: undefined } : v)) }))
       persistNow()
     } catch (err) {
       const msg = err?.message || 'Something went wrong.'
-      messages = messages.map(m => (m.id === typingMsg.id
-        ? { ...m, typing: false, error: msg, content: (m.content === 'typing' ? '' : m.content) }
-        : m))
+      nodes = nodes.map(n => ({ ...n, variants: (n.variants || []).map(v => (v.id === typingMsg.id ? { ...v, typing: false, error: msg, content: (v.content === 'typing' ? '' : v.content) } : v)) }))
       persistNow()
     } finally {
       // Do not auto-scroll on reply
@@ -799,29 +799,25 @@
 
   // Removed global auto-scroll effect to avoid scrolling on replies/role changes
 
-  // Branch: regenerate an assistant message by creating a new branch
+  // Branch: regenerate an assistant message by creating a new variant in-place
   async function refreshAssistant(id) {
     if (locked) return
-    const target = messages.find(m => m.id === id)
-    if (!target || target.role !== 'assistant' || target.typing) return
-    const parentId = findParentId(messages, id)
-    if (parentId == null) return
-    // Create a new assistant branch under the same parent and stream into it
-    const typingMsg = { id: nextId++, role: 'assistant', content: 'typing', time: Date.now(), typing: true, next: [] }
-    let arr = messages.slice()
-    arr.push(typingMsg)
-    arr = arr.map(m => (m.id === parentId ? { ...m, next: [...(m.next || []), typingMsg.id] } : m))
-    messages = arr
-    selected = { ...selected, [parentId]: ((arr.find(mm => mm.id === parentId)?.next || []).length - 1) }
+    const loc = (function findNodeByMessageId(mid){ for (const n of nodes||[]) { const i=(n?.variants||[]).findIndex(v=>v?.id===mid); if(i>=0) return {node:n,index:i} } return {node:null,index:-1} })(id)
+    const node = loc?.node
+    const target = node?.variants?.[loc.index]
+    if (!node || !target || target.role !== 'assistant' || target.typing) return
+    // Create a new assistant variant within the same node and stream into it
+    const typingMsg = { id: nextId++, role: 'assistant', content: 'typing', time: Date.now(), typing: true, error: undefined, next: target.next ?? null }
+    nodes = nodes.map(n => (n.id === node.id ? { ...n, variants: [...(n.variants || []), typingMsg], active: (n.variants?.length || 0) } : n))
     try {
       let reply
       settings = loadSettings()
       const { apiKey } = settings
       if (apiKey) {
-        // Build history up to (but not including) this assistant message (parent path)
+        // Build history up to (but not including) this assistant node (parent path)
         const path = buildVisible()
-        const parentPathIndex = path.findIndex(vm => vm.m.id === parentId)
-        const history = buildVisibleUpTo(parentPathIndex + 1)
+        const parentPathIndex = path.findIndex(vm => vm.nodeId === node.id) - 1
+        const history = buildVisibleUpTo((parentPathIndex >= 0 ? parentPathIndex + 1 : 0))
           .filter(m => !m.typing)
           .map(({ role, content }) => ({ role, content }))
         if (chatSettings.streaming) {
@@ -830,24 +826,32 @@
             model: chatSettings.model,
             stream: true,
             onTextDelta: (full) => {
-              messages = messages.map(m => (m.id === typingMsg.id ? { ...m, content: full } : m))
+              nodes = nodes.map(n => ({
+                ...n,
+                variants: (n.variants || []).map(v => (v.id === typingMsg.id ? { ...v, content: full } : v))
+              }))
             }
           })
         } else {
           reply = await respond({ messages: history, model: chatSettings.model })
         }
       } else {
-        // No key: generate a placeholder reply based on last user input
         const path = buildVisible()
         const lastUser = [...path.map(vm => vm.m)].reverse().find(m => m.role === 'user')
         reply = generatePlaceholderReply(lastUser?.content || 'Regenerated response') +
           '\n\nTip: Add your OpenAI API key in Settings to get real answers.'
       }
-      messages = messages.map(m => (m.id === typingMsg.id ? { ...m, typing: false, error: undefined, content: reply } : m))
+      nodes = nodes.map(n => ({
+        ...n,
+        variants: (n.variants || []).map(v => (v.id === typingMsg.id ? { ...v, typing: false, error: undefined, content: reply } : v))
+      }))
       persistNow()
     } catch (err) {
       const msg = err?.message || 'Something went wrong.'
-      messages = messages.map(m => (m.id === typingMsg.id ? { ...m, typing: false, error: msg, content: (m.content === 'typing' ? '' : m.content) } : m))
+      nodes = nodes.map(n => ({
+        ...n,
+        variants: (n.variants || []).map(v => (v.id === typingMsg.id ? { ...v, typing: false, error: msg, content: (v.content === 'typing' ? '' : v.content) } : v))
+      }))
       persistNow()
     } finally {
       // Do not auto-scroll on reply
@@ -860,13 +864,14 @@
     if (locked) return
     const path = buildVisible()
     const vm = (typeof i === 'number') ? path[i] : null
-    const cur = vm?.m
-    if (!cur || cur.role !== 'user') return
-    // Add typing assistant as a child under this user
-    const typingMsg = { id: nextId++, role: 'assistant', content: 'typing', time: Date.now(), typing: true, next: [] }
-    messages = messages.map(m => (m.id === cur.id ? { ...m, next: [...(m.next || []), typingMsg.id] } : m))
-    messages = [...messages, typingMsg]
-    selected = { ...selected, [cur.id]: ((messages.find(mm => mm.id === cur.id)?.next || []).length - 1) }
+    const curMsg = vm?.m
+    const curNodeId = vm?.nodeId
+    if (!curMsg || curMsg.role !== 'user' || !curNodeId) return
+    // Add typing assistant node after this user
+    const typingMsg = { id: nextId++, role: 'assistant', content: 'typing', time: Date.now(), typing: true, next: null }
+    const typingNode = { id: nextNodeId++, variants: [typingMsg], active: 0 }
+    nodes = nodes.map(n => (n.id === curNodeId ? { ...n, variants: n.variants.map((v, idx) => (idx === (Number(n.active)||0) ? { ...v, next: typingNode.id } : v)) } : n))
+    nodes = [...nodes, typingNode]
     persistNow()
 
     try {
@@ -883,7 +888,7 @@
             model: chatSettings.model,
             stream: true,
             onTextDelta: (full) => {
-              messages = messages.map(m => (m.id === typingMsg.id ? { ...m, content: full } : m))
+              nodes = nodes.map(n => ({ ...n, variants: (n.variants || []).map(v => (v.id === typingMsg.id ? { ...v, content: full } : v)) }))
             }
           })
         } else {
@@ -891,31 +896,61 @@
         }
       } else {
         const lastUser = [...buildVisibleUpTo(i + 1)].reverse().find(m => m.role === 'user')
-        reply = generatePlaceholderReply(lastUser?.content || cur.content) +
+        reply = generatePlaceholderReply(lastUser?.content || curMsg.content) +
           '\n\nTip: Add your OpenAI API key in Settings to get real answers.'
       }
-      messages = messages.map(m => (m.id === typingMsg.id ? { ...m, content: reply, typing: false, error: undefined } : m))
+      nodes = nodes.map(n => ({ ...n, variants: (n.variants || []).map(v => (v.id === typingMsg.id ? { ...v, content: reply, typing: false, error: undefined } : v)) }))
       persistNow()
     } catch (err) {
       const msg = err?.message || 'Something went wrong.'
-      messages = messages.map(m => (m.id === typingMsg.id ? { ...m, typing: false, error: msg, content: (m.content === 'typing' ? '' : m.content) } : m))
+      nodes = nodes.map(n => ({ ...n, variants: (n.variants || []).map(v => (v.id === typingMsg.id ? { ...v, typing: false, error: msg, content: (v.content === 'typing' ? '' : v.content) } : v)) }))
       persistNow()
     } finally {
       // Do not auto-scroll on reply
     }
   }
   
-  function changeVariant(id, delta) {
+  function changeVariant(messageId, delta) {
     if (locked) return
-    // Change selected child branch for a message id
-    const parent = messages.find(m => m.id === id)
-    if (!parent || !Array.isArray(parent.next) || parent.next.length <= 1) return
-    const len = parent.next.length
-    const cur = Number(selected?.[id]) || 0
+    const loc = (function findNodeByMessageId(mid){ for (const n of nodes||[]) { const i=(n?.variants||[]).findIndex(v=>v?.id===mid); if(i>=0) return {node:n,index:i} } return {node:null,index:-1} })(messageId)
+    const parent = loc?.node
+    if (!parent || (parent.variants || []).length <= 1) return
+    const len = parent.variants.length
+    const cur = Number(parent.active) || 0
     const next = Math.max(0, Math.min(len - 1, cur + delta))
     if (next === cur) return
-    selected = { ...selected, [id]: next }
+    nodes = nodes.map(n => (n.id === parent.id ? { ...n, active: next } : n))
     persistNow()
+  }
+
+  // Legacy migration: flatten old graph-based messages + selection into nodes with single variants
+  function migrateLegacyGraphToNodes(messagesArr, legacyRootId, legacySelected) {
+    const msgs = Array.isArray(messagesArr) ? messagesArr.slice() : []
+    const byId = new Map(msgs.map(m => [m.id, m]))
+    const outNodes = []
+    let nid = 1
+    const nodeIdByMsgId = new Map()
+    const now = Date.now()
+    for (const m of msgs) {
+      const nodeId = nid++
+      nodeIdByMsgId.set(m.id, nodeId)
+      outNodes.push({ id: nodeId, variants: [{ id: m.id, role: m.role, content: m.content, time: m.time || now, typing: !!m.typing, error: m.error, next: null }], active: 0 })
+    }
+    // Wire next pointers along selected branches
+    for (const m of msgs) {
+      const children = Array.isArray(m.next) ? m.next : []
+      if (!children.length) continue
+      const sel = Math.max(0, Math.min(children.length - 1, Number(legacySelected?.[m.id]) || 0))
+      const childMsgId = children[sel]
+      const fromNodeId = nodeIdByMsgId.get(m.id)
+      const toNodeId = nodeIdByMsgId.get(childMsgId)
+      const node = outNodes.find(n => n.id === fromNodeId)
+      if (node && toNodeId != null) {
+        node.variants = node.variants.map((v, i) => (i === 0 ? { ...v, next: toNodeId } : v))
+      }
+    }
+    const root = (legacyRootId != null) ? nodeIdByMsgId.get(legacyRootId) : (outNodes[0]?.id || 1)
+    return { nodes: outNodes, rootId: root }
   }
 </script>
 
@@ -923,11 +958,10 @@
   <MessageList
     bind:this={listCmp}
     items={buildVisible()}
-    total={messages.length}
+    total={nodes.length}
     locked={locked}
     editingId={editingId}
     editingText={editingText}
-    selectedMap={selected}
     followingMap={computeFollowingMap()}
     onSetRole={(id, role) => setMessageRole(id, role)}
     onEditInput={(t) => onEditableInput(t)}
