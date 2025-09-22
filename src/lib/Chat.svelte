@@ -493,109 +493,56 @@
     persistNow()
     // Do not scroll when switching roles
   }
-  // Reorder adjacent messages along the current visible path (graph-aware)
-  function moveUp(id) {
+  // Reorder adjacent nodes along the current visible path (node/variant graph)
+  function moveUp(messageId) {
     if (locked) return
-    return
     const path = buildVisible()
-    const idx = path.findIndex(vm => vm.m.id === id)
-    if (idx <= 0) return // cannot move the first visible item up
-    const B = path[idx]?.m
-    const A = path[idx - 1]?.m
-    const P = (idx - 2 >= 0) ? path[idx - 2]?.m : null
-    const C = path[idx + 1]?.m || null
+    const idx = path.findIndex(vm => vm.m.id === messageId)
+    if (idx <= 0) return
+    const B = path[idx]
+    const A = path[idx - 1]
+    const P = (idx - 2 >= 0) ? path[idx - 2] : null
+    const C = (idx + 1 < path.length) ? path[idx + 1] : null
     if (!A || !B) return
-    // Sanity: ensure adjacency A -> B
-    const aNode = messages.find(m => m.id === A.id)
-    if (!aNode || !Array.isArray(aNode.next) || !aNode.next.includes(B.id)) return
-
-    let arr = messages.slice()
-    // Helper: mutate next array for a node id
-    function setNext(mid, nextArr) {
-      arr = arr.map(m => (m.id === mid ? { ...m, next: nextArr } : m))
+    if (B.m?.typing) return
+    let arr = nodes.slice()
+    function setActiveNext(mid, toId) {
+      arr = arr.map(n => (n.id === mid
+        ? { ...n, variants: n.variants.map((v, i) => (i === (Number(n.active)||0) ? { ...v, next: toId ?? null } : v)) }
+        : n))
     }
-    function getNode(mid) { return arr.find(m => m.id === mid) }
-    function replaceChild(parentId, fromId, toId) {
-      const p = getNode(parentId)
-      if (!p) return
-      const n = Array.isArray(p.next) ? p.next.slice() : []
-      const fromIdx = n.indexOf(fromId)
-      if (fromIdx < 0) return
-      const toIdx = n.indexOf(toId)
-      if (toIdx >= 0 && toIdx !== fromIdx) {
-        // Move existing toId to the fromIdx position, remove original fromId
-        const nn = n.filter((_, ix) => ix !== fromIdx) // remove fromId
-        const withoutTo = nn.filter((x) => x !== toId) // ensure single toId
-        const insertAt = Math.min(fromIdx, withoutTo.length)
-        withoutTo.splice(insertAt, 0, toId)
-        setNext(parentId, withoutTo)
-      } else if (toIdx === fromIdx) {
-        // Already in place: just ensure single occurrence
-        setNext(parentId, [...new Set(n)])
-      } else {
-        n[fromIdx] = toId
-        setNext(parentId, n)
-      }
-    }
-    function removeChild(parentId, childId) {
-      const p = getNode(parentId)
-      if (!p) return
-      const n = (Array.isArray(p.next) ? p.next : []).filter(x => x !== childId)
-      setNext(parentId, n)
-    }
-    function addChild(parentId, childId) {
-      const p = getNode(parentId)
-      if (!p) return
-      const n = Array.isArray(p.next) ? p.next.slice() : []
-      if (!n.includes(childId)) { n.push(childId); setNext(parentId, n) }
-    }
-
-    // 1) P -> A becomes P -> B (or B becomes new root)
-    if (P) {
-      replaceChild(P.id, A.id, B.id)
-    } else {
-      rootId = B.id
-    }
-    // 2) and 3) Adjust middle edges while preserving child order positions
-    // If C exists (A -> B -> C), do in-place replacements to keep indices stable:
-    //   - A -> B becomes A -> C (at B's former index)
-    //   - B -> C becomes B -> A (at C's former index)
-    // Otherwise (no C), remove A -> B and append B -> A.
-    if (C) {
-      replaceChild(A.id, B.id, C.id)
-      replaceChild(B.id, C.id, A.id)
-    } else {
-      removeChild(A.id, B.id)
-      addChild(B.id, A.id)
-    }
-
-    // Update selected branch indices to follow the same active branches
-    const nextSel = { ...selected }
-    // P keeps the same index because we replaced child in-place
-    if (B) {
-      const bNode = getNode(B.id)
-      const bi = Math.max(0, (Array.isArray(bNode?.next) ? bNode.next.indexOf(A.id) : 0))
-      nextSel[B.id] = bi
-    }
-    if (A) {
-      const a2 = getNode(A.id)
-      if (C) {
-        const ai = Math.max(0, (Array.isArray(a2?.next) ? a2.next.indexOf(C.id) : 0))
-        nextSel[A.id] = ai
-      } else {
-        // If no C, keep prior selection clamped
-        const max = Math.max(0, (Array.isArray(a2?.next) ? a2.next.length - 1 : 0))
-        let prev = Number(nextSel[A.id]) || 0
-        if (prev > max) prev = max
-        nextSel[A.id] = prev
-      }
-    }
-
-    messages = arr
-    selected = nextSel
+    if (P) { setActiveNext(P.nodeId, B.nodeId) } else { rootId = B.nodeId }
+    setActiveNext(B.nodeId, A.nodeId)
+    setActiveNext(A.nodeId, C ? C.nodeId : null)
+    nodes = arr
     persistNow()
   }
-  function moveDown(id) {
+
+  // Reorder adjacent nodes downward along the visible path (node/variant graph)
+  function moveDown(messageId) {
+    if (locked) return
+    const path = buildVisible()
+    const idx = path.findIndex(vm => vm.m.id === messageId)
+    if (idx < 0 || idx >= (path.length - 1)) return
+    const B = path[idx]
+    const C = path[idx + 1]
+    const P = (idx - 1 >= 0) ? path[idx - 1] : null
+    const D = (idx + 2 < path.length) ? path[idx + 2] : null
+    if (!B || !C) return
+    if (B.m?.typing) return
+    let arr = nodes.slice()
+    function setActiveNext(mid, toId) {
+      arr = arr.map(n => (n.id === mid
+        ? { ...n, variants: n.variants.map((v, i) => (i === (Number(n.active)||0) ? { ...v, next: toId ?? null } : v)) }
+        : n))
+    }
+    if (P) { setActiveNext(P.nodeId, C.nodeId) } else { rootId = C.nodeId }
+    setActiveNext(C.nodeId, B.nodeId)
+    setActiveNext(B.nodeId, D ? D.nodeId : null)
+    nodes = arr
+    persistNow()
+  }
+  function moveDownLegacy(id) {
     if (locked) return
     return
     const path = buildVisible()
