@@ -75,6 +75,8 @@
     bottom: 0;
     width: 280px;
     height: 100%;
+    /* Prevent any horizontal bleed from long titles */
+    overflow-x: hidden;
     z-index: 10;
   }
   .sidebar.collapsed { width: 52px; }
@@ -88,7 +90,7 @@
     }
   }
   .sidebar-inner { height: 100%; display: grid; grid-template-rows: auto 1fr; }
-  .side-body { display: flex; flex-direction: column; min-height: 0; }
+  .side-body { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
   .side-header { display: flex; align-items: center; gap: 8px; padding: 8px; }
   .brand { font-weight: 600; padding: 6px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); }
   .icon-btn {
@@ -158,7 +160,19 @@
     margin-top: 10px;
     margin-bottom: 8px; /* space between label and chat list */
   }
-  .chat-list { display: grid; gap: 2px; padding: 0 6px 10px; overflow: auto; align-content: start; flex: 1; min-height: 0; }
+  .chat-list {
+    display: grid;
+    gap: 2px;
+    padding: 0 6px 10px;
+    /* Only vertical scrolling; clip horizontal overflow */
+    overflow-y: auto;
+    overflow-x: hidden;
+    align-content: start;
+    flex: 1;
+    min-height: 0;
+    /* Allow flex child to shrink and avoid overflow */
+    min-width: 0;
+  }
   .chat-link {
     text-align: left;
     display: block;
@@ -170,10 +184,14 @@
     border-radius: 8px;
     font: inherit;
     transition: background-color 150ms ease, color 150ms ease;
+    /* Prevent content from forcing the button wider than the list */
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
   }
   .chat-link:hover { background: var(--panel); color: var(--text); }
   .chat-link.active { color: var(--text); }
-  .chat-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .chat-title { display: block; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
   .side-footer { padding: 8px; border-top: 1px solid var(--border); margin-top: auto; }
   /* Remove horizontal separator in collapsed mode */
