@@ -91,12 +91,34 @@
   .side-body { display: flex; flex-direction: column; min-height: 0; }
   .side-header { display: flex; align-items: center; gap: 8px; padding: 8px; }
   .brand { font-weight: 600; padding: 6px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); }
-  .icon-btn { min-width: 36px; height: 36px; display: grid; place-items: center; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); color: var(--text); }
+  .icon-btn {
+    min-width: 36px;
+    height: 36px;
+    display: grid;
+    place-items: center;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--panel);
+    color: var(--text);
+    transition: background-color 150ms ease, color 150ms ease, transform 120ms ease;
+  }
   .sidebar.collapsed .brand { display: none; }
   .sidebar.collapsed .chat-list { display: none; }
   .top-nav { display: grid; gap: 6px; padding: 6px 8px 2px; }
   /* Left padding set to 8px for precise alignment */
-  .nav-item { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; padding: 8px 10px 8px 8px; border: 0; border-radius: 8px; background: transparent; color: var(--text); }
+  .nav-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    text-align: left;
+    padding: 8px 10px 8px 8px;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--text);
+    transition: background-color 150ms ease, color 150ms ease, transform 120ms ease;
+  }
   .nav-item:hover { background: var(--panel); }
   .nav-item .label { white-space: nowrap; }
   .sidebar.collapsed .nav-item .label { display: none; }
@@ -109,13 +131,15 @@
     height: 36px;
     border: 0;
     border-radius: 8px;
-    background: transparent;
+    /* Explicitly match the sidebar surface when collapsed */
+    background: var(--bg);
     color: var(--text);
   }
   .sidebar.collapsed .nav-item:hover,
   .sidebar.collapsed .nav-item:active,
   .sidebar.collapsed .nav-item:focus-visible {
     background: var(--hover-bg);
+    transform: translateY(-1px);
   }
 
   /* Give the collapse (menu) button a hover, matching ghost hover tone */
@@ -123,6 +147,13 @@
   .side-header .icon-btn:active,
   .side-header .icon-btn:focus-visible {
     background: var(--hover-bg);
+    transform: translateY(-1px);
+  }
+
+  /* In collapsed mode, make the collapse toggle visually consistent with icon-only items */
+  .sidebar.collapsed .side-header .icon-btn {
+    border: 0;
+    background: var(--bg);
   }
 
   /* Align label with chat buttons and add spacing from New chat */
@@ -135,7 +166,18 @@
     margin-bottom: 8px; /* space between label and chat list */
   }
   .chat-list { display: grid; gap: 2px; padding: 0 6px 10px; overflow: auto; align-content: start; flex: 1; min-height: 0; }
-  .chat-link { text-align: left; display: block; width: 100%; padding: 6px 10px; border: 0; background: transparent; color: var(--muted); border-radius: 8px; font: inherit; }
+  .chat-link {
+    text-align: left;
+    display: block;
+    width: 100%;
+    padding: 6px 10px;
+    border: 0;
+    background: transparent;
+    color: var(--muted);
+    border-radius: 8px;
+    font: inherit;
+    transition: background-color 150ms ease, color 150ms ease;
+  }
   .chat-link:hover { background: var(--panel); color: var(--text); }
   .chat-link.active { color: var(--text); }
   .chat-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
