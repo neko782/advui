@@ -18,6 +18,8 @@
       hasFollowingAssistant={props.followingMap?.[vm.i]?.has}
       nextAssistantId={props.followingMap?.[vm.i]?.id}
       nextAssistantTyping={props.followingMap?.[vm.i]?.typing}
+      branchIndex={(props.selectedMap && vm?.m) ? (Number(props.selectedMap[vm.m.id]) || 0) : 0}
+      branchesLength={(vm?.m && Array.isArray(vm.m.next)) ? vm.m.next.length : 0}
       onSetRole={props.onSetRole}
       onEditInput={props.onEditInput}
       onEditKeydown={props.onEditKeydown}

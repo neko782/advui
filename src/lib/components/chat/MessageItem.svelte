@@ -8,8 +8,8 @@
   const vm = $derived(props.vm)
   const m = $derived(vm.m)
   const isEditing = $derived(props.editingId === m.id)
-  const variantsLength = $derived(Array.isArray(m.variants) ? m.variants.length : 0)
-  const variantIndex = $derived(typeof m.variantIndex === 'number' ? m.variantIndex : 0)
+  const branchesLength = $derived(Number(props.branchesLength) || 0)
+  const branchIndex = $derived(Number(props.branchIndex) || 0)
 </script>
 
 <div class={`row ${m.role}`}>
@@ -31,8 +31,8 @@
       total={props.total}
       locked={props.locked}
       isEditing={isEditing}
-      variantsLength={variantsLength}
-      variantIndex={variantIndex}
+      branchesLength={branchesLength}
+      branchIndex={branchIndex}
       hasFollowingAssistant={props.hasFollowingAssistant}
       nextAssistantId={props.nextAssistantId}
       nextAssistantTyping={props.nextAssistantTyping}

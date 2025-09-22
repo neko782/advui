@@ -29,20 +29,22 @@
   let editingId = $state(null)
   let editingText = $state('')
   // editing DOM is handled in MessageBubble
-  // Branching helpers
-  import { isAnchor, buildVisible as _buildVisible, buildVisibleUpTo as _buildVisibleUpTo, chainFromVisibleUpTo as _chainFromVisibleUpTo, currentVisibleChain as _currentVisibleChain, injectAnchorToken } from './branching.js'
-  function buildVisible() { return _buildVisible(messages) }
-  function buildVisibleUpTo(indexExclusive) { return _buildVisibleUpTo(messages, indexExclusive) }
-  function currentVisibleChain() { return _currentVisibleChain(messages) }
-  function chainFromVisibleUpTo(indexExclusive) { return _chainFromVisibleUpTo(messages, indexExclusive) }
+  // Branching helpers (graph-based)
+  import { buildVisible as _buildVisible, buildVisibleUpTo as _buildVisibleUpTo, findParentId } from './branching.js'
+  function buildVisible() { return _buildVisible(messages, rootId, selected) }
+  function buildVisibleUpTo(indexExclusive) { return _buildVisibleUpTo(messages, rootId, selected, indexExclusive) }
+  // Graph selections: root message id and selected child per message
+  let rootId = $state(1)
+  let selected = $state({})
   function computeFollowingMap() {
     const map = {}
-    for (let i = 0; i < messages.length; i++) {
-      const next = messages[i + 1]
+    const visible = buildVisible()
+    for (let j = 0; j < visible.length; j++) {
+      const next = visible[j + 1]?.m
       if (next && next.role === 'assistant') {
-        map[i] = { has: true, id: next.id, typing: !!next.typing }
+        map[j] = { has: true, id: next.id, typing: !!next.typing }
       } else {
-        map[i] = { has: false, id: null, typing: false }
+        map[j] = { has: false, id: null, typing: false }
       }
     }
     return map
@@ -109,6 +111,8 @@
     // Compute the new state first, then apply it in a macrotask to avoid
     // mutating state during the current reconciliation/flush.
     let nextMessages = []
+    let nextRootId = 1
+    let nextSelected = {}
     let nextSettings = loadSettings()
     let nextChatSettings = {
       model: (nextSettings?.defaultChat?.model) || 'gpt-4o-mini',
@@ -116,62 +120,98 @@
     }
     let nextNextId = 1
     let nextPersistSig = ''
-    try {
-      const loaded = loadChatById(cid)
-      if (loaded) {
-        nextMessages = Array.isArray(loaded.messages) ? loaded.messages.slice() : []
-        nextChatSettings = {
-          model: loaded?.settings?.model || (nextSettings?.defaultChat?.model) || 'gpt-4o-mini',
-          streaming: (typeof loaded?.settings?.streaming === 'boolean'
-            ? loaded.settings.streaming
-            : (typeof nextSettings?.defaultChat?.streaming === 'boolean' ? nextSettings.defaultChat.streaming : true))
-        }
-        if (!nextMessages.length) {
-          nextNextId = 2
-          nextMessages = [makeSystemPrologue(1)]
+    loadChatById(cid).then((loaded) => {
+      try {
+        if (loaded) {
+          nextMessages = Array.isArray(loaded.messages) ? loaded.messages.slice() : []
+          nextRootId = loaded?.rootId || (nextMessages[0]?.id || 1)
+          nextSelected = loaded?.selected || {}
+          nextChatSettings = {
+            model: loaded?.settings?.model || (nextSettings?.defaultChat?.model) || 'gpt-4o-mini',
+            streaming: (typeof loaded?.settings?.streaming === 'boolean'
+              ? loaded.settings.streaming
+              : (typeof nextSettings?.defaultChat?.streaming === 'boolean' ? nextSettings.defaultChat.streaming : true))
+          }
+          if (!nextMessages.length) {
+            nextNextId = 2
+            nextMessages = [{ ...makeSystemPrologue(1), next: [] }]
+          } else {
+            try {
+              const maxId = (nextMessages || []).reduce((mx, m) => Math.max(mx, Number(m?.id) || 0), 0)
+              nextNextId = maxId + 1
+            } catch { nextNextId = 1 }
+          }
         } else {
-          try {
-            const maxId = (nextMessages || []).reduce((mx, m) => Math.max(mx, Number(m?.id) || 0), 0)
-            nextNextId = maxId + 1
-          } catch { nextNextId = 1 }
+          nextMessages = [{ ...makeSystemPrologue(1), next: [] }]
+          nextRootId = 1
+          nextSelected = {}
+          nextNextId = 2
+          nextChatSettings = {
+            model: (nextSettings?.defaultChat?.model) || 'gpt-4o-mini',
+            streaming: (typeof nextSettings?.defaultChat?.streaming === 'boolean' ? nextSettings.defaultChat.streaming : true)
+          }
         }
-      } else {
-        nextMessages = [makeSystemPrologue(1)]
+      } catch {
+        nextSettings = loadSettings()
+        nextMessages = [{ ...makeSystemPrologue(1), next: [] }]
+        nextRootId = 1
+        nextSelected = {}
         nextNextId = 2
         nextChatSettings = {
           model: (nextSettings?.defaultChat?.model) || 'gpt-4o-mini',
           streaming: (typeof nextSettings?.defaultChat?.streaming === 'boolean' ? nextSettings.defaultChat.streaming : true)
         }
       }
-    } catch {
+      // Precompute a persist signature for the loaded chat content
+      try {
+        const mini = (nextMessages || []).map(m => `${m.id}|${m.role}|${m.content?.length||0}|${(Array.isArray(m.next)?m.next.length:0)}`)
+        nextPersistSig = JSON.stringify({ m: mini, model: nextChatSettings?.model || '', streaming: !!nextChatSettings?.streaming, rootId: nextRootId, s: nextSelected })
+      } catch { nextPersistSig = '' }
+      // Apply computed state after the current tick
+      setTimeout(() => {
+        try {
+          settings = nextSettings
+          messages = nextMessages
+          nextId = nextNextId
+          chatSettings = nextChatSettings
+          rootId = nextRootId
+          selected = nextSelected
+          editingId = null
+          editingText = ''
+          // Align persistence signature to loaded state
+          persistSig = nextPersistSig
+        } finally {
+          ready = true
+        }
+      }, 0)
+    }).catch(() => {
       nextSettings = loadSettings()
-      nextMessages = [makeSystemPrologue(1)]
+      nextMessages = [{ ...makeSystemPrologue(1), next: [] }]
+      nextRootId = 1
+      nextSelected = {}
       nextNextId = 2
       nextChatSettings = {
         model: (nextSettings?.defaultChat?.model) || 'gpt-4o-mini',
         streaming: (typeof nextSettings?.defaultChat?.streaming === 'boolean' ? nextSettings.defaultChat.streaming : true)
       }
-    }
-    // Precompute a persist signature for the loaded chat content
-    try {
-      const mini = (nextMessages || []).map(m => `${m.id}|${m.role}|${m.content?.length||0}|${m.variantIndex||0}`)
-      nextPersistSig = JSON.stringify({ m: mini, model: nextChatSettings?.model || '', streaming: !!nextChatSettings?.streaming })
-    } catch { nextPersistSig = '' }
-    // Apply computed state after the current tick
-    setTimeout(() => {
       try {
-        settings = nextSettings
-        messages = nextMessages
-        nextId = nextNextId
-        chatSettings = nextChatSettings
-        editingId = null
-        editingText = ''
-        // Align persistence signature to loaded state
-        persistSig = nextPersistSig
-      } finally {
-        ready = true
-      }
-    }, 0)
+        const mini = (nextMessages || []).map(m => `${m.id}|${m.role}|${m.content?.length||0}|${(Array.isArray(m.next)?m.next.length:0)}`)
+        nextPersistSig = JSON.stringify({ m: mini, model: nextChatSettings?.model || '', streaming: !!nextChatSettings?.streaming, rootId: nextRootId, s: nextSelected })
+      } catch { nextPersistSig = '' }
+      setTimeout(() => {
+        try {
+          settings = nextSettings
+          messages = nextMessages
+          nextId = nextNextId
+          chatSettings = nextChatSettings
+          rootId = nextRootId
+          selected = nextSelected
+          editingId = null
+          editingText = ''
+          persistSig = nextPersistSig
+        } finally { ready = true }
+      }, 0)
+    })
   })
   // Load models once if not cached
   import { onMount } from 'svelte'
@@ -200,16 +240,17 @@
   let persistSig = ''
   function computePersistSig() {
     try {
-      const mini = (messages || []).map(m => `${m.id}|${m.role}|${m.content?.length||0}|${m.variantIndex||0}`)
-      return JSON.stringify({ m: mini, model: chatSettings?.model || '', streaming: !!chatSettings?.streaming })
+      const mini = (messages || []).map(m => `${m.id}|${m.role}|${m.content?.length||0}|${(Array.isArray(m.next)?m.next.length:0)}`)
+      return JSON.stringify({ m: mini, model: chatSettings?.model || '', streaming: !!chatSettings?.streaming, rootId, s: selected })
     } catch { return String(Math.random()) }
   }
   // Immediate persistence helper to avoid relying solely on the reactive effect
-  function persistNow() {
+  async function persistNow() {
     try {
       const cid = props.chatId
       if (!cid || !mounted) return
-      const updated = saveChatContent(cid, { messages, settings: chatSettings })
+      // Persist full graph
+      const updated = await saveChatContent(cid, { messages, settings: chatSettings, rootId, selected })
       // Update signature to current snapshot so the effect does not double-save
       persistSig = computePersistSig()
       scheduleParentRefresh(updated)
@@ -236,9 +277,8 @@
       const sig = computePersistSig()
       if (sig === persistSig) return
       persistSig = sig
-      const updated = saveChatContent(cid, { messages, settings: chatSettings })
-      // Notify parent (App) to refresh list/sidebar (titles/order) after commit
-      scheduleParentRefresh(updated)
+      const p = saveChatContent(cid, { messages, settings: chatSettings, rootId, selected })
+      p.then(updated => scheduleParentRefresh(updated)).catch(() => {})
     } catch {}
   })
 
@@ -251,9 +291,20 @@
     if (!text || sending) return
 
     sending = true
-    const parentChain = currentVisibleChain()
-    const firstMsg = { id: nextId++, role, content: text, time: Date.now(), branchPath: parentChain }
-    messages = [...messages, firstMsg]
+    // Attach new message as a child of the last visible message
+    const visible = buildVisible()
+    const last = visible.length ? visible[visible.length - 1].m : null
+    const parentId = last ? last.id : null
+    const newMsg = { id: nextId++, role, content: text, time: Date.now(), next: [] }
+    let arr = messages.slice()
+    arr.push(newMsg)
+    if (parentId != null) {
+      arr = arr.map(m => (m.id === parentId ? { ...m, next: [...(m.next || []), newMsg.id] } : m))
+      selected = { ...selected, [parentId]: ((m => (Array.isArray(m.next) ? m.next.length - 1 : 0))(arr.find(mm => mm.id === parentId) || { next: [newMsg.id] })) }
+    } else {
+      rootId = newMsg.id
+    }
+    messages = arr
     input = ''
     // Persist immediately after adding the user's message
     persistNow()
@@ -262,14 +313,20 @@
     queueMicrotask(() => scrollToBottom())
 
     // Typing placeholder
-    const typingMsg = { id: nextId++, role: 'assistant', content: 'typing', time: Date.now(), typing: true }
-    messages = [...messages, typingMsg]
+    // If user message, add typing assistant child and stream
+    if (role === 'user') {
+      const typingMsg = { id: nextId++, role: 'assistant', content: 'typing', time: Date.now(), typing: true, next: [] }
+      // Attach typing message under the new user message
+      messages = messages.map(m => (m.id === newMsg.id ? { ...m, next: [...(m.next || []), typingMsg.id] } : m))
+      messages = [...messages, typingMsg]
+      selected = { ...selected, [newMsg.id]: ((messages.find(mm => mm.id === newMsg.id)?.next || []).length - 1) }
+    }
     try {
       let reply
       // Always read current settings so API key changes apply immediately
       settings = loadSettings()
       const { apiKey } = settings
-      if (apiKey) {
+      if (role === 'user' && apiKey) {
         // Build message history (exclude typing placeholder)
         const history = buildVisible()
           .map(vm => vm.m)
@@ -282,25 +339,34 @@
             model: chatSettings.model,
             stream: true,
             onTextDelta: (full) => {
-              messages = messages.map(m => (m.id === typingMsg.id ? { ...m, content: full, variants: [full], variantIndex: 0 } : m))
+              messages = messages.map(m => (m.id === typingMsg.id ? { ...m, content: full } : m))
             }
           })
-        } else {
+        } else if (role === 'user') {
           reply = await respond({ messages: history, model: chatSettings.model })
         }
       } else {
         // if no key set, provide a friendly hint + echo
-        reply = generatePlaceholderReply(firstMsg.content) +
-          '\n\nTip: Add your OpenAI API key in Settings to get real answers.'
+        if (role === 'user') {
+          reply = generatePlaceholderReply(newMsg.content) +
+            '\n\nTip: Add your OpenAI API key in Settings to get real answers.'
+        }
       }
-      messages = messages.map(m => (m.id === typingMsg.id ? { ...m, content: reply, typing: false, error: undefined, variants: [reply], variantIndex: 0, branchPathBefore: parentChain } : m))
+      if (role === 'user') {
+        // Update the typing assistant
+        const lastChildId = (messages.find(mm => mm.id === newMsg.id)?.next || [])[Number(selected?.[newMsg.id]) || 0]
+        messages = messages.map(m => (m.id === lastChildId ? { ...m, content: reply, typing: false, error: undefined } : m))
+      }
       // Persist after receiving the assistant reply
       persistNow()
     } catch (err) {
       const msg = err?.message || 'Something went wrong.'
-      messages = messages.map(m => (m.id === typingMsg.id
-        ? { ...m, typing: false, error: msg, content: (m.content === 'typing' ? '' : m.content), branchPathBefore: parentChain }
-        : m))
+      if (role === 'user') {
+        const lastChildId = (messages.find(mm => mm.id === newMsg.id)?.next || [])[Number(selected?.[newMsg.id]) || 0]
+        messages = messages.map(m => (m.id === lastChildId
+          ? { ...m, typing: false, error: msg, content: (m.content === 'typing' ? '' : m.content) }
+          : m))
+      }
       persistNow()
     } finally {
       sending = false
@@ -316,11 +382,18 @@
     if (locked) return
     const text = input.trim()
     if (!text) return
-    const parentChain = currentVisibleChain()
-    const direct = role === 'assistant'
-      ? { id: nextId++, role, content: text, time: Date.now(), variants: [text], variantIndex: 0, branchPathBefore: parentChain }
-      : { id: nextId++, role, content: text, time: Date.now(), branchPath: parentChain }
-    messages = [...messages, direct]
+    const direct = { id: nextId++, role, content: text, time: Date.now(), next: [] }
+    const visible = buildVisible()
+    const last = visible.at(-1)?.m
+    let arr = messages.slice()
+    arr.push(direct)
+    if (last) {
+      arr = arr.map(m => (m.id === last.id ? { ...m, next: [...(m.next || []), direct.id] } : m))
+      selected = { ...selected, [last.id]: ((arr.find(mm => mm.id === last.id)?.next || []).length - 1) }
+    } else {
+      rootId = direct.id
+    }
+    messages = arr
     persistNow()
     input = ''
     queueMicrotask(() => scrollToBottom())
@@ -362,7 +435,40 @@
   async function copyMessage(text) { try { await copyToClipboard(text) } catch {} }
   function deleteMessage(id) {
     if (locked) return
-    messages = messages.filter(m => m.id !== id)
+    // Do not allow deleting the root directly
+    if (id === rootId) return
+    // Recursively remove subtree
+    const toDelete = new Set()
+    function collect(nodeId) {
+      if (toDelete.has(nodeId)) return
+      toDelete.add(nodeId)
+      const node = messages.find(m => m.id === nodeId)
+      for (const child of node?.next || []) collect(child)
+    }
+    collect(id)
+    // Remove edges from parents and fix selection
+    const arr = messages
+      .filter(m => !toDelete.has(m.id))
+      .map(m => {
+        const next = (m.next || []).filter(cid => !toDelete.has(cid))
+        let sel = selected?.[m.id]
+        if (typeof sel === 'number') {
+          const max = Math.max(0, next.length - 1)
+          sel = Math.max(0, Math.min(sel, max))
+        }
+        return { ...m, next }
+      })
+    messages = arr
+    const nextSel = { ...selected }
+    for (const key of Object.keys(nextSel)) {
+      const mid = Number(key)
+      const parent = arr.find(m => m.id === mid)
+      if (!parent) { delete nextSel[key]; continue }
+      const max = Math.max(0, (parent.next || []).length - 1)
+      let val = Number(nextSel[key]) || 0
+      if (val > max) nextSel[key] = max
+    }
+    selected = nextSel
     persistNow()
   }
   function setMessageRole(id, role) {
@@ -374,50 +480,14 @@
     persistNow()
     // Do not scroll when switching roles
   }
-  // Align a message's branching metadata to the chain at its current index
-  function alignMessageToChainAt(arr, idx) {
-    const m = arr[idx]
-    if (!m) return m
-    const parentChain = _chainFromVisibleUpTo(arr, idx)
-    if (isAnchor(m)) {
-      // Anchored messages (assistant or branched user/system) gate visibility via branchPathBefore
-      return { ...m, branchPathBefore: parentChain }
-    }
-    // Only update branchPath for messages that already participate in branching
-    if (Object.prototype.hasOwnProperty.call(m, 'branchPath')) {
-      return { ...m, branchPath: parentChain }
-    }
-    return m
-  }
-  // After any reorder, re-sync branching metadata across the entire list
-  function realignAll(arr) {
-    const out = arr.slice()
-    for (let k = 0; k < out.length; k++) {
-      out[k] = alignMessageToChainAt(out, k)
-    }
-    return out
-  }
+  // Move APIs are no-ops in graph mode (could be extended to reorder children)
   function moveUp(id) {
     if (locked) return
-    const i = messages.findIndex(m => m.id === id)
-    if (i > 0) {
-      const arr = messages.slice()
-      ;[arr[i - 1], arr[i]] = [arr[i], arr[i - 1]]
-      // Re-sync branching across the entire list to maintain visibility
-      messages = realignAll(arr)
-      persistNow()
-    }
+    return
   }
   function moveDown(id) {
     if (locked) return
-    const i = messages.findIndex(m => m.id === id)
-    if (i >= 0 && i < messages.length - 1) {
-      const arr = messages.slice()
-      ;[arr[i], arr[i + 1]] = [arr[i + 1], arr[i]]
-      // Re-sync branching across the entire list to maintain visibility
-      messages = realignAll(arr)
-      persistNow()
-    }
+    return
   }
   function editMessage(id) {
     if (locked) return
@@ -431,16 +501,7 @@
     if (locked) return
     if (editingId == null) return
     const val = String(editingText)
-    messages = messages.map(m => {
-      if (m.id !== editingId) return m
-      if (m.role === 'assistant' && Array.isArray(m.variants) && typeof m.variantIndex === 'number') {
-        const arr = m.variants.slice()
-        const idx = Math.max(0, Math.min(arr.length - 1, m.variantIndex || 0))
-        arr[idx] = val
-        return { ...m, content: val, variants: arr, error: undefined }
-      }
-      return { ...m, content: val, error: undefined }
-    })
+    messages = messages.map(m => (m.id === editingId ? { ...m, content: val, error: undefined } : m))
     editingId = null
     editingText = ''
     queueMicrotask(() => scrollToBottom())
@@ -453,32 +514,22 @@
   function applyEditBranch() {
     if (locked) return
     if (editingId == null) return
-    const i = messages.findIndex(m => m.id === editingId)
-    if (i < 0) return
+    const cur = messages.find(m => m.id === editingId)
+    if (!cur) return
     const val = String(editingText)
-    const cur = messages[i]
-    // Assistant: add a new variant with edited content and switch to it
-    if (cur.role === 'assistant') {
-      const base = Array.isArray(cur.variants) ? cur.variants.slice() : [cur.content]
-      base.push(val)
-      const vi = base.length - 1
-      messages = messages.map((m, idx) => idx === i ? { ...m, content: val, variants: base, variantIndex: vi, error: undefined } : m)
-      editingId = null
-      editingText = ''
-      queueMicrotask(() => scrollToBottom())
-      return
-    }
-    // For user/system: make the message itself an anchor (variants) and select the new variant.
-    const parent = chainFromVisibleUpTo(i)
-    // Prepare variants
-    const base = Array.isArray(cur.variants) ? cur.variants.slice() : [cur.content]
-    base.push(val)
-    const vi = base.length - 1
-    // Update the edited message into an anchor with branchPathBefore
+    const parentId = findParentId(messages, cur.id)
+    // Create a sibling branch under the same parent and select it
+    const newNode = { id: nextId++, role: cur.role, content: val, time: Date.now(), next: Array.isArray(cur.next) ? cur.next.slice() : [] }
     let arr = messages.slice()
-    arr[i] = { ...cur, content: val, variants: base, variantIndex: vi, branchPathBefore: parent, error: undefined }
-    // Inject token for downstream branch paths and anchor parents
-    messages = injectAnchorToken(arr, i, parent, arr[i].id, 0)
+    arr.push(newNode)
+    if (parentId != null) {
+      arr = arr.map(m => (m.id === parentId ? { ...m, next: [...(m.next || []), newNode.id] } : m))
+      selected = { ...selected, [parentId]: ((arr.find(mm => mm.id === parentId)?.next || []).length - 1) }
+    } else {
+      // If no parent, branch at root (replace root selection)
+      rootId = newNode.id
+    }
+    messages = arr
     persistNow()
     editingId = null
     editingText = ''
@@ -489,101 +540,38 @@
   async function applyEditSend() {
     if (locked) return
     if (editingId == null) return
-    const i0 = messages.findIndex(m => m.id === editingId)
-    if (i0 < 0) return
+    const cur = messages.find(m => m.id === editingId)
+    if (!cur) return
     const val = String(editingText)
-    const cur = messages[i0]
-    // Assistant: branch (selector on assistant), replace with edited content, then generate a new assistant after it
-    if (cur.role === 'assistant') {
-      // 1) Branch + replace content on the assistant itself
-      const parentChainA = chainFromVisibleUpTo(i0)
-      messages = messages.map((m, idx) => {
-        if (idx !== i0) return m
-        const arr = Array.isArray(m.variants) ? m.variants.slice() : [m.content]
-        arr.push(val)
-        const vi = arr.length - 1
-        return { ...m, content: val, variants: arr, variantIndex: vi, branchPathBefore: m.branchPathBefore ?? parentChainA }
-      })
-      // Exit editing state now that the edit is applied
-      editingId = null
-      editingText = ''
-
-      // 2) Generate a new assistant message directly after the edited assistant
-      const insertIndex = i0
-      const parentChainB = chainFromVisibleUpTo(insertIndex + 1)
-      const typingMsg = { id: nextId++, role: 'assistant', content: 'typing', time: Date.now(), typing: true, variants: [''], variantIndex: 0, branchPathBefore: parentChainB }
-      let arr2 = messages.slice()
-      arr2.splice(insertIndex + 1, 0, typingMsg)
-      messages = arr2
-      persistNow()
-
-      try {
-        let reply
-        settings = loadSettings()
-        const { apiKey } = settings
-        const history = buildVisibleUpTo(insertIndex + 1)
-          .filter(m => !m.typing)
-          .map(({ role, content }) => ({ role, content }))
-        if (apiKey) {
-          if (chatSettings.streaming) {
-            reply = await respond({
-              messages: history,
-              model: chatSettings.model,
-              stream: true,
-              onTextDelta: (full) => {
-                messages = messages.map(m => (m.id === typingMsg.id
-                  ? { ...m, content: full, variants: [full], variantIndex: 0 }
-                  : m))
-              }
-            })
-          } else {
-            reply = await respond({ messages: history, model: chatSettings.model })
-          }
-        } else {
-          const lastUser = [...buildVisibleUpTo(insertIndex + 1)].reverse().find(m => m.role === 'user')
-          reply = generatePlaceholderReply(lastUser?.content || val) +
-            '\n\nTip: Add your OpenAI API key in Settings to get real answers.'
-        }
-        messages = messages.map(m => (m.id === typingMsg.id
-          ? { ...m, content: reply, typing: false, error: undefined, variants: [reply], variantIndex: 0 }
-          : m))
-        persistNow()
-      } catch (err) {
-        const msg = err?.message || 'Something went wrong.'
-        messages = messages.map(m => (m.id === typingMsg.id
-          ? { ...m, typing: false, error: msg, content: (m.content === 'typing' ? '' : m.content) }
-          : m))
-        persistNow()
-      } finally {
-        // Do not auto-scroll on reply
-      }
-      return
-    }
-    // For user/system: turn the message into an anchor and generate a fresh assistant reply for the new branch.
-    const parent = chainFromVisibleUpTo(i0)
+    // 1) Branch the edited message (create sibling under same parent) and select it
+    const parentId = findParentId(messages, cur.id)
+    const branched = { id: nextId++, role: cur.role, content: val, time: Date.now(), next: [] }
     let arr = messages.slice()
-    const base = Array.isArray(cur.variants) ? cur.variants.slice() : [cur.content]
-    base.push(val)
-    const vi = base.length - 1
-    arr[i0] = { ...cur, content: val, variants: base, variantIndex: vi, branchPathBefore: parent }
-    // Inject token downstream and update messages
-    messages = injectAnchorToken(arr, i0, parent, arr[i0].id, 0)
+    arr.push(branched)
+    if (parentId != null) {
+      arr = arr.map(m => (m.id === parentId ? { ...m, next: [...(m.next || []), branched.id] } : m))
+      selected = { ...selected, [parentId]: ((arr.find(mm => mm.id === parentId)?.next || []).length - 1) }
+    } else {
+      rootId = branched.id
+    }
+    messages = arr
     persistNow()
     editingId = null
     editingText = ''
 
-    // Insert typing placeholder after the edited message (in new chain)
-    const typingMsg = { id: nextId++, role: 'assistant', content: 'typing', time: Date.now(), typing: true }
-    arr = messages.slice()
-    const insertIndex = i0
-    arr.splice(i0 + 1, 0, typingMsg)
-    messages = arr
-    persistNow()
-
+    // 2) Generate a new assistant reply after the branched message
+    const typingMsg = { id: nextId++, role: 'assistant', content: 'typing', time: Date.now(), typing: true, next: [] }
+    messages = messages.map(m => (m.id === branched.id ? { ...m, next: [...(m.next || []), typingMsg.id] } : m))
+    messages = [...messages, typingMsg]
+    selected = { ...selected, [branched.id]: ((messages.find(mm => mm.id === branched.id)?.next || []).length - 1) }
+    
     try {
       let reply
       settings = loadSettings()
       const { apiKey } = settings
+      // Build history up to and including branched message
+      const path = buildVisible()
+      const insertIndex = path.findIndex(vm => vm.m.id === branched.id)
       const history = buildVisibleUpTo(insertIndex + 1)
         .filter(m => !m.typing)
         .map(({ role, content }) => ({ role, content }))
@@ -594,9 +582,7 @@
             model: chatSettings.model,
             stream: true,
             onTextDelta: (full) => {
-              messages = messages.map(m => (m.id === typingMsg.id
-                ? { ...m, content: full, variants: [full], variantIndex: 0 }
-                : m))
+              messages = messages.map(m => (m.id === typingMsg.id ? { ...m, content: full } : m))
             }
           })
         } else {
@@ -607,16 +593,12 @@
         reply = generatePlaceholderReply(lastUser?.content || val) +
           '\n\nTip: Add your OpenAI API key in Settings to get real answers.'
       }
-      const parentChain = chainFromVisibleUpTo(insertIndex + 1)
-      messages = messages.map(m => (m.id === typingMsg.id
-        ? { ...m, content: reply, typing: false, error: undefined, variants: [reply], variantIndex: 0, branchPathBefore: parentChain }
-        : m))
+      messages = messages.map(m => (m.id === typingMsg.id ? { ...m, content: reply, typing: false, error: undefined } : m))
       persistNow()
     } catch (err) {
       const msg = err?.message || 'Something went wrong.'
-      const parentChain = chainFromVisibleUpTo(insertIndex + 1)
       messages = messages.map(m => (m.id === typingMsg.id
-        ? { ...m, typing: false, error: msg, content: (m.content === 'typing' ? '' : m.content), branchPathBefore: parentChain }
+        ? { ...m, typing: false, error: msg, content: (m.content === 'typing' ? '' : m.content) }
         : m))
       persistNow()
     } finally {
@@ -632,52 +614,38 @@
 
   // Removed global auto-scroll effect to avoid scrolling on replies/role changes
 
-  // Branching: regenerate an assistant message and keep variants locally
+  // Branch: regenerate an assistant message by creating a new branch
   async function refreshAssistant(id) {
     if (locked) return
-    const idx = messages.findIndex(m => m.id === id)
-    if (idx < 0) return
-    const target = messages[idx]
+    const target = messages.find(m => m.id === id)
     if (!target || target.role !== 'assistant' || target.typing) return
-
-    // Determine the parent chain up to (but not including) this assistant
-    const parentChain = chainFromVisibleUpTo(idx)
-
-    // Mark as typing on the target message and preselect a new variant index
-    // so off-branch messages hide immediately.
-    messages = messages.map(m => {
-      if (m.id !== id) return m
-      const base = Array.isArray(m.variants) ? m.variants.slice() : [m.content]
-      const nextIndex = base.length
-      // Add a placeholder slot for the in-flight variant so counts line up
-      base.push('')
-      // Ensure this assistant is anchored to its parent chain
-      return { ...m, typing: true, error: undefined, variants: base, variantIndex: nextIndex, branchPathBefore: parentChain }
-    })
+    const parentId = findParentId(messages, id)
+    if (parentId == null) return
+    // Create a new assistant branch under the same parent and stream into it
+    const typingMsg = { id: nextId++, role: 'assistant', content: 'typing', time: Date.now(), typing: true, next: [] }
+    let arr = messages.slice()
+    arr.push(typingMsg)
+    arr = arr.map(m => (m.id === parentId ? { ...m, next: [...(m.next || []), typingMsg.id] } : m))
+    messages = arr
+    selected = { ...selected, [parentId]: ((arr.find(mm => mm.id === parentId)?.next || []).length - 1) }
     try {
       let reply
       settings = loadSettings()
       const { apiKey } = settings
       if (apiKey) {
-        // Build history up to (but not including) this assistant message
-        const history = buildVisibleUpTo(idx)
+        // Build history up to (but not including) this assistant message (parent path)
+        const path = buildVisible()
+        const parentPathIndex = path.findIndex(vm => vm.m.id === parentId)
+        const history = buildVisibleUpTo(parentPathIndex + 1)
           .filter(m => !m.typing)
           .map(({ role, content }) => ({ role, content }))
         if (chatSettings.streaming) {
-          // Capture the variant index that was reserved for this streaming run
-          const curVarIndex = (() => { const mm = messages.find(m => m.id === id); return (typeof mm?.variantIndex === 'number') ? mm.variantIndex : 0 })()
           reply = await respond({
             messages: history,
             model: chatSettings.model,
             stream: true,
             onTextDelta: (full) => {
-              messages = messages.map(m => {
-                if (m.id !== id) return m
-                const arr = Array.isArray(m.variants) ? m.variants.slice() : [m.content]
-                if (curVarIndex >= arr.length) arr.length = curVarIndex + 1
-                arr[curVarIndex] = full
-                return { ...m, content: full, error: undefined, variants: arr, variantIndex: curVarIndex }
-              })
+              messages = messages.map(m => (m.id === typingMsg.id ? { ...m, content: full } : m))
             }
           })
         } else {
@@ -685,33 +653,16 @@
         }
       } else {
         // No key: generate a placeholder reply based on last user input
-        const lastUser = [...messages.slice(0, idx)].reverse().find(m => m.role === 'user')
+        const path = buildVisible()
+        const lastUser = [...path.map(vm => vm.m)].reverse().find(m => m.role === 'user')
         reply = generatePlaceholderReply(lastUser?.content || 'Regenerated response') +
           '\n\nTip: Add your OpenAI API key in Settings to get real answers.'
       }
-      messages = messages.map(m => {
-        if (m.id !== id) return m
-        const arr = Array.isArray(m.variants) ? m.variants.slice() : [m.content]
-        const vi = typeof m.variantIndex === 'number' ? m.variantIndex : arr.length
-        // Ensure the slot exists, then fill it with reply
-        if (vi >= arr.length) arr.length = vi + 1
-        arr[vi] = reply
-        return { ...m, typing: false, error: undefined, content: reply, variants: arr, variantIndex: vi, branchPathBefore: parentChain }
-      })
+      messages = messages.map(m => (m.id === typingMsg.id ? { ...m, typing: false, error: undefined, content: reply } : m))
       persistNow()
     } catch (err) {
       const msg = err?.message || 'Something went wrong.'
-      messages = messages.map(m => {
-        if (m.id !== id) return m
-        const arr = Array.isArray(m.variants) ? m.variants.slice() : [m.content]
-        let vi = typeof m.variantIndex === 'number' ? m.variantIndex : (arr.length ? arr.length - 1 : 0)
-        if (arr.length && vi === arr.length - 1 && (arr[vi] == null || arr[vi] === '')) {
-          arr.pop()
-          vi = Math.max(0, arr.length - 1)
-        }
-        const content = arr[vi] ?? ''
-        return { ...m, typing: false, error: msg, content, variants: arr, variantIndex: vi, branchPathBefore: parentChain }
-      })
+      messages = messages.map(m => (m.id === typingMsg.id ? { ...m, typing: false, error: msg, content: (m.content === 'typing' ? '' : m.content) } : m))
       persistNow()
     } finally {
       // Do not auto-scroll on reply
@@ -722,37 +673,22 @@
   // (used when refreshing a user message with no following assistant)
   async function refreshAfterUserIndex(i) {
     if (locked) return
-    if (i == null || i < 0 || i >= messages.length) return
-    const cur = messages[i]
+    const path = buildVisible()
+    const vm = (typeof i === 'number') ? path[i] : null
+    const cur = vm?.m
     if (!cur || cur.role !== 'user') return
-    // If an assistant already follows, delegate to refreshAssistant
-    const next = messages[i + 1]
-    if (next && next.role === 'assistant') {
-      return refreshAssistant(next.id)
-    }
-    const insertIndex = i
-    const parentChain = chainFromVisibleUpTo(insertIndex + 1)
-    // Insert a typing assistant anchor immediately so off-branch messages hide now
-    const typingMsg = {
-      id: nextId++,
-      role: 'assistant',
-      content: 'typing',
-      time: Date.now(),
-      typing: true,
-      variants: [''],
-      variantIndex: 0,
-      branchPathBefore: parentChain
-    }
-    const arr = messages.slice()
-    arr.splice(insertIndex + 1, 0, typingMsg)
-    messages = arr
+    // Add typing assistant as a child under this user
+    const typingMsg = { id: nextId++, role: 'assistant', content: 'typing', time: Date.now(), typing: true, next: [] }
+    messages = messages.map(m => (m.id === cur.id ? { ...m, next: [...(m.next || []), typingMsg.id] } : m))
+    messages = [...messages, typingMsg]
+    selected = { ...selected, [cur.id]: ((messages.find(mm => mm.id === cur.id)?.next || []).length - 1) }
     persistNow()
 
     try {
       let reply
       settings = loadSettings()
       const { apiKey } = settings
-      const history = buildVisibleUpTo(insertIndex + 1)
+      const history = buildVisibleUpTo(i + 1)
         .filter(m => !m.typing)
         .map(({ role, content }) => ({ role, content }))
       if (apiKey) {
@@ -762,48 +698,38 @@
             model: chatSettings.model,
             stream: true,
             onTextDelta: (full) => {
-              messages = messages.map(m => (m.id === typingMsg.id
-                ? { ...m, content: full, variants: [full], variantIndex: 0 }
-                : m))
+              messages = messages.map(m => (m.id === typingMsg.id ? { ...m, content: full } : m))
             }
           })
         } else {
           reply = await respond({ messages: history, model: chatSettings.model })
         }
       } else {
-        const lastUser = [...buildVisibleUpTo(insertIndex + 1)].reverse().find(m => m.role === 'user')
+        const lastUser = [...buildVisibleUpTo(i + 1)].reverse().find(m => m.role === 'user')
         reply = generatePlaceholderReply(lastUser?.content || cur.content) +
           '\n\nTip: Add your OpenAI API key in Settings to get real answers.'
       }
-      messages = messages.map(m => (m.id === typingMsg.id
-        ? { ...m, content: reply, typing: false, error: undefined, variants: [reply], variantIndex: 0 }
-        : m))
+      messages = messages.map(m => (m.id === typingMsg.id ? { ...m, content: reply, typing: false, error: undefined } : m))
       persistNow()
     } catch (err) {
       const msg = err?.message || 'Something went wrong.'
-      messages = messages.map(m => (m.id === typingMsg.id
-        ? { ...m, typing: false, error: msg, content: (m.content === 'typing' ? '' : m.content) }
-        : m))
+      messages = messages.map(m => (m.id === typingMsg.id ? { ...m, typing: false, error: msg, content: (m.content === 'typing' ? '' : m.content) } : m))
       persistNow()
     } finally {
       // Do not auto-scroll on reply
     }
   }
-
+  
   function changeVariant(id, delta) {
     if (locked) return
-    const i = messages.findIndex(m => m.id === id)
-    if (i < 0) return
-    const m = messages[i]
-    if (!isAnchor(m) || !Array.isArray(m.variants) || !m.variants.length) return
-    const len = m.variants.length
-    const cur = typeof m.variantIndex === 'number' ? m.variantIndex : 0
+    // Change selected child branch for a message id
+    const parent = messages.find(m => m.id === id)
+    if (!parent || !Array.isArray(parent.next) || parent.next.length <= 1) return
+    const len = parent.next.length
+    const cur = Number(selected?.[id]) || 0
     const next = Math.max(0, Math.min(len - 1, cur + delta))
     if (next === cur) return
-    const updated = { ...m, variantIndex: next, content: m.variants[next], error: undefined }
-    const arr = messages.slice()
-    arr[i] = updated
-    messages = arr
+    selected = { ...selected, [id]: next }
     persistNow()
   }
 </script>
@@ -816,6 +742,7 @@
     locked={locked}
     editingId={editingId}
     editingText={editingText}
+    selectedMap={selected}
     followingMap={computeFollowingMap()}
     onSetRole={(id, role) => setMessageRole(id, role)}
     onEditInput={(t) => onEditableInput(t)}

@@ -21,13 +21,13 @@
     try { localStorage.setItem(SIDEBAR_KEY, val ? '1' : '0') } catch {}
   }
 
-  function refresh() {
+  async function refresh() {
     try {
       // Show most recent chats first
-      const list = getChats().slice().sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
+      const list = (await getChats()).slice().sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
       chats = list
       const saved = loadAll().selectedId
-      if (saved && getChat(saved)) {
+      if (saved && await getChat(saved)) {
         if (selectedId !== saved) selectedId = saved
       } else if (list.length) {
         const first = list[0]?.id || null
@@ -41,10 +41,10 @@
     }
   }
 
-  function ensureOneChat() {
-    const all = getChats()
+  async function ensureOneChat() {
+    const all = await getChats()
     if (!all.length) {
-      const c = createChat()
+      const c = await createChat()
       selectedId = c.id
     }
   }
@@ -52,10 +52,10 @@
   import { onMount } from 'svelte'
   onMount(() => {
     // Defer initial population to avoid mutating state during mount flush
-    setTimeout(() => {
+    setTimeout(async () => {
       sidebarOpen = loadSidebarPref()
-      ensureOneChat()
-      refresh()
+      await ensureOneChat()
+      await refresh()
     }, 0)
   })
 
@@ -63,10 +63,10 @@
     setSelected(id)
     selectedId = id
   }
-  function onNewChat() {
-    const c = createChat()
+  async function onNewChat() {
+    const c = await createChat()
     selectedId = c.id
-    refresh()
+    await refresh()
   }
   // Coalesce sidebar refresh triggered by child updates
   let refreshTimer = null

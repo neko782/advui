@@ -1,54 +1,39 @@
-// LocalStorage-backed multi-chat store
-// Shape:
-// {
-//   chats: Array<{ id: string, title: string, updatedAt: number, settings: { model: string, streaming: boolean }, messages: any[] }>,
-//   selectedId: string | null
-// }
+// IndexedDB-backed chat store. One entry per chat.
+// We keep selectedId in localStorage for quick access.
 
-export const CHATS_KEY = 'openai.chats.v1'
 import { loadSettings } from './settingsStore.js'
+import { getAllChats as idbGetAll, getChat as idbGet, putChat as idbPut } from './idb.js'
 
-function safeParse(raw, fallback) {
-  try { return JSON.parse(raw) } catch { return fallback }
-}
+export const SELECTED_KEY = 'openai.chats.selected.v1'
+
+function safeParse(raw, fallback) { try { return JSON.parse(raw) } catch { return fallback } }
 
 export function loadAll() {
-  const fallback = { chats: [], selectedId: null }
+  // Back-compat shim for existing callers that expect { selectedId }
   try {
-    const raw = localStorage.getItem(CHATS_KEY)
-    if (!raw) return fallback
-    const data = safeParse(raw, fallback)
-    if (!data || !Array.isArray(data.chats)) return fallback
-    return { chats: data.chats, selectedId: data.selectedId || null }
-  } catch {
-    return fallback
-  }
-}
-
-export function saveAll(data) {
-  const out = {
-    chats: Array.isArray(data?.chats) ? data.chats : [],
-    selectedId: data?.selectedId || null,
-  }
-  localStorage.setItem(CHATS_KEY, JSON.stringify(out))
-  return out
-}
-
-export function getChats() {
-  return loadAll().chats || []
-}
-
-export function getChat(id) {
-  if (!id) return null
-  const all = loadAll()
-  return all.chats.find(c => c.id === id) || null
+    const raw = localStorage.getItem(SELECTED_KEY)
+    const sel = safeParse(raw, { selectedId: null })
+    return { chats: [], selectedId: sel?.selectedId || null }
+  } catch { return { chats: [], selectedId: null } }
 }
 
 export function setSelected(id) {
-  const all = loadAll()
-  const exists = all.chats.some(c => c.id === id)
-  const next = { ...all, selectedId: exists ? id : (all.selectedId || null) }
-  return saveAll(next)
+  try {
+    const val = { selectedId: id || null }
+    localStorage.setItem(SELECTED_KEY, JSON.stringify(val))
+    return val
+  } catch { return { selectedId: null } }
+}
+
+export async function getChats() {
+  // Return all chats from IndexedDB; sort done by callers if needed
+  try {
+    return await idbGetAll()
+  } catch { return [] }
+}
+
+export async function getChat(id) {
+  try { return await idbGet(id) } catch { return null }
 }
 
 export function computeTitle(messages) {
@@ -56,54 +41,78 @@ export function computeTitle(messages) {
     const firstUser = (messages || []).find(m => m?.role === 'user' && typeof m?.content === 'string' && m.content.trim())
     const base = firstUser?.content?.trim() || 'New Chat'
     return base.length > 40 ? (base.slice(0, 40) + '…') : base
-  } catch {
-    return 'New Chat'
+  } catch { return 'New Chat' }
+}
+
+function migrateMessagesToGraph(messages) {
+  // Remove legacy branching/variant metadata; create linear next pointers.
+  const now = Date.now()
+  const arr = Array.isArray(messages) ? messages.slice() : []
+  const cleaned = arr.map(m => ({ id: m.id, role: m.role, content: m.content, time: m.time || now, typing: !!m.typing, error: m.error }))
+  const byId = new Map(cleaned.map(m => [m.id, { ...m, next: [] }]))
+  // Link sequentially
+  for (let i = 0; i < cleaned.length - 1; i++) {
+    const a = byId.get(cleaned[i].id)
+    const b = cleaned[i + 1]
+    a.next.push(b.id)
+  }
+  return {
+    messages: [...byId.values()],
+    rootId: cleaned[0]?.id || 1,
+    selected: {},
   }
 }
 
-export function upsertChat(chat) {
-  const all = loadAll()
-  const idx = all.chats.findIndex(c => c.id === chat.id)
-  if (idx >= 0) {
-    const copy = all.chats.slice()
-    copy[idx] = chat
-    return saveAll({ ...all, chats: copy })
-  }
-  return saveAll({ ...all, chats: [...all.chats, chat] })
+export async function upsertChat(chat) {
+  // Upsert into IDB
+  try { await idbPut(chat); return chat } catch { return chat }
 }
 
-export function saveChatContent(id, { messages, settings }) {
-  const all = loadAll()
-  const idx = all.chats.findIndex(c => c.id === id)
-  if (idx < 0) return null
-  const cur = all.chats[idx]
+export async function saveChatContent(id, { messages, settings, rootId, selected }) {
+  if (!id) return null
+  const existing = await idbGet(id)
+  if (!existing) return null
+  let graph
+  if (rootId != null && selected) {
+    graph = { rootId, selected }
+  } else {
+    // If caller didn't pass, try to preserve existing
+    graph = { rootId: existing.rootId, selected: existing.selected || {} }
+  }
   const updated = {
-    ...cur,
-    messages: Array.isArray(messages) ? messages : (cur.messages || []),
+    ...existing,
+    messages: Array.isArray(messages) ? messages : (existing.messages || []),
+    rootId: graph.rootId ?? existing.rootId,
+    selected: graph.selected || {},
     settings: {
-      model: (settings?.model || cur?.settings?.model || 'gpt-4o-mini'),
-      streaming: (typeof settings?.streaming === 'boolean'
+      model: (settings?.model || existing?.settings?.model || 'gpt-4o-mini'),
+      streaming: (typeof settings?.streaming === 'boolean')
         ? settings.streaming
-        : (typeof cur?.settings?.streaming === 'boolean' ? cur.settings.streaming : true))
+        : (typeof existing?.settings?.streaming === 'boolean' ? existing.settings.streaming : true)
     },
-    title: computeTitle(Array.isArray(messages) ? messages : cur.messages),
+    title: computeTitle(Array.isArray(messages) ? messages : existing.messages),
     updatedAt: Date.now(),
   }
-  const next = all.chats.slice()
-  next[idx] = updated
-  saveAll({ ...all, chats: next })
+  await idbPut(updated)
   return updated
 }
 
-export function createChat(initial = {}) {
+export async function createChat(initial = {}) {
   const id = `c_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`
-  const messages = Array.isArray(initial.messages) ? initial.messages : [
-    { id: 1, role: 'system', content: 'You are a helpful assistant.', time: Date.now() }
-  ]
+  const system = { id: 1, role: 'system', content: 'You are a helpful assistant.', time: Date.now(), next: [] }
+  let baseMessages = Array.isArray(initial.messages) ? initial.messages : [system]
+  // Normalize messages to graph form
+  let rootId = baseMessages[0]?.id || 1
+  // If messages already have next/rootId provided, keep; else migrate.
+  if (!initial.rootId || !baseMessages.every(m => Array.isArray(m.next))) {
+    const mig = migrateMessagesToGraph(baseMessages)
+    baseMessages = mig.messages
+    rootId = mig.rootId
+  }
   const defaults = loadSettings()
   const chat = {
     id,
-    title: computeTitle(messages),
+    title: computeTitle(baseMessages),
     updatedAt: Date.now(),
     settings: {
       model: initial?.settings?.model || initial?.model || (defaults?.defaultChat?.model) || 'gpt-4o-mini',
@@ -111,9 +120,11 @@ export function createChat(initial = {}) {
         ? initial.settings.streaming
         : (typeof defaults?.defaultChat?.streaming === 'boolean' ? defaults.defaultChat.streaming : true)
     },
-    messages,
+    messages: baseMessages,
+    rootId,
+    selected: {},
   }
-  const all = loadAll()
-  const next = saveAll({ chats: [...all.chats, chat], selectedId: id })
-  return { id, chat, all: next }
+  await idbPut(chat)
+  setSelected(id)
+  return { id, chat }
 }

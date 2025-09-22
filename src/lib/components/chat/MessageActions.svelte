@@ -20,13 +20,13 @@
       <Icon name="close" size={20} />
     </button>
   {:else}
-    {#if props.variantsLength > 1}
+    {#if props.branchesLength > 1}
       <span class="variants">
-        <button class="action-btn" onclick={() => props.onChangeVariant?.(-1)} aria-label="Previous variant" title="Previous" disabled={props.locked || m.typing || props.variantIndex <= 0}>
+        <button class="action-btn" onclick={() => props.onChangeVariant?.(-1)} aria-label="Previous branch" title="Previous" disabled={props.locked || m.typing || props.branchIndex <= 0}>
           <Icon name="chevron_left" size={20} />
         </button>
-        <span class="variant-counter" aria-live="polite">{(props.variantIndex || 0) + 1}/{props.variantsLength}</span>
-        <button class="action-btn" onclick={() => props.onChangeVariant?.(1)} aria-label="Next variant" title="Next" disabled={props.locked || m.typing || props.variantIndex >= (props.variantsLength - 1)}>
+        <span class="variant-counter" aria-live="polite">{(props.branchIndex || 0) + 1}/{props.branchesLength}</span>
+        <button class="action-btn" onclick={() => props.onChangeVariant?.(1)} aria-label="Next branch" title="Next" disabled={props.locked || m.typing || props.branchIndex >= (props.branchesLength - 1)}>
           <Icon name="chevron_right" size={20} />
         </button>
       </span>
