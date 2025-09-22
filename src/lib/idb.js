@@ -9,6 +9,27 @@ const LS_KEY = 'catsgirls.chats.store.v1'
 
 let useLocal = false
 
+function mergeByNewest(idbItems, lsItems) {
+  try {
+    const map = new Map()
+    for (const it of Array.isArray(idbItems) ? idbItems : []) {
+      if (!it?.id) continue
+      map.set(it.id, it)
+    }
+    for (const it of Array.isArray(lsItems) ? lsItems : []) {
+      if (!it?.id) continue
+      const cur = map.get(it.id)
+      if (!cur) { map.set(it.id, it); continue }
+      const a = Number(cur?.updatedAt) || 0
+      const b = Number(it?.updatedAt) || 0
+      if (b > a) map.set(it.id, it)
+    }
+    return [...map.values()]
+  } catch {
+    return Array.isArray(idbItems) && idbItems.length ? idbItems : (lsItems || [])
+  }
+}
+
 function openDatabase() {
   return new Promise((resolve, reject) => {
     try {
@@ -105,98 +126,140 @@ function lsDeleteOne(id) {
 }
 
 export async function getAllChats() {
-  if (useLocal) return lsReadAll()
+  // Strategy: attempt IDB read and also read LS; merge by newest updatedAt
+  let ls = []
+  try { ls = lsReadAll() } catch {}
+  if (useLocal) return ls
   try {
     const db = await openDatabase()
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(STORE, 'readonly')
-      const store = tx.objectStore(STORE)
-      const req = store.getAll()
-      req.onsuccess = () => resolve(req.result || [])
-      req.onerror = () => {
+    return new Promise((resolve) => {
+      try {
+        const tx = db.transaction(STORE, 'readonly')
+        const store = tx.objectStore(STORE)
+        const req = store.getAll()
+        req.onsuccess = () => {
+          const idb = req.result || []
+          resolve(mergeByNewest(idb, ls))
+        }
+        req.onerror = () => {
+          useLocal = true
+          console.warn('[idb] getAll failed; using localStorage only:', req.error)
+          resolve(ls)
+        }
+      } catch (err) {
         useLocal = true
-        console.warn('[idb] getAll failed; using localStorage fallback:', req.error)
-        resolve(lsReadAll())
+        console.warn('[idb] getAll exception; using localStorage only:', err)
+        resolve(ls)
       }
     })
   } catch {
-    return lsReadAll()
+    return ls
   }
 }
 
 export async function getChat(id) {
   if (!id) return null
-  if (useLocal) return lsReadOne(id)
+  const fromLs = lsReadOne(id)
+  if (useLocal) return fromLs
   try {
     const db = await openDatabase()
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(STORE, 'readonly')
-      const store = tx.objectStore(STORE)
-      const req = store.get(id)
-      req.onsuccess = () => resolve(req.result || null)
-      req.onerror = () => {
+    return new Promise((resolve) => {
+      try {
+        const tx = db.transaction(STORE, 'readonly')
+        const store = tx.objectStore(STORE)
+        const req = store.get(id)
+        req.onsuccess = () => {
+          const a = req.result || null
+          // Prefer the newer record if both exist
+          if (!a) return resolve(fromLs)
+          try {
+            const at = Number(a?.updatedAt) || 0
+            const bt = Number(fromLs?.updatedAt) || 0
+            resolve(bt > at ? fromLs : a)
+          } catch { resolve(a) }
+        }
+        req.onerror = () => {
+          useLocal = true
+          console.warn('[idb] get failed; using localStorage fallback:', req.error)
+          resolve(fromLs)
+        }
+      } catch (err) {
         useLocal = true
-        console.warn('[idb] get failed; using localStorage fallback:', req.error)
-        resolve(lsReadOne(id))
+        console.warn('[idb] get exception; using localStorage fallback:', err)
+        resolve(fromLs)
       }
     })
   } catch {
-    return lsReadOne(id)
+    return fromLs
   }
 }
 
 export async function putChat(chat) {
   if (!chat || !chat.id) throw new Error('Invalid chat')
-  if (useLocal) return lsWriteOne(chat)
+  // Always mirror to LS for robustness, even if IDB succeeds
+  let mirrored
+  try { mirrored = lsWriteOne(chat) } catch {}
+  if (useLocal) return mirrored || chat
   try {
     const db = await openDatabase()
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(STORE, 'readwrite')
-      const store = tx.objectStore(STORE)
-      const req = store.put(chat)
-      // Ensure we only resolve after the transaction completes
-      tx.oncomplete = () => resolve(chat)
-      tx.onerror = () => {
+    return new Promise((resolve) => {
+      try {
+        const tx = db.transaction(STORE, 'readwrite')
+        const store = tx.objectStore(STORE)
+        const req = store.put(chat)
+        tx.oncomplete = () => resolve(chat)
+        tx.onerror = () => {
+          useLocal = true
+          console.warn('[idb] put failed; relying on localStorage copy:', tx.error)
+          resolve(mirrored || lsWriteOne(chat) || chat)
+        }
+        req.onerror = () => {
+          useLocal = true
+          console.warn('[idb] put request failed; relying on localStorage copy:', req.error)
+          resolve(mirrored || lsWriteOne(chat) || chat)
+        }
+      } catch (err) {
         useLocal = true
-        console.warn('[idb] put failed; writing to localStorage:', tx.error)
-        resolve(lsWriteOne(chat))
-      }
-      req.onerror = () => {
-        // Also handle request-level error for completeness
-        useLocal = true
-        console.warn('[idb] put request failed; writing to localStorage:', req.error)
-        resolve(lsWriteOne(chat))
+        console.warn('[idb] put exception; relying on localStorage copy:', err)
+        resolve(mirrored || lsWriteOne(chat) || chat)
       }
     })
   } catch (err) {
-    console.warn('[idb] Exception in put; writing to localStorage:', err)
-    return lsWriteOne(chat)
+    console.warn('[idb] Exception in put; relying on localStorage copy:', err)
+    return mirrored || lsWriteOne(chat) || chat
   }
 }
 
 export async function deleteChat(id) {
   if (!id) return
-  if (useLocal) return lsDeleteOne(id)
+  try { lsDeleteOne(id) } catch {}
+  if (useLocal) return
   try {
     const db = await openDatabase()
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(STORE, 'readwrite')
-      const store = tx.objectStore(STORE)
-      const req = store.delete(id)
-      tx.oncomplete = () => resolve(undefined)
-      tx.onerror = () => {
+    return new Promise((resolve) => {
+      try {
+        const tx = db.transaction(STORE, 'readwrite')
+        const store = tx.objectStore(STORE)
+        const req = store.delete(id)
+        tx.oncomplete = () => resolve(undefined)
+        tx.onerror = () => {
+          useLocal = true
+          console.warn('[idb] delete failed; relying on localStorage delete:', tx.error)
+          resolve(undefined)
+        }
+        req.onerror = () => {
+          useLocal = true
+          console.warn('[idb] delete request failed; relying on localStorage delete:', req.error)
+          resolve(undefined)
+        }
+      } catch (err) {
         useLocal = true
-        console.warn('[idb] delete failed; applying localStorage fallback:', tx.error)
-        resolve(lsDeleteOne(id))
-      }
-      req.onerror = () => {
-        useLocal = true
-        console.warn('[idb] delete request failed; applying localStorage fallback:', req.error)
-        resolve(lsDeleteOne(id))
+        console.warn('[idb] delete exception; relying on localStorage delete:', err)
+        resolve(undefined)
       }
     })
   } catch (err) {
-    console.warn('[idb] Exception in delete; applying localStorage fallback:', err)
-    return lsDeleteOne(id)
+    console.warn('[idb] Exception in delete; relying on localStorage delete:', err)
+    return
   }
 }
