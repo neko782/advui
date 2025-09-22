@@ -491,13 +491,6 @@
     const P = (idx - 2 >= 0) ? path[idx - 2]?.m : null
     const C = path[idx + 1]?.m || null
     if (!A || !B) return
-    // Do not cross a branch boundary upward: if the previous node (A) has
-    // multiple children, swapping B above A would yank B out of its branch
-    // root and create surprising structure. Treat this as a hard boundary.
-    try {
-      const aNode0 = messages.find(m => m.id === A.id)
-      if (Array.isArray(aNode0?.next) && aNode0.next.length > 1) return
-    } catch {}
     // Sanity: ensure adjacency A -> B
     const aNode = messages.find(m => m.id === A.id)
     if (!aNode || !Array.isArray(aNode.next) || !aNode.next.includes(B.id)) return
@@ -579,13 +572,6 @@
     const P = (idx - 1 >= 0) ? path[idx - 1]?.m : null
     const D = path[idx + 2]?.m || null
     if (!B || !C) return
-    // Do not cross a branch boundary downward: if the current node (B)
-    // has multiple children, swapping it below C would push a branch root
-    // under one of its children, which is confusing. Treat as boundary.
-    try {
-      const bNode0 = messages.find(m => m.id === B.id)
-      if (Array.isArray(bNode0?.next) && bNode0.next.length > 1) return
-    } catch {}
     // Sanity: ensure adjacency B -> C
     const bNode0 = messages.find(m => m.id === B.id)
     if (!bNode0 || !Array.isArray(bNode0.next) || !bNode0.next.includes(C.id)) return
