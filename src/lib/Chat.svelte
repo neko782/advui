@@ -480,14 +480,163 @@
     persistNow()
     // Do not scroll when switching roles
   }
-  // Move APIs are no-ops in graph mode (could be extended to reorder children)
+  // Reorder adjacent messages along the current visible path (graph-aware)
   function moveUp(id) {
     if (locked) return
-    return
+    const path = buildVisible()
+    const idx = path.findIndex(vm => vm.m.id === id)
+    if (idx <= 0) return // cannot move the first visible item up
+    const B = path[idx]?.m
+    const A = path[idx - 1]?.m
+    const P = (idx - 2 >= 0) ? path[idx - 2]?.m : null
+    const C = path[idx + 1]?.m || null
+    if (!A || !B) return
+    // Sanity: ensure adjacency A -> B
+    const aNode = messages.find(m => m.id === A.id)
+    if (!aNode || !Array.isArray(aNode.next) || !aNode.next.includes(B.id)) return
+
+    let arr = messages.slice()
+    // Helper: mutate next array for a node id
+    function setNext(mid, nextArr) {
+      arr = arr.map(m => (m.id === mid ? { ...m, next: nextArr } : m))
+    }
+    function getNode(mid) { return arr.find(m => m.id === mid) }
+    function replaceChild(parentId, fromId, toId) {
+      const p = getNode(parentId)
+      if (!p) return
+      const n = Array.isArray(p.next) ? p.next.slice() : []
+      const i = n.indexOf(fromId)
+      if (i >= 0) { n[i] = toId; setNext(parentId, n) }
+    }
+    function removeChild(parentId, childId) {
+      const p = getNode(parentId)
+      if (!p) return
+      const n = (Array.isArray(p.next) ? p.next : []).filter(x => x !== childId)
+      setNext(parentId, n)
+    }
+    function addChild(parentId, childId) {
+      const p = getNode(parentId)
+      if (!p) return
+      const n = Array.isArray(p.next) ? p.next.slice() : []
+      if (!n.includes(childId)) { n.push(childId); setNext(parentId, n) }
+    }
+
+    // 1) P -> A becomes P -> B (or B becomes new root)
+    if (P) {
+      replaceChild(P.id, A.id, B.id)
+    } else {
+      rootId = B.id
+    }
+    // 2) A -> B becomes B -> A
+    removeChild(A.id, B.id)
+    addChild(B.id, A.id)
+    // 3) B -> C (selected branch) becomes A -> C
+    if (C) {
+      removeChild(B.id, C.id)
+      addChild(A.id, C.id)
+    }
+
+    // Update selected branch indices to follow the same active branches
+    const nextSel = { ...selected }
+    // P keeps the same index because we replaced child in-place
+    if (B) {
+      const bNode = getNode(B.id)
+      const bi = Math.max(0, (Array.isArray(bNode?.next) ? bNode.next.indexOf(A.id) : 0))
+      nextSel[B.id] = bi
+    }
+    if (A) {
+      const a2 = getNode(A.id)
+      if (C) {
+        const ai = Math.max(0, (Array.isArray(a2?.next) ? a2.next.indexOf(C.id) : 0))
+        nextSel[A.id] = ai
+      } else {
+        // If no C, keep prior selection clamped
+        const max = Math.max(0, (Array.isArray(a2?.next) ? a2.next.length - 1 : 0))
+        let prev = Number(nextSel[A.id]) || 0
+        if (prev > max) prev = max
+        nextSel[A.id] = prev
+      }
+    }
+
+    messages = arr
+    selected = nextSel
+    persistNow()
   }
   function moveDown(id) {
     if (locked) return
-    return
+    const path = buildVisible()
+    const idx = path.findIndex(vm => vm.m.id === id)
+    if (idx < 0 || idx >= (path.length - 1)) return // cannot move the last visible item down
+    const B = path[idx]?.m
+    const C = path[idx + 1]?.m
+    const P = (idx - 1 >= 0) ? path[idx - 1]?.m : null
+    const D = path[idx + 2]?.m || null
+    if (!B || !C) return
+    // Sanity: ensure adjacency B -> C
+    const bNode0 = messages.find(m => m.id === B.id)
+    if (!bNode0 || !Array.isArray(bNode0.next) || !bNode0.next.includes(C.id)) return
+
+    let arr = messages.slice()
+    function setNext(mid, nextArr) { arr = arr.map(m => (m.id === mid ? { ...m, next: nextArr } : m)) }
+    function getNode(mid) { return arr.find(m => m.id === mid) }
+    function replaceChild(parentId, fromId, toId) {
+      const p = getNode(parentId)
+      if (!p) return
+      const n = Array.isArray(p.next) ? p.next.slice() : []
+      const i = n.indexOf(fromId)
+      if (i >= 0) { n[i] = toId; setNext(parentId, n) }
+    }
+    function removeChild(parentId, childId) {
+      const p = getNode(parentId)
+      if (!p) return
+      const n = (Array.isArray(p.next) ? p.next : []).filter(x => x !== childId)
+      setNext(parentId, n)
+    }
+    function addChild(parentId, childId) {
+      const p = getNode(parentId)
+      if (!p) return
+      const n = Array.isArray(p.next) ? p.next.slice() : []
+      if (!n.includes(childId)) { n.push(childId); setNext(parentId, n) }
+    }
+
+    // 1) P -> B becomes P -> C (or C becomes new root)
+    if (P) {
+      replaceChild(P.id, B.id, C.id)
+    } else {
+      rootId = C.id
+    }
+    // 2) B -> C becomes C -> B
+    removeChild(B.id, C.id)
+    addChild(C.id, B.id)
+    // 3) C -> D becomes B -> D
+    if (D) {
+      removeChild(C.id, D.id)
+      addChild(B.id, D.id)
+    }
+
+    // Update selected indices to continue along active branches
+    const nextSel = { ...selected }
+    if (C) {
+      const c2 = getNode(C.id)
+      const ci = Math.max(0, (Array.isArray(c2?.next) ? c2.next.indexOf(B.id) : 0))
+      nextSel[C.id] = ci
+    }
+    if (B) {
+      const b2 = getNode(B.id)
+      if (D) {
+        const bi = Math.max(0, (Array.isArray(b2?.next) ? b2.next.indexOf(D.id) : 0))
+        nextSel[B.id] = bi
+      } else {
+        const max = Math.max(0, (Array.isArray(b2?.next) ? b2.next.length - 1 : 0))
+        let prev = Number(nextSel[B.id]) || 0
+        if (prev > max) prev = max
+        nextSel[B.id] = prev
+      }
+    }
+
+    messages = arr
+    selected = nextSel
+    persistNow()
   }
   function editMessage(id) {
     if (locked) return

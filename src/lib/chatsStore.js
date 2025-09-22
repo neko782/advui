@@ -1,8 +1,8 @@
-// IndexedDB-backed chat store. One entry per chat.
+// Chat store persisted in localStorage. One entry per chat.
 // We keep selectedId in localStorage for quick access.
 
 import { loadSettings } from './settingsStore.js'
-import { getAllChats as idbGetAll, getChat as idbGet, putChat as idbPut } from './idb.js'
+import { getAllChats as storeGetAll, getChat as storeGetOne, putChat as storePut } from './idb.js'
 
 export const SELECTED_KEY = 'openai.chats.selected.v1'
 
@@ -26,14 +26,12 @@ export function setSelected(id) {
 }
 
 export async function getChats() {
-  // Return all chats from IndexedDB; sort done by callers if needed
-  try {
-    return await idbGetAll()
-  } catch { return [] }
+  // Return all chats; sort done by callers if needed
+  try { return await storeGetAll() } catch { return [] }
 }
 
 export async function getChat(id) {
-  try { return await idbGet(id) } catch { return null }
+  try { return await storeGetOne(id) } catch { return null }
 }
 
 export function computeTitle(messages) {
@@ -64,13 +62,13 @@ function migrateMessagesToGraph(messages) {
 }
 
 export async function upsertChat(chat) {
-  // Upsert into IDB
-  try { await idbPut(chat); return chat } catch { return chat }
+  // Persist chat to localStorage
+  try { await storePut(chat); return chat } catch { return chat }
 }
 
 export async function saveChatContent(id, { messages, settings, rootId, selected }) {
   if (!id) return null
-  const existing = await idbGet(id)
+  const existing = await storeGetOne(id)
   // Be resilient: if the record doesn't exist (e.g., backend switched from IDB<->LS), create it
   const defaults = loadSettings()
   const baseSettings = {
@@ -98,7 +96,7 @@ export async function saveChatContent(id, { messages, settings, rootId, selected
     title: computeTitle(nextMessages),
     updatedAt: Date.now(),
   }
-  await idbPut(updated)
+  await storePut(updated)
   return updated
 }
 
@@ -129,7 +127,7 @@ export async function createChat(initial = {}) {
     rootId,
     selected: {},
   }
-  await idbPut(chat)
+  await storePut(chat)
   setSelected(id)
   return { id, chat }
 }
