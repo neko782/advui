@@ -505,8 +505,23 @@
       const p = getNode(parentId)
       if (!p) return
       const n = Array.isArray(p.next) ? p.next.slice() : []
-      const i = n.indexOf(fromId)
-      if (i >= 0) { n[i] = toId; setNext(parentId, n) }
+      const fromIdx = n.indexOf(fromId)
+      if (fromIdx < 0) return
+      const toIdx = n.indexOf(toId)
+      if (toIdx >= 0 && toIdx !== fromIdx) {
+        // Move existing toId to the fromIdx position, remove original fromId
+        const nn = n.filter((_, ix) => ix !== fromIdx) // remove fromId
+        const withoutTo = nn.filter((x) => x !== toId) // ensure single toId
+        const insertAt = Math.min(fromIdx, withoutTo.length)
+        withoutTo.splice(insertAt, 0, toId)
+        setNext(parentId, withoutTo)
+      } else if (toIdx === fromIdx) {
+        // Already in place: just ensure single occurrence
+        setNext(parentId, [...new Set(n)])
+      } else {
+        n[fromIdx] = toId
+        setNext(parentId, n)
+      }
     }
     function removeChild(parentId, childId) {
       const p = getNode(parentId)
@@ -527,13 +542,17 @@
     } else {
       rootId = B.id
     }
-    // 2) A -> B becomes B -> A
-    removeChild(A.id, B.id)
-    addChild(B.id, A.id)
-    // 3) B -> C (selected branch) becomes A -> C
+    // 2) and 3) Adjust middle edges while preserving child order positions
+    // If C exists (A -> B -> C), do in-place replacements to keep indices stable:
+    //   - A -> B becomes A -> C (at B's former index)
+    //   - B -> C becomes B -> A (at C's former index)
+    // Otherwise (no C), remove A -> B and append B -> A.
     if (C) {
-      removeChild(B.id, C.id)
-      addChild(A.id, C.id)
+      replaceChild(A.id, B.id, C.id)
+      replaceChild(B.id, C.id, A.id)
+    } else {
+      removeChild(A.id, B.id)
+      addChild(B.id, A.id)
     }
 
     // Update selected branch indices to follow the same active branches
@@ -583,8 +602,21 @@
       const p = getNode(parentId)
       if (!p) return
       const n = Array.isArray(p.next) ? p.next.slice() : []
-      const i = n.indexOf(fromId)
-      if (i >= 0) { n[i] = toId; setNext(parentId, n) }
+      const fromIdx = n.indexOf(fromId)
+      if (fromIdx < 0) return
+      const toIdx = n.indexOf(toId)
+      if (toIdx >= 0 && toIdx !== fromIdx) {
+        const nn = n.filter((_, ix) => ix !== fromIdx)
+        const withoutTo = nn.filter((x) => x !== toId)
+        const insertAt = Math.min(fromIdx, withoutTo.length)
+        withoutTo.splice(insertAt, 0, toId)
+        setNext(parentId, withoutTo)
+      } else if (toIdx === fromIdx) {
+        setNext(parentId, [...new Set(n)])
+      } else {
+        n[fromIdx] = toId
+        setNext(parentId, n)
+      }
     }
     function removeChild(parentId, childId) {
       const p = getNode(parentId)
@@ -605,13 +637,17 @@
     } else {
       rootId = C.id
     }
-    // 2) B -> C becomes C -> B
-    removeChild(B.id, C.id)
-    addChild(C.id, B.id)
-    // 3) C -> D becomes B -> D
+    // 2) and 3) Adjust middle edges while preserving child order positions
+    // If D exists (B -> C -> D), do in-place replacements to keep indices stable:
+    //   - B -> C becomes B -> D (at C's former index)
+    //   - C -> D becomes C -> B (at D's former index)
+    // Otherwise (no D), remove B -> C and append C -> B.
     if (D) {
-      removeChild(C.id, D.id)
-      addChild(B.id, D.id)
+      replaceChild(B.id, C.id, D.id)
+      replaceChild(C.id, D.id, B.id)
+    } else {
+      removeChild(B.id, C.id)
+      addChild(C.id, B.id)
     }
 
     // Update selected indices to continue along active branches
