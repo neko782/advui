@@ -20,12 +20,50 @@
   const initialSettings = loadSettings()
   let settings = $state(initialSettings)
   let debug = $state(!!initialSettings?.debug)
+  const REASONING_VALUES = new Set(['none', 'minimal', 'low', 'medium', 'high'])
+  const TEXT_VERBOSITY_VALUES = new Set(['low', 'medium', 'high'])
+  function toIntOrNull(val) {
+    if (val === '' || val == null) return null
+    const num = Number(val)
+    if (!Number.isFinite(num)) return null
+    const rounded = Math.max(1, Math.floor(num))
+    return Number.isFinite(rounded) ? rounded : null
+  }
+  function toClampedNumber(val, min, max) {
+    if (val === '' || val == null) return null
+    const num = Number(val)
+    if (!Number.isFinite(num)) return null
+    return Math.min(max, Math.max(min, num))
+  }
+  function normalizeReasoning(val) {
+    return REASONING_VALUES.has(val) ? val : 'none'
+  }
+  function normalizeVerbosity(val) {
+    return TEXT_VERBOSITY_VALUES.has(val) ? val : 'medium'
+  }
+  const hasOwn = (obj, key) => Object.prototype.hasOwnProperty.call(obj || {}, key)
   function normalizePreset(p) {
-    if (!p || typeof p !== 'object') return { id: null, model: 'gpt-4o-mini', streaming: true }
+    if (!p || typeof p !== 'object') {
+      return {
+        id: null,
+        model: 'gpt-4o-mini',
+        streaming: true,
+        maxOutputTokens: null,
+        topP: null,
+        temperature: null,
+        reasoningEffort: 'none',
+        textVerbosity: 'medium',
+      }
+    }
     const model = (typeof p.model === 'string' && p.model.trim()) ? p.model.trim() : 'gpt-4o-mini'
     const streaming = (typeof p.streaming === 'boolean') ? p.streaming : true
     const id = (typeof p.id === 'string' && p.id.trim()) ? p.id.trim() : null
-    return { id, model, streaming }
+    const maxOutputTokens = toIntOrNull(p.maxOutputTokens)
+    const topP = toClampedNumber(p.topP, 0, 1)
+    const temperature = toClampedNumber(p.temperature, 0, 2)
+    const reasoningEffort = normalizeReasoning(p.reasoningEffort)
+    const textVerbosity = normalizeVerbosity(p.textVerbosity)
+    return { id, model, streaming, maxOutputTokens, topP, temperature, reasoningEffort, textVerbosity }
   }
   function pickPresetFromSettings(state) {
     const list = Array.isArray(state?.presets) ? state.presets : []
@@ -38,7 +76,17 @@
   }
   function presetSignature(state) {
     const list = Array.isArray(state?.presets) ? state.presets : []
-    return list.map(p => `${p?.id || ''}|${p?.name || ''}|${p?.model || ''}|${typeof p?.streaming === 'boolean' ? (p.streaming ? 1 : 0) : 1}`).join(';')
+    return list.map(p => [
+      p?.id || '',
+      p?.name || '',
+      p?.model || '',
+      typeof p?.streaming === 'boolean' ? (p.streaming ? 1 : 0) : 1,
+      p?.maxOutputTokens ?? '',
+      p?.topP ?? '',
+      p?.temperature ?? '',
+      p?.reasoningEffort || '',
+      p?.textVerbosity || '',
+    ].join('|')).join(';')
   }
   const initialPreset = pickPresetFromSettings(initialSettings)
   // Group per-chat settings in a single object (seeded from global defaults)
@@ -46,6 +94,11 @@
     model: initialPreset.model,
     streaming: initialPreset.streaming,
     presetId: initialPreset.id,
+    maxOutputTokens: initialPreset.maxOutputTokens,
+    topP: initialPreset.topP,
+    temperature: initialPreset.temperature,
+    reasoningEffort: initialPreset.reasoningEffort,
+    textVerbosity: initialPreset.textVerbosity,
   })
   // Per-chat settings popover open state
   let chatSettingsOpen = $state(false)
@@ -169,6 +222,11 @@
       model: basePreset.model,
       streaming: basePreset.streaming,
       presetId: basePreset.id,
+      maxOutputTokens: basePreset.maxOutputTokens,
+      topP: basePreset.topP,
+      temperature: basePreset.temperature,
+      reasoningEffort: basePreset.reasoningEffort,
+      textVerbosity: basePreset.textVerbosity,
     }
     let nextNextId = 1
     let nextNextNodeId = 1
@@ -192,6 +250,11 @@
               ? loaded.settings.streaming
               : (typeof basePreset.streaming === 'boolean' ? basePreset.streaming : true)),
             presetId: (typeof loaded?.presetId === 'string') ? loaded.presetId : basePreset.id,
+            maxOutputTokens: toIntOrNull(hasOwn(loaded?.settings, 'maxOutputTokens') ? loaded.settings.maxOutputTokens : basePreset.maxOutputTokens),
+            topP: toClampedNumber(hasOwn(loaded?.settings, 'topP') ? loaded.settings.topP : basePreset.topP, 0, 1),
+            temperature: toClampedNumber(hasOwn(loaded?.settings, 'temperature') ? loaded.settings.temperature : basePreset.temperature, 0, 2),
+            reasoningEffort: normalizeReasoning(hasOwn(loaded?.settings, 'reasoningEffort') ? loaded.settings.reasoningEffort : basePreset.reasoningEffort),
+            textVerbosity: normalizeVerbosity(hasOwn(loaded?.settings, 'textVerbosity') ? loaded.settings.textVerbosity : basePreset.textVerbosity),
           }
           if (!nextNodes.length) {
             nextNextId = 2
@@ -219,6 +282,11 @@
             model: basePreset.model,
             streaming: basePreset.streaming,
             presetId: basePreset.id,
+            maxOutputTokens: basePreset.maxOutputTokens,
+            topP: basePreset.topP,
+            temperature: basePreset.temperature,
+            reasoningEffort: basePreset.reasoningEffort,
+            textVerbosity: basePreset.textVerbosity,
           }
         }
       } catch {
@@ -232,6 +300,11 @@
           model: basePreset.model,
           streaming: basePreset.streaming,
           presetId: basePreset.id,
+          maxOutputTokens: basePreset.maxOutputTokens,
+          topP: basePreset.topP,
+          temperature: basePreset.temperature,
+          reasoningEffort: basePreset.reasoningEffort,
+          textVerbosity: basePreset.textVerbosity,
         }
       }
       // Precompute a persist signature for the loaded chat content
@@ -240,7 +313,20 @@
           const v = (n?.variants || [])[Number(n?.active) || 0]
           return `${n.id}|${v?.role||''}|${v?.content?.length||0}|${(v?.next!=null?1:0)}`
         })
-        nextPersistSig = JSON.stringify({ m: mini, model: nextChatSettings?.model || '', streaming: !!nextChatSettings?.streaming, presetId: nextChatSettings?.presetId || '', rootId: nextRootId })
+        nextPersistSig = JSON.stringify({
+          m: mini,
+          settings: {
+            model: nextChatSettings?.model || '',
+            streaming: !!nextChatSettings?.streaming,
+            presetId: nextChatSettings?.presetId || '',
+            maxOutputTokens: nextChatSettings?.maxOutputTokens ?? null,
+            topP: nextChatSettings?.topP ?? null,
+            temperature: nextChatSettings?.temperature ?? null,
+            reasoningEffort: nextChatSettings?.reasoningEffort || '',
+            textVerbosity: nextChatSettings?.textVerbosity || '',
+          },
+          rootId: nextRootId,
+        })
       } catch { nextPersistSig = '' }
       // Apply computed state after the current tick
       setTimeout(() => {
@@ -271,13 +357,31 @@
         model: basePreset.model,
         streaming: basePreset.streaming,
         presetId: basePreset.id,
+        maxOutputTokens: basePreset.maxOutputTokens,
+        topP: basePreset.topP,
+        temperature: basePreset.temperature,
+        reasoningEffort: basePreset.reasoningEffort,
+        textVerbosity: basePreset.textVerbosity,
       }
       try {
         const mini = (nextNodes || []).map(n => {
           const v = (n?.variants || [])[Number(n?.active) || 0]
           return `${n.id}|${v?.role||''}|${v?.content?.length||0}|${(v?.next!=null?1:0)}`
         })
-        nextPersistSig = JSON.stringify({ m: mini, model: nextChatSettings?.model || '', streaming: !!nextChatSettings?.streaming, presetId: nextChatSettings?.presetId || '', rootId: nextRootId })
+        nextPersistSig = JSON.stringify({
+          m: mini,
+          settings: {
+            model: nextChatSettings?.model || '',
+            streaming: !!nextChatSettings?.streaming,
+            presetId: nextChatSettings?.presetId || '',
+            maxOutputTokens: nextChatSettings?.maxOutputTokens ?? null,
+            topP: nextChatSettings?.topP ?? null,
+            temperature: nextChatSettings?.temperature ?? null,
+            reasoningEffort: nextChatSettings?.reasoningEffort || '',
+            textVerbosity: nextChatSettings?.textVerbosity || '',
+          },
+          rootId: nextRootId,
+        })
       } catch { nextPersistSig = '' }
       setTimeout(() => {
         try {
@@ -367,7 +471,20 @@
         const v = (n?.variants || [])[Number(n?.active) || 0]
         return `${n.id}|${v?.role||''}|${v?.content?.length||0}|${(v?.next!=null?1:0)}`
       })
-      return JSON.stringify({ m: mini, model: chatSettings?.model || '', streaming: !!chatSettings?.streaming, presetId: chatSettings?.presetId || '', rootId })
+      return JSON.stringify({
+        m: mini,
+        settings: {
+          model: chatSettings?.model || '',
+          streaming: !!chatSettings?.streaming,
+          presetId: chatSettings?.presetId || '',
+          maxOutputTokens: chatSettings?.maxOutputTokens ?? null,
+          topP: chatSettings?.topP ?? null,
+          temperature: chatSettings?.temperature ?? null,
+          reasoningEffort: chatSettings?.reasoningEffort || '',
+          textVerbosity: chatSettings?.textVerbosity || '',
+        },
+        rootId,
+      })
     } catch { return String(Math.random()) }
   }
   // Immediate persistence helper to avoid relying solely on the reactive effect
@@ -460,10 +577,18 @@
           .map(vm => vm.m)
           .filter(m => !m.typing)
           .map(({ role, content }) => ({ role, content }))
+        const responseOptions = {
+          messages: history,
+          model: chatSettings.model,
+          maxOutputTokens: chatSettings.maxOutputTokens,
+          topP: chatSettings.topP,
+          temperature: chatSettings.temperature,
+          reasoningEffort: chatSettings.reasoningEffort,
+          textVerbosity: chatSettings.textVerbosity,
+        }
         if (chatSettings.streaming && typingVariant) {
           reply = await respond({
-            messages: history,
-            model: chatSettings.model,
+            ...responseOptions,
             stream: true,
             onTextDelta: (full) => {
               nodes = nodes.map(n => ({
@@ -473,7 +598,7 @@
             }
           })
         } else if (role === 'user') {
-          reply = await respond({ messages: history, model: chatSettings.model })
+          reply = await respond(responseOptions)
         }
       } else if (role === 'user') {
         reply = generatePlaceholderReply(newMsg.content) +
@@ -831,17 +956,25 @@
         .filter(m => !m.typing)
         .map(({ role, content }) => ({ role, content }))
       if (apiKey) {
+        const responseOptions = {
+          messages: history,
+          model: chatSettings.model,
+          maxOutputTokens: chatSettings.maxOutputTokens,
+          topP: chatSettings.topP,
+          temperature: chatSettings.temperature,
+          reasoningEffort: chatSettings.reasoningEffort,
+          textVerbosity: chatSettings.textVerbosity,
+        }
         if (chatSettings.streaming) {
           reply = await respond({
-            messages: history,
-            model: chatSettings.model,
+            ...responseOptions,
             stream: true,
             onTextDelta: (full) => {
               nodes = nodes.map(n => ({ ...n, variants: (n.variants || []).map(v => (v.id === typingMsg.id ? { ...v, content: full } : v)) }))
             }
           })
         } else {
-          reply = await respond({ messages: history, model: chatSettings.model })
+          reply = await respond(responseOptions)
         }
       } else {
         const lastUser = [...buildVisibleUpTo(insertIndex + 1)].reverse().find(m => m.role === 'user')
@@ -902,10 +1035,18 @@
         const history = buildVisibleUpTo((parentPathIndex >= 0 ? parentPathIndex + 1 : 0))
           .filter(m => !m.typing)
           .map(({ role, content }) => ({ role, content }))
+        const responseOptions = {
+          messages: history,
+          model: chatSettings.model,
+          maxOutputTokens: chatSettings.maxOutputTokens,
+          topP: chatSettings.topP,
+          temperature: chatSettings.temperature,
+          reasoningEffort: chatSettings.reasoningEffort,
+          textVerbosity: chatSettings.textVerbosity,
+        }
         if (chatSettings.streaming) {
           reply = await respond({
-            messages: history,
-            model: chatSettings.model,
+            ...responseOptions,
             stream: true,
             onTextDelta: (full) => {
               nodes = nodes.map(n => ({
@@ -915,7 +1056,7 @@
             }
           })
         } else {
-          reply = await respond({ messages: history, model: chatSettings.model })
+          reply = await respond(responseOptions)
         }
       } else {
         const path = buildVisible()
@@ -964,17 +1105,25 @@
         .filter(m => !m.typing)
         .map(({ role, content }) => ({ role, content }))
       if (apiKey) {
+        const responseOptions = {
+          messages: history,
+          model: chatSettings.model,
+          maxOutputTokens: chatSettings.maxOutputTokens,
+          topP: chatSettings.topP,
+          temperature: chatSettings.temperature,
+          reasoningEffort: chatSettings.reasoningEffort,
+          textVerbosity: chatSettings.textVerbosity,
+        }
         if (chatSettings.streaming) {
           reply = await respond({
-            messages: history,
-            model: chatSettings.model,
+            ...responseOptions,
             stream: true,
             onTextDelta: (full) => {
               nodes = nodes.map(n => ({ ...n, variants: (n.variants || []).map(v => (v.id === typingMsg.id ? { ...v, content: full } : v)) }))
             }
           })
         } else {
-          reply = await respond({ messages: history, model: chatSettings.model })
+          reply = await respond(responseOptions)
         }
       } else {
         const lastUser = [...buildVisibleUpTo(i + 1)].reverse().find(m => m.role === 'user')
@@ -1073,11 +1222,21 @@
     chatSettingsOpen={chatSettingsOpen}
     chatModel={chatSettings.model}
     chatStreaming={chatSettings.streaming}
+    chatMaxOutputTokens={chatSettings.maxOutputTokens}
+    chatTopP={chatSettings.topP}
+    chatTemperature={chatSettings.temperature}
+    chatReasoningEffort={chatSettings.reasoningEffort}
+    chatTextVerbosity={chatSettings.textVerbosity}
     modelIds={modelIds}
     onToggleChatSettings={toggleChatSettings}
     onCloseChatSettings={() => (chatSettingsOpen = false)}
     onChangeModel={(val) => (chatSettings = { ...chatSettings, model: val })}
     onChangeStreaming={(val) => (chatSettings = { ...chatSettings, streaming: !!val })}
+    onChangeMaxOutputTokens={(val) => (chatSettings = { ...chatSettings, maxOutputTokens: toIntOrNull(val) })}
+    onChangeTopP={(val) => (chatSettings = { ...chatSettings, topP: toClampedNumber(val, 0, 1) })}
+    onChangeTemperature={(val) => (chatSettings = { ...chatSettings, temperature: toClampedNumber(val, 0, 2) })}
+    onChangeReasoningEffort={(val) => (chatSettings = { ...chatSettings, reasoningEffort: normalizeReasoning(val) })}
+    onChangeTextVerbosity={(val) => (chatSettings = { ...chatSettings, textVerbosity: normalizeVerbosity(val) })}
     onInput={(val) => (input = val)}
     onAdd={(role) => addToChat(role)}
     onSend={(role) => sendWithRole(role)}

@@ -54,6 +54,75 @@
         <span class="switch-label">Stream</span>
       </label>
     </div>
+    <div class="menu-section">
+      <div class="menu-label">Max output tokens</div>
+      <input
+        type="number"
+        min="1"
+        step="1024"
+        placeholder="Auto"
+        value={props.maxOutputTokens ?? ''}
+        disabled={props.disabled}
+        oninput={(e) => (!props.disabled && props.onInputMaxOutputTokens?.(e.currentTarget.value))}
+        aria-label="Max output tokens"
+      />
+    </div>
+    <div class="menu-section">
+      <div class="menu-label">Top P</div>
+      <input
+        type="number"
+        min="0"
+        max="1"
+        step="0.1"
+        placeholder="Default"
+        value={props.topP ?? ''}
+        disabled={props.disabled}
+        oninput={(e) => (!props.disabled && props.onInputTopP?.(e.currentTarget.value))}
+        aria-label="top_p"
+      />
+    </div>
+    <div class="menu-section">
+      <div class="menu-label">Temperature</div>
+      <input
+        type="number"
+        min="0"
+        max="2"
+        step="0.1"
+        placeholder="Default"
+        value={props.temperature ?? ''}
+        disabled={props.disabled}
+        oninput={(e) => (!props.disabled && props.onInputTemperature?.(e.currentTarget.value))}
+        aria-label="Temperature"
+      />
+    </div>
+    <div class="menu-section">
+      <div class="menu-label">Reasoning effort</div>
+      <select
+        value={props.reasoningEffort || 'none'}
+        disabled={props.disabled}
+        onchange={(e) => (!props.disabled && props.onInputReasoningEffort?.(e.currentTarget.value))}
+        aria-label="Reasoning effort"
+      >
+        <option value="none">none</option>
+        <option value="minimal">minimal</option>
+        <option value="low">low</option>
+        <option value="medium">medium</option>
+        <option value="high">high</option>
+      </select>
+    </div>
+    <div class="menu-section">
+      <div class="menu-label">Text verbosity</div>
+      <select
+        value={props.textVerbosity || 'medium'}
+        disabled={props.disabled}
+        onchange={(e) => (!props.disabled && props.onInputTextVerbosity?.(e.currentTarget.value))}
+        aria-label="Text verbosity"
+      >
+        <option value="low">low</option>
+        <option value="medium">medium</option>
+        <option value="high">high</option>
+      </select>
+    </div>
   </div>
 </div>
 
@@ -64,7 +133,9 @@
   .chat-settings-menu { min-width: 260px; gap: 12px; padding: 12px; }
   .menu-section { display: grid; gap: 8px; }
   .menu-label { font-size: .9rem; color: var(--muted); }
-  input[type="text"] {
+  input[type="text"],
+  input[type="number"],
+  select {
     width: 100%;
     border: 1px solid var(--border);
     border-radius: 8px;

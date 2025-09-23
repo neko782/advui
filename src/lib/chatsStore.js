@@ -9,6 +9,33 @@ export const SELECTED_KEY = 'openai.chats.selected.v1'
 
 function safeParse(raw, fallback) { try { return JSON.parse(raw) } catch { return fallback } }
 
+const REASONING_VALUES = new Set(['none', 'minimal', 'low', 'medium', 'high'])
+const TEXT_VERBOSITY_VALUES = new Set(['low', 'medium', 'high'])
+const hasOwn = (obj, key) => Object.prototype.hasOwnProperty.call(obj || {}, key)
+
+function toIntOrNull(val) {
+  if (val === '' || val == null) return null
+  const num = Number(val)
+  if (!Number.isFinite(num)) return null
+  const rounded = Math.max(1, Math.floor(num))
+  return Number.isFinite(rounded) ? rounded : null
+}
+
+function toClampedNumber(val, min, max) {
+  if (val === '' || val == null) return null
+  const num = Number(val)
+  if (!Number.isFinite(num)) return null
+  return Math.min(max, Math.max(min, num))
+}
+
+function normalizeReasoning(val) {
+  return REASONING_VALUES.has(val) ? val : 'none'
+}
+
+function normalizeVerbosity(val) {
+  return TEXT_VERBOSITY_VALUES.has(val) ? val : 'medium'
+}
+
 function resolvePreset(settings, preferences = {}) {
   const list = Array.isArray(settings?.presets) ? settings.presets : []
   const byId = (id) => list.find(p => p && typeof p.id === 'string' && p.id === id)
@@ -26,6 +53,11 @@ function resolvePreset(settings, preferences = {}) {
         name: typeof p.name === 'string' ? p.name : '',
         model: typeof p.model === 'string' && p.model.trim() ? p.model.trim() : 'gpt-4o-mini',
         streaming: typeof p.streaming === 'boolean' ? p.streaming : true,
+        maxOutputTokens: toIntOrNull(p.maxOutputTokens),
+        topP: toClampedNumber(p.topP, 0, 1),
+        temperature: toClampedNumber(p.temperature, 0, 2),
+        reasoningEffort: normalizeReasoning(p.reasoningEffort),
+        textVerbosity: normalizeVerbosity(p.textVerbosity),
       }
     }
   }
@@ -41,9 +73,24 @@ function resolvePreset(settings, preferences = {}) {
       name: typeof chosen.name === 'string' ? chosen.name : '',
       model: typeof chosen.model === 'string' && chosen.model.trim() ? chosen.model.trim() : 'gpt-4o-mini',
       streaming: typeof chosen.streaming === 'boolean' ? chosen.streaming : true,
+      maxOutputTokens: toIntOrNull(chosen.maxOutputTokens),
+      topP: toClampedNumber(chosen.topP, 0, 1),
+      temperature: toClampedNumber(chosen.temperature, 0, 2),
+      reasoningEffort: normalizeReasoning(chosen.reasoningEffort),
+      textVerbosity: normalizeVerbosity(chosen.textVerbosity),
     }
   }
-  return { id: null, name: '', model: 'gpt-4o-mini', streaming: true }
+  return {
+    id: null,
+    name: '',
+    model: 'gpt-4o-mini',
+    streaming: true,
+    maxOutputTokens: null,
+    topP: null,
+    temperature: null,
+    reasoningEffort: 'none',
+    textVerbosity: 'medium',
+  }
 }
 
 export function loadAll() {
@@ -129,13 +176,24 @@ export async function saveChatContent(id, { nodes, settings, rootId }) {
   // Be resilient: if the record doesn't exist (e.g., backend switched from IDB<->LS), create it
   const defaults = loadSettings()
   const basePreset = resolvePreset(defaults, { presetId: settings?.presetId || existing?.presetId })
+  const pickSetting = (key) => {
+    if (hasOwn(settings, key)) return settings[key]
+    if (hasOwn(existing?.settings, key)) return existing.settings[key]
+    if (hasOwn(basePreset, key)) return basePreset[key]
+    return undefined
+  }
   const baseSettings = {
     model: (settings?.model || existing?.settings?.model || basePreset.model || 'gpt-4o-mini'),
     streaming: (typeof settings?.streaming === 'boolean')
       ? settings.streaming
       : (typeof existing?.settings?.streaming === 'boolean'
         ? existing.settings.streaming
-        : (typeof basePreset.streaming === 'boolean' ? basePreset.streaming : true))
+        : (typeof basePreset.streaming === 'boolean' ? basePreset.streaming : true)),
+    maxOutputTokens: toIntOrNull(pickSetting('maxOutputTokens')),
+    topP: toClampedNumber(pickSetting('topP'), 0, 1),
+    temperature: toClampedNumber(pickSetting('temperature'), 0, 2),
+    reasoningEffort: normalizeReasoning(pickSetting('reasoningEffort')),
+    textVerbosity: normalizeVerbosity(pickSetting('textVerbosity')),
   }
   const nextNodesCandidate = Array.isArray(nodes) ? nodes : (existing?.nodes || [])
   const nextRootId = (rootId != null)
@@ -211,7 +269,12 @@ export async function createChat(initial = {}) {
       model: initial?.settings?.model || initial?.model || preferredPreset.model || 'gpt-4o-mini',
       streaming: (typeof initial?.settings?.streaming === 'boolean')
         ? initial.settings.streaming
-        : (typeof preferredPreset.streaming === 'boolean' ? preferredPreset.streaming : true)
+        : (typeof preferredPreset.streaming === 'boolean' ? preferredPreset.streaming : true),
+      maxOutputTokens: toIntOrNull(hasOwn(initial?.settings, 'maxOutputTokens') ? initial.settings.maxOutputTokens : preferredPreset.maxOutputTokens),
+      topP: toClampedNumber(hasOwn(initial?.settings, 'topP') ? initial.settings.topP : preferredPreset.topP, 0, 1),
+      temperature: toClampedNumber(hasOwn(initial?.settings, 'temperature') ? initial.settings.temperature : preferredPreset.temperature, 0, 2),
+      reasoningEffort: normalizeReasoning(hasOwn(initial?.settings, 'reasoningEffort') ? initial.settings.reasoningEffort : preferredPreset.reasoningEffort),
+      textVerbosity: normalizeVerbosity(hasOwn(initial?.settings, 'textVerbosity') ? initial.settings.textVerbosity : preferredPreset.textVerbosity),
     },
     nodes: baseNodes,
     rootId,

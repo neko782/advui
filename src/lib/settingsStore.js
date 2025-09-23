@@ -5,15 +5,53 @@ function genPresetId() {
   return `preset_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
+const DEFAULT_PRESET_FIELDS = {
+  model: 'gpt-4o-mini',
+  streaming: true,
+  maxOutputTokens: null,
+  topP: null,
+  temperature: null,
+  reasoningEffort: 'none',
+  textVerbosity: 'medium',
+};
+
 function makeDefaultPreset() {
-  return { id: 'preset-default', name: 'Default', model: 'gpt-4o-mini', streaming: true };
+  return {
+    id: 'preset-default',
+    name: 'Default',
+    ...DEFAULT_PRESET_FIELDS,
+  };
 }
+
+function toIntOrNull(val) {
+  if (val === '' || val == null) return null;
+  const num = Number(val);
+  if (!Number.isFinite(num)) return null;
+  const rounded = Math.max(1, Math.floor(num));
+  return Number.isFinite(rounded) ? rounded : null;
+}
+
+function toClampedNumber(val, min, max) {
+  if (val === '' || val == null) return null;
+  const num = Number(val);
+  if (!Number.isFinite(num)) return null;
+  const clamped = Math.min(max, Math.max(min, num));
+  return clamped;
+}
+
+const REASONING_VALUES = new Set(['none', 'minimal', 'low', 'medium', 'high']);
+const TEXT_VERBOSITY_VALUES = new Set(['low', 'medium', 'high']);
 
 function normalizePreset(raw, index = 0) {
   if (!raw || typeof raw !== 'object') return null;
   const preset = { ...raw };
   preset.model = typeof preset.model === 'string' && preset.model.trim() ? preset.model.trim() : 'gpt-4o-mini';
   preset.streaming = typeof preset.streaming === 'boolean' ? preset.streaming : true;
+  preset.maxOutputTokens = toIntOrNull(preset.maxOutputTokens);
+  preset.topP = toClampedNumber(preset.topP, 0, 1) ?? null;
+  preset.temperature = toClampedNumber(preset.temperature, 0, 2) ?? null;
+  preset.reasoningEffort = REASONING_VALUES.has(preset.reasoningEffort) ? preset.reasoningEffort : 'none';
+  preset.textVerbosity = TEXT_VERBOSITY_VALUES.has(preset.textVerbosity) ? preset.textVerbosity : 'medium';
   const nameSource = typeof preset.name === 'string' && preset.name.trim()
     ? preset.name.trim()
     : `Preset ${index + 1}`;
@@ -47,13 +85,26 @@ function deriveDefaultPreset(parsed) {
     streaming: typeof parsed?.defaultChat?.streaming === 'boolean'
       ? parsed.defaultChat.streaming
       : true,
+    maxOutputTokens: parsed?.defaultChat?.maxOutputTokens ?? null,
+    topP: parsed?.defaultChat?.topP ?? null,
+    temperature: parsed?.defaultChat?.temperature ?? null,
+    reasoningEffort: parsed?.defaultChat?.reasoningEffort || 'none',
+    textVerbosity: parsed?.defaultChat?.textVerbosity || 'medium',
   }, 0);
   return fromDefault || makeDefaultPreset();
 }
 
 function attachCompatFields(out) {
   const active = out.presets.find((p) => p.id === out.selectedPresetId) || out.presets[0] || makeDefaultPreset();
-  out.defaultChat = { model: active.model, streaming: active.streaming };
+  out.defaultChat = {
+    model: active.model,
+    streaming: active.streaming,
+    maxOutputTokens: active.maxOutputTokens ?? null,
+    topP: active.topP ?? null,
+    temperature: active.temperature ?? null,
+    reasoningEffort: active.reasoningEffort || 'none',
+    textVerbosity: active.textVerbosity || 'medium',
+  };
   out.model = active.model;
   return out;
 }

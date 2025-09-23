@@ -21,7 +21,19 @@ function pickActivePreset(settings) {
 
 // Create a response using either a single prompt string or an array of messages
 // Messages should be of the form: { role: 'system'|'user'|'assistant', content: string }
-export async function respond({ prompt, messages, model, stream = false, onTextDelta, onEvent }) {
+export async function respond({
+  prompt,
+  messages,
+  model,
+  stream = false,
+  onTextDelta,
+  onEvent,
+  maxOutputTokens,
+  topP,
+  temperature,
+  reasoningEffort,
+  textVerbosity,
+}) {
   const { apiKey } = loadSettings()
   if (!apiKey) throw new Error('Missing OpenAI API key. Set it in Settings.')
   const s = loadSettings()
@@ -43,9 +55,36 @@ export async function respond({ prompt, messages, model, stream = false, onTextD
   } else {
     input = typeof prompt === 'string' ? prompt : ''
   }
+  const request = { model: useModel, input }
+  const toIntOrNull = (val) => {
+    if (val === '' || val == null) return null
+    const num = Number(val)
+    if (!Number.isFinite(num)) return null
+    const rounded = Math.max(1, Math.floor(num))
+    return Number.isFinite(rounded) ? rounded : null
+  }
+  const toClampedNumber = (val, min, max) => {
+    if (val === '' || val == null) return null
+    const num = Number(val)
+    if (!Number.isFinite(num)) return null
+    return Math.min(max, Math.max(min, num))
+  }
+  const tokens = toIntOrNull(maxOutputTokens)
+  if (tokens != null) request.max_output_tokens = tokens
+  const topPVal = toClampedNumber(topP, 0, 1)
+  if (topPVal != null) request.top_p = topPVal
+  const tempVal = toClampedNumber(temperature, 0, 2)
+  if (tempVal != null) request.temperature = tempVal
+  if (typeof reasoningEffort === 'string' && reasoningEffort && reasoningEffort !== 'none') {
+    request.reasoning = { effort: reasoningEffort }
+  }
+  if (typeof textVerbosity === 'string' && textVerbosity) {
+    request.text = { verbosity: textVerbosity }
+  }
+
   if (stream) {
     // Stream via SDK's async iterator
-    const streamIt = await client.responses.create({ model: useModel, input, stream: true })
+    const streamIt = await client.responses.create({ ...request, stream: true })
     let full = ''
     try {
       for await (const event of streamIt) {
@@ -72,7 +111,7 @@ export async function respond({ prompt, messages, model, stream = false, onTextD
     }
     return full
   } else {
-    const res = await client.responses.create({ model: useModel, input })
+    const res = await client.responses.create(request)
     return extractOutputText(res)
   }
 }

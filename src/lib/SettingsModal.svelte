@@ -13,6 +13,39 @@
   let refreshMsg = $state('')
   let activePresetId = $state('')
 
+  const REASONING_OPTIONS = ['none', 'minimal', 'low', 'medium', 'high']
+  const TEXT_VERBOSITY_OPTIONS = ['low', 'medium', 'high']
+
+  function parseMaxTokens(value) {
+    if (value === '' || value == null) return null
+    const num = Number(value)
+    if (!Number.isFinite(num)) return null
+    const rounded = Math.max(1, Math.floor(num))
+    return Number.isFinite(rounded) ? rounded : null
+  }
+
+  function parseTopP(value) {
+    if (value === '' || value == null) return null
+    const num = Number(value)
+    if (!Number.isFinite(num)) return null
+    return Math.min(1, Math.max(0, num))
+  }
+
+  function parseTemperature(value) {
+    if (value === '' || value == null) return null
+    const num = Number(value)
+    if (!Number.isFinite(num)) return null
+    return Math.min(2, Math.max(0, num))
+  }
+
+  function parseReasoning(value) {
+    return REASONING_OPTIONS.includes(value) ? value : 'none'
+  }
+
+  function parseVerbosity(value) {
+    return TEXT_VERBOSITY_OPTIONS.includes(value) ? value : 'medium'
+  }
+
   function genPresetId() {
     return `preset_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`
   }
@@ -20,7 +53,17 @@
   function syncActivePreset() {
     const list = Array.isArray(local?.presets) ? local.presets : []
     if (!list.length) {
-      local.presets = [{ id: genPresetId(), name: 'Preset 1', model: 'gpt-4o-mini', streaming: true }]
+      local.presets = [{
+        id: genPresetId(),
+        name: 'Preset 1',
+        model: 'gpt-4o-mini',
+        streaming: true,
+        maxOutputTokens: null,
+        topP: null,
+        temperature: null,
+        reasoningEffort: 'none',
+        textVerbosity: 'medium',
+      }]
     }
     const updatedList = Array.isArray(local?.presets) ? local.presets : []
     const hasActive = updatedList.some(p => p?.id === activePresetId)
@@ -60,6 +103,11 @@
       name,
       model: base?.model || 'gpt-4o-mini',
       streaming: typeof base?.streaming === 'boolean' ? base.streaming : true,
+      maxOutputTokens: base?.maxOutputTokens ?? null,
+      topP: base?.topP ?? null,
+      temperature: base?.temperature ?? null,
+      reasoningEffort: base?.reasoningEffort || 'none',
+      textVerbosity: base?.textVerbosity || 'medium',
     }
     local.presets = [...list, preset]
     activePresetId = preset.id
@@ -233,6 +281,70 @@
               <span class="switch-ui" aria-hidden="true"></span>
               <span class="switch-label">Stream</span>
             </label>
+            <label class="field">
+              <span>Max output tokens</span>
+              <input
+                type="number"
+                min="1"
+                step="1024"
+                placeholder="Auto"
+                value={activePreset.maxOutputTokens ?? ''}
+                oninput={(event) => updateActivePreset({ maxOutputTokens: parseMaxTokens(event.currentTarget.value) })}
+                aria-label="Max output tokens"
+              />
+            </label>
+            <label class="field">
+              <span>Top P</span>
+              <input
+                type="number"
+                min="0"
+                max="1"
+                step="0.1"
+                placeholder="Default"
+                value={activePreset.topP ?? ''}
+                oninput={(event) => updateActivePreset({ topP: parseTopP(event.currentTarget.value) })}
+                aria-label="top_p"
+              />
+            </label>
+            <label class="field">
+              <span>Temperature</span>
+              <input
+                type="number"
+                min="0"
+                max="2"
+                step="0.1"
+                placeholder="Default"
+                value={activePreset.temperature ?? ''}
+                oninput={(event) => updateActivePreset({ temperature: parseTemperature(event.currentTarget.value) })}
+                aria-label="Temperature"
+              />
+            </label>
+            <label class="field">
+              <span>Reasoning effort</span>
+              <select
+                value={activePreset.reasoningEffort || 'none'}
+                onchange={(event) => updateActivePreset({ reasoningEffort: parseReasoning(event.currentTarget.value) })}
+                aria-label="Reasoning effort"
+              >
+                <option value="none">none</option>
+                <option value="minimal">minimal</option>
+                <option value="low">low</option>
+                <option value="medium">medium</option>
+                <option value="high">high</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>Text verbosity</span>
+              <select
+                value={activePreset.textVerbosity || 'medium'}
+                onchange={(event) => updateActivePreset({ textVerbosity: parseVerbosity(event.currentTarget.value) })}
+                aria-label="Text verbosity"
+              >
+                <option value="low">low</option>
+                <option value="medium">medium</option>
+                <option value="high">high</option>
+              </select>
+            </label>
             {#if (local?.presets?.length || 0) > 1}
               <button
                 type="button"
@@ -310,7 +422,7 @@
   .field { display: grid; gap: 6px; }
   .field > span { font-size: .9rem; color: var(--muted); }
   .row { display: flex; gap: 8px; }
-  input[type="text"], input[type="password"] { flex: 1; border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; background: var(--bg); color: var(--text); }
+  input[type="text"], input[type="password"], input[type="number"], select { flex: 1; border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; background: var(--bg); color: var(--text); font: inherit; }
   .hint { color: var(--muted); font-size: .9rem; margin-top: 4px; }
   /* API key action buttons size */
   .row .icon-btn { height: 38px; width: 38px; }

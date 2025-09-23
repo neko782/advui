@@ -24,11 +24,21 @@
       disabled={props.locked}
       model={props.chatModel}
       streaming={props.chatStreaming}
+      maxOutputTokens={props.chatMaxOutputTokens}
+      topP={props.chatTopP}
+      temperature={props.chatTemperature}
+      reasoningEffort={props.chatReasoningEffort}
+      textVerbosity={props.chatTextVerbosity}
       modelIds={props.modelIds}
       onToggle={props.onToggleChatSettings}
       onClose={props.onCloseChatSettings}
       onInputModel={props.onChangeModel}
       onInputStreaming={props.onChangeStreaming}
+      onInputMaxOutputTokens={props.onChangeMaxOutputTokens}
+      onInputTopP={props.onChangeTopP}
+      onInputTemperature={props.onChangeTemperature}
+      onInputReasoningEffort={props.onChangeReasoningEffort}
+      onInputTextVerbosity={props.onChangeTextVerbosity}
     />
 
     <textarea
