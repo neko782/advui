@@ -1,8 +1,74 @@
 <script>
+  import { tick } from 'svelte'
   import Icon from '../Icon.svelte'
   const props = $props()
 
-  // (cleaned) no local utilities currently needed
+  let confirmDeleteId = $state(null)
+  let editingId = $state(null)
+  let draftTitle = $state('')
+  let editingInput = $state(null)
+  let suppressBlur = $state(false)
+
+  function selectChat(id) {
+    if (!id || editingId === id || confirmDeleteId === id) return
+    props.onSelect?.(id)
+  }
+
+  function requestDelete(id) {
+    confirmDeleteId = id
+    if (editingId === id) {
+      editingId = null
+      draftTitle = ''
+    }
+  }
+
+  function cancelDelete(id) {
+    if (confirmDeleteId === id) confirmDeleteId = null
+  }
+
+  async function confirmDelete(id) {
+    if (confirmDeleteId !== id) return
+    confirmDeleteId = null
+    await props.onDeleteChat?.(id)
+  }
+
+  async function startEdit(chat) {
+    if (!chat) return
+    confirmDeleteId = null
+    editingId = chat.id
+    draftTitle = chat.title || 'New Chat'
+    await tick()
+    editingInput?.focus()
+    editingInput?.select?.()
+  }
+
+  function cancelEdit(id) {
+    if (editingId === id) {
+      editingId = null
+      draftTitle = ''
+      suppressBlur = false
+    }
+  }
+
+  async function applyEdit(id, originalTitle) {
+    if (editingId !== id) return
+    const trimmed = (draftTitle || '').trim()
+    const nextTitle = trimmed || 'New Chat'
+    editingId = null
+    draftTitle = ''
+    suppressBlur = false
+    if (nextTitle !== (originalTitle || 'New Chat')) {
+      await props.onRenameChat?.(id, nextTitle)
+    }
+  }
+
+  function handleInputBlur(id, originalTitle) {
+    if (suppressBlur) {
+      suppressBlur = false
+      return
+    }
+    applyEdit(id, originalTitle)
+  }
 </script>
 
 <aside class="sidebar {props.open ? '' : 'collapsed'}">
@@ -32,13 +98,92 @@
         <div class="section-label">Chats</div>
         <nav class="chat-list" aria-label="Chats">
           {#each (props.chats || []) as c (c.id)}
-            <button
-              class="chat-link {props.selectedId === c.id ? 'active' : ''}"
+            <div
+              class={`chat-row ${props.selectedId === c.id ? 'active' : ''} ${(confirmDeleteId === c.id || editingId === c.id) ? 'show-actions' : ''}`}
               title={c.title || 'Chat'}
-              onclick={() => props.onSelect?.(c.id)}
             >
-              <span class="chat-title">{c.title || 'New Chat'}</span>
-            </button>
+              {#if editingId === c.id}
+                <div class="chat-main editing">
+                  <input
+                    class="chat-input"
+                    bind:this={editingInput}
+                    value={draftTitle}
+                    oninput={(event) => (draftTitle = event.currentTarget.value)}
+                    onblur={() => handleInputBlur(c.id, c.title)}
+                    onkeydown={(event) => {
+                      if (event.key === 'Enter') {
+                        event.preventDefault()
+                        applyEdit(c.id, c.title)
+                      } else if (event.key === 'Escape') {
+                        event.preventDefault()
+                        cancelEdit(c.id)
+                      }
+                    }}
+                    aria-label="Edit chat title"
+                  />
+                </div>
+              {:else}
+                <button
+                  type="button"
+                  class="chat-link {props.selectedId === c.id ? 'active' : ''}"
+                  onclick={() => selectChat(c.id)}
+                  onkeydown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault()
+                      selectChat(c.id)
+                    }
+                  }}
+                >
+                  <span class="chat-title">{c.title || 'New Chat'}</span>
+                </button>
+              {/if}
+              <div class="chat-actions">
+                {#if confirmDeleteId === c.id}
+                  <button type="button" class="chat-action-btn cancel" onclick={() => cancelDelete(c.id)} aria-label="Cancel delete">
+                    <Icon name="close" size={18} />
+                  </button>
+                  <button type="button" class="chat-action-btn confirm" onclick={() => confirmDelete(c.id)} aria-label="Confirm delete">
+                    <Icon name="check" size={18} />
+                  </button>
+                {:else if editingId === c.id}
+                  <button
+                    type="button"
+                    class="chat-action-btn cancel"
+                    onmousedown={() => (suppressBlur = true)}
+                    onclick={() => cancelEdit(c.id)}
+                    aria-label="Cancel edit"
+                  >
+                    <Icon name="close" size={18} />
+                  </button>
+                  <button
+                    type="button"
+                    class="chat-action-btn confirm"
+                    onmousedown={() => (suppressBlur = true)}
+                    onclick={() => applyEdit(c.id, c.title)}
+                    aria-label="Confirm title"
+                  >
+                    <Icon name="check" size={18} />
+                  </button>
+                {:else}
+                  <button
+                    type="button"
+                    class="chat-action-btn"
+                    onclick={() => startEdit(c)}
+                    aria-label="Edit chat title"
+                  >
+                    <Icon name="edit" size={18} />
+                  </button>
+                  <button
+                    type="button"
+                    class="chat-action-btn"
+                    onclick={() => requestDelete(c.id)}
+                    aria-label="Delete chat"
+                  >
+                    <Icon name="delete" size={18} />
+                  </button>
+                {/if}
+              </div>
+            </div>
           {/each}
         </nav>
       {/if}
@@ -173,11 +318,25 @@
     /* Allow flex child to shrink and avoid overflow */
     min-width: 0;
   }
+  .chat-row {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 4px;
+    padding-right: 60px;
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .chat-row.active { background: var(--panel); }
+  .chat-row:hover { background: var(--panel); }
+  .chat-list:hover .chat-row.active { background: color-mix(in srgb, var(--panel) 90%, var(--hover-bg) 10%); }
+
   .chat-link {
     text-align: left;
     display: flex;
     align-items: center;
-    width: 100%;
+    flex: 1 1 auto;
     padding: 6px 10px;
     border: 0;
     background: transparent;
@@ -185,13 +344,72 @@
     border-radius: 8px;
     font: inherit;
     transition: background-color 150ms ease, color 150ms ease;
-    /* Prevent content from forcing the button wider than the list */
     min-width: 0;
-    max-width: 100%;
   }
-  .chat-link:hover { background: var(--panel); color: var(--text); }
+  .chat-link:hover { background: color-mix(in srgb, var(--panel) 80%, var(--hover-bg) 20%); color: var(--text); }
   .chat-link.active { color: var(--text); }
   .chat-title { flex: 1 1 auto; min-width: 0; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  .chat-main.editing {
+    flex: 1 1 auto;
+    display: flex;
+    align-items: center;
+    padding: 6px 10px;
+    border-radius: 8px;
+    background: var(--panel);
+    min-width: 0;
+  }
+  .chat-input {
+    flex: 1 1 auto;
+    border: none;
+    background: transparent;
+    color: var(--text);
+    font: inherit;
+    outline: none;
+    min-width: 0;
+  }
+
+  .chat-actions {
+    position: absolute;
+    top: 50%;
+    right: 12px;
+    transform: translateY(-50%);
+    display: flex;
+    gap: 4px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 150ms ease;
+  }
+  .chat-row:hover .chat-actions,
+  .chat-row.show-actions .chat-actions {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .chat-action-btn {
+    width: 28px;
+    height: 28px;
+    display: grid;
+    place-items: center;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+    transition: background-color 120ms ease, color 120ms ease;
+  }
+  .chat-action-btn:hover,
+  .chat-action-btn:focus-visible {
+    background: var(--hover-bg);
+    color: var(--text);
+  }
+
+  .chat-action-btn.confirm { color: #16a34a; }
+  .chat-action-btn.cancel { color: #dc2626; }
+  .chat-action-btn.confirm:hover,
+  .chat-action-btn.confirm:focus-visible { color: #15803d; }
+  .chat-action-btn.cancel:hover,
+  .chat-action-btn.cancel:focus-visible { color: #b91c1c; }
 
   .side-footer { padding: 8px; border-top: 1px solid var(--border); margin-top: auto; }
   /* Remove horizontal separator in collapsed mode */

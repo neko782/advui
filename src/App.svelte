@@ -2,7 +2,7 @@
   import Chat from './lib/Chat.svelte'
   import Sidebar from './lib/components/Sidebar.svelte'
   import SettingsModal from './lib/SettingsModal.svelte'
-  import { loadAll, getChats, createChat, setSelected, getChat } from './lib/chatsStore.js'
+  import { loadAll, getChats, createChat, setSelected, getChat, deleteChat, renameChat } from './lib/chatsStore.js'
 
   let chats = $state([])
   let selectedId = $state(null)
@@ -90,6 +90,19 @@
   }
 
   function onOpenSettings() { showSettings = true }
+
+  async function onDeleteChat(id) {
+    if (!id) return
+    await deleteChat(id)
+    if (selectedId === id) selectedId = null
+    await refresh()
+  }
+
+  async function onRenameChat(id, title) {
+    if (!id) return
+    await renameChat(id, title)
+    await refresh()
+  }
 </script>
 
 <div class="app-shell">
@@ -99,6 +112,8 @@
     selectedId={selectedId}
     onSelect={onSelectChat}
     onNewChat={onNewChat}
+    onDeleteChat={onDeleteChat}
+    onRenameChat={onRenameChat}
     onToggle={toggleSidebar}
     onOpenSettings={onOpenSettings}
   />

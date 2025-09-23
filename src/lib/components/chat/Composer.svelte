@@ -124,7 +124,7 @@
     line-height: 1;
     transition: background-color .15s ease, color .15s ease, border-color .15s ease, opacity .15s ease;
   }
-  .float-btn:disabled { background: #9ca3af; color: #ffffff; cursor: not-allowed; }
+  .float-btn:disabled { background: #1f2937; color: #ffffff; cursor: not-allowed; }
   .send-group { position: relative; display: grid; place-items: center; z-index: 0; }
   .send-group::before { content: ''; position: absolute; right: 0; bottom: 100%; width: 220px; height: 12px; }
   .send-group:hover, .send-group:focus-within { z-index: 20; }

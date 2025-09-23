@@ -3,7 +3,7 @@
 
 import { loadSettings } from './settingsStore.js'
 import { enforceUniqueParents } from './branching.js'
-import { getAllChats as storeGetAll, getChat as storeGetOne, putChat as storePut } from './idb.js'
+import { getAllChats as storeGetAll, getChat as storeGetOne, putChat as storePut, deleteChat as storeDelete } from './idb.js'
 
 export const SELECTED_KEY = 'openai.chats.selected.v1'
 
@@ -113,6 +113,27 @@ export async function saveChatContent(id, { nodes, settings, rootId }) {
     rootId: nextRootId,
     settings: baseSettings,
     title: computeTitleFromNodes(nextNodes, nextRootId),
+    updatedAt: Date.now(),
+  }
+  await storePut(updated)
+  return updated
+}
+
+export async function deleteChat(id) {
+  if (!id) return
+  await storeDelete(id)
+  const selected = loadAll().selectedId
+  if (selected === id) setSelected(null)
+}
+
+export async function renameChat(id, title) {
+  if (!id) return null
+  const chat = await storeGetOne(id)
+  if (!chat) return null
+  const nextTitle = (typeof title === 'string' && title.trim()) ? title.trim() : 'New Chat'
+  const updated = {
+    ...chat,
+    title: nextTitle,
     updatedAt: Date.now(),
   }
   await storePut(updated)
