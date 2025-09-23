@@ -761,6 +761,21 @@
     const cur = curNode?.variants?.[loc.index]
     if (!curNode || !cur) return
     const val = String(editingText)
+    // Special case: if nothing changed and this is the last visible message,
+    // do not branch. For user messages, just generate the following reply.
+    try {
+      const path = buildVisible()
+      const insertIndex = path.findIndex(vm => vm.nodeId === curNode.id)
+      const isLast = insertIndex >= 0 && insertIndex === (path.length - 1)
+      const noChange = (val === (cur.content || ''))
+      if (noChange && isLast) {
+        // Clear edit state and generate reply after this message (no branching)
+        editingId = null
+        editingText = ''
+        await refreshAfterUserIndex(insertIndex)
+        return
+      }
+    } catch {}
     // 1) Add a new variant and select it
     const branched = { id: nextId++, role: cur.role, content: val, time: Date.now(), typing: false, error: undefined, next: null }
     nodes = nodes.map(n => (n.id === curNode.id ? { ...n, variants: [...(n.variants || []), branched], active: (n.variants?.length || 0) } : n))
@@ -893,16 +908,16 @@
     }
   }
 
-  // Generate a new assistant reply directly after a given user message index
-  // (used when refreshing a user message with no following assistant)
+  // Generate a new assistant reply directly after a given message index
+  // (used when refreshing a message with no following assistant)
   async function refreshAfterUserIndex(i) {
     if (locked) return
     const path = buildVisible()
     const vm = (typeof i === 'number') ? path[i] : null
     const curMsg = vm?.m
     const curNodeId = vm?.nodeId
-    if (!curMsg || curMsg.role !== 'user' || !curNodeId) return
-    // Add typing assistant node after this user
+    if (!curMsg || !curNodeId) return
+    // Add typing assistant node after this message
     const typingMsg = { id: nextId++, role: 'assistant', content: 'typing', time: Date.now(), typing: true, next: null }
     const typingNode = { id: nextNodeId++, variants: [typingMsg], active: 0 }
     nodes = nodes.map(n => (n.id === curNodeId ? { ...n, variants: n.variants.map((v, idx) => (idx === (Number(n.active)||0) ? { ...v, next: typingNode.id } : v)) } : n))
