@@ -111,6 +111,19 @@
       </select>
     </div>
     <div class="menu-section">
+      <div class="menu-label">Reasoning summary</div>
+      <select
+        value={props.reasoningSummary || 'auto'}
+        disabled={props.disabled}
+        onchange={(e) => (!props.disabled && props.onInputReasoningSummary?.(e.currentTarget.value))}
+        aria-label="Reasoning summary"
+      >
+        <option value="auto">auto</option>
+        <option value="concise">concise</option>
+        <option value="detailed">detailed</option>
+      </select>
+    </div>
+    <div class="menu-section">
       <div class="menu-label">Text verbosity</div>
       <select
         value={props.textVerbosity || 'medium'}

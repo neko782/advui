@@ -33,6 +33,9 @@ export async function respond({
   temperature,
   reasoningEffort,
   textVerbosity,
+  reasoningSummary,
+  onReasoningSummaryDelta,
+  onReasoningSummaryDone,
 }) {
   const { apiKey } = loadSettings()
   if (!apiKey) throw new Error('Missing OpenAI API key. Set it in Settings.')
@@ -75,8 +78,15 @@ export async function respond({
   if (topPVal != null) request.top_p = topPVal
   const tempVal = toClampedNumber(temperature, 0, 2)
   if (tempVal != null) request.temperature = tempVal
+  const reasoningOptions = {}
   if (typeof reasoningEffort === 'string' && reasoningEffort && reasoningEffort !== 'none') {
-    request.reasoning = { effort: reasoningEffort }
+    reasoningOptions.effort = reasoningEffort
+  }
+  if (typeof reasoningSummary === 'string' && reasoningSummary) {
+    reasoningOptions.summary = reasoningSummary
+  }
+  if (Object.keys(reasoningOptions).length) {
+    request.reasoning = reasoningOptions
   }
   if (typeof textVerbosity === 'string' && textVerbosity) {
     request.text = { verbosity: textVerbosity }
@@ -86,6 +96,14 @@ export async function respond({
     // Stream via SDK's async iterator
     const streamIt = await client.responses.create({ ...request, stream: true })
     let full = ''
+    const summaryByIndex = new Map()
+    let primarySummaryIndex = null
+    const getPrimarySummary = () => {
+      if (primarySummaryIndex == null && summaryByIndex.size > 0) {
+        primarySummaryIndex = Math.min(...summaryByIndex.keys())
+      }
+      return primarySummaryIndex != null ? (summaryByIndex.get(primarySummaryIndex) || '') : ''
+    }
     try {
       for await (const event of streamIt) {
         try { onEvent?.(event) } catch {}
@@ -96,6 +114,26 @@ export async function respond({
             full += delta
             try { onTextDelta?.(full, delta, event) } catch {}
           }
+        } else if (t === 'response.reasoning_summary_text.delta') {
+          const delta = event?.delta || ''
+          const idx = Number.isFinite(Number(event?.summary_index)) ? Number(event.summary_index) : 0
+          const prev = summaryByIndex.get(idx) || ''
+          const next = typeof delta === 'string' && delta ? prev + delta : prev
+          summaryByIndex.set(idx, next)
+          if (primarySummaryIndex == null) primarySummaryIndex = idx
+          const summary = getPrimarySummary()
+          if (typeof delta === 'string' && delta) {
+            try { onReasoningSummaryDelta?.(summary, delta, event) } catch {}
+          } else {
+            try { onReasoningSummaryDelta?.(summary, '', event) } catch {}
+          }
+        } else if (t === 'response.reasoning_summary_text.done') {
+          const idx = Number.isFinite(Number(event?.summary_index)) ? Number(event.summary_index) : 0
+          const text = typeof event?.text === 'string' ? event.text : ''
+          if (text) summaryByIndex.set(idx, text)
+          if (primarySummaryIndex == null) primarySummaryIndex = idx
+          const summary = text || getPrimarySummary()
+          try { onReasoningSummaryDone?.(summary, event) } catch {}
         } else if (t === 'response.completed' || t === 'response.text.done' || t === 'response.done') {
           // Let the SDK finish and close the stream naturally.
           // Do not break early to avoid aborting the request.
@@ -109,10 +147,18 @@ export async function respond({
       // Re-throw so callers can handle
       throw err
     }
-    return full
+    return {
+      text: full,
+      reasoningSummary: getPrimarySummary(),
+    }
   } else {
     const res = await client.responses.create(request)
-    return extractOutputText(res)
+    const text = extractOutputText(res)
+    const summary = extractReasoningSummary(res)
+    if (summary) {
+      try { onReasoningSummaryDone?.(summary, null) } catch {}
+    }
+    return { text, reasoningSummary: summary }
   }
 }
 
@@ -165,4 +211,31 @@ function extractOutputText(res) {
     if (typeof text === 'string' && text) return text
   } catch {}
   return JSON.stringify(res)
+}
+
+function extractReasoningSummary(res) {
+  const collect = (out) => {
+    if (!Array.isArray(out)) return ''
+    const order = []
+    for (const item of out) {
+      if (item && item.type === 'reasoning') {
+        const parts = Array.isArray(item.summary) ? item.summary : []
+        for (const part of parts) {
+          if (part && typeof part.text === 'string') {
+            order.push(part.text)
+          }
+        }
+      }
+    }
+    return order.join('')
+  }
+  try {
+    const direct = collect(res?.output)
+    if (direct) return direct
+  } catch {}
+  try {
+    const nested = collect(res?.response?.output)
+    if (nested) return nested
+  } catch {}
+  return ''
 }

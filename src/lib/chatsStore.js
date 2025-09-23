@@ -11,6 +11,7 @@ function safeParse(raw, fallback) { try { return JSON.parse(raw) } catch { retur
 
 const REASONING_VALUES = new Set(['none', 'minimal', 'low', 'medium', 'high'])
 const TEXT_VERBOSITY_VALUES = new Set(['low', 'medium', 'high'])
+const REASONING_SUMMARY_VALUES = new Set(['auto', 'concise', 'detailed'])
 const hasOwn = (obj, key) => Object.prototype.hasOwnProperty.call(obj || {}, key)
 
 function toIntOrNull(val) {
@@ -36,6 +37,10 @@ function normalizeVerbosity(val) {
   return TEXT_VERBOSITY_VALUES.has(val) ? val : 'medium'
 }
 
+function normalizeReasoningSummary(val) {
+  return REASONING_SUMMARY_VALUES.has(val) ? val : 'auto'
+}
+
 function resolvePreset(settings, preferences = {}) {
   const list = Array.isArray(settings?.presets) ? settings.presets : []
   const byId = (id) => list.find(p => p && typeof p.id === 'string' && p.id === id)
@@ -58,6 +63,7 @@ function resolvePreset(settings, preferences = {}) {
         temperature: toClampedNumber(p.temperature, 0, 2),
         reasoningEffort: normalizeReasoning(p.reasoningEffort),
         textVerbosity: normalizeVerbosity(p.textVerbosity),
+        reasoningSummary: normalizeReasoningSummary(p.reasoningSummary),
       }
     }
   }
@@ -78,6 +84,7 @@ function resolvePreset(settings, preferences = {}) {
       temperature: toClampedNumber(chosen.temperature, 0, 2),
       reasoningEffort: normalizeReasoning(chosen.reasoningEffort),
       textVerbosity: normalizeVerbosity(chosen.textVerbosity),
+      reasoningSummary: normalizeReasoningSummary(chosen.reasoningSummary),
     }
   }
   return {
@@ -90,6 +97,7 @@ function resolvePreset(settings, preferences = {}) {
     temperature: null,
     reasoningEffort: 'none',
     textVerbosity: 'medium',
+    reasoningSummary: 'auto',
   }
 }
 
@@ -194,6 +202,7 @@ export async function saveChatContent(id, { nodes, settings, rootId }) {
     temperature: toClampedNumber(pickSetting('temperature'), 0, 2),
     reasoningEffort: normalizeReasoning(pickSetting('reasoningEffort')),
     textVerbosity: normalizeVerbosity(pickSetting('textVerbosity')),
+    reasoningSummary: normalizeReasoningSummary(pickSetting('reasoningSummary')),
   }
   const nextNodesCandidate = Array.isArray(nodes) ? nodes : (existing?.nodes || [])
   const nextRootId = (rootId != null)
@@ -275,6 +284,7 @@ export async function createChat(initial = {}) {
       temperature: toClampedNumber(hasOwn(initial?.settings, 'temperature') ? initial.settings.temperature : preferredPreset.temperature, 0, 2),
       reasoningEffort: normalizeReasoning(hasOwn(initial?.settings, 'reasoningEffort') ? initial.settings.reasoningEffort : preferredPreset.reasoningEffort),
       textVerbosity: normalizeVerbosity(hasOwn(initial?.settings, 'textVerbosity') ? initial.settings.textVerbosity : preferredPreset.textVerbosity),
+      reasoningSummary: normalizeReasoningSummary(hasOwn(initial?.settings, 'reasoningSummary') ? initial.settings.reasoningSummary : preferredPreset.reasoningSummary),
     },
     nodes: baseNodes,
     rootId,

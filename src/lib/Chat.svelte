@@ -22,6 +22,7 @@
   let debug = $state(!!initialSettings?.debug)
   const REASONING_VALUES = new Set(['none', 'minimal', 'low', 'medium', 'high'])
   const TEXT_VERBOSITY_VALUES = new Set(['low', 'medium', 'high'])
+  const REASONING_SUMMARY_VALUES = new Set(['auto', 'concise', 'detailed'])
   function toIntOrNull(val) {
     if (val === '' || val == null) return null
     const num = Number(val)
@@ -41,6 +42,9 @@
   function normalizeVerbosity(val) {
     return TEXT_VERBOSITY_VALUES.has(val) ? val : 'medium'
   }
+  function normalizeReasoningSummary(val) {
+    return REASONING_SUMMARY_VALUES.has(val) ? val : 'auto'
+  }
   const hasOwn = (obj, key) => Object.prototype.hasOwnProperty.call(obj || {}, key)
   function normalizePreset(p) {
     if (!p || typeof p !== 'object') {
@@ -53,6 +57,7 @@
         temperature: null,
         reasoningEffort: 'none',
         textVerbosity: 'medium',
+        reasoningSummary: 'auto',
       }
     }
     const model = (typeof p.model === 'string' && p.model.trim()) ? p.model.trim() : 'gpt-4o-mini'
@@ -63,7 +68,8 @@
     const temperature = toClampedNumber(p.temperature, 0, 2)
     const reasoningEffort = normalizeReasoning(p.reasoningEffort)
     const textVerbosity = normalizeVerbosity(p.textVerbosity)
-    return { id, model, streaming, maxOutputTokens, topP, temperature, reasoningEffort, textVerbosity }
+    const reasoningSummary = normalizeReasoningSummary(p.reasoningSummary)
+    return { id, model, streaming, maxOutputTokens, topP, temperature, reasoningEffort, textVerbosity, reasoningSummary }
   }
   function pickPresetFromSettings(state) {
     const list = Array.isArray(state?.presets) ? state.presets : []
@@ -86,6 +92,7 @@
       p?.temperature ?? '',
       p?.reasoningEffort || '',
       p?.textVerbosity || '',
+      p?.reasoningSummary || '',
     ].join('|')).join(';')
   }
   const initialPreset = pickPresetFromSettings(initialSettings)
@@ -99,6 +106,7 @@
     temperature: initialPreset.temperature,
     reasoningEffort: initialPreset.reasoningEffort,
     textVerbosity: initialPreset.textVerbosity,
+    reasoningSummary: initialPreset.reasoningSummary,
   })
   // Per-chat settings popover open state
   let chatSettingsOpen = $state(false)
@@ -150,6 +158,23 @@
       }
     }
     return map
+  }
+
+  function updateVariantById(variantId, transform) {
+    if (variantId == null) return
+    nodes = nodes.map(n => {
+      const variants = Array.isArray(n?.variants) ? n.variants : []
+      let changed = false
+      const nextVariants = variants.map(v => {
+        if (v?.id !== variantId) return v
+        changed = true
+        if (typeof transform === 'function') {
+          return transform(v)
+        }
+        return { ...v, ...(transform || {}) }
+      })
+      return changed ? { ...n, variants: nextVariants } : n
+    })
   }
   function onEditableInput(eOrText) {
     if (editingId == null) return
@@ -228,6 +253,7 @@
       temperature: basePreset.temperature,
       reasoningEffort: basePreset.reasoningEffort,
       textVerbosity: basePreset.textVerbosity,
+      reasoningSummary: basePreset.reasoningSummary,
     }
     let nextNextId = 1
     let nextNextNodeId = 1
@@ -256,6 +282,7 @@
             temperature: toClampedNumber(hasOwn(loaded?.settings, 'temperature') ? loaded.settings.temperature : basePreset.temperature, 0, 2),
             reasoningEffort: normalizeReasoning(hasOwn(loaded?.settings, 'reasoningEffort') ? loaded.settings.reasoningEffort : basePreset.reasoningEffort),
             textVerbosity: normalizeVerbosity(hasOwn(loaded?.settings, 'textVerbosity') ? loaded.settings.textVerbosity : basePreset.textVerbosity),
+            reasoningSummary: normalizeReasoningSummary(hasOwn(loaded?.settings, 'reasoningSummary') ? loaded.settings.reasoningSummary : basePreset.reasoningSummary),
           }
           if (!nextNodes.length) {
             nextNextId = 2
@@ -288,6 +315,7 @@
             temperature: basePreset.temperature,
             reasoningEffort: basePreset.reasoningEffort,
             textVerbosity: basePreset.textVerbosity,
+            reasoningSummary: basePreset.reasoningSummary,
           }
         }
       } catch {
@@ -306,6 +334,7 @@
           temperature: basePreset.temperature,
           reasoningEffort: basePreset.reasoningEffort,
           textVerbosity: basePreset.textVerbosity,
+          reasoningSummary: basePreset.reasoningSummary,
         }
       }
       // Precompute a persist signature for the loaded chat content
@@ -325,6 +354,7 @@
             temperature: nextChatSettings?.temperature ?? null,
             reasoningEffort: nextChatSettings?.reasoningEffort || '',
             textVerbosity: nextChatSettings?.textVerbosity || '',
+            reasoningSummary: nextChatSettings?.reasoningSummary || '',
           },
           rootId: nextRootId,
         })
@@ -363,6 +393,7 @@
         temperature: basePreset.temperature,
         reasoningEffort: basePreset.reasoningEffort,
         textVerbosity: basePreset.textVerbosity,
+        reasoningSummary: basePreset.reasoningSummary,
       }
       try {
         const mini = (nextNodes || []).map(n => {
@@ -380,6 +411,7 @@
             temperature: nextChatSettings?.temperature ?? null,
             reasoningEffort: nextChatSettings?.reasoningEffort || '',
             textVerbosity: nextChatSettings?.textVerbosity || '',
+            reasoningSummary: nextChatSettings?.reasoningSummary || '',
           },
           rootId: nextRootId,
         })
@@ -483,6 +515,7 @@
           temperature: chatSettings?.temperature ?? null,
           reasoningEffort: chatSettings?.reasoningEffort || '',
           textVerbosity: chatSettings?.textVerbosity || '',
+          reasoningSummary: chatSettings?.reasoningSummary || '',
         },
         rootId,
       })
@@ -561,8 +594,20 @@
 
     // Typing placeholder + stream if user
     let typingVariant = null
+    let typingVariantId = null
     if (role === 'user') {
-      typingVariant = { id: nextId++, role: 'assistant', content: 'typing', time: Date.now(), typing: true, error: undefined, next: null }
+      typingVariant = {
+        id: nextId++,
+        role: 'assistant',
+        content: 'typing',
+        time: Date.now(),
+        typing: true,
+        error: undefined,
+        next: null,
+        reasoningSummary: '',
+        reasoningSummaryLoading: true,
+      }
+      typingVariantId = typingVariant.id
       const typingNode = { id: nextNodeId++, variants: [typingVariant], active: 0 }
       nodes = nodes.map(n => (n.id === newNode.id
         ? { ...n, variants: n.variants.map((v, i) => (i === 0 ? { ...v, next: typingNode.id } : v)) }
@@ -570,7 +615,8 @@
       nodes = [...nodes, typingNode]
     }
     try {
-      let reply
+      let reply = null
+      let summaryBuffer = ''
       settings = loadSettings()
       const { apiKey } = settings
       if (role === 'user' && apiKey) {
@@ -586,38 +632,81 @@
           temperature: chatSettings.temperature,
           reasoningEffort: chatSettings.reasoningEffort,
           textVerbosity: chatSettings.textVerbosity,
+          reasoningSummary: chatSettings.reasoningSummary,
         }
-        if (chatSettings.streaming && typingVariant) {
+        if (chatSettings.streaming && typingVariantId != null) {
           reply = await respond({
             ...responseOptions,
             stream: true,
             onTextDelta: (full) => {
-              nodes = nodes.map(n => ({
-                ...n,
-                variants: (n.variants || []).map(v => (v.id === typingVariant.id ? { ...v, content: full } : v))
+              updateVariantById(typingVariantId, (prev) => ({ ...prev, content: full }))
+            },
+            onReasoningSummaryDelta: (fullSummary) => {
+              if (typeof fullSummary === 'string') summaryBuffer = fullSummary
+              updateVariantById(typingVariantId, (prev) => ({
+                ...prev,
+                reasoningSummary: summaryBuffer,
+                reasoningSummaryLoading: true,
               }))
-            }
+            },
+            onReasoningSummaryDone: (fullSummary) => {
+              if (typeof fullSummary === 'string') summaryBuffer = fullSummary
+              updateVariantById(typingVariantId, (prev) => ({
+                ...prev,
+                reasoningSummary: summaryBuffer,
+                reasoningSummaryLoading: false,
+              }))
+            },
           })
         } else if (role === 'user') {
-          reply = await respond(responseOptions)
+          reply = await respond({
+            ...responseOptions,
+            onReasoningSummaryDone: (fullSummary) => {
+              if (typeof fullSummary === 'string') summaryBuffer = fullSummary
+            },
+          })
         }
       } else if (role === 'user') {
-        reply = generatePlaceholderReply(newMsg.content) +
+        const placeholder = generatePlaceholderReply(newMsg.content) +
           '\n\nTip: Add your OpenAI API key in Settings to get real answers.'
+        reply = placeholder
+        summaryBuffer = ''
+        if (typingVariantId != null) {
+          updateVariantById(typingVariantId, (prev) => ({
+            ...prev,
+            reasoningSummary: '',
+            reasoningSummaryLoading: false,
+          }))
+        }
       }
-      if (role === 'user' && typingVariant) {
-        nodes = nodes.map(n => ({
-          ...n,
-          variants: (n.variants || []).map(v => (v.id === typingVariant.id ? { ...v, content: reply, typing: false, error: undefined } : v))
+      if (role === 'user' && typingVariantId != null) {
+        const replyText = (reply && typeof reply === 'object') ? (reply.text ?? '') : (typeof reply === 'string' ? reply : '')
+        const replySummary = (() => {
+          if (reply && typeof reply === 'object') {
+            if (typeof reply.reasoningSummary === 'string' && reply.reasoningSummary) return reply.reasoningSummary
+            return summaryBuffer
+          }
+          return summaryBuffer
+        })()
+        updateVariantById(typingVariantId, (prev) => ({
+          ...prev,
+          content: replyText,
+          typing: false,
+          error: undefined,
+          reasoningSummary: replySummary || '',
+          reasoningSummaryLoading: false,
         }))
       }
       persistNow()
     } catch (err) {
       const msg = err?.message || 'Something went wrong.'
-      if (role === 'user' && typingVariant) {
-        nodes = nodes.map(n => ({
-          ...n,
-          variants: (n.variants || []).map(v => (v.id === typingVariant.id ? { ...v, typing: false, error: msg, content: (v.content === 'typing' ? '' : v.content) } : v))
+      if (role === 'user' && typingVariantId != null) {
+        updateVariantById(typingVariantId, (prev) => ({
+          ...prev,
+          typing: false,
+          error: msg,
+          reasoningSummaryLoading: false,
+          content: (prev.content === 'typing' ? '' : prev.content),
         }))
       }
       persistNow()
@@ -942,15 +1031,27 @@
     editingText = ''
 
     // 2) Generate a new assistant reply after the branched variant
-    const typingMsg = { id: nextId++, role: 'assistant', content: 'typing', time: Date.now(), typing: true, next: null }
+    const typingMsg = {
+      id: nextId++,
+      role: 'assistant',
+      content: 'typing',
+      time: Date.now(),
+      typing: true,
+      error: undefined,
+      next: null,
+      reasoningSummary: '',
+      reasoningSummaryLoading: true,
+    }
     const typingNode = { id: nextNodeId++, variants: [typingMsg], active: 0 }
     nodes = nodes.map(n => (n.id === curNode.id ? { ...n, variants: n.variants.map((v, i) => (i === (n.variants.length - 1) ? { ...v, next: typingNode.id } : v)) } : n))
     nodes = [...nodes, typingNode]
     
     try {
-      let reply
+      let reply = null
+      let summaryBuffer = ''
       settings = loadSettings()
       const { apiKey } = settings
+      const typingId = typingMsg.id
       const path = buildVisible()
       const insertIndex = path.findIndex(vm => vm.nodeId === curNode.id)
       const history = buildVisibleUpTo(insertIndex + 1)
@@ -965,28 +1066,76 @@
           temperature: chatSettings.temperature,
           reasoningEffort: chatSettings.reasoningEffort,
           textVerbosity: chatSettings.textVerbosity,
+          reasoningSummary: chatSettings.reasoningSummary,
         }
         if (chatSettings.streaming) {
           reply = await respond({
             ...responseOptions,
             stream: true,
             onTextDelta: (full) => {
-              nodes = nodes.map(n => ({ ...n, variants: (n.variants || []).map(v => (v.id === typingMsg.id ? { ...v, content: full } : v)) }))
-            }
+              updateVariantById(typingId, (prev) => ({ ...prev, content: full }))
+            },
+            onReasoningSummaryDelta: (fullSummary) => {
+              if (typeof fullSummary === 'string') summaryBuffer = fullSummary
+              updateVariantById(typingId, (prev) => ({
+                ...prev,
+                reasoningSummary: summaryBuffer,
+                reasoningSummaryLoading: true,
+              }))
+            },
+            onReasoningSummaryDone: (fullSummary) => {
+              if (typeof fullSummary === 'string') summaryBuffer = fullSummary
+              updateVariantById(typingId, (prev) => ({
+                ...prev,
+                reasoningSummary: summaryBuffer,
+                reasoningSummaryLoading: false,
+              }))
+            },
           })
         } else {
-          reply = await respond(responseOptions)
+          reply = await respond({
+            ...responseOptions,
+            onReasoningSummaryDone: (fullSummary) => {
+              if (typeof fullSummary === 'string') summaryBuffer = fullSummary
+            },
+          })
         }
       } else {
         const lastUser = [...buildVisibleUpTo(insertIndex + 1)].reverse().find(m => m.role === 'user')
         reply = generatePlaceholderReply(lastUser?.content || val) +
           '\n\nTip: Add your OpenAI API key in Settings to get real answers.'
+        updateVariantById(typingId, (prev) => ({
+          ...prev,
+          reasoningSummary: '',
+          reasoningSummaryLoading: false,
+        }))
       }
-      nodes = nodes.map(n => ({ ...n, variants: (n.variants || []).map(v => (v.id === typingMsg.id ? { ...v, content: reply, typing: false, error: undefined } : v)) }))
+      const replyText = (reply && typeof reply === 'object') ? (reply.text ?? '') : (typeof reply === 'string' ? reply : '')
+      const replySummary = (() => {
+        if (reply && typeof reply === 'object') {
+          if (typeof reply.reasoningSummary === 'string' && reply.reasoningSummary) return reply.reasoningSummary
+          return summaryBuffer
+        }
+        return summaryBuffer
+      })()
+      updateVariantById(typingId, (prev) => ({
+        ...prev,
+        content: replyText,
+        typing: false,
+        error: undefined,
+        reasoningSummary: replySummary || '',
+        reasoningSummaryLoading: false,
+      }))
       persistNow()
     } catch (err) {
       const msg = err?.message || 'Something went wrong.'
-      nodes = nodes.map(n => ({ ...n, variants: (n.variants || []).map(v => (v.id === typingMsg.id ? { ...v, typing: false, error: msg, content: (v.content === 'typing' ? '' : v.content) } : v)) }))
+      updateVariantById(typingMsg.id, (prev) => ({
+        ...prev,
+        typing: false,
+        error: msg,
+        reasoningSummaryLoading: false,
+        content: (prev.content === 'typing' ? '' : prev.content),
+      }))
       persistNow()
     } finally {
       // Do not auto-scroll on reply
@@ -1023,12 +1172,24 @@
     // Create a new assistant variant within the same node and stream into it
     // Important: do NOT inherit the old variant's `next` pointer.
     // This is a branch; it should end at the regenerated response.
-    const typingMsg = { id: nextId++, role: 'assistant', content: 'typing', time: Date.now(), typing: true, error: undefined, next: null }
+    const typingMsg = {
+      id: nextId++,
+      role: 'assistant',
+      content: 'typing',
+      time: Date.now(),
+      typing: true,
+      error: undefined,
+      next: null,
+      reasoningSummary: '',
+      reasoningSummaryLoading: true,
+    }
     nodes = nodes.map(n => (n.id === node.id ? { ...n, variants: [...(n.variants || []), typingMsg], active: (n.variants?.length || 0) } : n))
     try {
-      let reply
+      let reply = null
+      let summaryBuffer = ''
       settings = loadSettings()
       const { apiKey } = settings
+      const typingId = typingMsg.id
       if (apiKey) {
         // Build history up to (but not including) this assistant node (parent path)
         const path = buildVisible()
@@ -1044,37 +1205,76 @@
           temperature: chatSettings.temperature,
           reasoningEffort: chatSettings.reasoningEffort,
           textVerbosity: chatSettings.textVerbosity,
+          reasoningSummary: chatSettings.reasoningSummary,
         }
         if (chatSettings.streaming) {
           reply = await respond({
             ...responseOptions,
             stream: true,
             onTextDelta: (full) => {
-              nodes = nodes.map(n => ({
-                ...n,
-                variants: (n.variants || []).map(v => (v.id === typingMsg.id ? { ...v, content: full } : v))
+              updateVariantById(typingId, (prev) => ({ ...prev, content: full }))
+            },
+            onReasoningSummaryDelta: (fullSummary) => {
+              if (typeof fullSummary === 'string') summaryBuffer = fullSummary
+              updateVariantById(typingId, (prev) => ({
+                ...prev,
+                reasoningSummary: summaryBuffer,
+                reasoningSummaryLoading: true,
               }))
-            }
+            },
+            onReasoningSummaryDone: (fullSummary) => {
+              if (typeof fullSummary === 'string') summaryBuffer = fullSummary
+              updateVariantById(typingId, (prev) => ({
+                ...prev,
+                reasoningSummary: summaryBuffer,
+                reasoningSummaryLoading: false,
+              }))
+            },
           })
         } else {
-          reply = await respond(responseOptions)
+          reply = await respond({
+            ...responseOptions,
+            onReasoningSummaryDone: (fullSummary) => {
+              if (typeof fullSummary === 'string') summaryBuffer = fullSummary
+            },
+          })
         }
       } else {
         const path = buildVisible()
         const lastUser = [...path.map(vm => vm.m)].reverse().find(m => m.role === 'user')
         reply = generatePlaceholderReply(lastUser?.content || 'Regenerated response') +
           '\n\nTip: Add your OpenAI API key in Settings to get real answers.'
+        updateVariantById(typingMsg.id, (prev) => ({
+          ...prev,
+          reasoningSummary: '',
+          reasoningSummaryLoading: false,
+        }))
       }
-      nodes = nodes.map(n => ({
-        ...n,
-        variants: (n.variants || []).map(v => (v.id === typingMsg.id ? { ...v, typing: false, error: undefined, content: reply } : v))
+      const replyText = (reply && typeof reply === 'object') ? (reply.text ?? '') : (typeof reply === 'string' ? reply : '')
+      const replySummary = (() => {
+        if (reply && typeof reply === 'object') {
+          if (typeof reply.reasoningSummary === 'string' && reply.reasoningSummary) return reply.reasoningSummary
+          return summaryBuffer
+        }
+        return summaryBuffer
+      })()
+      updateVariantById(typingMsg.id, (prev) => ({
+        ...prev,
+        typing: false,
+        error: undefined,
+        content: replyText,
+        reasoningSummary: replySummary || '',
+        reasoningSummaryLoading: false,
       }))
       persistNow()
     } catch (err) {
       const msg = err?.message || 'Something went wrong.'
-      nodes = nodes.map(n => ({
-        ...n,
-        variants: (n.variants || []).map(v => (v.id === typingMsg.id ? { ...v, typing: false, error: msg, content: (v.content === 'typing' ? '' : v.content) } : v))
+      updateVariantById(typingMsg.id, (prev) => ({
+        ...prev,
+        typing: false,
+        error: msg,
+        reasoningSummaryLoading: false,
+        content: (prev.content === 'typing' ? '' : prev.content),
       }))
       persistNow()
     } finally {
@@ -1092,16 +1292,28 @@
     const curNodeId = vm?.nodeId
     if (!curMsg || !curNodeId) return
     // Add typing assistant node after this message
-    const typingMsg = { id: nextId++, role: 'assistant', content: 'typing', time: Date.now(), typing: true, next: null }
+    const typingMsg = {
+      id: nextId++,
+      role: 'assistant',
+      content: 'typing',
+      time: Date.now(),
+      typing: true,
+      error: undefined,
+      next: null,
+      reasoningSummary: '',
+      reasoningSummaryLoading: true,
+    }
     const typingNode = { id: nextNodeId++, variants: [typingMsg], active: 0 }
     nodes = nodes.map(n => (n.id === curNodeId ? { ...n, variants: n.variants.map((v, idx) => (idx === (Number(n.active)||0) ? { ...v, next: typingNode.id } : v)) } : n))
     nodes = [...nodes, typingNode]
     persistNow()
 
     try {
-      let reply
+      let reply = null
+      let summaryBuffer = ''
       settings = loadSettings()
       const { apiKey } = settings
+      const typingId = typingMsg.id
       const history = buildVisibleUpTo(i + 1)
         .filter(m => !m.typing)
         .map(({ role, content }) => ({ role, content }))
@@ -1114,28 +1326,76 @@
           temperature: chatSettings.temperature,
           reasoningEffort: chatSettings.reasoningEffort,
           textVerbosity: chatSettings.textVerbosity,
+          reasoningSummary: chatSettings.reasoningSummary,
         }
         if (chatSettings.streaming) {
           reply = await respond({
             ...responseOptions,
             stream: true,
             onTextDelta: (full) => {
-              nodes = nodes.map(n => ({ ...n, variants: (n.variants || []).map(v => (v.id === typingMsg.id ? { ...v, content: full } : v)) }))
-            }
+              updateVariantById(typingId, (prev) => ({ ...prev, content: full }))
+            },
+            onReasoningSummaryDelta: (fullSummary) => {
+              if (typeof fullSummary === 'string') summaryBuffer = fullSummary
+              updateVariantById(typingId, (prev) => ({
+                ...prev,
+                reasoningSummary: summaryBuffer,
+                reasoningSummaryLoading: true,
+              }))
+            },
+            onReasoningSummaryDone: (fullSummary) => {
+              if (typeof fullSummary === 'string') summaryBuffer = fullSummary
+              updateVariantById(typingId, (prev) => ({
+                ...prev,
+                reasoningSummary: summaryBuffer,
+                reasoningSummaryLoading: false,
+              }))
+            },
           })
         } else {
-          reply = await respond(responseOptions)
+          reply = await respond({
+            ...responseOptions,
+            onReasoningSummaryDone: (fullSummary) => {
+              if (typeof fullSummary === 'string') summaryBuffer = fullSummary
+            },
+          })
         }
       } else {
         const lastUser = [...buildVisibleUpTo(i + 1)].reverse().find(m => m.role === 'user')
         reply = generatePlaceholderReply(lastUser?.content || curMsg.content) +
           '\n\nTip: Add your OpenAI API key in Settings to get real answers.'
+        updateVariantById(typingId, (prev) => ({
+          ...prev,
+          reasoningSummary: '',
+          reasoningSummaryLoading: false,
+        }))
       }
-      nodes = nodes.map(n => ({ ...n, variants: (n.variants || []).map(v => (v.id === typingMsg.id ? { ...v, content: reply, typing: false, error: undefined } : v)) }))
+      const replyText = (reply && typeof reply === 'object') ? (reply.text ?? '') : (typeof reply === 'string' ? reply : '')
+      const replySummary = (() => {
+        if (reply && typeof reply === 'object') {
+          if (typeof reply.reasoningSummary === 'string' && reply.reasoningSummary) return reply.reasoningSummary
+          return summaryBuffer
+        }
+        return summaryBuffer
+      })()
+      updateVariantById(typingId, (prev) => ({
+        ...prev,
+        content: replyText,
+        typing: false,
+        error: undefined,
+        reasoningSummary: replySummary || '',
+        reasoningSummaryLoading: false,
+      }))
       persistNow()
     } catch (err) {
       const msg = err?.message || 'Something went wrong.'
-      nodes = nodes.map(n => ({ ...n, variants: (n.variants || []).map(v => (v.id === typingMsg.id ? { ...v, typing: false, error: msg, content: (v.content === 'typing' ? '' : v.content) } : v)) }))
+      updateVariantById(typingMsg.id, (prev) => ({
+        ...prev,
+        typing: false,
+        error: msg,
+        reasoningSummaryLoading: false,
+        content: (prev.content === 'typing' ? '' : prev.content),
+      }))
       persistNow()
     } finally {
       // Do not auto-scroll on reply
@@ -1227,6 +1487,7 @@
     chatTopP={chatSettings.topP}
     chatTemperature={chatSettings.temperature}
     chatReasoningEffort={chatSettings.reasoningEffort}
+    chatReasoningSummary={chatSettings.reasoningSummary}
     chatTextVerbosity={chatSettings.textVerbosity}
     modelIds={modelIds}
     onToggleChatSettings={toggleChatSettings}
@@ -1237,6 +1498,7 @@
     onChangeTopP={(val) => (chatSettings = { ...chatSettings, topP: toClampedNumber(val, 0, 1) })}
     onChangeTemperature={(val) => (chatSettings = { ...chatSettings, temperature: toClampedNumber(val, 0, 2) })}
     onChangeReasoningEffort={(val) => (chatSettings = { ...chatSettings, reasoningEffort: normalizeReasoning(val) })}
+    onChangeReasoningSummary={(val) => (chatSettings = { ...chatSettings, reasoningSummary: normalizeReasoningSummary(val) })}
     onChangeTextVerbosity={(val) => (chatSettings = { ...chatSettings, textVerbosity: normalizeVerbosity(val) })}
     onInput={(val) => (input = val)}
     onAdd={(role) => addToChat(role)}

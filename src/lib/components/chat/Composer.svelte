@@ -28,6 +28,7 @@
       topP={props.chatTopP}
       temperature={props.chatTemperature}
       reasoningEffort={props.chatReasoningEffort}
+      reasoningSummary={props.chatReasoningSummary}
       textVerbosity={props.chatTextVerbosity}
       modelIds={props.modelIds}
       onToggle={props.onToggleChatSettings}
@@ -38,6 +39,7 @@
       onInputTopP={props.onChangeTopP}
       onInputTemperature={props.onChangeTemperature}
       onInputReasoningEffort={props.onChangeReasoningEffort}
+      onInputReasoningSummary={props.onChangeReasoningSummary}
       onInputTextVerbosity={props.onChangeTextVerbosity}
     />
 

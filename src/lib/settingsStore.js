@@ -13,6 +13,7 @@ const DEFAULT_PRESET_FIELDS = {
   temperature: null,
   reasoningEffort: 'none',
   textVerbosity: 'medium',
+  reasoningSummary: 'auto',
 };
 
 function makeDefaultPreset() {
@@ -41,6 +42,7 @@ function toClampedNumber(val, min, max) {
 
 const REASONING_VALUES = new Set(['none', 'minimal', 'low', 'medium', 'high']);
 const TEXT_VERBOSITY_VALUES = new Set(['low', 'medium', 'high']);
+const REASONING_SUMMARY_VALUES = new Set(['auto', 'concise', 'detailed']);
 
 function normalizePreset(raw, index = 0) {
   if (!raw || typeof raw !== 'object') return null;
@@ -52,6 +54,9 @@ function normalizePreset(raw, index = 0) {
   preset.temperature = toClampedNumber(preset.temperature, 0, 2) ?? null;
   preset.reasoningEffort = REASONING_VALUES.has(preset.reasoningEffort) ? preset.reasoningEffort : 'none';
   preset.textVerbosity = TEXT_VERBOSITY_VALUES.has(preset.textVerbosity) ? preset.textVerbosity : 'medium';
+  preset.reasoningSummary = REASONING_SUMMARY_VALUES.has(preset.reasoningSummary)
+    ? preset.reasoningSummary
+    : 'auto';
   const nameSource = typeof preset.name === 'string' && preset.name.trim()
     ? preset.name.trim()
     : `Preset ${index + 1}`;
@@ -90,6 +95,7 @@ function deriveDefaultPreset(parsed) {
     temperature: parsed?.defaultChat?.temperature ?? null,
     reasoningEffort: parsed?.defaultChat?.reasoningEffort || 'none',
     textVerbosity: parsed?.defaultChat?.textVerbosity || 'medium',
+    reasoningSummary: parsed?.defaultChat?.reasoningSummary || 'auto',
   }, 0);
   return fromDefault || makeDefaultPreset();
 }
@@ -104,6 +110,7 @@ function attachCompatFields(out) {
     temperature: active.temperature ?? null,
     reasoningEffort: active.reasoningEffort || 'none',
     textVerbosity: active.textVerbosity || 'medium',
+    reasoningSummary: active.reasoningSummary || 'auto',
   };
   out.model = active.model;
   return out;

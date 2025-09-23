@@ -21,6 +21,7 @@
 
   const REASONING_OPTIONS = ['none', 'minimal', 'low', 'medium', 'high']
   const TEXT_VERBOSITY_OPTIONS = ['low', 'medium', 'high']
+  const REASONING_SUMMARY_OPTIONS = ['auto', 'concise', 'detailed']
 
   function parseMaxTokens(value) {
     if (value === '' || value == null) return null
@@ -52,6 +53,10 @@
     return TEXT_VERBOSITY_OPTIONS.includes(value) ? value : 'medium'
   }
 
+  function parseReasoningSummary(value) {
+    return REASONING_SUMMARY_OPTIONS.includes(value) ? value : 'auto'
+  }
+
   function genPresetId() {
     return `preset_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`
   }
@@ -69,6 +74,7 @@
         temperature: null,
         reasoningEffort: 'none',
         textVerbosity: 'medium',
+        reasoningSummary: 'auto',
       }]
     }
     const updatedList = Array.isArray(local?.presets) ? local.presets : []
@@ -121,6 +127,7 @@
       temperature: base?.temperature ?? null,
       reasoningEffort: base?.reasoningEffort || 'none',
       textVerbosity: base?.textVerbosity || 'medium',
+      reasoningSummary: base?.reasoningSummary || 'auto',
     }
     local.presets = [...list, preset]
     activePresetId = preset.id
@@ -363,6 +370,18 @@
                     <option value="low">low</option>
                     <option value="medium">medium</option>
                     <option value="high">high</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span>Reasoning summary</span>
+                  <select
+                    value={activePreset.reasoningSummary || 'auto'}
+                    onchange={(event) => updateActivePreset({ reasoningSummary: parseReasoningSummary(event.currentTarget.value) })}
+                    aria-label="Reasoning summary"
+                  >
+                    <option value="auto">auto</option>
+                    <option value="concise">concise</option>
+                    <option value="detailed">detailed</option>
                   </select>
                 </label>
                 <label class="field">
