@@ -31,11 +31,13 @@
   let editingText = $state('')
   // editing DOM is handled in MessageBubble
   // Branching helpers (node-based)
-  import { buildVisible as _buildVisible, buildVisibleUpTo as _buildVisibleUpTo, findParentId } from './branching.js'
+  import { buildVisible as _buildVisible, buildVisibleUpTo as _buildVisibleUpTo, findParentId, validateTree } from './branching.js'
   function buildVisible() { return _buildVisible(nodes, rootId) }
   function buildVisibleUpTo(indexExclusive) { return _buildVisibleUpTo(nodes, rootId, indexExclusive) }
   // Graph root node id (each node stores its active variant index)
   let rootId = $state(1)
+  // Validate chat graph integrity and surface issues to the user
+  let integrity = $derived(validateTree(nodes, rootId))
   function computeFollowingMap() {
     const map = {}
     const visible = buildVisible()
@@ -904,6 +906,13 @@
 </script>
 
 <section class="chat-shell">
+  {#if !integrity.ok}
+    <div class="integrity-bar">
+      <div class="notice error" role="status" aria-live="polite">
+        Chat structure issue: {integrity.problems.join(' • ')}
+      </div>
+    </div>
+  {/if}
   <MessageList
     bind:this={listCmp}
     items={buildVisible()}
@@ -987,7 +996,7 @@
   .chat-shell {
     height: 100%;
     display: grid;
-    grid-template-rows: 1fr auto;
+    grid-template-rows: auto 1fr auto; /* notice | messages | composer */
     background: var(--bg);
     color: var(--text);
     padding-inline: var(--page-gutter);
@@ -1019,4 +1028,8 @@
   /* Per-chat settings menu styles removed: styled in ChatSettingsPopover.svelte */
 
   /* Typing indicator styles removed: styled in MessageBubble.svelte */
+
+  /* Integrity notice */
+  .integrity-bar { max-width: var(--page-max); margin: 10px auto; width: 100%; display: flex; }
+  .notice { font-size: 0.88rem; line-height: 1.3; padding: 6px 10px; border-radius: 10px; border: 1px solid color-mix(in srgb, #ef4444 45%, transparent); background: color-mix(in srgb, #ef4444 9%, transparent); color: color-mix(in srgb, #b91c1c 92%, transparent); width: 100%; }
 </style>
