@@ -165,11 +165,6 @@
       activeTab = id
     }
   }
-  function clearKey() {
-    local.apiKey = ''
-    persistSettings()
-  }
-
   async function refreshModelsNow() {
     refreshMsg = ''
     if (!local.apiKey) {
@@ -249,9 +244,6 @@
                   />
                   <button class="icon-btn" title={revealKey ? 'Hide key' : 'Show key'} onclick={() => (revealKey = !revealKey)} aria-label={revealKey ? 'Hide key' : 'Show key'}>
                     <Icon name={revealKey ? 'visibility_off' : 'visibility'} size={20} />
-                  </button>
-                  <button class="icon-btn" title="Clear key" onclick={clearKey} aria-label="Clear key">
-                    <Icon name="backspace" size={20} />
                   </button>
                   <button class="icon-btn" title="Refresh models" onclick={refreshModelsNow} aria-label="Refresh models" disabled={refreshing}>
                     <Icon name="autorenew" size={20} />
