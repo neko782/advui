@@ -8,6 +8,9 @@
 </script>
 
 <div class="messages" bind:this={listEl}>
+  {#if props.notice}
+    <div class="notice error" role="status" aria-live="polite">{props.notice}</div>
+  {/if}
   {#each props.items as vm (vm.m.id)}
     <MessageItem
       vm={vm}
@@ -43,4 +46,5 @@
 
 <style>
   .messages { overflow: auto; padding: 16px 0 8px; display: grid; align-content: start; gap: 8px; }
+  .notice { font-size: 0.88rem; line-height: 1.3; padding: 6px 10px; border-radius: 10px; border: 1px solid color-mix(in srgb, #ef4444 45%, transparent); background: color-mix(in srgb, #ef4444 9%, transparent); color: color-mix(in srgb, #b91c1c 92%, transparent); max-width: var(--page-max); justify-self: center; width: min(720px, 92%); }
 </style>

@@ -906,16 +906,10 @@
 </script>
 
 <section class="chat-shell">
-  {#if !integrity.ok}
-    <div class="integrity-bar">
-      <div class="notice error" role="status" aria-live="polite">
-        Chat structure issue: {integrity.problems.join(' • ')}
-      </div>
-    </div>
-  {/if}
   <MessageList
     bind:this={listCmp}
     items={buildVisible()}
+    notice={!integrity.ok ? `Chat structure issue: ${integrity.problems.join(' • ')}` : ''}
     total={nodes.length}
     locked={locked}
     editingId={editingId}
@@ -996,7 +990,7 @@
   .chat-shell {
     height: 100%;
     display: grid;
-    grid-template-rows: auto 1fr auto; /* notice | messages | composer */
+    grid-template-rows: 1fr auto;
     background: var(--bg);
     color: var(--text);
     padding-inline: var(--page-gutter);
@@ -1029,7 +1023,5 @@
 
   /* Typing indicator styles removed: styled in MessageBubble.svelte */
 
-  /* Integrity notice */
-  .integrity-bar { max-width: var(--page-max); margin: 10px auto; width: 100%; display: flex; }
-  .notice { font-size: 0.88rem; line-height: 1.3; padding: 6px 10px; border-radius: 10px; border: 1px solid color-mix(in srgb, #ef4444 45%, transparent); background: color-mix(in srgb, #ef4444 9%, transparent); color: color-mix(in srgb, #b91c1c 92%, transparent); width: 100%; }
+  /* Integrity notice now rendered inside MessageList */
 </style>
