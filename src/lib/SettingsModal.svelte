@@ -21,6 +21,7 @@
   }
   function save() {
     saveSettings(local)
+    try { props.onSaved?.() } catch {}
     close()
   }
   function clearKey() {
@@ -87,8 +88,8 @@
 
         <hr class="section" />
 
-        <div class="group">
-          <div class="group-title">Default Chat</div>
+      <div class="group">
+        <div class="group-title">Default Chat</div>
           <label class="field">
             <span>Model</span>
             <input
@@ -114,6 +115,21 @@
             />
             <span class="switch-ui" aria-hidden="true"></span>
             <span class="switch-label">Stream</span>
+          </label>
+        </div>
+        
+        <hr class="section" />
+
+        <div class="group">
+          <div class="group-title">Developer</div>
+          <label class="switch" title="Debug Mode">
+            <input
+              type="checkbox"
+              bind:checked={local.debug}
+              aria-label="Debug Mode"
+            />
+            <span class="switch-ui" aria-hidden="true"></span>
+            <span class="switch-label">Debug Mode</span>
           </label>
         </div>
       </div>

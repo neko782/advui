@@ -103,8 +103,9 @@ export async function saveChatContent(id, { nodes, settings, rootId }) {
   const nextRootId = (rootId != null)
     ? rootId
     : (existing?.rootId != null ? existing.rootId : (nextNodesCandidate[0]?.id || 1))
-  // Enforce single-parent invariant before persisting
-  const nextNodes = enforceUniqueParents(nextNodesCandidate, nextRootId)
+  // Enforce single-parent invariant before persisting (skip in debug mode)
+  const dbg = !!defaults?.debug
+  const nextNodes = dbg ? nextNodesCandidate : enforceUniqueParents(nextNodesCandidate, nextRootId)
   const updated = {
     ...(existing || { id }),
     id,

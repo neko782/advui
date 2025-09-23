@@ -17,7 +17,7 @@
 
 <div class={`row ${m.role}`}>
   <div class={`stack ${m.role} ${isEditing ? 'editing' : ''}`}>
-    <MessageMeta role={m.role} label={formatRole(m.role)} locked={props.locked} onSetRole={(r) => props.onSetRole?.(m.id, r)} />
+    <MessageMeta role={m.role} label={formatRole(m.role)} locked={props.locked} debug={props.debug} messageId={m.id} onSetRole={(r) => props.onSetRole?.(m.id, r)} />
     <MessageBubble
       message={m}
       isEditing={isEditing}
@@ -34,6 +34,7 @@
       total={props.total}
       visibleCount={props.visibleCount}
       locked={props.locked}
+      debug={props.debug}
       isEditing={isEditing}
       branchesLength={branchesLength}
       branchIndex={branchIndex}
@@ -52,6 +53,7 @@
       onEdit={props.onEdit}
       onMoveDown={doMoveDown}
       onMoveUp={doMoveUp}
+      onDebugFuckBranch={props.onDebugFuckBranch}
     />
   </div>
 </div>

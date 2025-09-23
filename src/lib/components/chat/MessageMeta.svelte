@@ -7,6 +7,9 @@
   <div class="send-group" aria-haspopup="menu" title="Change role">
     <button class="role-badge" aria-label={`Role: ${props.label || props.role}`} disabled={props.locked}>
       {props.label || props.role}
+      {#if props.debug}
+        <span class="id-tag">· {props.messageId}</span>
+      {/if}
     </button>
     <div class="send-menu" role="menu" aria-label="Change role">
       <button role="menuitem" class="menu-item" onclick={() => props.onSetRole?.('user')} aria-label="Set role user" disabled={props.locked}>
@@ -49,4 +52,5 @@
   .menu-item { width: 100%; text-align: left; background: transparent; border: 1px solid var(--border); border-radius: 8px; color: var(--text); padding: 8px 10px; font: inherit; display: flex; align-items: center; gap: 8px; }
   .menu-item:disabled { opacity: .6; cursor: not-allowed; }
   .role-badge:disabled { opacity: .6; cursor: not-allowed; }
+  .id-tag { opacity: .7; font-feature-settings: 'tnum' 1; }
 </style>

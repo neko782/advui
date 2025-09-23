@@ -17,6 +17,7 @@
       total={props.total}
       visibleCount={(props.items?.length || 0)}
       locked={props.locked}
+      debug={props.debug}
       editingId={props.editingId}
       editingText={props.editingText}
       hasFollowingAssistant={props.followingMap?.[vm.i]?.has}
@@ -40,6 +41,7 @@
       onEdit={props.onEdit}
       onMoveDown={props.onMoveDown}
       onMoveUp={props.onMoveUp}
+      onDebugFuckBranch={props.onDebugFuckBranch}
     />
   {/each}
 </div>

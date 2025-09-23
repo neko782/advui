@@ -5,7 +5,7 @@ export const SETTINGS_KEY = 'openai.settings.v1';
 // { apiKey: string, defaultChat: { model: string, streaming: boolean }, model: string }
 // Note: `model` at top-level is kept for backward compatibility and mirrors defaultChat.model
 export function loadSettings() {
-  const defaults = { apiKey: '', defaultChat: { model: 'gpt-4o-mini', streaming: true } };
+  const defaults = { apiKey: '', defaultChat: { model: 'gpt-4o-mini', streaming: true }, debug: false };
   try {
     const raw = localStorage.getItem(SETTINGS_KEY);
     if (!raw) return { ...defaults, model: defaults.defaultChat.model };
@@ -16,11 +16,13 @@ export function loadSettings() {
         ? parsed.defaultChat.streaming
         : true
     );
+    const debug = (typeof parsed?.debug === 'boolean') ? !!parsed.debug : false;
     const out = {
       apiKey: parsed?.apiKey || '',
       defaultChat: { model, streaming },
       // Preserve legacy top-level model for any older callers
       model,
+      debug,
     };
     return out;
   } catch {
@@ -36,6 +38,7 @@ export function saveSettings(next) {
     defaultChat: { model, streaming },
     // Keep mirrored top-level model for compatibility
     model,
+    debug: !!next?.debug,
   };
   localStorage.setItem(SETTINGS_KEY, JSON.stringify(data));
 }

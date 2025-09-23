@@ -8,6 +8,7 @@
   let selectedId = $state(null)
   let sidebarOpen = $state(true)
   let showSettings = $state(false)
+  let settingsVersion = $state(0)
 
   const SIDEBAR_KEY = 'ui.sidebar.open.v1'
   function loadSidebarPref() {
@@ -104,12 +105,12 @@
   <div class="chat-pane">
     {#if selectedId}
       {#key selectedId}
-        <Chat chatId={selectedId} onNewChat={onNewChat} onChatUpdated={onChatUpdated} />
+        <Chat chatId={selectedId} onNewChat={onNewChat} onChatUpdated={onChatUpdated} settingsVersion={settingsVersion} />
       {/key}
     {/if}
   </div>
   <div class="app-fade"></div>
-  <SettingsModal open={showSettings} onClose={() => (showSettings = false)} />
+  <SettingsModal open={showSettings} onClose={() => (showSettings = false)} onSaved={() => { settingsVersion = Date.now() }} />
 </div>
 
 <style>

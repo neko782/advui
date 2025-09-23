@@ -18,6 +18,7 @@
   let nextId = $state(1)
   let nextNodeId = $state(1)
   let settings = $state(loadSettings())
+  let debug = $state(!!settings?.debug)
   // Group per-chat settings in a single object (seeded from global defaults)
   let chatSettings = $state({
     model: (settings?.defaultChat?.model) || 'gpt-4o-mini',
@@ -263,11 +264,21 @@
     } catch {}
   })
 
+  // Re-read settings (including debug flag) when settingsVersion changes
+  $effect(() => {
+    const v = props.settingsVersion
+    try {
+      settings = loadSettings()
+      debug = !!settings?.debug
+    } catch {}
+  })
+
   // Persist chat content and settings on change
   // Keep the signature non-reactive to avoid effect feedback loops
   let persistSig = ''
   // Ensure graph invariant: no node has multiple parents
   function sanitizeGraphIfNeeded() {
+    if (debug) return // allow broken graphs in debug mode
     try {
       const check = validateTree(nodes, rootId)
       if (check?.details?.multipleParents && check.details.multipleParents.size > 0) {
@@ -770,6 +781,18 @@
     editingText = ''
   }
 
+  // Debug: clone a variant but keep its existing next pointer (intentionally breaks invariant)
+  function debugFuckUpBranch(id) {
+    if (locked) return
+    const loc = (function findNodeByMessageId(mid){ for (const n of nodes||[]) { const i=(n?.variants||[]).findIndex(v=>v?.id===mid); if(i>=0) return {node:n,index:i} } return {node:null,index:-1} })(id)
+    const node = loc?.node
+    const cur = node?.variants?.[loc.index]
+    if (!node || !cur) return
+    const branched = { id: nextId++, role: cur.role, content: cur.content, time: Date.now(), typing: false, error: undefined, next: (cur.next != null ? cur.next : null) }
+    nodes = nodes.map(n => (n.id === node.id ? { ...n, variants: [...(n.variants || []), branched], active: (n.variants?.length || 0) } : n))
+    persistNow()
+  }
+
   
 
   // Removed global auto-scroll effect to avoid scrolling on replies/role changes
@@ -938,6 +961,7 @@
     notice={[sanitizerNotice, validationNotice].filter(Boolean).join(' ')}
     total={nodes.length}
     locked={locked}
+    debug={debug}
     editingId={editingId}
     editingText={editingText}
     followingMap={computeFollowingMap()}
@@ -956,6 +980,7 @@
     onEdit={(id) => editMessage(id)}
     onMoveDown={(id) => moveDown(id)}
     onMoveUp={(id) => moveUp(id)}
+    onDebugFuckBranch={(id) => debugFuckUpBranch(id)}
   />
 
   <Composer
