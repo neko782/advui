@@ -168,3 +168,73 @@ export function validateTree(nodes, rootId) {
 
   return { ok: problems.length === 0, problems, details }
 }
+
+// Enforce the invariant: each node has at most one parent (incoming edge).
+// If multiple variants point to the same target node, keep one and null out the rest.
+// Preference order for which incoming edge to keep:
+//   1) The edge that lies on the visible path from root (active variants)
+//   2) Otherwise, the first encountered incoming edge
+export function enforceUniqueParents(nodes, rootId) {
+  const list = Array.isArray(nodes)
+    ? nodes.map(n => ({ ...n, variants: (n?.variants || []).map(v => ({ ...v })) }))
+    : []
+  if (!list.length) return list
+
+  const byId = new Map(list.map(n => [Number(n?.id), n]))
+  const allNodeIds = new Set(byId.keys())
+
+  // Build incoming edges: tgt -> [{ nodeId, variantIndex }]
+  const incoming = new Map()
+  for (const n of list) {
+    const fromId = Number(n?.id)
+    const variants = Array.isArray(n?.variants) ? n.variants : []
+    for (let i = 0; i < variants.length; i++) {
+      const v = variants[i]
+      const t = (v && v.next != null) ? Number(v.next) : null
+      if (t == null || !allNodeIds.has(t)) continue
+      const arr = incoming.get(t) || []
+      arr.push({ nodeId: fromId, variantIndex: i })
+      incoming.set(t, arr)
+    }
+  }
+
+  // Compute preferred edges from visible path
+  const keepEdges = new Set()
+  if (rootId != null && allNodeIds.has(Number(rootId))) {
+    let cur = Number(rootId)
+    const guard = new Set()
+    while (cur != null && !guard.has(cur)) {
+      guard.add(cur)
+      const node = byId.get(cur)
+      if (!node) break
+      const variants = Array.isArray(node.variants) ? node.variants : []
+      const vi = Math.max(0, Math.min(variants.length - 1, Number(node.active) || 0))
+      const m = variants[vi]
+      if (!m) break
+      const nxt = (m && m.next != null) ? Number(m.next) : null
+      if (nxt == null) break
+      keepEdges.add(`${node.id}->${nxt}`)
+      cur = nxt
+    }
+  }
+
+  // For targets with multiple parents, keep one; clear others.
+  for (const [tgt, arr] of incoming.entries()) {
+    if (!Array.isArray(arr) || arr.length <= 1) continue
+    let keep = null
+    for (const r of arr) {
+      if (keepEdges.has(`${r.nodeId}->${tgt}`)) { keep = r; break }
+    }
+    if (!keep) keep = arr[0]
+    for (const r of arr) {
+      if (r.nodeId === keep.nodeId && r.variantIndex === keep.variantIndex) continue
+      const n = byId.get(r.nodeId)
+      if (!n) continue
+      const v = (n.variants || [])[r.variantIndex]
+      if (!v) continue
+      n.variants[r.variantIndex] = { ...v, next: null }
+    }
+  }
+
+  return [...byId.values()]
+}

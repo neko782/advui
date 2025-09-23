@@ -31,13 +31,16 @@
   let editingText = $state('')
   // editing DOM is handled in MessageBubble
   // Branching helpers (node-based)
-  import { buildVisible as _buildVisible, buildVisibleUpTo as _buildVisibleUpTo, findParentId, validateTree } from './branching.js'
+  import { buildVisible as _buildVisible, buildVisibleUpTo as _buildVisibleUpTo, findParentId, validateTree, enforceUniqueParents } from './branching.js'
   function buildVisible() { return _buildVisible(nodes, rootId) }
   function buildVisibleUpTo(indexExclusive) { return _buildVisibleUpTo(nodes, rootId, indexExclusive) }
   // Graph root node id (each node stores its active variant index)
   let rootId = $state(1)
   // Validate chat graph integrity and surface issues to the user
   let integrity = $derived(validateTree(nodes, rootId))
+  const BUG_NOTICE = 'this indicates a bug with the program. please try to reproduce and report.'
+  let sanitizerNotice = $state('')
+  let validationNotice = $derived(() => (!integrity.ok ? `Chat structure issue: ${integrity.problems.join(' • ')} • ${BUG_NOTICE}` : ''))
   function computeFollowingMap() {
     const map = {}
     const visible = buildVisible()
@@ -263,6 +266,23 @@
   // Persist chat content and settings on change
   // Keep the signature non-reactive to avoid effect feedback loops
   let persistSig = ''
+  // Ensure graph invariant: no node has multiple parents
+  function sanitizeGraphIfNeeded() {
+    try {
+      const check = validateTree(nodes, rootId)
+      if (check?.details?.multipleParents && check.details.multipleParents.size > 0) {
+        // Record a user-facing notice before mutating
+        try {
+          const ids = [...check.details.multipleParents.keys()]
+          const sample = ids.slice(0, 5).join(', ')
+          const more = ids.length > 5 ? '…' : ''
+          sanitizerNotice = `Auto-fixed chat structure: multiple parents for node(s) ${sample}${more}. ${BUG_NOTICE}`
+        } catch { sanitizerNotice = `Auto-fixed chat structure: multiple parents detected. ${BUG_NOTICE}` }
+        const sanitized = enforceUniqueParents(nodes, rootId)
+        nodes = sanitized
+      }
+    } catch {}
+  }
   function computePersistSig() {
     try {
       const mini = (nodes || []).map(n => {
@@ -275,6 +295,8 @@
   // Immediate persistence helper to avoid relying solely on the reactive effect
   async function persistNow() {
     try {
+      // Enforce invariant before persisting
+      sanitizeGraphIfNeeded()
       const cid = props.chatId
       if (!cid || !mounted) return
       // Persist full graph
@@ -302,6 +324,8 @@
     const cid = props.chatId
     if (!cid || !ready || !mounted) return
     try {
+      // Enforce invariant proactively on any change
+      sanitizeGraphIfNeeded()
       const sig = computePersistSig()
       if (sig === persistSig) return
       persistSig = sig
@@ -672,7 +696,9 @@
     const cur = curNode?.variants?.[loc.index]
     if (!curNode || !cur) return
     const val = String(editingText)
-    const newVariant = { id: nextId++, role: cur.role, content: val, time: Date.now(), typing: false, error: undefined, next: cur.next ?? null }
+    // Important: a branch should not inherit the existing variant's `next`.
+    // Start a fresh path by clearing `next` on the new variant.
+    const newVariant = { id: nextId++, role: cur.role, content: val, time: Date.now(), typing: false, error: undefined, next: null }
     nodes = nodes.map(n => (n.id === curNode.id ? { ...n, variants: [...(n.variants || []), newVariant], active: (n.variants?.length || 0) } : n))
     persistNow()
     editingId = null
@@ -909,7 +935,7 @@
   <MessageList
     bind:this={listCmp}
     items={buildVisible()}
-    notice={!integrity.ok ? `Chat structure issue: ${integrity.problems.join(' • ')}` : ''}
+    notice={[sanitizerNotice, validationNotice].filter(Boolean).join(' • ')}
     total={nodes.length}
     locked={locked}
     editingId={editingId}

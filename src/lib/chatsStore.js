@@ -2,6 +2,7 @@
 // We keep selectedId in localStorage for quick access.
 
 import { loadSettings } from './settingsStore.js'
+import { enforceUniqueParents } from './branching.js'
 import { getAllChats as storeGetAll, getChat as storeGetOne, putChat as storePut } from './idb.js'
 
 export const SELECTED_KEY = 'openai.chats.selected.v1'
@@ -98,10 +99,12 @@ export async function saveChatContent(id, { nodes, settings, rootId }) {
         ? existing.settings.streaming
         : (typeof defaults?.defaultChat?.streaming === 'boolean' ? defaults.defaultChat.streaming : true))
   }
-  const nextNodes = Array.isArray(nodes) ? nodes : (existing?.nodes || [])
+  const nextNodesCandidate = Array.isArray(nodes) ? nodes : (existing?.nodes || [])
   const nextRootId = (rootId != null)
     ? rootId
-    : (existing?.rootId != null ? existing.rootId : (nextNodes[0]?.id || 1))
+    : (existing?.rootId != null ? existing.rootId : (nextNodesCandidate[0]?.id || 1))
+  // Enforce single-parent invariant before persisting
+  const nextNodes = enforceUniqueParents(nextNodesCandidate, nextRootId)
   const updated = {
     ...(existing || { id }),
     id,
