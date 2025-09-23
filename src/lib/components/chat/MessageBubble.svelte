@@ -5,12 +5,20 @@
   let el = $state(null)
   let reasoningOpen = $state(false)
   let lastReasoningId = $state(null)
-  const reasoningSummary = $derived(() => (typeof props.message?.reasoningSummary === 'string' ? props.message.reasoningSummary : ''))
+  const reasoningSummaryText = $derived(() => {
+    const raw = props.message?.reasoningSummary
+    if (typeof raw === 'string') return raw
+    if (Array.isArray(raw)) {
+      try { return raw.filter((part) => typeof part === 'string').join('') } catch { return '' }
+    }
+    return ''
+  })
+  const hasReasoningSummary = $derived(() => reasoningSummaryText.trim().length > 0)
   const showReasoning = $derived(() => {
     const msg = props.message
     if (!msg || msg.role !== 'assistant') return false
     if (msg.reasoningSummaryLoading) return true
-    return reasoningSummary.trim().length > 0
+    return hasReasoningSummary
   })
 
   // When entering edit mode, seed text and move caret
@@ -79,7 +87,7 @@
           <span class="reasoning-label">Reasoning</span>
           {#if props.message.reasoningSummaryLoading}
             <span class="reasoning-status">loading…</span>
-          {:else if reasoningSummary.trim().length}
+          {:else if hasReasoningSummary}
             <span class="reasoning-status">{reasoningOpen ? 'hide' : 'show'}</span>
           {:else}
             <span class="reasoning-status">not available</span>
@@ -90,8 +98,8 @@
           <div class="reasoning-body">
             {#if props.message.reasoningSummaryLoading}
               <p class="reasoning-placeholder">Model is still summarizing…</p>
-            {:else if reasoningSummary.trim().length}
-              {@html renderMarkdown(reasoningSummary)}
+            {:else if hasReasoningSummary}
+              {@html renderMarkdown(reasoningSummaryText)}
             {:else}
               <p class="reasoning-placeholder">No reasoning summary was provided.</p>
             {/if}
