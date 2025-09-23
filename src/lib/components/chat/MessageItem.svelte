@@ -25,9 +25,7 @@
       onEditInput={(t) => props.onEditInput?.(t)}
       onEditKeydown={props.onEditKeydown}
     />
-    {#if m?.error}
-      <div class="notice error" role="status" aria-live="polite">Error: {m.error}</div>
-    {/if}
+    <!-- Error notices are now centralized at the list bottom -->
     <MessageActions
       message={m}
       index={vm.i}

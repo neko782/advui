@@ -63,7 +63,7 @@
     </button>
     {#if props.debug}
       <button class="action-btn debug" onclick={() => props.onDebugFuckBranch?.(m.id)} aria-label="Fuck up branching" title="Fuck up branching" disabled={props.locked || m.typing}>
-        Fuck up branching
+        <Icon name="dangerous" size={20} />
       </button>
     {/if}
   {/if}
@@ -96,5 +96,5 @@
   .action-btn:hover { color: #ffffff; }
   .action-btn:focus-visible { color: #ffffff; }
   .action-btn:disabled { opacity: .5; cursor: not-allowed; }
-  .action-btn.debug { padding: 0 8px; width: auto; height: 24px; border: 1px solid var(--border); color: var(--text); }
+  /* No special styles for .debug to keep consistency with other buttons */
 </style>

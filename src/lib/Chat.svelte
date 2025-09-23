@@ -42,6 +42,25 @@
   const BUG_NOTICE = 'This indicates a bug in the app. Please try to reproduce it and report it.'
   let sanitizerNotice = $state('')
   let validationNotice = $derived(!integrity.ok ? `Chat structure issues detected: ${integrity.problems.join(' • ')}. ${BUG_NOTICE}` : '')
+  // Surface latest generation error (if any) via shared notice infrastructure
+  let generationNotice = $derived((() => {
+    try {
+      const vis = buildVisible()
+      for (let i = vis.length - 1; i >= 0; i--) {
+        const mm = vis[i]?.m
+        if (mm?.error) {
+          const msg = String(mm.error || '')
+          return msg.startsWith('Error:') ? msg : `Error: ${msg}`
+        }
+      }
+    } catch {}
+    return ''
+  })())
+  // Track last dismissed notice to avoid re-showing the same text
+  let dismissedNotice = $state('')
+  let assembledNotice = $derived([generationNotice, sanitizerNotice, validationNotice].filter(Boolean).join(' '))
+  let visibleNotice = $derived((assembledNotice && assembledNotice !== dismissedNotice) ? assembledNotice : '')
+  function dismissNotice() { dismissedNotice = assembledNotice }
   function computeFollowingMap() {
     const map = {}
     const visible = buildVisible()
@@ -204,6 +223,7 @@
           rootId = nextRootId
           editingId = null
           editingText = ''
+          dismissedNotice = ''
           // Align persistence signature to loaded state
           persistSig = nextPersistSig
         } finally {
@@ -237,6 +257,7 @@
           rootId = nextRootId
           editingId = null
           editingText = ''
+          dismissedNotice = ''
           persistSig = nextPersistSig
         } finally { ready = true }
       }, 0)
@@ -265,11 +286,25 @@
   })
 
   // Re-read settings (including debug flag) when settingsVersion changes
+  // Guard against running on every flush by tracking the last applied version.
+  let lastSettingsVersion = 0
   $effect(() => {
-    const v = props.settingsVersion
+    const v = Number(props.settingsVersion) || 0
+    if (v === lastSettingsVersion) return
+    lastSettingsVersion = v
     try {
-      settings = loadSettings()
-      debug = !!settings?.debug
+      const next = loadSettings()
+      // Only update if something actually changed to avoid unnecessary flushes
+      const changed = (
+        settings?.apiKey !== next.apiKey ||
+        settings?.defaultChat?.model !== next?.defaultChat?.model ||
+        !!settings?.defaultChat?.streaming !== !!next?.defaultChat?.streaming ||
+        !!settings?.debug !== !!next?.debug
+      )
+      if (changed) {
+        settings = next
+        debug = !!next?.debug
+      }
     } catch {}
   })
 
@@ -958,13 +993,14 @@
   <MessageList
     bind:this={listCmp}
     items={buildVisible()}
-    notice={[sanitizerNotice, validationNotice].filter(Boolean).join(' ')}
+    notice={visibleNotice}
     total={nodes.length}
     locked={locked}
     debug={debug}
     editingId={editingId}
     editingText={editingText}
     followingMap={computeFollowingMap()}
+    onDismissNotice={dismissNotice}
     onSetRole={(id, role) => setMessageRole(id, role)}
     onEditInput={(t) => onEditableInput(t)}
     onEditKeydown={onEditableKeydown}
