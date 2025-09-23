@@ -754,7 +754,9 @@
     const target = node?.variants?.[loc.index]
     if (!node || !target || target.role !== 'assistant' || target.typing) return
     // Create a new assistant variant within the same node and stream into it
-    const typingMsg = { id: nextId++, role: 'assistant', content: 'typing', time: Date.now(), typing: true, error: undefined, next: target.next ?? null }
+    // Important: do NOT inherit the old variant's `next` pointer.
+    // This is a branch; it should end at the regenerated response.
+    const typingMsg = { id: nextId++, role: 'assistant', content: 'typing', time: Date.now(), typing: true, error: undefined, next: null }
     nodes = nodes.map(n => (n.id === node.id ? { ...n, variants: [...(n.variants || []), typingMsg], active: (n.variants?.length || 0) } : n))
     try {
       let reply
