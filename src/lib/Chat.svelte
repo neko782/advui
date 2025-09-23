@@ -38,9 +38,9 @@
   let rootId = $state(1)
   // Validate chat graph integrity and surface issues to the user
   let integrity = $derived(validateTree(nodes, rootId))
-  const BUG_NOTICE = 'this indicates a bug with the program. please try to reproduce and report.'
+  const BUG_NOTICE = 'This indicates a bug in the app. Please try to reproduce it and report it.'
   let sanitizerNotice = $state('')
-  let validationNotice = $derived(() => (!integrity.ok ? `Chat structure issue: ${integrity.problems.join(' • ')} • ${BUG_NOTICE}` : ''))
+  let validationNotice = $derived(!integrity.ok ? `Chat structure issues detected: ${integrity.problems.join(' • ')}. ${BUG_NOTICE}` : '')
   function computeFollowingMap() {
     const map = {}
     const visible = buildVisible()
@@ -276,8 +276,8 @@
           const ids = [...check.details.multipleParents.keys()]
           const sample = ids.slice(0, 5).join(', ')
           const more = ids.length > 5 ? '…' : ''
-          sanitizerNotice = `Auto-fixed chat structure: multiple parents for node(s) ${sample}${more}. ${BUG_NOTICE}`
-        } catch { sanitizerNotice = `Auto-fixed chat structure: multiple parents detected. ${BUG_NOTICE}` }
+          sanitizerNotice = `Auto-fixed chat structure issue: multiple parents detected for node(s) ${sample}${more}. ${BUG_NOTICE}`
+        } catch { sanitizerNotice = `Auto-fixed chat structure issue: multiple parents detected. ${BUG_NOTICE}` }
         const sanitized = enforceUniqueParents(nodes, rootId)
         nodes = sanitized
       }
@@ -935,7 +935,7 @@
   <MessageList
     bind:this={listCmp}
     items={buildVisible()}
-    notice={[sanitizerNotice, validationNotice].filter(Boolean).join(' • ')}
+    notice={[sanitizerNotice, validationNotice].filter(Boolean).join(' ')}
     total={nodes.length}
     locked={locked}
     editingId={editingId}
