@@ -3,12 +3,14 @@
   import Sidebar from './lib/components/Sidebar.svelte'
   import SettingsModal from './lib/SettingsModal.svelte'
   import { loadAll, getChats, createChat, setSelected, getChat, deleteChat, renameChat } from './lib/chatsStore.js'
+  import { loadSettings } from './lib/settingsStore.js'
 
   let chats = $state([])
   let selectedId = $state(null)
   let sidebarOpen = $state(true)
   let showSettings = $state(false)
   let settingsVersion = $state(0)
+  let presets = $state([])
 
   const SIDEBAR_KEY = 'ui.sidebar.open.v1'
   function loadSidebarPref() {
@@ -42,6 +44,15 @@
     }
   }
 
+  function syncPresets() {
+    try {
+      const settings = loadSettings()
+      presets = Array.isArray(settings?.presets) ? settings.presets : []
+    } catch {
+      presets = []
+    }
+  }
+
   async function ensureOneChat() {
     const all = await getChats()
     if (!all.length) {
@@ -55,6 +66,7 @@
     // Defer initial population to avoid mutating state during mount flush
     setTimeout(async () => {
       sidebarOpen = loadSidebarPref()
+      syncPresets()
       await ensureOneChat()
       await refresh()
     }, 0)
@@ -64,8 +76,16 @@
     setSelected(id)
     selectedId = id
   }
-  async function onNewChat() {
-    const c = await createChat()
+  async function onNewChat(options = {}) {
+    const settings = loadSettings()
+    const list = Array.isArray(settings?.presets) ? settings.presets : []
+    const requestedId = typeof options?.presetId === 'string' ? options.presetId : null
+    const requested = requestedId ? list.find(p => p?.id === requestedId) : null
+    const preset = requested || list[0] || null
+    const initial = preset
+      ? { presetId: preset.id, preset }
+      : {}
+    const c = await createChat(initial)
     selectedId = c.id
     await refresh()
   }
@@ -110,6 +130,7 @@
     open={sidebarOpen}
     chats={chats}
     selectedId={selectedId}
+    presets={presets}
     onSelect={onSelectChat}
     onNewChat={onNewChat}
     onDeleteChat={onDeleteChat}
@@ -125,7 +146,14 @@
     {/if}
   </div>
   <div class="app-fade"></div>
-  <SettingsModal open={showSettings} onClose={() => (showSettings = false)} onSaved={() => { settingsVersion = Date.now() }} />
+  <SettingsModal
+    open={showSettings}
+    onClose={() => (showSettings = false)}
+    onSaved={() => {
+      settingsVersion = Date.now()
+      syncPresets()
+    }}
+  />
 </div>
 
 <style>

@@ -10,13 +10,23 @@ export async function getClient() {
   return new OpenAI({ apiKey, dangerouslyAllowBrowser: true })
 }
 
+function pickActivePreset(settings) {
+  const list = Array.isArray(settings?.presets) ? settings.presets : []
+  if (!list.length) return { model: 'gpt-4o-mini', streaming: true }
+  const selected = typeof settings?.selectedPresetId === 'string'
+    ? list.find(p => p?.id === settings.selectedPresetId)
+    : null
+  return selected || list[0] || { model: 'gpt-4o-mini', streaming: true }
+}
+
 // Create a response using either a single prompt string or an array of messages
 // Messages should be of the form: { role: 'system'|'user'|'assistant', content: string }
 export async function respond({ prompt, messages, model, stream = false, onTextDelta, onEvent }) {
   const { apiKey } = loadSettings()
   if (!apiKey) throw new Error('Missing OpenAI API key. Set it in Settings.')
   const s = loadSettings()
-  const useModel = model || s?.defaultChat?.model || s?.model || 'gpt-4o-mini'
+  const preset = pickActivePreset(s)
+  const useModel = model || preset?.model || 'gpt-4o-mini'
 
   // SDK call only
   const client = await getClient()

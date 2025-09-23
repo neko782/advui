@@ -9,6 +9,43 @@ export const SELECTED_KEY = 'openai.chats.selected.v1'
 
 function safeParse(raw, fallback) { try { return JSON.parse(raw) } catch { return fallback } }
 
+function resolvePreset(settings, preferences = {}) {
+  const list = Array.isArray(settings?.presets) ? settings.presets : []
+  const byId = (id) => list.find(p => p && typeof p.id === 'string' && p.id === id)
+  let chosen = null
+  if (preferences?.presetId && typeof preferences.presetId === 'string') {
+    chosen = byId(preferences.presetId)
+  }
+  if (!chosen && preferences?.preset && typeof preferences.preset === 'object') {
+    const p = preferences.preset
+    const id = typeof p.id === 'string' ? p.id : null
+    chosen = id ? byId(id) : null
+    if (!chosen) {
+      chosen = {
+        id,
+        name: typeof p.name === 'string' ? p.name : '',
+        model: typeof p.model === 'string' && p.model.trim() ? p.model.trim() : 'gpt-4o-mini',
+        streaming: typeof p.streaming === 'boolean' ? p.streaming : true,
+      }
+    }
+  }
+  if (!chosen && typeof settings?.selectedPresetId === 'string') {
+    chosen = byId(settings.selectedPresetId)
+  }
+  if (!chosen) {
+    chosen = list[0] || null
+  }
+  if (chosen) {
+    return {
+      id: typeof chosen.id === 'string' ? chosen.id : null,
+      name: typeof chosen.name === 'string' ? chosen.name : '',
+      model: typeof chosen.model === 'string' && chosen.model.trim() ? chosen.model.trim() : 'gpt-4o-mini',
+      streaming: typeof chosen.streaming === 'boolean' ? chosen.streaming : true,
+    }
+  }
+  return { id: null, name: '', model: 'gpt-4o-mini', streaming: true }
+}
+
 export function loadAll() {
   // Back-compat shim for existing callers that expect { selectedId }
   try {
@@ -91,13 +128,14 @@ export async function saveChatContent(id, { nodes, settings, rootId }) {
   const existing = await storeGetOne(id)
   // Be resilient: if the record doesn't exist (e.g., backend switched from IDB<->LS), create it
   const defaults = loadSettings()
+  const basePreset = resolvePreset(defaults, { presetId: settings?.presetId || existing?.presetId })
   const baseSettings = {
-    model: (settings?.model || existing?.settings?.model || defaults?.defaultChat?.model || 'gpt-4o-mini'),
+    model: (settings?.model || existing?.settings?.model || basePreset.model || 'gpt-4o-mini'),
     streaming: (typeof settings?.streaming === 'boolean')
       ? settings.streaming
       : (typeof existing?.settings?.streaming === 'boolean'
         ? existing.settings.streaming
-        : (typeof defaults?.defaultChat?.streaming === 'boolean' ? defaults.defaultChat.streaming : true))
+        : (typeof basePreset.streaming === 'boolean' ? basePreset.streaming : true))
   }
   const nextNodesCandidate = Array.isArray(nodes) ? nodes : (existing?.nodes || [])
   const nextRootId = (rootId != null)
@@ -106,12 +144,16 @@ export async function saveChatContent(id, { nodes, settings, rootId }) {
   // Enforce single-parent invariant before persisting (skip in debug mode)
   const dbg = !!defaults?.debug
   const nextNodes = dbg ? nextNodesCandidate : enforceUniqueParents(nextNodesCandidate, nextRootId)
+  const presetId = (typeof settings?.presetId === 'string')
+    ? settings.presetId
+    : (typeof existing?.presetId === 'string' ? existing.presetId : (basePreset?.id || null))
   const updated = {
     ...(existing || { id }),
     id,
     nodes: nextNodes,
     rootId: nextRootId,
     settings: baseSettings,
+    presetId,
     title: computeTitleFromNodes(nextNodes, nextRootId),
     updatedAt: Date.now(),
   }
@@ -160,18 +202,20 @@ export async function createChat(initial = {}) {
     rootId = 1
   }
   const defaults = loadSettings()
+  const preferredPreset = resolvePreset(defaults, { presetId: initial?.presetId, preset: initial?.preset })
   const chat = {
     id,
     title: computeTitleFromNodes(baseNodes, rootId),
     updatedAt: Date.now(),
     settings: {
-      model: initial?.settings?.model || initial?.model || (defaults?.defaultChat?.model) || 'gpt-4o-mini',
+      model: initial?.settings?.model || initial?.model || preferredPreset.model || 'gpt-4o-mini',
       streaming: (typeof initial?.settings?.streaming === 'boolean')
         ? initial.settings.streaming
-        : (typeof defaults?.defaultChat?.streaming === 'boolean' ? defaults.defaultChat.streaming : true)
+        : (typeof preferredPreset.streaming === 'boolean' ? preferredPreset.streaming : true)
     },
     nodes: baseNodes,
     rootId,
+    presetId: (typeof initial?.presetId === 'string') ? initial.presetId : (preferredPreset?.id || null),
   }
   await storePut(chat)
   setSelected(id)

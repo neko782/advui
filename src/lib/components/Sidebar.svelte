@@ -1,5 +1,5 @@
 <script>
-  import { tick } from 'svelte'
+  import { tick, onMount } from 'svelte'
   import Icon from '../Icon.svelte'
   const props = $props()
 
@@ -8,6 +8,8 @@
   let draftTitle = $state('')
   let editingInput = $state(null)
   let suppressBlur = $state(false)
+  let presetMenuOpen = $state(false)
+  let presetMenuEl = $state(null)
 
   function selectChat(id) {
     if (!id || editingId === id || confirmDeleteId === id) return
@@ -69,6 +71,58 @@
     }
     applyEdit(id, originalTitle)
   }
+
+  function closePresetMenu() { presetMenuOpen = false }
+
+  function handleNewChatClick() {
+    const list = Array.isArray(props?.presets) ? props.presets : []
+    if (list.length <= 1) {
+      closePresetMenu()
+      const first = list[0]
+      if (first?.id) {
+        props.onNewChat?.({ presetId: first.id })
+      } else {
+        props.onNewChat?.()
+      }
+      return
+    }
+    presetMenuOpen = !presetMenuOpen
+  }
+
+  function choosePreset(preset) {
+    closePresetMenu()
+    if (!preset) {
+      props.onNewChat?.()
+      return
+    }
+    props.onNewChat?.({ presetId: preset.id })
+  }
+
+  onMount(() => {
+    function handlePointerDown(event) {
+      if (!presetMenuOpen) return
+      if (presetMenuEl && !presetMenuEl.contains(event.target)) {
+        presetMenuOpen = false
+      }
+    }
+    function handleKeydown(event) {
+      if (event.key === 'Escape' && presetMenuOpen) {
+        presetMenuOpen = false
+      }
+    }
+    document.addEventListener('pointerdown', handlePointerDown)
+    document.addEventListener('keydown', handleKeydown)
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown)
+      document.removeEventListener('keydown', handleKeydown)
+    }
+  })
+
+  $effect(() => {
+    if (!props.open && presetMenuOpen) presetMenuOpen = false
+    const count = Array.isArray(props?.presets) ? props.presets.length : 0
+    if (count <= 1 && presetMenuOpen) presetMenuOpen = false
+  })
 </script>
 
 <aside class="sidebar {props.open ? '' : 'collapsed'}">
@@ -87,10 +141,26 @@
     <div class="side-body">
       <!-- Primary nav actions -->
       <nav class="top-nav" aria-label="Primary">
-        <button class="nav-item" onclick={() => props.onNewChat?.()} title="New chat" aria-label="New chat">
-          <Icon name="edit_square" size={20} />
-          <span class="label">New chat</span>
-        </button>
+        <div class="new-chat-wrapper">
+          <button class="nav-item" onclick={handleNewChatClick} title="New chat" aria-label="New chat" aria-haspopup={(Array.isArray(props?.presets) && props.presets.length > 1) ? 'true' : 'false'} aria-expanded={presetMenuOpen ? 'true' : 'false'}>
+            <Icon name="edit_square" size={20} />
+            <span class="label">New chat</span>
+          </button>
+          {#if presetMenuOpen}
+            <div class="preset-menu" bind:this={presetMenuEl} aria-label="Choose preset">
+              {#each (props.presets || []) as preset (preset.id || preset.name)}
+                <button
+                  type="button"
+                  class="preset-menu-item"
+                  onclick={() => choosePreset(preset)}
+                >
+                  <span class="preset-menu-name">{preset?.name || 'Preset'}</span>
+                  <span class="preset-menu-model">{preset?.model || ''}</span>
+                </button>
+              {/each}
+            </div>
+          {/if}
+        </div>
       </nav>
 
       {#if props.open}
@@ -269,6 +339,40 @@
   .nav-item:hover { background: var(--panel); }
   .nav-item .label { white-space: nowrap; }
   .sidebar.collapsed .nav-item .label { display: none; }
+  .new-chat-wrapper { position: relative; }
+  .preset-menu {
+    position: absolute;
+    top: 44px;
+    left: 0;
+    right: 0;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 6px;
+    display: grid;
+    gap: 4px;
+    box-shadow: 0 8px 18px rgba(0,0,0,0.18);
+    z-index: 20;
+  }
+  .sidebar.collapsed .preset-menu { left: auto; right: 0; width: 220px; }
+  .preset-menu-item {
+    display: grid;
+    align-items: start;
+    gap: 2px;
+    text-align: left;
+    border: 0;
+    border-radius: 8px;
+    padding: 8px 10px;
+    background: transparent;
+    color: var(--text);
+    font: inherit;
+    cursor: pointer;
+    transition: background-color 150ms ease;
+  }
+  .preset-menu-item:hover,
+  .preset-menu-item:focus-visible { background: var(--hover-bg); }
+  .preset-menu-name { font-weight: 600; }
+  .preset-menu-model { font-size: .85rem; color: var(--muted); }
   /* Collapsed nav items: icon-only ghost buttons (no border/background) */
   .sidebar.collapsed .nav-item {
     display: grid;

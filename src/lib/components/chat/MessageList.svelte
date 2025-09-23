@@ -44,7 +44,7 @@
   {#if props.notice}
     <div class="notice error" role="status" aria-live="polite">
       <span class="notice-text">{props.notice}</span>
-      <button class="notice-close" aria-label="Dismiss notice" on:click={() => props.onDismissNotice?.()}>×</button>
+      <button class="notice-close" aria-label="Dismiss notice" onclick={() => props.onDismissNotice?.()}>×</button>
     </div>
   {/if}
 </div>

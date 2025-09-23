@@ -17,12 +17,35 @@
   let locked = $state(false)
   let nextId = $state(1)
   let nextNodeId = $state(1)
-  let settings = $state(loadSettings())
-  let debug = $state(!!settings?.debug)
+  const initialSettings = loadSettings()
+  let settings = $state(initialSettings)
+  let debug = $state(!!initialSettings?.debug)
+  function normalizePreset(p) {
+    if (!p || typeof p !== 'object') return { id: null, model: 'gpt-4o-mini', streaming: true }
+    const model = (typeof p.model === 'string' && p.model.trim()) ? p.model.trim() : 'gpt-4o-mini'
+    const streaming = (typeof p.streaming === 'boolean') ? p.streaming : true
+    const id = (typeof p.id === 'string' && p.id.trim()) ? p.id.trim() : null
+    return { id, model, streaming }
+  }
+  function pickPresetFromSettings(state) {
+    const list = Array.isArray(state?.presets) ? state.presets : []
+    if (typeof state?.selectedPresetId === 'string') {
+      const sel = list.find(p => p?.id === state.selectedPresetId)
+      if (sel) return normalizePreset(sel)
+    }
+    if (list.length) return normalizePreset(list[0])
+    return normalizePreset(null)
+  }
+  function presetSignature(state) {
+    const list = Array.isArray(state?.presets) ? state.presets : []
+    return list.map(p => `${p?.id || ''}|${p?.name || ''}|${p?.model || ''}|${typeof p?.streaming === 'boolean' ? (p.streaming ? 1 : 0) : 1}`).join(';')
+  }
+  const initialPreset = pickPresetFromSettings(initialSettings)
   // Group per-chat settings in a single object (seeded from global defaults)
   let chatSettings = $state({
-    model: (settings?.defaultChat?.model) || 'gpt-4o-mini',
-    streaming: (typeof settings?.defaultChat?.streaming === 'boolean' ? settings.defaultChat.streaming : true),
+    model: initialPreset.model,
+    streaming: initialPreset.streaming,
+    presetId: initialPreset.id,
   })
   // Per-chat settings popover open state
   let chatSettingsOpen = $state(false)
@@ -141,9 +164,11 @@
     let nextNodes = []
     let nextRootId = 1
     let nextSettings = loadSettings()
+    let basePreset = pickPresetFromSettings(nextSettings)
     let nextChatSettings = {
-      model: (nextSettings?.defaultChat?.model) || 'gpt-4o-mini',
-      streaming: (typeof nextSettings?.defaultChat?.streaming === 'boolean' ? nextSettings.defaultChat.streaming : true)
+      model: basePreset.model,
+      streaming: basePreset.streaming,
+      presetId: basePreset.id,
     }
     let nextNextId = 1
     let nextNextNodeId = 1
@@ -157,15 +182,16 @@
           } else {
             // Legacy support: migrate flat/graph messages to node-based
             const msgs = Array.isArray(loaded.messages) ? loaded.messages.slice() : []
-            const mig = migrateLegacyGraphToNodes(msgs, loaded?.rootId, loaded?.selected)
-            nextNodes = mig.nodes
-            nextRootId = mig.rootId
-          }
+          const mig = migrateLegacyGraphToNodes(msgs, loaded?.rootId, loaded?.selected)
+          nextNodes = mig.nodes
+          nextRootId = mig.rootId
+        }
           nextChatSettings = {
-            model: loaded?.settings?.model || (nextSettings?.defaultChat?.model) || 'gpt-4o-mini',
+            model: loaded?.settings?.model || basePreset.model || 'gpt-4o-mini',
             streaming: (typeof loaded?.settings?.streaming === 'boolean'
               ? loaded.settings.streaming
-              : (typeof nextSettings?.defaultChat?.streaming === 'boolean' ? nextSettings.defaultChat.streaming : true))
+              : (typeof basePreset.streaming === 'boolean' ? basePreset.streaming : true)),
+            presetId: (typeof loaded?.presetId === 'string') ? loaded.presetId : basePreset.id,
           }
           if (!nextNodes.length) {
             nextNextId = 2
@@ -188,20 +214,24 @@
           nextRootId = 1
           nextNextId = 2
           nextNextNodeId = 2
+          basePreset = pickPresetFromSettings(nextSettings)
           nextChatSettings = {
-            model: (nextSettings?.defaultChat?.model) || 'gpt-4o-mini',
-            streaming: (typeof nextSettings?.defaultChat?.streaming === 'boolean' ? nextSettings.defaultChat.streaming : true)
+            model: basePreset.model,
+            streaming: basePreset.streaming,
+            presetId: basePreset.id,
           }
         }
       } catch {
         nextSettings = loadSettings()
+        basePreset = pickPresetFromSettings(nextSettings)
         nextNodes = [{ id: 1, variants: [{ ...makeSystemPrologue(1) }], active: 0 }]
         nextRootId = 1
         nextNextId = 2
         nextNextNodeId = 2
         nextChatSettings = {
-          model: (nextSettings?.defaultChat?.model) || 'gpt-4o-mini',
-          streaming: (typeof nextSettings?.defaultChat?.streaming === 'boolean' ? nextSettings.defaultChat.streaming : true)
+          model: basePreset.model,
+          streaming: basePreset.streaming,
+          presetId: basePreset.id,
         }
       }
       // Precompute a persist signature for the loaded chat content
@@ -210,7 +240,7 @@
           const v = (n?.variants || [])[Number(n?.active) || 0]
           return `${n.id}|${v?.role||''}|${v?.content?.length||0}|${(v?.next!=null?1:0)}`
         })
-        nextPersistSig = JSON.stringify({ m: mini, model: nextChatSettings?.model || '', streaming: !!nextChatSettings?.streaming, rootId: nextRootId })
+        nextPersistSig = JSON.stringify({ m: mini, model: nextChatSettings?.model || '', streaming: !!nextChatSettings?.streaming, presetId: nextChatSettings?.presetId || '', rootId: nextRootId })
       } catch { nextPersistSig = '' }
       // Apply computed state after the current tick
       setTimeout(() => {
@@ -232,20 +262,22 @@
       }, 0)
     }).catch(() => {
       nextSettings = loadSettings()
+      basePreset = pickPresetFromSettings(nextSettings)
       nextNodes = [{ id: 1, variants: [{ ...makeSystemPrologue(1) }], active: 0 }]
       nextRootId = 1
       nextNextId = 2
       nextNextNodeId = 2
       nextChatSettings = {
-        model: (nextSettings?.defaultChat?.model) || 'gpt-4o-mini',
-        streaming: (typeof nextSettings?.defaultChat?.streaming === 'boolean' ? nextSettings.defaultChat.streaming : true)
+        model: basePreset.model,
+        streaming: basePreset.streaming,
+        presetId: basePreset.id,
       }
       try {
         const mini = (nextNodes || []).map(n => {
           const v = (n?.variants || [])[Number(n?.active) || 0]
           return `${n.id}|${v?.role||''}|${v?.content?.length||0}|${(v?.next!=null?1:0)}`
         })
-        nextPersistSig = JSON.stringify({ m: mini, model: nextChatSettings?.model || '', streaming: !!nextChatSettings?.streaming, rootId: nextRootId })
+        nextPersistSig = JSON.stringify({ m: mini, model: nextChatSettings?.model || '', streaming: !!nextChatSettings?.streaming, presetId: nextChatSettings?.presetId || '', rootId: nextRootId })
       } catch { nextPersistSig = '' }
       setTimeout(() => {
         try {
@@ -297,8 +329,8 @@
       // Only update if something actually changed to avoid unnecessary flushes
       const changed = (
         settings?.apiKey !== next.apiKey ||
-        settings?.defaultChat?.model !== next?.defaultChat?.model ||
-        !!settings?.defaultChat?.streaming !== !!next?.defaultChat?.streaming ||
+        presetSignature(settings) !== presetSignature(next) ||
+        settings?.selectedPresetId !== next?.selectedPresetId ||
         !!settings?.debug !== !!next?.debug
       )
       if (changed) {
@@ -335,7 +367,7 @@
         const v = (n?.variants || [])[Number(n?.active) || 0]
         return `${n.id}|${v?.role||''}|${v?.content?.length||0}|${(v?.next!=null?1:0)}`
       })
-      return JSON.stringify({ m: mini, model: chatSettings?.model || '', streaming: !!chatSettings?.streaming, rootId })
+      return JSON.stringify({ m: mini, model: chatSettings?.model || '', streaming: !!chatSettings?.streaming, presetId: chatSettings?.presetId || '', rootId })
     } catch { return String(Math.random()) }
   }
   // Immediate persistence helper to avoid relying solely on the reactive effect

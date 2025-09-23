@@ -11,15 +11,91 @@
   let revealKey = $state(false)
   let refreshing = $state(false)
   let refreshMsg = $state('')
+  let activePresetId = $state('')
+
+  function genPresetId() {
+    return `preset_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`
+  }
+
+  function syncActivePreset() {
+    const list = Array.isArray(local?.presets) ? local.presets : []
+    if (!list.length) {
+      local.presets = [{ id: genPresetId(), name: 'Preset 1', model: 'gpt-4o-mini', streaming: true }]
+    }
+    const updatedList = Array.isArray(local?.presets) ? local.presets : []
+    const hasActive = updatedList.some(p => p?.id === activePresetId)
+    const fallback = updatedList.find(p => p?.id === local?.selectedPresetId)
+      || updatedList[0]
+      || null
+    const nextId = hasActive ? activePresetId : (fallback?.id || '')
+    if (nextId !== activePresetId) activePresetId = nextId
+    if (nextId && local.selectedPresetId !== nextId) {
+      local.selectedPresetId = nextId
+    }
+  }
+
+  const activePreset = $derived((() => {
+    const list = Array.isArray(local?.presets) ? local.presets : []
+    const found = list.find(p => p?.id === activePresetId)
+    return found || list[0] || null
+  })())
+
+  function selectPreset(id) {
+    if (!id) return
+    activePresetId = id
+    local.selectedPresetId = id
+  }
+
+  function addPreset() {
+    const list = Array.isArray(local?.presets) ? local.presets.slice() : []
+    const base = activePreset || list[list.length - 1] || { model: 'gpt-4o-mini', streaming: true }
+    const count = list.length + 1
+    let name = `Preset ${count}`
+    const names = new Set(list.map(p => p?.name).filter(Boolean))
+    while (names.has(name)) {
+      name = `Preset ${Math.floor(Math.random() * 90) + 10}`
+    }
+    const preset = {
+      id: genPresetId(),
+      name,
+      model: base?.model || 'gpt-4o-mini',
+      streaming: typeof base?.streaming === 'boolean' ? base.streaming : true,
+    }
+    local.presets = [...list, preset]
+    activePresetId = preset.id
+    local.selectedPresetId = preset.id
+  }
+
+  function updateActivePreset(patch) {
+    const list = Array.isArray(local?.presets) ? local.presets : []
+    const idx = list.findIndex(p => p?.id === activePresetId)
+    if (idx < 0) return
+    const next = [...list]
+    next[idx] = { ...next[idx], ...patch }
+    local.presets = next
+  }
+
+  function removePreset(id) {
+    const list = Array.isArray(local?.presets) ? local.presets : []
+    if (list.length <= 1) return
+    const next = list.filter(p => p?.id !== id)
+    if (!next.length) return
+    local.presets = next
+    const fallback = next.find(p => p?.id === local.selectedPresetId) || next[0]
+    activePresetId = fallback?.id || ''
+    local.selectedPresetId = fallback?.id || ''
+  }
 
   function close() {
     // Revert any unsaved changes back to the last saved settings
     local = loadSettings()
+    activePresetId = local?.selectedPresetId || local?.presets?.[0]?.id || ''
     revealKey = false
     refreshMsg = ''
     props.onClose?.()
   }
   function save() {
+    syncActivePreset()
     saveSettings(local)
     try { props.onSaved?.() } catch {}
     close()
@@ -47,11 +123,23 @@
       refreshing = false
     }
   }
+
+  $effect(() => {
+    syncActivePreset()
+  })
 </script>
 
 {#if props.open}
   <button type="button" class="backdrop" aria-label="Close settings overlay" onclick={close}></button>
-  <div class="modal" role="dialog" aria-modal="true" aria-label="Settings" onclick={(e) => { if (e.target === e.currentTarget) close() }}>
+  <div
+    class="modal"
+    role="dialog"
+    aria-modal="true"
+    aria-label="Settings"
+    tabindex="-1"
+    onpointerdown={(event) => { if (event.target === event.currentTarget) close() }}
+    onkeydown={(event) => { if (event.key === 'Escape' && event.target === event.currentTarget) close() }}
+  >
     <div class="panel">
       <header class="modal-head">
         <div class="title">Settings</div>
@@ -88,36 +176,78 @@
 
         <hr class="section" />
 
-      <div class="group">
-        <div class="group-title">Default Chat</div>
-          <label class="field">
-            <span>Model</span>
-            <input
-              type="text"
-              placeholder="gpt-4o-mini"
-              bind:value={local.defaultChat.model}
-              list="global-model-suggestions"
-              aria-label="Model"
-            />
-            {#if modelIds?.length}
-              <datalist id="global-model-suggestions">
-                {#each modelIds as mid}
-                  <option value={mid}>{mid}</option>
-                {/each}
-              </datalist>
+        <div class="group presets">
+          <div class="group-head">
+            <div class="group-title">Presets</div>
+            <button type="button" class="icon-btn" title="Add preset" aria-label="Add preset" onclick={addPreset}>
+              <Icon name="add" size={20} />
+            </button>
+          </div>
+          <div class="preset-strip">
+            {#each (local.presets || []) as preset (preset.id)}
+              <button
+                type="button"
+                class={`preset-pill ${preset.id === activePresetId ? 'active' : ''}`}
+                onclick={() => selectPreset(preset.id)}
+              >
+                <span class="preset-pill-name">{preset.name || 'Untitled'}</span>
+              </button>
+            {/each}
+          </div>
+          {#if activePreset}
+            <label class="field">
+              <span>Name</span>
+              <input
+                type="text"
+                placeholder="Preset name"
+                value={activePreset.name || ''}
+                oninput={(event) => updateActivePreset({ name: event.currentTarget.value })}
+                aria-label="Preset name"
+              />
+            </label>
+            <label class="field">
+              <span>Model</span>
+              <input
+                type="text"
+                placeholder="gpt-4o-mini"
+                value={activePreset.model || ''}
+                oninput={(event) => updateActivePreset({ model: event.currentTarget.value })}
+                list="preset-model-suggestions"
+                aria-label="Model"
+              />
+              {#if modelIds?.length}
+                <datalist id="preset-model-suggestions">
+                  {#each modelIds as mid}
+                    <option value={mid}>{mid}</option>
+                  {/each}
+                </datalist>
+              {/if}
+            </label>
+            <label class="switch" title="Stream">
+              <input
+                type="checkbox"
+                checked={!!activePreset.streaming}
+                onchange={(event) => updateActivePreset({ streaming: !!event.currentTarget.checked })}
+                aria-label="Stream"
+              />
+              <span class="switch-ui" aria-hidden="true"></span>
+              <span class="switch-label">Stream</span>
+            </label>
+            {#if (local?.presets?.length || 0) > 1}
+              <button
+                type="button"
+                class="preset-delete"
+                onclick={() => activePreset?.id && removePreset(activePreset.id)}
+                title="Delete preset"
+                aria-label="Delete preset"
+              >
+                <Icon name="delete" size={18} />
+                <span>Delete preset</span>
+              </button>
             {/if}
-          </label>
-          <label class="switch" title="Stream">
-            <input
-              type="checkbox"
-              bind:checked={local.defaultChat.streaming}
-              aria-label="Stream"
-            />
-            <span class="switch-ui" aria-hidden="true"></span>
-            <span class="switch-label">Stream</span>
-          </label>
+          {/if}
         </div>
-        
+
         <hr class="section" />
 
         <div class="group">
@@ -187,6 +317,17 @@
   .section { border: 0; border-top: 1px solid var(--border); margin: 8px 0; }
   .group { display: grid; gap: 8px; }
   .group-title { font-weight: 600; }
+  .group-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .group-head .icon-btn { flex-shrink: 0; }
+  .presets .group-head .icon-btn { width: 28px; height: 28px; border-radius: 6px; }
+  .preset-strip { display: flex; flex-wrap: wrap; gap: 6px; }
+  .preset-pill { border: 1px solid var(--border); border-radius: 999px; padding: 4px 10px; background: var(--bg); color: var(--text); cursor: pointer; display: inline-flex; align-items: center; gap: 4px; font-size: .85rem; transition: background-color .15s ease, color .15s ease, border-color .15s ease; }
+  .preset-pill:hover { border-color: color-mix(in srgb, var(--border) 55%, var(--accent) 45%); }
+  .preset-pill.active { background: var(--accent); border-color: transparent; color: #fff; box-shadow: 0 2px 5px rgba(0,0,0,0.14); }
+  .preset-pill-name { pointer-events: none; }
+  .preset-delete { display: inline-flex; align-items: center; gap: 6px; border: 1px solid rgba(214,69,69,0.4); border-radius: 8px; padding: 4px 8px; background: transparent; color: #d64545; cursor: pointer; width: fit-content; font-size: .85rem; }
+  .preset-delete:hover { background: rgba(214,69,69,0.06); }
+  .preset-delete:focus-visible { outline: 2px solid rgba(214,69,69,0.6); outline-offset: 2px; }
   /* Toggle switch */
   .switch { display: inline-flex; align-items: center; gap: 10px; cursor: pointer; user-select: none; }
   .switch > input { position: absolute; opacity: 0; width: 1px; height: 1px; pointer-events: none; }
