@@ -116,8 +116,9 @@
   // Validate chat graph integrity and surface issues to the user
   let integrity = $derived(validateTree(nodes, rootId))
   const BUG_NOTICE = 'This indicates a bug in the app. Please try to reproduce it and report it.'
+  const DEBUG_AUTOFIX_NOTICE = 'Autofix is disabled in debug mode.'
   let sanitizerNotice = $state('')
-  let validationNotice = $derived(!integrity.ok ? `Chat structure issues detected: ${integrity.problems.join(' • ')}. ${BUG_NOTICE}` : '')
+  let validationNotice = $derived(!integrity.ok ? `Chat structure issues detected: ${integrity.problems.join(' • ')}. ${BUG_NOTICE}${debug ? ` ${DEBUG_AUTOFIX_NOTICE}` : ''}` : '')
   // Surface latest generation error (if any) via shared notice infrastructure
   let generationNotice = $derived((() => {
     try {
