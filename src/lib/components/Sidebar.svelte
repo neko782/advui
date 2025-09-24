@@ -424,25 +424,20 @@
     }
     .sidebar.collapsed .side-header {
       position: fixed;
-      top: max(16px, env(safe-area-inset-top));
-      left: max(16px, env(safe-area-inset-left));
+      top: 8px;
+      left: 8px;
+      top: calc(env(safe-area-inset-top) + 8px);
+      left: calc(env(safe-area-inset-left) + 8px);
       z-index: 40;
-      padding: 0;
-      display: block;
+      padding: 8px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
     }
     .sidebar.collapsed .side-body,
     .sidebar.collapsed .side-footer,
     .sidebar.collapsed .side-fade {
       display: none;
-    }
-    .sidebar.collapsed .side-header .icon-btn {
-      width: 44px;
-      height: 44px;
-      min-width: 44px;
-      border-radius: 999px;
-      box-shadow: var(--float-shadow);
-      border: 1px solid var(--border);
-      background: var(--panel);
     }
   }
 
