@@ -165,97 +165,99 @@
 
       {#if props.open}
         <!-- Chat list as simple ghost-text buttons -->
-        <div class="section-label">Chats</div>
-        <nav class="chat-list" aria-label="Chats">
-          {#each (props.chats || []) as c (c.id)}
-            <div
-              class={`chat-row ${props.selectedId === c.id ? 'active' : ''} ${(confirmDeleteId === c.id || editingId === c.id) ? 'show-actions' : ''}`}
-              title={c.title || 'Chat'}
-            >
-              {#if editingId === c.id}
-                <div class="chat-main editing">
-                  <input
-                    class="chat-input"
-                    bind:this={editingInput}
-                    value={draftTitle}
-                    oninput={(event) => (draftTitle = event.currentTarget.value)}
-                    onblur={() => handleInputBlur(c.id, c.title)}
-                    onkeydown={(event) => {
-                      if (event.key === 'Enter') {
-                        event.preventDefault()
-                        applyEdit(c.id, c.title)
-                      } else if (event.key === 'Escape') {
-                        event.preventDefault()
-                        cancelEdit(c.id)
-                      }
-                    }}
-                    aria-label="Edit chat title"
-                  />
-                </div>
-              {:else}
-                <button
-                  type="button"
-                  class="chat-link {props.selectedId === c.id ? 'active' : ''}"
-                  onclick={() => selectChat(c.id)}
-                  onkeydown={(event) => {
-                    if (event.key === 'Enter' || event.key === ' ') {
-                      event.preventDefault()
-                      selectChat(c.id)
-                    }
-                  }}
-                >
-                  <span class="chat-title">{c.title || 'New Chat'}</span>
-                </button>
-              {/if}
-              <div class="chat-actions">
-                {#if confirmDeleteId === c.id}
-                  <button type="button" class="chat-action-btn cancel" onclick={() => cancelDelete(c.id)} aria-label="Cancel delete">
-                    <Icon name="close" size={18} />
-                  </button>
-                  <button type="button" class="chat-action-btn confirm" onclick={() => confirmDelete(c.id)} aria-label="Confirm delete">
-                    <Icon name="check" size={18} />
-                  </button>
-                {:else if editingId === c.id}
-                  <button
-                    type="button"
-                    class="chat-action-btn cancel"
-                    onmousedown={() => (suppressBlur = true)}
-                    onclick={() => cancelEdit(c.id)}
-                    aria-label="Cancel edit"
-                  >
-                    <Icon name="close" size={18} />
-                  </button>
-                  <button
-                    type="button"
-                    class="chat-action-btn confirm"
-                    onmousedown={() => (suppressBlur = true)}
-                    onclick={() => applyEdit(c.id, c.title)}
-                    aria-label="Confirm title"
-                  >
-                    <Icon name="check" size={18} />
-                  </button>
+        <div class="chat-section">
+          <div class="section-label">Chats</div>
+          <nav class="chat-list" aria-label="Chats">
+            {#each (props.chats || []) as c (c.id)}
+              <div
+                class={`chat-row ${props.selectedId === c.id ? 'active' : ''} ${(confirmDeleteId === c.id || editingId === c.id) ? 'show-actions' : ''}`}
+                title={c.title || 'Chat'}
+              >
+                {#if editingId === c.id}
+                  <div class="chat-main editing">
+                    <input
+                      class="chat-input"
+                      bind:this={editingInput}
+                      value={draftTitle}
+                      oninput={(event) => (draftTitle = event.currentTarget.value)}
+                      onblur={() => handleInputBlur(c.id, c.title)}
+                      onkeydown={(event) => {
+                        if (event.key === 'Enter') {
+                          event.preventDefault()
+                          applyEdit(c.id, c.title)
+                        } else if (event.key === 'Escape') {
+                          event.preventDefault()
+                          cancelEdit(c.id)
+                        }
+                      }}
+                      aria-label="Edit chat title"
+                    />
+                  </div>
                 {:else}
                   <button
                     type="button"
-                    class="chat-action-btn"
-                    onclick={() => startEdit(c)}
-                    aria-label="Edit chat title"
+                    class="chat-link {props.selectedId === c.id ? 'active' : ''}"
+                    onclick={() => selectChat(c.id)}
+                    onkeydown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault()
+                        selectChat(c.id)
+                      }
+                    }}
                   >
-                    <Icon name="edit" size={18} />
-                  </button>
-                  <button
-                    type="button"
-                    class="chat-action-btn"
-                    onclick={() => requestDelete(c.id)}
-                    aria-label="Delete chat"
-                  >
-                    <Icon name="delete" size={18} />
+                    <span class="chat-title">{c.title || 'New Chat'}</span>
                   </button>
                 {/if}
+                <div class="chat-actions">
+                  {#if confirmDeleteId === c.id}
+                    <button type="button" class="chat-action-btn cancel" onclick={() => cancelDelete(c.id)} aria-label="Cancel delete">
+                      <Icon name="close" size={18} />
+                    </button>
+                    <button type="button" class="chat-action-btn confirm" onclick={() => confirmDelete(c.id)} aria-label="Confirm delete">
+                      <Icon name="check" size={18} />
+                    </button>
+                  {:else if editingId === c.id}
+                    <button
+                      type="button"
+                      class="chat-action-btn cancel"
+                      onmousedown={() => (suppressBlur = true)}
+                      onclick={() => cancelEdit(c.id)}
+                      aria-label="Cancel edit"
+                    >
+                      <Icon name="close" size={18} />
+                    </button>
+                    <button
+                      type="button"
+                      class="chat-action-btn confirm"
+                      onmousedown={() => (suppressBlur = true)}
+                      onclick={() => applyEdit(c.id, c.title)}
+                      aria-label="Confirm title"
+                    >
+                      <Icon name="check" size={18} />
+                    </button>
+                  {:else}
+                    <button
+                      type="button"
+                      class="chat-action-btn"
+                      onclick={() => startEdit(c)}
+                      aria-label="Edit chat title"
+                    >
+                      <Icon name="edit" size={18} />
+                    </button>
+                    <button
+                      type="button"
+                      class="chat-action-btn"
+                      onclick={() => requestDelete(c.id)}
+                      aria-label="Delete chat"
+                    >
+                      <Icon name="delete" size={18} />
+                    </button>
+                  {/if}
+                </div>
               </div>
-            </div>
-          {/each}
-        </nav>
+            {/each}
+          </nav>
+        </div>
       {/if}
 
       <!-- Footer actions pinned at the bottom -->
@@ -401,6 +403,12 @@
   }
 
   /* Align label with chat buttons and add spacing from New chat */
+  .chat-section {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+  }
   .section-label {
     font-size: .85rem;
     color: var(--muted);

@@ -152,7 +152,11 @@
   .bubble :global(pre code) { background: transparent; padding: 0; }
   .bubble :global(p:first-child), .bubble :global(ul:first-child), .bubble :global(ol:first-child), .bubble :global(pre:first-child), .bubble :global(h1:first-child), .bubble :global(h2:first-child), .bubble :global(h3:first-child), .bubble :global(h4:first-child), .bubble :global(h5:first-child), .bubble :global(h6:first-child) { margin-top: 0; }
   .bubble :global(p:last-child), .bubble :global(ul:last-child), .bubble :global(ol:last-child), .bubble :global(pre:last-child), .bubble :global(h1:last-child), .bubble :global(h2:last-child), .bubble :global(h3:last-child), .bubble :global(h4:last-child), .bubble :global(h5:last-child), .bubble :global(h6:last-child) { margin-bottom: 0; }
-  .bubble.assistant { background: transparent; justify-self: start; }
+  .bubble.assistant {
+    background: transparent;
+    justify-self: start;
+    padding-inline-start: 0;
+  }
   .bubble.user { background: var(--user); color: var(--text); justify-self: end; }
   .bubble.system { justify-self: center; background: transparent; color: var(--muted); border: 1px dashed var(--border); }
   .dots { display: inline-flex; gap: 6px; align-items: center; }

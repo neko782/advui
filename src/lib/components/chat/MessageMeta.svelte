@@ -30,6 +30,7 @@
 
 <style>
   .meta { font-size: .8rem; color: var(--muted); padding: 0 2px; margin-bottom: 6px; display: inline-flex; align-items: center; gap: 8px; }
+  .meta.assistant { padding-inline-start: 0; }
   .meta.user { justify-self: end; }
   .meta.assistant { justify-self: start; }
   .meta.system { justify-self: center; text-align: center; }
