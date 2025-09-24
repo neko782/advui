@@ -26,7 +26,7 @@
       <div class="menu-label">Model</div>
       <input
         type="text"
-        placeholder="gpt-4o-mini"
+        placeholder="gpt-5"
         value={props.model}
         disabled={props.disabled}
         oninput={(e) => (!props.disabled && props.onInputModel?.(e.currentTarget.value))}

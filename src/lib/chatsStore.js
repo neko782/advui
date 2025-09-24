@@ -56,7 +56,7 @@ function resolvePreset(settings, preferences = {}) {
       chosen = {
         id,
         name: typeof p.name === 'string' ? p.name : '',
-        model: typeof p.model === 'string' && p.model.trim() ? p.model.trim() : 'gpt-4o-mini',
+        model: typeof p.model === 'string' && p.model.trim() ? p.model.trim() : 'gpt-5',
         streaming: typeof p.streaming === 'boolean' ? p.streaming : true,
         maxOutputTokens: toIntOrNull(p.maxOutputTokens),
         topP: toClampedNumber(p.topP, 0, 1),
@@ -77,7 +77,7 @@ function resolvePreset(settings, preferences = {}) {
     return {
       id: typeof chosen.id === 'string' ? chosen.id : null,
       name: typeof chosen.name === 'string' ? chosen.name : '',
-      model: typeof chosen.model === 'string' && chosen.model.trim() ? chosen.model.trim() : 'gpt-4o-mini',
+      model: typeof chosen.model === 'string' && chosen.model.trim() ? chosen.model.trim() : 'gpt-5',
       streaming: typeof chosen.streaming === 'boolean' ? chosen.streaming : true,
       maxOutputTokens: toIntOrNull(chosen.maxOutputTokens),
       topP: toClampedNumber(chosen.topP, 0, 1),
@@ -90,7 +90,7 @@ function resolvePreset(settings, preferences = {}) {
   return {
     id: null,
     name: '',
-    model: 'gpt-4o-mini',
+    model: 'gpt-5',
     streaming: true,
     maxOutputTokens: null,
     topP: null,
@@ -191,7 +191,7 @@ export async function saveChatContent(id, { nodes, settings, rootId }) {
     return undefined
   }
   const baseSettings = {
-    model: (settings?.model || existing?.settings?.model || basePreset.model || 'gpt-4o-mini'),
+    model: (settings?.model || existing?.settings?.model || basePreset.model || 'gpt-5'),
     streaming: (typeof settings?.streaming === 'boolean')
       ? settings.streaming
       : (typeof existing?.settings?.streaming === 'boolean'
@@ -275,7 +275,7 @@ export async function createChat(initial = {}) {
     title: computeTitleFromNodes(baseNodes, rootId),
     updatedAt: Date.now(),
     settings: {
-      model: initial?.settings?.model || initial?.model || preferredPreset.model || 'gpt-4o-mini',
+      model: initial?.settings?.model || initial?.model || preferredPreset.model || 'gpt-5',
       streaming: (typeof initial?.settings?.streaming === 'boolean')
         ? initial.settings.streaming
         : (typeof preferredPreset.streaming === 'boolean' ? preferredPreset.streaming : true),

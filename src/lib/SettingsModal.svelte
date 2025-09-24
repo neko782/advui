@@ -67,7 +67,7 @@
       local.presets = [{
         id: genPresetId(),
         name: 'Preset 1',
-        model: 'gpt-4o-mini',
+        model: 'gpt-5',
         streaming: true,
         maxOutputTokens: null,
         topP: null,
@@ -110,7 +110,7 @@
 
   function addPreset() {
     const list = Array.isArray(local?.presets) ? local.presets.slice() : []
-    const base = activePreset || list[list.length - 1] || { model: 'gpt-4o-mini', streaming: true }
+    const base = activePreset || list[list.length - 1] || { model: 'gpt-5', streaming: true }
     const count = list.length + 1
     let name = `Preset ${count}`
     const names = new Set(list.map(p => p?.name).filter(Boolean))
@@ -120,7 +120,7 @@
     const preset = {
       id: genPresetId(),
       name,
-      model: base?.model || 'gpt-4o-mini',
+      model: base?.model || 'gpt-5',
       streaming: typeof base?.streaming === 'boolean' ? base.streaming : true,
       maxOutputTokens: base?.maxOutputTokens ?? null,
       topP: base?.topP ?? null,
@@ -324,7 +324,7 @@
                   <span>Model</span>
                   <input
                     type="text"
-                    placeholder="gpt-4o-mini"
+                    placeholder="gpt-5"
                     value={activePreset.model || ''}
                     oninput={(event) => updateActivePreset({ model: event.currentTarget.value })}
                     list="preset-model-suggestions"

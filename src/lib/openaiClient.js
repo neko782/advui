@@ -15,11 +15,11 @@ export async function getClient() {
 
 function pickActivePreset(settings) {
   const list = Array.isArray(settings?.presets) ? settings.presets : []
-  if (!list.length) return { model: 'gpt-4o-mini', streaming: true }
+  if (!list.length) return { model: 'gpt-5', streaming: true }
   const selected = typeof settings?.selectedPresetId === 'string'
     ? list.find(p => p?.id === settings.selectedPresetId)
     : null
-  return selected || list[0] || { model: 'gpt-4o-mini', streaming: true }
+  return selected || list[0] || { model: 'gpt-5', streaming: true }
 }
 
 // Create a response using either a single prompt string or an array of messages
@@ -45,7 +45,7 @@ export async function respond({
   const { apiKey } = settings
   if (!apiKey) throw new Error('Missing OpenAI API key. Set it in Settings.')
   const preset = pickActivePreset(settings)
-  const useModel = model || preset?.model || 'gpt-4o-mini'
+  const useModel = model || preset?.model || 'gpt-5'
   const apiMode = settings?.apiMode === 'chat_completions' ? 'chat_completions' : 'responses'
   const useChatCompletions = apiMode === 'chat_completions'
 

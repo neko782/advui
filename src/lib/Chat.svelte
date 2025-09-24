@@ -56,7 +56,7 @@
     if (!p || typeof p !== 'object') {
       return {
         id: null,
-        model: 'gpt-4o-mini',
+        model: 'gpt-5',
         streaming: true,
         maxOutputTokens: null,
         topP: null,
@@ -66,7 +66,7 @@
         reasoningSummary: 'auto',
       }
     }
-    const model = (typeof p.model === 'string' && p.model.trim()) ? p.model.trim() : 'gpt-4o-mini'
+    const model = (typeof p.model === 'string' && p.model.trim()) ? p.model.trim() : 'gpt-5'
     const streaming = (typeof p.streaming === 'boolean') ? p.streaming : true
     const id = (typeof p.id === 'string' && p.id.trim()) ? p.id.trim() : null
     const maxOutputTokens = toIntOrNull(p.maxOutputTokens)
@@ -278,7 +278,7 @@
           nextRootId = mig.rootId
         }
           nextChatSettings = {
-            model: loaded?.settings?.model || basePreset.model || 'gpt-4o-mini',
+            model: loaded?.settings?.model || basePreset.model || 'gpt-5',
             streaming: (typeof loaded?.settings?.streaming === 'boolean'
               ? loaded.settings.streaming
               : (typeof basePreset.streaming === 'boolean' ? basePreset.streaming : true)),

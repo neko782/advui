@@ -10,7 +10,7 @@ const API_MODE_VALUES = new Set(['responses', 'chat_completions'])
 const DEFAULT_API_BASE_URL = 'https://api.openai.com/v1';
 
 const DEFAULT_PRESET_FIELDS = {
-  model: 'gpt-4o-mini',
+  model: 'gpt-5',
   streaming: true,
   maxOutputTokens: null,
   topP: null,
@@ -58,7 +58,7 @@ const REASONING_SUMMARY_VALUES = new Set(['auto', 'concise', 'detailed']);
 function normalizePreset(raw, index = 0) {
   if (!raw || typeof raw !== 'object') return null;
   const preset = { ...raw };
-  preset.model = typeof preset.model === 'string' && preset.model.trim() ? preset.model.trim() : 'gpt-4o-mini';
+  preset.model = typeof preset.model === 'string' && preset.model.trim() ? preset.model.trim() : 'gpt-5';
   preset.streaming = typeof preset.streaming === 'boolean' ? preset.streaming : true;
   preset.maxOutputTokens = toIntOrNull(preset.maxOutputTokens);
   preset.topP = toClampedNumber(preset.topP, 0, 1) ?? null;
@@ -97,7 +97,7 @@ function deriveDefaultPreset(parsed) {
   const fromDefault = normalizePreset({
     id: 'preset-default',
     name: 'Default',
-    model: (parsed?.defaultChat?.model) || parsed?.model || 'gpt-4o-mini',
+    model: (parsed?.defaultChat?.model) || parsed?.model || 'gpt-5',
     streaming: typeof parsed?.defaultChat?.streaming === 'boolean'
       ? parsed.defaultChat.streaming
       : true,
