@@ -10,6 +10,7 @@
   let suppressBlur = $state(false)
   let presetMenuOpen = $state(false)
   let presetMenuEl = $state(null)
+  let lastSidebarOpen = $state(props.open ?? true)
 
   function selectChat(id) {
     if (!id || editingId === id || confirmDeleteId === id) return
@@ -127,7 +128,11 @@
   })
 
   $effect(() => {
-    if (!props.open && presetMenuOpen) presetMenuOpen = false
+    const isOpen = !!props.open
+    if (!isOpen && lastSidebarOpen && presetMenuOpen) {
+      presetMenuOpen = false
+    }
+    lastSidebarOpen = isOpen
     const count = Array.isArray(props?.presets) ? props.presets.length : 0
     if (count <= 1 && presetMenuOpen) presetMenuOpen = false
   })
