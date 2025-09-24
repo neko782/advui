@@ -146,7 +146,7 @@
         <Icon name="menu" size={20} />
       </button>
       {#if props.open}
-        <div class="brand">AI Chat</div>
+        <div class="brand">advui</div>
       {/if}
     </div>
 

@@ -1,4 +1,4 @@
-# Svelte + Vite
+# advui
 
 This app has been refactored into atomic Svelte components. The Chat UI is now composed of small, reusable pieces with clear data/event flow.
 

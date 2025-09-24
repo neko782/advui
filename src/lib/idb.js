@@ -1,7 +1,7 @@
 // LocalStorage-backed persistence helper for chats
 // Single key storing a map of chats by id
 
-const LS_KEY = 'catsgirls.chats.store.v1'
+const LS_KEY = 'advui.chats.store.v1'
 
 function readAll() {
   try {
