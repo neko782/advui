@@ -1,6 +1,8 @@
 <script>
   const props = $props()
   let root
+  let menu
+  let wasOpen = false
 
   // Close when clicking outside or pressing Escape
   $effect(() => {
@@ -15,13 +17,22 @@
       window.removeEventListener('keydown', onKeydown)
     }
   })
+
+  $effect(() => {
+    if (props.open && menu && !wasOpen) {
+      queueMicrotask(() => {
+        if (menu) menu.scrollTop = menu.scrollHeight
+      })
+    }
+    wasOpen = !!props.open
+  })
 </script>
 
 <div class={`chat-settings-group ${props.open ? 'open' : ''}`} bind:this={root}>
   <button class="icon-btn" aria-label="Chat settings" disabled={props.disabled} onclick={() => (!props.disabled && props.onToggle?.())}>
     <span class="material-symbols-rounded icon">tune</span>
   </button>
-  <div class="send-menu chat-settings-menu" role="menu" aria-label="Chat settings">
+  <div class="send-menu chat-settings-menu" role="menu" aria-label="Chat settings" bind:this={menu}>
     <!-- Connection comes first so people can quickly switch APIs -->
     <div class="menu-section">
       <div class="menu-label">Connection</div>
@@ -198,6 +209,9 @@
     border: 1px solid var(--border);
     border-radius: 10px;
     box-shadow: var(--float-shadow);
+    max-height: calc(100vh - 120px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
     opacity: 0;
     transform: translateY(6px);
     transition: opacity .12s ease, transform .12s ease;
