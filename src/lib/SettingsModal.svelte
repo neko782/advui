@@ -180,7 +180,7 @@
     }
     refreshing = true
     try {
-      const ids = await listModelsWithKey(local.apiKey)
+      const ids = await listModelsWithKey(local.apiKey, local.apiBaseUrl)
       setModelsCache(ids)
       modelIds = ids
       refreshMsg = `Connected ✓ Fetched ${ids.length} models.`
@@ -258,6 +258,19 @@
                 </div>
               </label>
               <p class="hint">Your key is stored locally in this browser.</p>
+              <label class="field">
+                <span>API base URL</span>
+                <input
+                  type="text"
+                  placeholder="https://api.openai.com/v1"
+                  bind:value={local.apiBaseUrl}
+                  autocomplete="off"
+                  inputmode="url"
+                  oninput={() => persistSettings()}
+                  aria-label="API base URL"
+                />
+              </label>
+              <p class="hint">Leave blank to use the default OpenAI endpoint.</p>
               <label class="field">
                 <span>API</span>
                 <select

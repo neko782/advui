@@ -7,6 +7,8 @@ function genPresetId() {
 
 const API_MODE_VALUES = new Set(['responses', 'chat_completions'])
 
+const DEFAULT_API_BASE_URL = 'https://api.openai.com/v1';
+
 const DEFAULT_PRESET_FIELDS = {
   model: 'gpt-4o-mini',
   streaming: true,
@@ -40,6 +42,13 @@ function toClampedNumber(val, min, max) {
   if (!Number.isFinite(num)) return null;
   const clamped = Math.min(max, Math.max(min, num));
   return clamped;
+}
+
+function normalizeApiBaseUrl(value) {
+  if (typeof value !== 'string') return DEFAULT_API_BASE_URL;
+  const trimmed = value.trim();
+  if (!trimmed) return DEFAULT_API_BASE_URL;
+  return trimmed;
 }
 
 const REASONING_VALUES = new Set(['none', 'minimal', 'low', 'medium', 'high']);
@@ -117,14 +126,16 @@ function attachCompatFields(out) {
   out.model = active.model;
   const rawMode = typeof out.apiMode === 'string' ? out.apiMode : '';
   out.apiMode = API_MODE_VALUES.has(rawMode) ? rawMode : 'responses';
+  out.apiBaseUrl = normalizeApiBaseUrl(out.apiBaseUrl);
   return out;
 }
 
 // Normalized shape returned by loadSettings():
-// { apiKey, presets, selectedPresetId, debug, defaultChat, model, apiMode }
+// { apiKey, apiBaseUrl, presets, selectedPresetId, debug, defaultChat, model, apiMode }
 export function loadSettings() {
   const defaults = attachCompatFields({
     apiKey: '',
+    apiBaseUrl: DEFAULT_API_BASE_URL,
     presets: [makeDefaultPreset()],
     selectedPresetId: 'preset-default',
     debug: false,
@@ -147,7 +158,8 @@ export function loadSettings() {
     const mode = typeof parsed?.apiMode === 'string' && API_MODE_VALUES.has(parsed.apiMode)
       ? parsed.apiMode
       : 'responses';
-    return attachCompatFields({ apiKey, presets, selectedPresetId, debug, apiMode: mode });
+    const apiBaseUrl = normalizeApiBaseUrl(parsed?.apiBaseUrl);
+    return attachCompatFields({ apiKey, apiBaseUrl, presets, selectedPresetId, debug, apiMode: mode });
   } catch {
     return defaults;
   }
@@ -161,6 +173,7 @@ export function saveSettings(next) {
     : presets[0]?.id || makeDefaultPreset().id;
   const data = attachCompatFields({
     apiKey: typeof next?.apiKey === 'string' ? next.apiKey : '',
+    apiBaseUrl: normalizeApiBaseUrl(next?.apiBaseUrl),
     presets,
     selectedPresetId,
     debug: !!next?.debug,

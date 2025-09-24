@@ -5,9 +5,12 @@ import OpenAI from 'openai'
 import { loadSettings } from './settingsStore.js'
 
 export async function getClient() {
-  const { apiKey } = loadSettings()
+  const { apiKey, apiBaseUrl } = loadSettings()
   if (!apiKey) return null
-  return new OpenAI({ apiKey, dangerouslyAllowBrowser: true })
+  const baseURL = typeof apiBaseUrl === 'string' && apiBaseUrl.trim() ? apiBaseUrl.trim() : ''
+  const options = { apiKey, dangerouslyAllowBrowser: true }
+  if (baseURL) options.baseURL = baseURL
+  return new OpenAI(options)
 }
 
 function pickActivePreset(settings) {
@@ -297,9 +300,12 @@ export async function listModels() {
 }
 
 // List models using a provided API key (without saving it)
-export async function listModelsWithKey(apiKey) {
+export async function listModelsWithKey(apiKey, apiBaseUrl = '') {
   if (!apiKey) throw new Error('Missing OpenAI API key.')
-  const client = new OpenAI({ apiKey, dangerouslyAllowBrowser: true })
+  const baseURL = typeof apiBaseUrl === 'string' && apiBaseUrl.trim() ? apiBaseUrl.trim() : ''
+  const options = { apiKey, dangerouslyAllowBrowser: true }
+  if (baseURL) options.baseURL = baseURL
+  const client = new OpenAI(options)
   if (!client?.models?.list) throw new Error('OpenAI SDK does not support listing models.')
   const res = await client.models.list()
   const items = Array.isArray(res?.data) ? res.data : []
