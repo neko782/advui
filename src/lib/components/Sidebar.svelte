@@ -313,8 +313,13 @@
     /* Prevent any horizontal bleed from long titles */
     overflow-x: hidden;
     z-index: 10;
+    /* Respect viewport safe-area so the toggle button position stays consistent */
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-right: env(safe-area-inset-right, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    padding-left: env(safe-area-inset-left, 0px);
   }
-  .sidebar.collapsed { width: 52px; overflow-x: visible; }
+  .sidebar.collapsed { width: 52px; overflow-x: visible; padding: 0; }
   @media (prefers-color-scheme: dark) {
     .sidebar {
       --bg: #0f0f10;
@@ -426,8 +431,8 @@
       position: fixed;
       top: 8px;
       left: 8px;
-      top: calc(env(safe-area-inset-top) + 8px);
-      left: calc(env(safe-area-inset-left) + 8px);
+      top: calc(env(safe-area-inset-top, 0px) + 8px);
+      left: calc(env(safe-area-inset-left, 0px) + 8px);
       z-index: 40;
       padding: 0;
       display: flex;
