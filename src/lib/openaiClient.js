@@ -11,7 +11,8 @@ function resolveConnection({ connectionId, connection, settings } = {}) {
       : (typeof connection.connectionId === 'string' && connection.connectionId.trim() ? connection.connectionId.trim() : null)
     const apiKey = typeof connection.apiKey === 'string' ? connection.apiKey : ''
     const apiBaseUrl = connection.apiBaseUrl
-    return { id, apiKey, apiBaseUrl }
+    const apiMode = connection.apiMode === 'chat_completions' ? 'chat_completions' : 'responses'
+    return { id, apiKey, apiBaseUrl, apiMode }
   }
   const srcSettings = settings || loadSettings()
   const resolved = findConnection(srcSettings, connectionId)
@@ -19,6 +20,7 @@ function resolveConnection({ connectionId, connection, settings } = {}) {
     id: resolved?.id || null,
     apiKey: typeof resolved?.apiKey === 'string' ? resolved.apiKey : '',
     apiBaseUrl: resolved?.apiBaseUrl,
+    apiMode: resolved?.apiMode === 'chat_completions' ? 'chat_completions' : 'responses',
   }
 }
 
@@ -88,7 +90,7 @@ export async function respond({
   if (!resolvedConnection.apiKey) {
     throw new Error('Missing OpenAI API key. Set it in Settings.')
   }
-  const apiMode = settings?.apiMode === 'chat_completions' ? 'chat_completions' : 'responses'
+  const apiMode = resolvedConnection.apiMode === 'chat_completions' ? 'chat_completions' : 'responses'
   const useChatCompletions = apiMode === 'chat_completions'
 
   // SDK call only
@@ -187,6 +189,17 @@ export async function respond({
         try { streamIt.controller?.abort?.() } catch {}
       })
       let full = ''
+      const summaryByIndex = new Map()
+      let summaryDelivered = false
+      const buildSummary = () => {
+        const ordered = Array.from(summaryByIndex.entries())
+          .sort((a, b) => a[0] - b[0])
+          .map(([, text]) => (typeof text === 'string' ? text : ''))
+          .filter(Boolean)
+        if (!ordered.length) return ''
+        const combined = ordered.join('\n\n\n')
+        return combined.replace(/\n{4,}/g, '\n\n\n')
+      }
       try {
         for await (const chunk of streamIt) {
           try { onEvent?.(chunk) } catch {}
@@ -195,16 +208,52 @@ export async function respond({
             full += deltaText
             try { onTextDelta?.(full) } catch {}
           }
+          const choices = Array.isArray(chunk?.choices) ? chunk.choices : []
+          let finishReasonSeen = false
+          for (const choice of choices) {
+            const idx = Number.isFinite(Number(choice?.index)) ? Number(choice.index) : 0
+            const prev = summaryByIndex.get(idx) || ''
+            let next = prev
+            const deltaSummary = collectChatReasoningContent(choice?.delta?.reasoning_content)
+            if (deltaSummary) {
+              next += deltaSummary
+            }
+            const messageSummary = collectChatReasoningContent(choice?.message?.reasoning_content)
+            if (messageSummary) {
+              next = messageSummary
+            }
+            if (next !== prev) {
+              summaryByIndex.set(idx, next)
+              const summary = buildSummary()
+              try { onReasoningSummaryDelta?.(summary, deltaSummary || messageSummary || '', choice) } catch {}
+            }
+            if (!finishReasonSeen && typeof choice?.finish_reason === 'string' && choice.finish_reason) {
+              finishReasonSeen = true
+            }
+          }
+          if (finishReasonSeen && !summaryDelivered) {
+            const summary = buildSummary()
+            try {
+              onReasoningSummaryDone?.(summary || '', chunk)
+              summaryDelivered = true
+            } catch {}
+          }
         }
       } catch (err) {
         throw err
       } finally {
         try { streamIt.controller?.abort?.() } catch {}
       }
-      try { onReasoningSummaryDone?.('', null) } catch {}
+      const finalSummary = buildSummary()
+      if (!summaryDelivered) {
+        try {
+          onReasoningSummaryDone?.(finalSummary || '', null)
+          summaryDelivered = true
+        } catch {}
+      }
       return {
         text: full,
-        reasoningSummary: '',
+        reasoningSummary: finalSummary,
       }
     }
 
@@ -313,8 +362,9 @@ export async function respond({
         abortController ? { signal: abortController.signal } : undefined,
       )
       const text = extractOutputText(res)
-      try { onReasoningSummaryDone?.('', null) } catch {}
-      return { text, reasoningSummary: '' }
+      const summary = extractChatReasoningSummary(res)
+      try { onReasoningSummaryDone?.(summary || '', null) } catch {}
+      return { text, reasoningSummary: summary || '' }
     }
 
     const abortController = (typeof AbortController === 'function') ? new AbortController() : null
@@ -407,6 +457,39 @@ function collectChatDeltaText(chunk) {
   return pieces.join('')
 }
 
+function collectChatReasoningContent(reasoningContent) {
+  if (!Array.isArray(reasoningContent)) return ''
+  const pieces = []
+  for (const item of reasoningContent) {
+    if (item == null) continue
+    if (typeof item === 'string') {
+      if (item) pieces.push(item)
+      continue
+    }
+    if (typeof item.text === 'string') {
+      if (item.text) pieces.push(item.text)
+      continue
+    }
+    if (Array.isArray(item.text)) {
+      const text = collectContentText(item.text)
+      if (text) pieces.push(text)
+      continue
+    }
+    if (typeof item.content === 'string') {
+      if (item.content) pieces.push(item.content)
+      continue
+    }
+    if (Array.isArray(item.content)) {
+      const text = collectContentText(item.content)
+      if (text) pieces.push(text)
+      continue
+    }
+    const fallback = collectContentText(item)
+    if (fallback) pieces.push(fallback)
+  }
+  return pieces.join('')
+}
+
 function extractOutputText(res) {
   // SDK convenience property
   if (res && typeof res.output_text === 'string' && res.output_text.length) return res.output_text
@@ -459,6 +542,30 @@ function extractReasoningSummary(res) {
   try {
     const nested = collect(res?.response?.output)
     if (nested) return nested
+  } catch {}
+  return ''
+}
+
+function extractChatReasoningSummary(res) {
+  try {
+    const choices = Array.isArray(res?.choices) ? res.choices : []
+    if (!choices.length) return ''
+    const summaryByIndex = new Map()
+    for (const choice of choices) {
+      const idx = Number.isFinite(Number(choice?.index)) ? Number(choice.index) : summaryByIndex.size
+      const messageSummary = collectChatReasoningContent(choice?.message?.reasoning_content)
+      const deltaSummary = collectChatReasoningContent(choice?.delta?.reasoning_content)
+      const combined = messageSummary || deltaSummary
+      if (combined) summaryByIndex.set(idx, combined)
+    }
+    if (!summaryByIndex.size) return ''
+    const ordered = Array.from(summaryByIndex.entries())
+      .sort((a, b) => a[0] - b[0])
+      .map(([, text]) => (typeof text === 'string' ? text : ''))
+      .filter(Boolean)
+    if (!ordered.length) return ''
+    const joined = ordered.join('\n\n\n')
+    return joined.replace(/\n{4,}/g, '\n\n\n')
   } catch {}
   return ''
 }

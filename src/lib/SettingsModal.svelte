@@ -14,7 +14,7 @@
   let activePresetId = $state('')
   let activeConnectionId = $state('')
   const TABS = [
-    { id: 'connection', label: 'Connection' },
+    { id: 'connection', label: 'Connections' },
     { id: 'presets', label: 'Presets' },
     { id: 'developer', label: 'Developer' },
   ]
@@ -76,6 +76,7 @@
         name: 'Connection 1',
         apiKey: '',
         apiBaseUrl: DEFAULT_API_BASE_URL,
+        apiMode: 'responses',
       }
       local.connections = [conn]
       list = local.connections
@@ -89,6 +90,9 @@
     if (nextId && local.selectedConnectionId !== nextId) {
       local.selectedConnectionId = nextId
     }
+    const active = list.find(c => c?.id === nextId) || fallback || null
+    const mode = typeof active?.apiMode === 'string' && active.apiMode ? active.apiMode : 'responses'
+    local.apiMode = mode
   }
 
   function syncActivePreset() {
@@ -215,11 +219,11 @@
   function selectConnection(id) {
     if (!id) return
     activeConnectionId = id
-  }
-
-  function setDefaultConnection(id) {
-    if (!id) return
     local.selectedConnectionId = id
+    const list = Array.isArray(local?.connections) ? local.connections : []
+    const found = list.find(c => c?.id === id)
+    const nextMode = typeof found?.apiMode === 'string' && found.apiMode ? found.apiMode : 'responses'
+    local.apiMode = nextMode
     persistSettings()
   }
 
@@ -237,6 +241,7 @@
       name,
       apiKey: '',
       apiBaseUrl: DEFAULT_API_BASE_URL,
+      apiMode: 'responses',
     }
     local.connections = [...list, connection]
     modelCacheByConnection = { ...modelCacheByConnection, [id]: { ids: [], fetchedAt: 0 } }
@@ -447,18 +452,20 @@
                   />
                 </label>
                 <p class="hint">Leave blank to use the default OpenAI endpoint.</p>
-                <div class="connection-actions">
-                  <button
-                    type="button"
-                    class={`default-connection-btn ${local?.selectedConnectionId === activeConnection.id ? 'active' : ''}`}
-                    onclick={() => setDefaultConnection(activeConnection.id)}
-                    aria-label="Make default connection"
-                    disabled={local?.selectedConnectionId === activeConnection.id}
+                <label class="field">
+                  <span>API</span>
+                  <select
+                    value={activeConnection.apiMode || 'responses'}
+                    onchange={(event) => updateActiveConnection({ apiMode: event.currentTarget.value })}
+                    aria-label="API mode"
                   >
-                    <Icon name="star" size={18} />
-                    <span>{local?.selectedConnectionId === activeConnection.id ? 'Default connection' : 'Make default'}</span>
-                  </button>
-                  {#if (local?.connections?.length || 0) > 1}
+                    <option value="responses">Responses API</option>
+                    <option value="chat_completions">Chat Completions API</option>
+                  </select>
+                </label>
+                <p class="hint">Chat Completions disables reasoning summaries.</p>
+                {#if (local?.connections?.length || 0) > 1}
+                  <div class="connection-actions">
                     <button
                       type="button"
                       class="preset-delete"
@@ -469,27 +476,12 @@
                       <Icon name="delete" size={18} />
                       <span>Delete connection</span>
                     </button>
-                  {/if}
-                </div>
+                  </div>
+                {/if}
                 {#if activeRefreshMsg}
                   <p class="hint" aria-live="polite">{activeRefreshMsg}</p>
                 {/if}
               {/if}
-              <label class="field">
-                <span>API</span>
-                <select
-                  value={local.apiMode || 'responses'}
-                  onchange={(event) => {
-                    local.apiMode = event.currentTarget.value
-                    persistSettings()
-                  }}
-                  aria-label="API mode"
-                >
-                  <option value="responses">Responses API</option>
-                  <option value="chat_completions">Chat Completions API</option>
-                </select>
-              </label>
-              <p class="hint">Chat Completions disables reasoning summaries.</p>
             </section>
           {:else if activeTab === 'presets'}
             <section class="group presets">
@@ -745,27 +737,6 @@
   .preset-delete:hover { background: rgba(214,69,69,0.06); }
   .preset-delete:focus-visible { outline: 2px solid rgba(214,69,69,0.6); outline-offset: 2px; }
   .connection-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-  .default-connection-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 4px 10px;
-    background: transparent;
-    color: var(--text);
-    cursor: pointer;
-    font-size: .85rem;
-  }
-  .default-connection-btn:not(.active):not(:disabled):hover {
-    border-color: color-mix(in srgb, var(--accent) 60%, transparent);
-    color: var(--accent);
-  }
-  .default-connection-btn.active {
-    background: color-mix(in srgb, var(--accent) 15%, transparent);
-    cursor: default;
-  }
-  .default-connection-btn:disabled { opacity: .7; cursor: not-allowed; }
   /* Toggle switch */
   .switch { display: inline-flex; align-items: center; gap: 10px; cursor: pointer; user-select: none; }
   .switch > input { position: absolute; opacity: 0; width: 1px; height: 1px; pointer-events: none; }

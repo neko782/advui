@@ -34,12 +34,14 @@ function makeDefaultPreset(connectionId = null) {
   };
 }
 
-function makeDefaultConnection({ apiKey = '', apiBaseUrl = DEFAULT_API_BASE_URL } = {}) {
+function makeDefaultConnection({ apiKey = '', apiBaseUrl = DEFAULT_API_BASE_URL, apiMode = 'responses' } = {}) {
+  const normalizedMode = API_MODE_VALUES.has(apiMode) ? apiMode : 'responses';
   return {
     id: 'connection-default',
     name: 'Default',
     apiKey: typeof apiKey === 'string' ? apiKey : '',
     apiBaseUrl: normalizeApiBaseUrl(apiBaseUrl),
+    apiMode: normalizedMode,
   };
 }
 
@@ -70,7 +72,7 @@ const REASONING_VALUES = new Set(['none', 'minimal', 'low', 'medium', 'high']);
 const TEXT_VERBOSITY_VALUES = new Set(['low', 'medium', 'high']);
 const REASONING_SUMMARY_VALUES = new Set(['auto', 'concise', 'detailed']);
 
-function normalizeConnection(raw, index = 0) {
+function normalizeConnection(raw, index = 0, { fallbackApiMode = 'responses' } = {}) {
   if (!raw || typeof raw !== 'object') return null;
   const connection = { ...raw };
   connection.id = typeof connection.id === 'string' && connection.id.trim()
@@ -82,26 +84,31 @@ function normalizeConnection(raw, index = 0) {
   connection.name = nameSource;
   connection.apiKey = typeof connection.apiKey === 'string' ? connection.apiKey : '';
   connection.apiBaseUrl = normalizeApiBaseUrl(connection.apiBaseUrl);
+  const rawMode = typeof connection.apiMode === 'string' ? connection.apiMode : fallbackApiMode;
+  connection.apiMode = API_MODE_VALUES.has(rawMode) ? rawMode : 'responses';
   return connection;
 }
 
 function ensureConnectionList(list, fallback = {}) {
   const arr = Array.isArray(list) ? list : [];
+  const fallbackApiMode = API_MODE_VALUES.has(fallback?.apiMode) ? fallback.apiMode : 'responses';
   let normalized = arr
-    .map((item, index) => normalizeConnection(item, index))
+    .map((item, index) => normalizeConnection(item, index, { fallbackApiMode }))
     .filter(Boolean);
   if (!normalized.length) {
-    normalized = [makeDefaultConnection(fallback)];
+    normalized = [makeDefaultConnection({ ...fallback, apiMode: fallbackApiMode })];
   }
   const seen = new Set();
   return normalized.map((item, index) => {
     let id = item.id;
     while (seen.has(id)) id = genConnectionId();
     seen.add(id);
+    const mode = API_MODE_VALUES.has(item.apiMode) ? item.apiMode : fallbackApiMode;
     return {
       ...item,
       id,
       name: (typeof item.name === 'string' && item.name.trim()) ? item.name.trim() : `Connection ${index + 1}`,
+      apiMode: mode,
     };
   });
 }
@@ -178,7 +185,12 @@ function deriveDefaultPreset(parsed, options = {}) {
 }
 
 function attachCompatFields(out) {
-  const connections = ensureConnectionList(out.connections, { apiKey: out.apiKey, apiBaseUrl: out.apiBaseUrl });
+  const fallbackMode = API_MODE_VALUES.has(out?.apiMode) ? out.apiMode : 'responses';
+  const connections = ensureConnectionList(out.connections, {
+    apiKey: out.apiKey,
+    apiBaseUrl: out.apiBaseUrl,
+    apiMode: fallbackMode,
+  });
   const connectionIds = connections.map((c) => c.id);
   let selectedConnectionId = typeof out.selectedConnectionId === 'string' ? out.selectedConnectionId : null;
   if (!connectionIds.includes(selectedConnectionId)) {
@@ -215,11 +227,11 @@ function attachCompatFields(out) {
     connectionId: active.connectionId || fallbackConnectionId,
   };
   out.model = active.model;
-  const rawMode = typeof out.apiMode === 'string' ? out.apiMode : '';
-  out.apiMode = API_MODE_VALUES.has(rawMode) ? rawMode : 'responses';
   const activeConnection = out.connections.find((c) => c.id === out.selectedConnectionId)
     || out.connections[0]
     || makeDefaultConnection();
+  const activeApiMode = API_MODE_VALUES.has(activeConnection?.apiMode) ? activeConnection.apiMode : 'responses';
+  out.apiMode = activeApiMode;
   out.apiKey = typeof activeConnection?.apiKey === 'string' ? activeConnection.apiKey : '';
   out.apiBaseUrl = normalizeApiBaseUrl(activeConnection?.apiBaseUrl);
   return out;
@@ -267,9 +279,13 @@ export function loadSettings() {
     const raw = localStorage.getItem(SETTINGS_KEY);
     if (!raw) return defaults;
     const parsed = JSON.parse(raw);
+    const mode = typeof parsed?.apiMode === 'string' && API_MODE_VALUES.has(parsed.apiMode)
+      ? parsed.apiMode
+      : 'responses';
     const connections = ensureConnectionList(parsed?.connections, {
       apiKey: parsed?.apiKey,
       apiBaseUrl: parsed?.apiBaseUrl,
+      apiMode: mode,
     });
     const connectionIds = connections.map((c) => c.id);
     let selectedConnectionId = typeof parsed?.selectedConnectionId === 'string' ? parsed.selectedConnectionId : null;
@@ -292,9 +308,6 @@ export function loadSettings() {
       : presets[0]?.id || makeDefaultPreset(selectedConnectionId).id;
     const debug = typeof parsed?.debug === 'boolean' ? !!parsed.debug : false;
     const apiKey = typeof parsed?.apiKey === 'string' ? parsed.apiKey : '';
-    const mode = typeof parsed?.apiMode === 'string' && API_MODE_VALUES.has(parsed.apiMode)
-      ? parsed.apiMode
-      : 'responses';
     const apiBaseUrl = normalizeApiBaseUrl(parsed?.apiBaseUrl);
     return attachCompatFields({
       apiKey,
@@ -312,9 +325,17 @@ export function loadSettings() {
 }
 
 export function saveSettings(next) {
+  const fallbackApiMode = (() => {
+    if (Array.isArray(next?.connections)) {
+      const withMode = next.connections.find((c) => API_MODE_VALUES.has(c?.apiMode));
+      if (withMode) return withMode.apiMode;
+    }
+    return API_MODE_VALUES.has(next?.apiMode) ? next.apiMode : 'responses';
+  })();
   const connections = ensureConnectionList(next?.connections, {
     apiKey: next?.apiKey,
     apiBaseUrl: next?.apiBaseUrl,
+    apiMode: fallbackApiMode,
   });
   const connectionIds = connections.map((c) => c.id);
   let selectedConnectionId = typeof next?.selectedConnectionId === 'string' ? next.selectedConnectionId : null;
@@ -329,6 +350,10 @@ export function saveSettings(next) {
   const selectedPresetId = presets.some((p) => p.id === candidateId)
     ? candidateId
     : presets[0]?.id || makeDefaultPreset(selectedConnectionId).id;
+  const activeConnection = connections.find((c) => c.id === selectedConnectionId)
+    || connections[0]
+    || makeDefaultConnection({ apiMode: fallbackApiMode });
+  const activeApiMode = API_MODE_VALUES.has(activeConnection?.apiMode) ? activeConnection.apiMode : 'responses';
   const data = attachCompatFields({
     apiKey: typeof next?.apiKey === 'string' ? next.apiKey : '',
     apiBaseUrl: normalizeApiBaseUrl(next?.apiBaseUrl),
@@ -337,7 +362,7 @@ export function saveSettings(next) {
     presets,
     selectedPresetId,
     debug: !!next?.debug,
-    apiMode: API_MODE_VALUES.has(next?.apiMode) ? next.apiMode : 'responses',
+    apiMode: activeApiMode,
   });
   localStorage.setItem(SETTINGS_KEY, JSON.stringify(data));
 }
