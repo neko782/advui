@@ -374,7 +374,7 @@
     box-shadow: 0 8px 18px rgba(0,0,0,0.18);
     z-index: 20;
   }
-  .sidebar.collapsed .preset-menu { left: calc(100% + 8px); right: auto; width: 220px; }
+  .sidebar.collapsed .preset-menu { left: 8px; right: auto; width: 220px; }
   .preset-menu-item {
     display: grid;
     align-items: start;
@@ -411,6 +411,39 @@
   .sidebar.collapsed .nav-item:focus-visible {
     background: var(--hover-bg);
     transform: translateY(-1px);
+  }
+
+  @media (max-width: 1260px) {
+    .sidebar.collapsed {
+      width: 0;
+      border-right: 0;
+      background: transparent;
+    }
+    .sidebar.collapsed .sidebar-inner {
+      display: contents;
+    }
+    .sidebar.collapsed .side-header {
+      position: fixed;
+      top: max(16px, env(safe-area-inset-top));
+      left: max(16px, env(safe-area-inset-left));
+      z-index: 40;
+      padding: 0;
+      display: block;
+    }
+    .sidebar.collapsed .side-body,
+    .sidebar.collapsed .side-footer,
+    .sidebar.collapsed .side-fade {
+      display: none;
+    }
+    .sidebar.collapsed .side-header .icon-btn {
+      width: 44px;
+      height: 44px;
+      min-width: 44px;
+      border-radius: 999px;
+      box-shadow: var(--float-shadow);
+      border: 1px solid var(--border);
+      background: var(--panel);
+    }
   }
 
   /* Collapse button hover: animate without changing border or background */

@@ -514,18 +514,6 @@
                   />
                 </label>
                 <label class="field">
-                  <span>Connection</span>
-                  <select
-                    value={activePreset.connectionId || ''}
-                    onchange={(event) => updateActivePreset({ connectionId: event.currentTarget.value })}
-                    aria-label="Preset connection"
-                  >
-                    {#each (local?.connections || []) as connection (connection.id)}
-                      <option value={connection.id}>{connection?.name || connection?.id || 'Connection'}</option>
-                    {/each}
-                  </select>
-                </label>
-                <label class="field">
                   <span>Model</span>
                   <input
                     type="text"
@@ -627,6 +615,18 @@
                     <option value="low">low</option>
                     <option value="medium">medium</option>
                     <option value="high">high</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span>Connection</span>
+                  <select
+                    value={activePreset.connectionId || ''}
+                    onchange={(event) => updateActivePreset({ connectionId: event.currentTarget.value })}
+                    aria-label="Preset connection"
+                  >
+                    {#each (local?.connections || []) as connection (connection.id)}
+                      <option value={connection.id}>{connection?.name || connection?.id || 'Connection'}</option>
+                    {/each}
                   </select>
                 </label>
                 {#if (local?.presets?.length || 0) > 1}

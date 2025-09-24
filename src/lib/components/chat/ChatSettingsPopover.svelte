@@ -22,6 +22,7 @@
     <span class="material-symbols-rounded icon">tune</span>
   </button>
   <div class="send-menu chat-settings-menu" role="menu" aria-label="Chat settings">
+    <!-- Connection comes first so people can quickly switch APIs -->
     <div class="menu-section">
       <div class="menu-label">Connection</div>
       <select
@@ -35,89 +36,15 @@
         {/each}
       </select>
     </div>
+    <!-- Remaining chat settings follow the preset menu order -->
     <div class="menu-section">
-      <div class="menu-label">Model</div>
-      <input
-        type="text"
-        placeholder="gpt-5"
-        value={props.model}
-        disabled={props.disabled}
-        oninput={(e) => (!props.disabled && props.onInputModel?.(e.currentTarget.value))}
-        list="model-suggestions"
-        aria-label="Model"
-      />
-      {#if props.modelIds?.length}
-        <datalist id="model-suggestions">
-          {#each props.modelIds as mid}
-            <option value={mid}>{mid}</option>
-          {/each}
-        </datalist>
-      {/if}
-    </div>
-    <div class="menu-section">
-      <label class="switch" title="Stream">
-        <input
-          type="checkbox"
-          checked={!!props.streaming}
-          disabled={props.disabled}
-          onchange={(e) => (!props.disabled && props.onInputStreaming?.(e.currentTarget.checked))}
-          aria-label="Stream"
-        />
-        <span class="switch-ui" aria-hidden="true"></span>
-        <span class="switch-label">Stream</span>
-      </label>
-    </div>
-    <div class="menu-section">
-      <div class="menu-label">Max output tokens</div>
-      <input
-        type="number"
-        min="1"
-        step="1024"
-        placeholder="Auto"
-        value={props.maxOutputTokens ?? ''}
-        disabled={props.disabled}
-        oninput={(e) => (!props.disabled && props.onInputMaxOutputTokens?.(e.currentTarget.value))}
-        aria-label="Max output tokens"
-      />
-    </div>
-    <div class="menu-section">
-      <div class="menu-label">Top P</div>
-      <input
-        type="number"
-        min="0"
-        max="1"
-        step="0.1"
-        placeholder="Default"
-        value={props.topP ?? ''}
-        disabled={props.disabled}
-        oninput={(e) => (!props.disabled && props.onInputTopP?.(e.currentTarget.value))}
-        aria-label="top_p"
-      />
-    </div>
-    <div class="menu-section">
-      <div class="menu-label">Temperature</div>
-      <input
-        type="number"
-        min="0"
-        max="2"
-        step="0.1"
-        placeholder="Default"
-        value={props.temperature ?? ''}
-        disabled={props.disabled}
-        oninput={(e) => (!props.disabled && props.onInputTemperature?.(e.currentTarget.value))}
-        aria-label="Temperature"
-      />
-    </div>
-    <div class="menu-section">
-      <div class="menu-label">Reasoning effort</div>
+      <div class="menu-label">Text verbosity</div>
       <select
-        value={props.reasoningEffort || 'none'}
+        value={props.textVerbosity || 'medium'}
         disabled={props.disabled}
-        onchange={(e) => (!props.disabled && props.onInputReasoningEffort?.(e.currentTarget.value))}
-        aria-label="Reasoning effort"
+        onchange={(e) => (!props.disabled && props.onInputTextVerbosity?.(e.currentTarget.value))}
+        aria-label="Text verbosity"
       >
-        <option value="none">none</option>
-        <option value="minimal">minimal</option>
         <option value="low">low</option>
         <option value="medium">medium</option>
         <option value="high">high</option>
@@ -137,17 +64,92 @@
       </select>
     </div>
     <div class="menu-section">
-      <div class="menu-label">Text verbosity</div>
+      <div class="menu-label">Reasoning effort</div>
       <select
-        value={props.textVerbosity || 'medium'}
+        value={props.reasoningEffort || 'none'}
         disabled={props.disabled}
-        onchange={(e) => (!props.disabled && props.onInputTextVerbosity?.(e.currentTarget.value))}
-        aria-label="Text verbosity"
+        onchange={(e) => (!props.disabled && props.onInputReasoningEffort?.(e.currentTarget.value))}
+        aria-label="Reasoning effort"
       >
+        <option value="none">none</option>
+        <option value="minimal">minimal</option>
         <option value="low">low</option>
         <option value="medium">medium</option>
         <option value="high">high</option>
       </select>
+    </div>
+    <div class="menu-section">
+      <div class="menu-label">Temperature</div>
+      <input
+        type="number"
+        min="0"
+        max="2"
+        step="0.1"
+        placeholder="Default"
+        value={props.temperature ?? ''}
+        disabled={props.disabled}
+        oninput={(e) => (!props.disabled && props.onInputTemperature?.(e.currentTarget.value))}
+        aria-label="Temperature"
+      />
+    </div>
+    <div class="menu-section">
+      <div class="menu-label">Top P</div>
+      <input
+        type="number"
+        min="0"
+        max="1"
+        step="0.1"
+        placeholder="Default"
+        value={props.topP ?? ''}
+        disabled={props.disabled}
+        oninput={(e) => (!props.disabled && props.onInputTopP?.(e.currentTarget.value))}
+        aria-label="top_p"
+      />
+    </div>
+    <div class="menu-section">
+      <div class="menu-label">Max output tokens</div>
+      <input
+        type="number"
+        min="1"
+        step="1024"
+        placeholder="Auto"
+        value={props.maxOutputTokens ?? ''}
+        disabled={props.disabled}
+        oninput={(e) => (!props.disabled && props.onInputMaxOutputTokens?.(e.currentTarget.value))}
+        aria-label="Max output tokens"
+      />
+    </div>
+    <div class="menu-section">
+      <label class="switch" title="Stream">
+        <input
+          type="checkbox"
+          checked={!!props.streaming}
+          disabled={props.disabled}
+          onchange={(e) => (!props.disabled && props.onInputStreaming?.(e.currentTarget.checked))}
+          aria-label="Stream"
+        />
+        <span class="switch-ui" aria-hidden="true"></span>
+        <span class="switch-label">Stream</span>
+      </label>
+    </div>
+    <div class="menu-section">
+      <div class="menu-label">Model</div>
+      <input
+        type="text"
+        placeholder="gpt-5"
+        value={props.model}
+        disabled={props.disabled}
+        oninput={(e) => (!props.disabled && props.onInputModel?.(e.currentTarget.value))}
+        list="model-suggestions"
+        aria-label="Model"
+      />
+      {#if props.modelIds?.length}
+        <datalist id="model-suggestions">
+          {#each props.modelIds as mid}
+            <option value={mid}>{mid}</option>
+          {/each}
+        </datalist>
+      {/if}
     </div>
   </div>
 </div>
