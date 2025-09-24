@@ -673,12 +673,13 @@
   }
   .modal {
     position: fixed; inset: 0;
-    display: flex; align-items: stretch; justify-content: stretch;
+    display: flex; align-items: center; justify-content: center;
     padding: 24px;
     z-index: 1001; /* Above app bars */
   }
   .panel {
-    width: 100%; height: 100%;
+    width: min(calc(100vw - 48px), 1080px);
+    height: min(calc(100vh - 48px), 900px);
     background: var(--panel);
     border: 1px solid var(--border);
     border-radius: 18px;
@@ -750,6 +751,7 @@
   .switch-label { font-size: .95rem; }
   @media (max-width: 640px) {
     .modal { padding: 12px; }
+    .panel { width: 100%; height: 100%; }
     .modal-head { padding: 16px; }
     .tab-bar { padding: 0 16px; }
     .modal-scroller { padding: 16px; }

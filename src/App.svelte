@@ -213,7 +213,13 @@
     if (!id) return
     await deleteChat(id)
     setGenerating(id, false)
-    if (selectedId === id) selectedId = null
+    const wasSelected = selectedId === id
+    if (wasSelected) selectedId = null
+    const remaining = await getChats()
+    if (!Array.isArray(remaining) || remaining.length === 0) {
+      await onNewChat()
+      return
+    }
     await refresh()
   }
 
