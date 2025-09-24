@@ -429,7 +429,7 @@
       top: calc(env(safe-area-inset-top) + 8px);
       left: calc(env(safe-area-inset-left) + 8px);
       z-index: 40;
-      padding: 8px;
+      padding: 0;
       display: flex;
       align-items: center;
       gap: 8px;
