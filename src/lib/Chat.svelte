@@ -3,6 +3,7 @@
   import { loadSettings } from './settingsStore.js'
   import { ensureModels, loadModelsCache } from './modelsStore.js'
   import { respond } from './openaiClient.js'
+  import { APIUserAbortError } from 'openai'
   import { getChat as loadChatById, saveChatContent } from './chatsStore.js'
   // dom utils used within child components
   import { copyText as copyToClipboard } from './utils/clipboard.js'
@@ -13,6 +14,9 @@
   let nodes = $state([])
   let input = $state('')
   let sending = $state(false)
+  let inFlightAbort = $state(null)
+  let inFlightTypingVariantId = $state(null)
+  let abortRequested = $state(false)
   // Lock all chat actions while a response is generating (sending or any typing)
   let locked = $state(false)
   let nextId = $state(1)
@@ -563,11 +567,39 @@
     } catch {}
   })
 
-  
+
 
   // Send a message (with chosen role) and request an assistant reply via API
+  function isAbortError(err) {
+    if (!err) return false
+    if (typeof APIUserAbortError === 'function' && err instanceof APIUserAbortError) return true
+    const name = err?.name
+    if (name === 'AbortError') return true
+    const msg = String(err?.message || '')
+    if (msg === 'Request was aborted.' || msg === 'The user aborted a request.') return true
+    if (msg.toLowerCase?.().includes('aborted')) return true
+    return false
+  }
+
+  function resetGenerationState() {
+    inFlightAbort = null
+    inFlightTypingVariantId = null
+    abortRequested = false
+  }
+  function registerAbortHandler(fn) {
+    inFlightAbort = (typeof fn === 'function') ? fn : null
+    if (abortRequested && typeof inFlightAbort === 'function') {
+      try { inFlightAbort() } catch {}
+    }
+  }
+  function finishGeneration() {
+    sending = false
+    resetGenerationState()
+  }
+
   async function sendWithRole(role = 'user') {
     if (locked || sending) return
+    resetGenerationState()
     const rawInput = (typeof input === 'string') ? input : ''
     const trimmedInput = rawInput.trim()
     const hasContent = trimmedInput.length > 0
@@ -616,6 +648,7 @@
         reasoningSummaryLoading: true,
       }
       typingVariantId = typingVariant.id
+      inFlightTypingVariantId = typingVariantId
       const typingNode = { id: nextNodeId++, variants: [typingVariant], active: 0 }
       const attachNodeId = (hasContent && newNodeId != null) ? newNodeId : parentNodeId
       if (attachNodeId != null) {
@@ -660,6 +693,7 @@
           reply = await respond({
             ...responseOptions,
             stream: true,
+            onAbort: registerAbortHandler,
             onTextDelta: (full) => {
               updateVariantById(typingVariantId, (prev) => ({ ...prev, content: full }))
             },
@@ -683,6 +717,7 @@
         } else if (role === 'user') {
           reply = await respond({
             ...responseOptions,
+            onAbort: registerAbortHandler,
             onReasoningSummaryDone: (fullSummary) => {
               if (typeof fullSummary === 'string') summaryBuffer = fullSummary
             },
@@ -722,24 +757,57 @@
       }
       persistNow()
     } catch (err) {
-      const msg = err?.message || 'Something went wrong.'
+      const aborted = isAbortError(err)
       if (role === 'user' && typingVariantId != null) {
-        updateVariantById(typingVariantId, (prev) => ({
-          ...prev,
-          typing: false,
-          error: msg,
-          reasoningSummaryLoading: false,
-          content: (prev.content === 'typing' ? '' : prev.content),
-        }))
+        if (aborted) {
+          updateVariantById(typingVariantId, (prev) => ({
+            ...prev,
+            typing: false,
+            error: undefined,
+            reasoningSummaryLoading: false,
+            content: (prev.content === 'typing' ? '' : prev.content),
+          }))
+        } else {
+          const msg = err?.message || 'Something went wrong.'
+          updateVariantById(typingVariantId, (prev) => ({
+            ...prev,
+            typing: false,
+            error: msg,
+            reasoningSummaryLoading: false,
+            content: (prev.content === 'typing' ? '' : prev.content),
+          }))
+        }
       }
       persistNow()
     } finally {
-      sending = false
+      finishGeneration()
     }
   }
 
   // Default send: as user
   function send() { return sendWithRole('user') }
+
+  function stopGeneration() {
+    if (!sending) return
+    abortRequested = true
+    const abortFn = inFlightAbort
+    if (typeof abortFn === 'function') {
+      try { abortFn() } catch {}
+    }
+    const typingId = inFlightTypingVariantId
+    if (typingId != null) {
+      updateVariantById(typingId, (prev) => ({
+        ...prev,
+        typing: false,
+        error: undefined,
+        reasoningSummaryLoading: false,
+        content: (prev.content === 'typing' ? '' : prev.content),
+      }))
+    }
+    inFlightAbort = null
+    sending = false
+    persistNow()
+  }
 
   // Add a message locally without sending to the API
   function addToChat(role = 'user') {
@@ -1067,7 +1135,10 @@
     const typingNode = { id: nextNodeId++, variants: [typingMsg], active: 0 }
     nodes = nodes.map(n => (n.id === curNode.id ? { ...n, variants: n.variants.map((v, i) => (i === (n.variants.length - 1) ? { ...v, next: typingNode.id } : v)) } : n))
     nodes = [...nodes, typingNode]
-    
+    resetGenerationState()
+    sending = true
+    inFlightTypingVariantId = typingMsg.id
+
     try {
       let reply = null
       let summaryBuffer = ''
@@ -1094,6 +1165,7 @@
           reply = await respond({
             ...responseOptions,
             stream: true,
+            onAbort: registerAbortHandler,
             onTextDelta: (full) => {
               updateVariantById(typingId, (prev) => ({ ...prev, content: full }))
             },
@@ -1117,6 +1189,7 @@
         } else {
           reply = await respond({
             ...responseOptions,
+            onAbort: registerAbortHandler,
             onReasoningSummaryDone: (fullSummary) => {
               if (typeof fullSummary === 'string') summaryBuffer = fullSummary
             },
@@ -1150,16 +1223,17 @@
       }))
       persistNow()
     } catch (err) {
-      const msg = err?.message || 'Something went wrong.'
+      const aborted = isAbortError(err)
       updateVariantById(typingMsg.id, (prev) => ({
         ...prev,
         typing: false,
-        error: msg,
+        error: aborted ? undefined : (err?.message || 'Something went wrong.'),
         reasoningSummaryLoading: false,
         content: (prev.content === 'typing' ? '' : prev.content),
       }))
       persistNow()
     } finally {
+      finishGeneration()
       // Do not auto-scroll on reply
     }
   }
@@ -1206,6 +1280,9 @@
       reasoningSummaryLoading: true,
     }
     nodes = nodes.map(n => (n.id === node.id ? { ...n, variants: [...(n.variants || []), typingMsg], active: (n.variants?.length || 0) } : n))
+    resetGenerationState()
+    sending = true
+    inFlightTypingVariantId = typingMsg.id
     try {
       let reply = null
       let summaryBuffer = ''
@@ -1233,6 +1310,7 @@
           reply = await respond({
             ...responseOptions,
             stream: true,
+            onAbort: registerAbortHandler,
             onTextDelta: (full) => {
               updateVariantById(typingId, (prev) => ({ ...prev, content: full }))
             },
@@ -1256,6 +1334,7 @@
         } else {
           reply = await respond({
             ...responseOptions,
+            onAbort: registerAbortHandler,
             onReasoningSummaryDone: (fullSummary) => {
               if (typeof fullSummary === 'string') summaryBuffer = fullSummary
             },
@@ -1290,16 +1369,17 @@
       }))
       persistNow()
     } catch (err) {
-      const msg = err?.message || 'Something went wrong.'
+      const aborted = isAbortError(err)
       updateVariantById(typingMsg.id, (prev) => ({
         ...prev,
         typing: false,
-        error: msg,
+        error: aborted ? undefined : (err?.message || 'Something went wrong.'),
         reasoningSummaryLoading: false,
         content: (prev.content === 'typing' ? '' : prev.content),
       }))
       persistNow()
     } finally {
+      finishGeneration()
       // Do not auto-scroll on reply
     }
   }
@@ -1329,6 +1409,9 @@
     nodes = nodes.map(n => (n.id === curNodeId ? { ...n, variants: n.variants.map((v, idx) => (idx === (Number(n.active)||0) ? { ...v, next: typingNode.id } : v)) } : n))
     nodes = [...nodes, typingNode]
     persistNow()
+    resetGenerationState()
+    sending = true
+    inFlightTypingVariantId = typingMsg.id
 
     try {
       let reply = null
@@ -1354,6 +1437,7 @@
           reply = await respond({
             ...responseOptions,
             stream: true,
+            onAbort: registerAbortHandler,
             onTextDelta: (full) => {
               updateVariantById(typingId, (prev) => ({ ...prev, content: full }))
             },
@@ -1377,6 +1461,7 @@
         } else {
           reply = await respond({
             ...responseOptions,
+            onAbort: registerAbortHandler,
             onReasoningSummaryDone: (fullSummary) => {
               if (typeof fullSummary === 'string') summaryBuffer = fullSummary
             },
@@ -1410,16 +1495,17 @@
       }))
       persistNow()
     } catch (err) {
-      const msg = err?.message || 'Something went wrong.'
+      const aborted = isAbortError(err)
       updateVariantById(typingMsg.id, (prev) => ({
         ...prev,
         typing: false,
-        error: msg,
+        error: aborted ? undefined : (err?.message || 'Something went wrong.'),
         reasoningSummaryLoading: false,
         content: (prev.content === 'typing' ? '' : prev.content),
       }))
       persistNow()
     } finally {
+      finishGeneration()
       // Do not auto-scroll on reply
     }
   }
@@ -1524,6 +1610,7 @@
     onChangeTextVerbosity={(val) => (chatSettings = { ...chatSettings, textVerbosity: normalizeVerbosity(val) })}
     onInput={(val) => (input = val)}
     onAdd={(role) => addToChat(role)}
+    onStop={() => stopGeneration()}
     onSend={(role) => sendWithRole(role)}
   />
 

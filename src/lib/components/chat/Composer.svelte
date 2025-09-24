@@ -11,6 +11,7 @@
 
   function onKey(e) {
     if (e.key === 'Enter' && !e.shiftKey) {
+      if (props.locked) return
       e.preventDefault()
       props.onSend?.('user')
     }
@@ -47,7 +48,6 @@
       class="composer-input"
       rows="1"
       placeholder="Type a message…"
-      disabled={props.locked}
       value={props.input}
       oninput={(e) => { props.onInput?.(e.currentTarget.value); queueMicrotask(() => autoGrow(inputEl)) }}
       onkeydown={onKey}
@@ -75,25 +75,33 @@
     </div>
 
     <!-- Send group (single send button shows the menu on hover/focus) -->
-    <div class="send-group" aria-haspopup="menu" title="Send as">
-      <button class="float-btn" onclick={() => props.onSend?.('user')} disabled={props.locked || props.sending} aria-label="Send">
-        <Icon name="send" size={22} />
-      </button>
-      <div class="send-menu" role="menu" aria-label="Send as">
-        <button role="menuitem" class="menu-item" onclick={() => props.onSend?.('user')} disabled={props.locked || props.sending} aria-label="Send as user">
-          <Icon name="send" size={18} />
-          User
-        </button>
-        <button role="menuitem" class="menu-item" onclick={() => props.onSend?.('assistant')} disabled={props.locked || props.sending} aria-label="Send as assistant">
-          <Icon name="send" size={18} />
-          Assistant
-        </button>
-        <button role="menuitem" class="menu-item" onclick={() => props.onSend?.('system')} disabled={props.locked || props.sending} aria-label="Send as system">
-          <Icon name="send" size={18} />
-          System
+    {#if props.sending}
+      <div class="send-group" title="Stop response">
+        <button class="float-btn stop-btn" onclick={() => props.onStop?.()} aria-label="Stop response" disabled={!props.onStop}>
+          <Icon name="stop" size={22} />
         </button>
       </div>
-    </div>
+    {:else}
+      <div class="send-group" aria-haspopup="menu" title="Send as">
+        <button class="float-btn" onclick={() => props.onSend?.('user')} disabled={props.locked} aria-label="Send">
+          <Icon name="send" size={22} />
+        </button>
+        <div class="send-menu" role="menu" aria-label="Send as">
+          <button role="menuitem" class="menu-item" onclick={() => props.onSend?.('user')} disabled={props.locked} aria-label="Send as user">
+            <Icon name="send" size={18} />
+            User
+          </button>
+          <button role="menuitem" class="menu-item" onclick={() => props.onSend?.('assistant')} disabled={props.locked} aria-label="Send as assistant">
+            <Icon name="send" size={18} />
+            Assistant
+          </button>
+          <button role="menuitem" class="menu-item" onclick={() => props.onSend?.('system')} disabled={props.locked} aria-label="Send as system">
+            <Icon name="send" size={18} />
+            System
+          </button>
+        </div>
+      </div>
+    {/if}
   </div>
 </footer>
 
@@ -137,6 +145,9 @@
     transition: background-color .15s ease, color .15s ease, border-color .15s ease, opacity .15s ease;
   }
   .float-btn:disabled { background: #1f2937; color: #ffffff; cursor: not-allowed; }
+  .stop-btn { background: #ef4444; }
+  .stop-btn:hover,
+  .stop-btn:focus-visible { background: #dc2626; }
   .send-group { position: relative; display: grid; place-items: center; z-index: 0; }
   .send-group::before { content: ''; position: absolute; right: 0; bottom: 100%; width: 220px; height: 12px; }
   .send-group:hover, .send-group:focus-within { z-index: 20; }

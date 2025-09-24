@@ -36,6 +36,7 @@ export async function respond({
   reasoningSummary,
   onReasoningSummaryDelta,
   onReasoningSummaryDone,
+  onAbort,
 }) {
   const { apiKey } = loadSettings()
   if (!apiKey) throw new Error('Missing OpenAI API key. Set it in Settings.')
@@ -47,6 +48,12 @@ export async function respond({
   const client = await getClient()
   if (!client?.responses?.create) {
     throw new Error('OpenAI SDK is not available or is outdated.')
+  }
+  const provideAbort = (fn) => {
+    if (typeof onAbort !== 'function') return
+    onAbort(() => {
+      try { fn?.() } catch {}
+    })
   }
   let input
   if (Array.isArray(messages) && messages.length) {
@@ -94,7 +101,16 @@ export async function respond({
 
   if (stream) {
     // Stream via SDK's async iterator
-    const streamIt = await client.responses.create({ ...request, stream: true })
+    const abortController = (typeof AbortController === 'function') ? new AbortController() : null
+    if (abortController) {
+      provideAbort(() => {
+        try { abortController.abort() } catch {}
+      })
+    }
+    const streamIt = await client.responses.create({ ...request, stream: true }, abortController ? { signal: abortController.signal } : undefined)
+    provideAbort(() => {
+      try { streamIt.controller?.abort?.() } catch {}
+    })
     let full = ''
     const summaryByIndex = new Map()
     const buildSummary = () => {
@@ -150,7 +166,16 @@ export async function respond({
       reasoningSummary: buildSummary(),
     }
   } else {
-    const res = await client.responses.create(request)
+    const abortController = (typeof AbortController === 'function') ? new AbortController() : null
+    if (abortController) {
+      provideAbort(() => {
+        try { abortController.abort() } catch {}
+      })
+    } else if (typeof onAbort === 'function') {
+      // Still provide a callable no-op so callers can clear their abort handle
+      onAbort(() => {})
+    }
+    const res = await client.responses.create(request, abortController ? { signal: abortController.signal } : undefined)
     const text = extractOutputText(res)
     const summary = extractReasoningSummary(res)
     if (summary) {
