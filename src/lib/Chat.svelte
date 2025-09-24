@@ -567,36 +567,44 @@
 
   // Send a message (with chosen role) and request an assistant reply via API
   async function sendWithRole(role = 'user') {
-    if (locked) return
-    const text = input.trim()
-    if (!text || sending) return
+    if (locked || sending) return
+    const rawInput = (typeof input === 'string') ? input : ''
+    const trimmedInput = rawInput.trim()
+    const hasContent = trimmedInput.length > 0
+
+    if (!hasContent && role !== 'user') {
+      input = ''
+      return
+    }
 
     sending = true
-    // Attach new node after the last visible node
     const visible = buildVisible()
     const lastVm = visible.length ? visible[visible.length - 1] : null
     const parentNodeId = lastVm ? lastVm.nodeId : null
-    const newMsg = { id: nextId++, role, content: text, time: Date.now(), typing: false, error: undefined, next: null }
-    const newNode = { id: nextNodeId++, variants: [newMsg], active: 0 }
-    let arr = nodes.slice()
-    arr.push(newNode)
-    if (parentNodeId != null) {
-      arr = arr.map(n => (n.id === parentNodeId
-        ? { ...n, variants: n.variants.map((v, i) => (i === (Number(n.active)||0) ? { ...v, next: newNode.id } : v)) }
-        : n))
-    } else {
-      rootId = newNode.id
-    }
-    nodes = arr
-    input = ''
-    persistNow()
-    queueMicrotask(() => scrollToBottom())
 
-    // Typing placeholder + stream if user
-    let typingVariant = null
+    let newMsg = null
+    let newNodeId = null
+    if (hasContent) {
+      newMsg = { id: nextId++, role, content: trimmedInput, time: Date.now(), typing: false, error: undefined, next: null }
+      const newNode = { id: nextNodeId++, variants: [newMsg], active: 0 }
+      newNodeId = newNode.id
+      let arr = nodes.slice()
+      arr.push(newNode)
+      if (parentNodeId != null) {
+        arr = arr.map(n => (n.id === parentNodeId
+          ? { ...n, variants: n.variants.map((v, i) => (i === (Number(n.active)||0) ? { ...v, next: newNode.id } : v)) }
+          : n))
+      } else {
+        rootId = newNode.id
+      }
+      nodes = arr
+    }
+
+    input = ''
+
     let typingVariantId = null
     if (role === 'user') {
-      typingVariant = {
+      const typingVariant = {
         id: nextId++,
         role: 'assistant',
         content: 'typing',
@@ -609,11 +617,25 @@
       }
       typingVariantId = typingVariant.id
       const typingNode = { id: nextNodeId++, variants: [typingVariant], active: 0 }
-      nodes = nodes.map(n => (n.id === newNode.id
-        ? { ...n, variants: n.variants.map((v, i) => (i === 0 ? { ...v, next: typingNode.id } : v)) }
-        : n))
+      const attachNodeId = (hasContent && newNodeId != null) ? newNodeId : parentNodeId
+      if (attachNodeId != null) {
+        nodes = nodes.map(n => {
+          if (n.id !== attachNodeId) return n
+          const activeIndex = Math.max(0, Math.min((n.variants?.length || 1) - 1, Number(n.active) || 0))
+          return {
+            ...n,
+            variants: n.variants.map((v, i) => (i === activeIndex ? { ...v, next: typingNode.id } : v)),
+          }
+        })
+      } else {
+        rootId = typingNode.id
+      }
       nodes = [...nodes, typingNode]
     }
+
+    persistNow()
+    queueMicrotask(() => scrollToBottom())
+
     try {
       let reply = null
       let summaryBuffer = ''
@@ -667,7 +689,8 @@
           })
         }
       } else if (role === 'user') {
-        const placeholder = generatePlaceholderReply(newMsg.content) +
+        const placeholderSource = hasContent ? (newMsg?.content ?? '') : (lastVm?.m?.content ?? '')
+        const placeholder = generatePlaceholderReply(placeholderSource) +
           '\n\nTip: Add your OpenAI API key in Settings to get real answers.'
         reply = placeholder
         summaryBuffer = ''
@@ -721,8 +744,7 @@
   // Add a message locally without sending to the API
   function addToChat(role = 'user') {
     if (locked) return
-    const text = input.trim()
-    if (!text) return
+    const text = (typeof input === 'string') ? input : ''
     const variant = { id: nextId++, role, content: text, time: Date.now(), typing: false, error: undefined, next: null }
     const node = { id: nextNodeId++, variants: [variant], active: 0 }
     const visible = buildVisible()

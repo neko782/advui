@@ -20,7 +20,9 @@
             if (part && typeof part === 'object' && typeof part.text === 'string') return part.text
             return ''
           })
-          .join('')
+          .filter(Boolean)
+          .join('\n\n\n')
+          .replace(/\n{4,}/g, '\n\n\n')
       } catch {}
     }
     return ''
@@ -200,6 +202,9 @@
     color: var(--text);
     background: color-mix(in srgb, var(--panel), #ffffff 4%);
   }
+  .reasoning-body :global(p) { margin: 0.4em 0; }
+  .reasoning-body :global(p + p) { margin-top: 0.75em; }
+  .reasoning-body :global(p:has(> strong) + p) { margin-top: 0.4em; }
   .reasoning-body :global(p:first-child) { margin-top: 0; }
   .reasoning-body :global(p:last-child) { margin-bottom: 0; }
 </style>

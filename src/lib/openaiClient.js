@@ -97,12 +97,14 @@ export async function respond({
     const streamIt = await client.responses.create({ ...request, stream: true })
     let full = ''
     const summaryByIndex = new Map()
-    let primarySummaryIndex = null
-    const getPrimarySummary = () => {
-      if (primarySummaryIndex == null && summaryByIndex.size > 0) {
-        primarySummaryIndex = Math.min(...summaryByIndex.keys())
-      }
-      return primarySummaryIndex != null ? (summaryByIndex.get(primarySummaryIndex) || '') : ''
+    const buildSummary = () => {
+      const ordered = Array.from(summaryByIndex.entries())
+        .sort((a, b) => a[0] - b[0])
+        .map(([, text]) => (typeof text === 'string' ? text : ''))
+        .filter(Boolean)
+      if (!ordered.length) return ''
+      const combined = ordered.join('\n\n\n')
+      return combined.replace(/\n{4,}/g, '\n\n\n')
     }
     try {
       for await (const event of streamIt) {
@@ -120,19 +122,15 @@ export async function respond({
           const prev = summaryByIndex.get(idx) || ''
           const next = typeof delta === 'string' && delta ? prev + delta : prev
           summaryByIndex.set(idx, next)
-          if (primarySummaryIndex == null) primarySummaryIndex = idx
-          const summary = getPrimarySummary()
-          if (typeof delta === 'string' && delta) {
-            try { onReasoningSummaryDelta?.(summary, delta, event) } catch {}
-          } else {
-            try { onReasoningSummaryDelta?.(summary, '', event) } catch {}
-          }
+          const summary = buildSummary()
+          try { onReasoningSummaryDelta?.(summary, typeof delta === 'string' ? delta : '', event) } catch {}
         } else if (t === 'response.reasoning_summary_text.done') {
           const idx = Number.isFinite(Number(event?.summary_index)) ? Number(event.summary_index) : 0
           const text = typeof event?.text === 'string' ? event.text : ''
-          if (text) summaryByIndex.set(idx, text)
-          if (primarySummaryIndex == null) primarySummaryIndex = idx
-          const summary = text || getPrimarySummary()
+          const existing = summaryByIndex.get(idx) || ''
+          const finalText = text || existing
+          if (finalText) summaryByIndex.set(idx, finalText)
+          const summary = buildSummary()
           try { onReasoningSummaryDone?.(summary, event) } catch {}
         } else if (t === 'response.completed' || t === 'response.text.done' || t === 'response.done') {
           // Let the SDK finish and close the stream naturally.
@@ -149,7 +147,7 @@ export async function respond({
     }
     return {
       text: full,
-      reasoningSummary: getPrimarySummary(),
+      reasoningSummary: buildSummary(),
     }
   } else {
     const res = await client.responses.create(request)
@@ -227,7 +225,9 @@ function extractReasoningSummary(res) {
         }
       }
     }
-    return order.join('')
+    if (!order.length) return ''
+    const joined = order.join('\n\n\n')
+    return joined.replace(/\n{4,}/g, '\n\n\n')
   }
   try {
     const direct = collect(res?.output)
