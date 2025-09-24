@@ -288,17 +288,7 @@
     persistSettings()
   }
 
-  async function fetchModelsForAllConnections() {
-    const list = Array.isArray(local?.connections) ? local.connections : []
-    for (const conn of list) {
-      if (conn?.apiKey) {
-        await refreshModelsNow(conn.id, { quiet: true })
-      }
-    }
-  }
-
   async function close() {
-    await fetchModelsForAllConnections()
     // Reset local state to the persisted settings the next time we open
     local = loadSettings()
     modelCacheByConnection = loadAllModelCaches()
