@@ -146,7 +146,10 @@
         <Icon name="menu" size={20} />
       </button>
       {#if props.open}
-        <div class="brand">advui</div>
+        <div class="brand">
+          <span class="brand-name">advui</span>
+          <span class="brand-beta">beta</span>
+        </div>
       {/if}
     </div>
 
@@ -332,7 +335,25 @@
   .sidebar-inner { height: 100%; display: grid; grid-template-rows: auto 1fr; }
   .side-body { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
   .side-header { display: flex; align-items: center; gap: 8px; padding: 8px; }
-  .brand { font-weight: 600; padding: 6px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); }
+  .brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 600;
+    padding: 6px 10px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--panel);
+  }
+  .brand-beta {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    padding: 2px 6px;
+    border-radius: 999px;
+    background: var(--border);
+    color: var(--text);
+  }
   .icon-btn {
     min-width: 36px;
     height: 36px;

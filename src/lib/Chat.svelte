@@ -52,6 +52,31 @@
     return REASONING_SUMMARY_VALUES.has(val) ? val : 'auto'
   }
   const hasOwn = (obj, key) => Object.prototype.hasOwnProperty.call(obj || {}, key)
+  const NO_API_KEY_NOTICE_TEXT = 'Add your OpenAI API key in Settings to send messages.'
+
+  function resolveConnectionContext() {
+    let latestSettings = settings
+    try {
+      latestSettings = loadSettings()
+      settings = latestSettings
+    } catch {}
+    let activeConnection = null
+    try {
+      activeConnection = findConnection(latestSettings, chatSettings?.connectionId)
+    } catch {}
+    const connectionId = activeConnection?.id || chatSettings?.connectionId || latestSettings?.selectedConnectionId || null
+    const apiKey = typeof activeConnection?.apiKey === 'string' ? activeConnection.apiKey : ''
+    return { latestSettings, activeConnection, connectionId, apiKey }
+  }
+
+  function showMissingApiKeyNotice() {
+    if (dismissedNotice && dismissedNotice.includes(NO_API_KEY_NOTICE_TEXT)) dismissedNotice = ''
+    missingApiKeyNotice = NO_API_KEY_NOTICE_TEXT
+  }
+
+  function clearMissingApiKeyNotice() {
+    if (missingApiKeyNotice) missingApiKeyNotice = ''
+  }
   function normalizePreset(p) {
     if (!p || typeof p !== 'object') {
       return {
@@ -152,6 +177,7 @@
   const BUG_NOTICE = 'This indicates a bug in the app. Please try to reproduce it and report it.'
   const DEBUG_AUTOFIX_NOTICE = 'Autofix is disabled in debug mode.'
   let sanitizerNotice = $state('')
+  let missingApiKeyNotice = $state('')
   let validationNotice = $derived(!integrity.ok ? `Chat structure issues detected: ${integrity.problems.join(' • ')}. ${BUG_NOTICE}${debug ? ` ${DEBUG_AUTOFIX_NOTICE}` : ''}` : '')
   // Surface latest generation error (if any) via shared notice infrastructure
   let generationNotice = $derived((() => {
@@ -169,7 +195,7 @@
   })())
   // Track last dismissed notice to avoid re-showing the same text
   let dismissedNotice = $state('')
-  let assembledNotice = $derived([generationNotice, sanitizerNotice, validationNotice].filter(Boolean).join(' '))
+  let assembledNotice = $derived([generationNotice, sanitizerNotice, validationNotice, missingApiKeyNotice].filter(Boolean).join(' '))
   let visibleNotice = $derived((assembledNotice && assembledNotice !== dismissedNotice) ? assembledNotice : '')
   function dismissNotice() { dismissedNotice = assembledNotice }
   function computeFollowingMap() {
@@ -704,6 +730,19 @@
       return
     }
 
+    let connectionId = null
+    let apiKey = ''
+    if (role === 'user') {
+      const { connectionId: resolvedConnectionId, apiKey: resolvedApiKey } = resolveConnectionContext()
+      connectionId = resolvedConnectionId
+      apiKey = resolvedApiKey
+      if (apiKey) {
+        clearMissingApiKeyNotice()
+      }
+    } else {
+      resolveConnectionContext()
+    }
+
     sending = true
     const visible = buildVisible()
     const lastVm = visible.length ? visible[visible.length - 1] : null
@@ -730,7 +769,7 @@
     input = ''
 
     let typingVariantId = null
-    if (role === 'user') {
+    if (role === 'user' && apiKey) {
       const typingVariant = {
         id: nextId++,
         role: 'assistant',
@@ -767,10 +806,6 @@
     try {
       let reply = null
       let summaryBuffer = ''
-      settings = loadSettings()
-      const activeConnection = findConnection(settings, chatSettings?.connectionId)
-      const connectionId = activeConnection?.id || chatSettings?.connectionId || settings?.selectedConnectionId || null
-      const apiKey = typeof activeConnection?.apiKey === 'string' ? activeConnection.apiKey : ''
       if (role === 'user' && apiKey) {
         const history = buildVisible()
           .map(vm => vm.m)
@@ -822,18 +857,7 @@
           })
         }
       } else if (role === 'user') {
-        const placeholderSource = hasContent ? (newMsg?.content ?? '') : (lastVm?.m?.content ?? '')
-        const placeholder = generatePlaceholderReply(placeholderSource) +
-          '\n\nTip: Add your OpenAI API key in Settings to get real answers.'
-        reply = placeholder
-        summaryBuffer = ''
-        if (typingVariantId != null) {
-          updateVariantById(typingVariantId, (prev) => ({
-            ...prev,
-            reasoningSummary: '',
-            reasoningSummaryLoading: false,
-          }))
-        }
+        showMissingApiKeyNotice()
       }
       if (role === 'user' && typingVariantId != null) {
         const replyText = (reply && typeof reply === 'object') ? (reply.text ?? '') : (typeof reply === 'string' ? reply : '')
@@ -928,19 +952,6 @@
     persistNow()
     input = ''
     queueMicrotask(() => scrollToBottom())
-  }
-
-  function generatePlaceholderReply(text) {
-    const canned = [
-      'Interesting — tell me more.',
-      'Noted. What should we try next?',
-      'I\'m thinking… maybe break it down?',
-      'Got it. Here\'s a simple take:',
-      'Okay! A quick summary:'
-    ]
-    const lead = canned[Math.floor(Math.random() * canned.length)]
-    const echo = text.length > 140 ? text.slice(0, 140) + '…' : text
-    return `${lead}\n\nYou said: “${echo}”`
   }
 
   let listCmp
@@ -1219,6 +1230,13 @@
     editingText = ''
 
     // 2) Generate a new assistant reply after the branched variant
+    resetGenerationState()
+    const { connectionId, apiKey } = resolveConnectionContext()
+    if (!apiKey) {
+      showMissingApiKeyNotice()
+      return
+    }
+    clearMissingApiKeyNotice()
     const typingMsg = {
       id: nextId++,
       role: 'assistant',
@@ -1233,78 +1251,62 @@
     const typingNode = { id: nextNodeId++, variants: [typingMsg], active: 0 }
     nodes = nodes.map(n => (n.id === curNode.id ? { ...n, variants: n.variants.map((v, i) => (i === (n.variants.length - 1) ? { ...v, next: typingNode.id } : v)) } : n))
     nodes = [...nodes, typingNode]
-    resetGenerationState()
     sending = true
     inFlightTypingVariantId = typingMsg.id
 
     try {
       let reply = null
       let summaryBuffer = ''
-      settings = loadSettings()
-      const activeConnection = findConnection(settings, chatSettings?.connectionId)
-      const connectionId = activeConnection?.id || chatSettings?.connectionId || settings?.selectedConnectionId || null
-      const apiKey = typeof activeConnection?.apiKey === 'string' ? activeConnection.apiKey : ''
       const typingId = typingMsg.id
       const path = buildVisible()
       const insertIndex = path.findIndex(vm => vm.nodeId === curNode.id)
       const history = buildVisibleUpTo(insertIndex + 1)
         .filter(m => !m.typing)
         .map(({ role, content }) => ({ role, content }))
-      if (apiKey) {
-        const responseOptions = {
-          messages: history,
-          model: chatSettings.model,
-          maxOutputTokens: chatSettings.maxOutputTokens,
-          topP: chatSettings.topP,
-          temperature: chatSettings.temperature,
-          reasoningEffort: chatSettings.reasoningEffort,
-          textVerbosity: chatSettings.textVerbosity,
-          reasoningSummary: chatSettings.reasoningSummary,
-          connectionId,
-        }
-        if (chatSettings.streaming) {
-          reply = await respond({
-            ...responseOptions,
-            stream: true,
-            onAbort: registerAbortHandler,
-            onTextDelta: (full) => {
-              updateVariantById(typingId, (prev) => ({ ...prev, content: full }))
-            },
-            onReasoningSummaryDelta: (fullSummary) => {
-              if (typeof fullSummary === 'string') summaryBuffer = fullSummary
-              updateVariantById(typingId, (prev) => ({
-                ...prev,
-                reasoningSummary: summaryBuffer,
-                reasoningSummaryLoading: true,
-              }))
-            },
-            onReasoningSummaryDone: (fullSummary) => {
-              if (typeof fullSummary === 'string') summaryBuffer = fullSummary
-              updateVariantById(typingId, (prev) => ({
-                ...prev,
-                reasoningSummary: summaryBuffer,
-                reasoningSummaryLoading: false,
-              }))
-            },
-          })
-        } else {
-          reply = await respond({
-            ...responseOptions,
-            onAbort: registerAbortHandler,
-            onReasoningSummaryDone: (fullSummary) => {
-              if (typeof fullSummary === 'string') summaryBuffer = fullSummary
-            },
-          })
-        }
+      const responseOptions = {
+        messages: history,
+        model: chatSettings.model,
+        maxOutputTokens: chatSettings.maxOutputTokens,
+        topP: chatSettings.topP,
+        temperature: chatSettings.temperature,
+        reasoningEffort: chatSettings.reasoningEffort,
+        textVerbosity: chatSettings.textVerbosity,
+        reasoningSummary: chatSettings.reasoningSummary,
+        connectionId,
+      }
+      if (chatSettings.streaming) {
+        reply = await respond({
+          ...responseOptions,
+          stream: true,
+          onAbort: registerAbortHandler,
+          onTextDelta: (full) => {
+            updateVariantById(typingId, (prev) => ({ ...prev, content: full }))
+          },
+          onReasoningSummaryDelta: (fullSummary) => {
+            if (typeof fullSummary === 'string') summaryBuffer = fullSummary
+            updateVariantById(typingId, (prev) => ({
+              ...prev,
+              reasoningSummary: summaryBuffer,
+              reasoningSummaryLoading: true,
+            }))
+          },
+          onReasoningSummaryDone: (fullSummary) => {
+            if (typeof fullSummary === 'string') summaryBuffer = fullSummary
+            updateVariantById(typingId, (prev) => ({
+              ...prev,
+              reasoningSummary: summaryBuffer,
+              reasoningSummaryLoading: false,
+            }))
+          },
+        })
       } else {
-        const lastUser = [...buildVisibleUpTo(insertIndex + 1)].reverse().find(m => m.role === 'user')
-        reply = generatePlaceholderReply(lastUser?.content || val) +
-          '\n\nTip: Add your OpenAI API key in Settings to get real answers.'
-        updateVariantById(typingId, (prev) => ({
-          ...prev,
-          reasoningSummary: '',
-          reasoningSummaryLoading: false,
-        }))
+        reply = await respond({
+          ...responseOptions,
+          onAbort: registerAbortHandler,
+          onReasoningSummaryDone: (fullSummary) => {
+            if (typeof fullSummary === 'string') summaryBuffer = fullSummary
+          },
+        })
       }
       const replyText = (reply && typeof reply === 'object') ? (reply.text ?? '') : (typeof reply === 'string' ? reply : '')
       const replySummary = (() => {
@@ -1369,6 +1371,13 @@
     // Create a new assistant variant within the same node and stream into it
     // Important: do NOT inherit the old variant's `next` pointer.
     // This is a branch; it should end at the regenerated response.
+    resetGenerationState()
+    const { connectionId, apiKey } = resolveConnectionContext()
+    if (!apiKey) {
+      showMissingApiKeyNotice()
+      return
+    }
+    clearMissingApiKeyNotice()
     const typingMsg = {
       id: nextId++,
       role: 'assistant',
@@ -1381,79 +1390,62 @@
       reasoningSummaryLoading: true,
     }
     nodes = nodes.map(n => (n.id === node.id ? { ...n, variants: [...(n.variants || []), typingMsg], active: (n.variants?.length || 0) } : n))
-    resetGenerationState()
     sending = true
     inFlightTypingVariantId = typingMsg.id
     try {
       let reply = null
       let summaryBuffer = ''
-      settings = loadSettings()
-      const activeConnection = findConnection(settings, chatSettings?.connectionId)
-      const connectionId = activeConnection?.id || chatSettings?.connectionId || settings?.selectedConnectionId || null
-      const apiKey = typeof activeConnection?.apiKey === 'string' ? activeConnection.apiKey : ''
       const typingId = typingMsg.id
-      if (apiKey) {
-        // Build history up to (but not including) this assistant node (parent path)
-        const path = buildVisible()
-        const parentPathIndex = path.findIndex(vm => vm.nodeId === node.id) - 1
-        const history = buildVisibleUpTo((parentPathIndex >= 0 ? parentPathIndex + 1 : 0))
-          .filter(m => !m.typing)
-          .map(({ role, content }) => ({ role, content }))
-        const responseOptions = {
-          messages: history,
-          model: chatSettings.model,
-          maxOutputTokens: chatSettings.maxOutputTokens,
-          topP: chatSettings.topP,
-          temperature: chatSettings.temperature,
-          reasoningEffort: chatSettings.reasoningEffort,
-          textVerbosity: chatSettings.textVerbosity,
-          reasoningSummary: chatSettings.reasoningSummary,
-          connectionId,
-        }
-        if (chatSettings.streaming) {
-          reply = await respond({
-            ...responseOptions,
-            stream: true,
-            onAbort: registerAbortHandler,
-            onTextDelta: (full) => {
-              updateVariantById(typingId, (prev) => ({ ...prev, content: full }))
-            },
-            onReasoningSummaryDelta: (fullSummary) => {
-              if (typeof fullSummary === 'string') summaryBuffer = fullSummary
-              updateVariantById(typingId, (prev) => ({
-                ...prev,
-                reasoningSummary: summaryBuffer,
-                reasoningSummaryLoading: true,
-              }))
-            },
-            onReasoningSummaryDone: (fullSummary) => {
-              if (typeof fullSummary === 'string') summaryBuffer = fullSummary
-              updateVariantById(typingId, (prev) => ({
-                ...prev,
-                reasoningSummary: summaryBuffer,
-                reasoningSummaryLoading: false,
-              }))
-            },
-          })
-        } else {
-          reply = await respond({
-            ...responseOptions,
-            onAbort: registerAbortHandler,
-            onReasoningSummaryDone: (fullSummary) => {
-              if (typeof fullSummary === 'string') summaryBuffer = fullSummary
-            },
-          })
-        }
+      // Build history up to (but not including) this assistant node (parent path)
+      const path = buildVisible()
+      const parentPathIndex = path.findIndex(vm => vm.nodeId === node.id) - 1
+      const history = buildVisibleUpTo((parentPathIndex >= 0 ? parentPathIndex + 1 : 0))
+        .filter(m => !m.typing)
+        .map(({ role, content }) => ({ role, content }))
+      const responseOptions = {
+        messages: history,
+        model: chatSettings.model,
+        maxOutputTokens: chatSettings.maxOutputTokens,
+        topP: chatSettings.topP,
+        temperature: chatSettings.temperature,
+        reasoningEffort: chatSettings.reasoningEffort,
+        textVerbosity: chatSettings.textVerbosity,
+        reasoningSummary: chatSettings.reasoningSummary,
+        connectionId,
+      }
+      if (chatSettings.streaming) {
+        reply = await respond({
+          ...responseOptions,
+          stream: true,
+          onAbort: registerAbortHandler,
+          onTextDelta: (full) => {
+            updateVariantById(typingId, (prev) => ({ ...prev, content: full }))
+          },
+          onReasoningSummaryDelta: (fullSummary) => {
+            if (typeof fullSummary === 'string') summaryBuffer = fullSummary
+            updateVariantById(typingId, (prev) => ({
+              ...prev,
+              reasoningSummary: summaryBuffer,
+              reasoningSummaryLoading: true,
+            }))
+          },
+          onReasoningSummaryDone: (fullSummary) => {
+            if (typeof fullSummary === 'string') summaryBuffer = fullSummary
+            updateVariantById(typingId, (prev) => ({
+              ...prev,
+              reasoningSummary: summaryBuffer,
+              reasoningSummaryLoading: false,
+            }))
+          },
+        })
       } else {
-        const path = buildVisible()
-        const lastUser = [...path.map(vm => vm.m)].reverse().find(m => m.role === 'user')
-        reply = generatePlaceholderReply(lastUser?.content || 'Regenerated response') +
-          '\n\nTip: Add your OpenAI API key in Settings to get real answers.'
-        updateVariantById(typingMsg.id, (prev) => ({
-          ...prev,
-          reasoningSummary: '',
-          reasoningSummaryLoading: false,
-        }))
+        reply = await respond({
+          ...responseOptions,
+          onAbort: registerAbortHandler,
+          onReasoningSummaryDone: (fullSummary) => {
+            if (typeof fullSummary === 'string') summaryBuffer = fullSummary
+          },
+        })
       }
       const replyText = (reply && typeof reply === 'object') ? (reply.text ?? '') : (typeof reply === 'string' ? reply : '')
       const replySummary = (() => {
@@ -1498,6 +1490,13 @@
     const curNodeId = vm?.nodeId
     if (!curMsg || !curNodeId) return
     // Add typing assistant node after this message
+    resetGenerationState()
+    const { connectionId, apiKey } = resolveConnectionContext()
+    if (!apiKey) {
+      showMissingApiKeyNotice()
+      return
+    }
+    clearMissingApiKeyNotice()
     const typingMsg = {
       id: nextId++,
       role: 'assistant',
@@ -1513,76 +1512,60 @@
     nodes = nodes.map(n => (n.id === curNodeId ? { ...n, variants: n.variants.map((v, idx) => (idx === (Number(n.active)||0) ? { ...v, next: typingNode.id } : v)) } : n))
     nodes = [...nodes, typingNode]
     persistNow()
-    resetGenerationState()
     sending = true
     inFlightTypingVariantId = typingMsg.id
 
     try {
       let reply = null
       let summaryBuffer = ''
-      settings = loadSettings()
-      const activeConnection = findConnection(settings, chatSettings?.connectionId)
-      const connectionId = activeConnection?.id || chatSettings?.connectionId || settings?.selectedConnectionId || null
-      const apiKey = typeof activeConnection?.apiKey === 'string' ? activeConnection.apiKey : ''
       const typingId = typingMsg.id
       const history = buildVisibleUpTo(i + 1)
         .filter(m => !m.typing)
         .map(({ role, content }) => ({ role, content }))
-      if (apiKey) {
-        const responseOptions = {
-          messages: history,
-          model: chatSettings.model,
-          maxOutputTokens: chatSettings.maxOutputTokens,
-          topP: chatSettings.topP,
-          temperature: chatSettings.temperature,
-          reasoningEffort: chatSettings.reasoningEffort,
-          textVerbosity: chatSettings.textVerbosity,
-          reasoningSummary: chatSettings.reasoningSummary,
-          connectionId,
-        }
-        if (chatSettings.streaming) {
-          reply = await respond({
-            ...responseOptions,
-            stream: true,
-            onAbort: registerAbortHandler,
-            onTextDelta: (full) => {
-              updateVariantById(typingId, (prev) => ({ ...prev, content: full }))
-            },
-            onReasoningSummaryDelta: (fullSummary) => {
-              if (typeof fullSummary === 'string') summaryBuffer = fullSummary
-              updateVariantById(typingId, (prev) => ({
-                ...prev,
-                reasoningSummary: summaryBuffer,
-                reasoningSummaryLoading: true,
-              }))
-            },
-            onReasoningSummaryDone: (fullSummary) => {
-              if (typeof fullSummary === 'string') summaryBuffer = fullSummary
-              updateVariantById(typingId, (prev) => ({
-                ...prev,
-                reasoningSummary: summaryBuffer,
-                reasoningSummaryLoading: false,
-              }))
-            },
-          })
-        } else {
-          reply = await respond({
-            ...responseOptions,
-            onAbort: registerAbortHandler,
-            onReasoningSummaryDone: (fullSummary) => {
-              if (typeof fullSummary === 'string') summaryBuffer = fullSummary
-            },
-          })
-        }
+      const responseOptions = {
+        messages: history,
+        model: chatSettings.model,
+        maxOutputTokens: chatSettings.maxOutputTokens,
+        topP: chatSettings.topP,
+        temperature: chatSettings.temperature,
+        reasoningEffort: chatSettings.reasoningEffort,
+        textVerbosity: chatSettings.textVerbosity,
+        reasoningSummary: chatSettings.reasoningSummary,
+        connectionId,
+      }
+      if (chatSettings.streaming) {
+        reply = await respond({
+          ...responseOptions,
+          stream: true,
+          onAbort: registerAbortHandler,
+          onTextDelta: (full) => {
+            updateVariantById(typingId, (prev) => ({ ...prev, content: full }))
+          },
+          onReasoningSummaryDelta: (fullSummary) => {
+            if (typeof fullSummary === 'string') summaryBuffer = fullSummary
+            updateVariantById(typingId, (prev) => ({
+              ...prev,
+              reasoningSummary: summaryBuffer,
+              reasoningSummaryLoading: true,
+            }))
+          },
+          onReasoningSummaryDone: (fullSummary) => {
+            if (typeof fullSummary === 'string') summaryBuffer = fullSummary
+            updateVariantById(typingId, (prev) => ({
+              ...prev,
+              reasoningSummary: summaryBuffer,
+              reasoningSummaryLoading: false,
+            }))
+          },
+        })
       } else {
-        const lastUser = [...buildVisibleUpTo(i + 1)].reverse().find(m => m.role === 'user')
-        reply = generatePlaceholderReply(lastUser?.content || curMsg.content) +
-          '\n\nTip: Add your OpenAI API key in Settings to get real answers.'
-        updateVariantById(typingId, (prev) => ({
-          ...prev,
-          reasoningSummary: '',
-          reasoningSummaryLoading: false,
-        }))
+        reply = await respond({
+          ...responseOptions,
+          onAbort: registerAbortHandler,
+          onReasoningSummaryDone: (fullSummary) => {
+            if (typeof fullSummary === 'string') summaryBuffer = fullSummary
+          },
+        })
       }
       const replyText = (reply && typeof reply === 'object') ? (reply.text ?? '') : (typeof reply === 'string' ? reply : '')
       const replySummary = (() => {

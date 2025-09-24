@@ -463,7 +463,6 @@
                     <option value="chat_completions">Chat Completions API</option>
                   </select>
                 </label>
-                <p class="hint">Chat Completions disables reasoning summaries.</p>
                 {#if (local?.connections?.length || 0) > 1}
                   <div class="connection-actions">
                     <button
