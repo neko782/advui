@@ -4,6 +4,7 @@
   import SettingsModal from './lib/SettingsModal.svelte'
   import { loadAll, getChats, createChat, setSelected, getChat, deleteChat, renameChat } from './lib/chatsStore.js'
   import { loadSettings } from './lib/settingsStore.js'
+  import { ensureModels } from './lib/modelsStore.js'
 
   let chats = $state([])
   let selectedId = $state(null)
@@ -96,7 +97,19 @@
   }
 
   import { onMount } from 'svelte'
+  async function ensureStartupModels() {
+    try {
+      const settings = loadSettings()
+      const connections = Array.isArray(settings?.connections) ? settings.connections : []
+      for (const connection of connections) {
+        if (connection?.apiKey && connection?.id) {
+          try { await ensureModels({ connectionId: connection.id }) } catch {}
+        }
+      }
+    } catch {}
+  }
   onMount(() => {
+    ensureStartupModels().catch(() => {})
     // Defer initial population to avoid mutating state during mount flush
     setTimeout(async () => {
       sidebarOpen = loadSidebarPref()

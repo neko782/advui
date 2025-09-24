@@ -1,17 +1,18 @@
 <script>
   import { loadSettings, saveSettings } from './settingsStore.js'
-  import { setModelsCache, loadModelsCache } from './modelsStore.js'
+  import { setModelsCache, loadModelsCache, loadAllModelCaches } from './modelsStore.js'
   import { listModelsWithKey } from './openaiClient.js'
   import Icon from './Icon.svelte'
 
   const props = $props()
 
   let local = $state(loadSettings())
-  let modelIds = $state(loadModelsCache().ids || [])
+  let modelCacheByConnection = $state(loadAllModelCaches())
   let revealKey = $state(false)
-  let refreshing = $state(false)
-  let refreshMsg = $state('')
+  let refreshingConnectionId = $state('')
+  let refreshMessages = $state({})
   let activePresetId = $state('')
+  let activeConnectionId = $state('')
   const TABS = [
     { id: 'connection', label: 'Connection' },
     { id: 'presets', label: 'Presets' },
@@ -61,6 +62,35 @@
     return `preset_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`
   }
 
+  const DEFAULT_API_BASE_URL = 'https://api.openai.com/v1'
+
+  function genConnectionId() {
+    return `connection_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`
+  }
+
+  function syncActiveConnection() {
+    let list = Array.isArray(local?.connections) ? local.connections : []
+    if (!list.length) {
+      const conn = {
+        id: genConnectionId(),
+        name: 'Connection 1',
+        apiKey: '',
+        apiBaseUrl: DEFAULT_API_BASE_URL,
+      }
+      local.connections = [conn]
+      list = local.connections
+    }
+    const hasActive = list.some(c => c?.id === activeConnectionId)
+    const fallback = list.find(c => c?.id === local?.selectedConnectionId)
+      || list[0]
+      || null
+    const nextId = hasActive ? activeConnectionId : (fallback?.id || '')
+    if (nextId !== activeConnectionId) activeConnectionId = nextId
+    if (nextId && local.selectedConnectionId !== nextId) {
+      local.selectedConnectionId = nextId
+    }
+  }
+
   function syncActivePreset() {
     const list = Array.isArray(local?.presets) ? local.presets : []
     if (!list.length) {
@@ -75,6 +105,7 @@
         reasoningEffort: 'none',
         textVerbosity: 'medium',
         reasoningSummary: 'auto',
+        connectionId: local?.selectedConnectionId || activeConnectionId || (local?.connections?.[0]?.id || ''),
       }]
     }
     const updatedList = Array.isArray(local?.presets) ? local.presets : []
@@ -95,7 +126,30 @@
     return found || list[0] || null
   })())
 
+  const activeConnection = $derived((() => {
+    const list = Array.isArray(local?.connections) ? local.connections : []
+    const found = list.find(c => c?.id === activeConnectionId)
+    const fallback = list.find(c => c?.id === local?.selectedConnectionId)
+    return found || fallback || list[0] || null
+  })())
+
+  const activeConnectionModels = $derived((() => {
+    const entry = modelCacheByConnection?.[activeConnectionId]
+    return Array.isArray(entry?.ids) ? entry.ids : []
+  })())
+
+  const activeRefreshMsg = $derived((refreshMessages?.[activeConnectionId]) || '')
+  const activeConnectionRefreshing = $derived(refreshingConnectionId === activeConnectionId)
+
+  const activePresetModels = $derived((() => {
+    const connectionId = activePreset?.connectionId
+    if (!connectionId) return []
+    const entry = modelCacheByConnection?.[connectionId]
+    return Array.isArray(entry?.ids) ? entry.ids : []
+  })())
+
   function persistSettings() {
+    syncActiveConnection()
     syncActivePreset()
     saveSettings(local)
     try { props.onSaved?.() } catch {}
@@ -128,6 +182,7 @@
       reasoningEffort: base?.reasoningEffort || 'none',
       textVerbosity: base?.textVerbosity || 'medium',
       reasoningSummary: base?.reasoningSummary || 'auto',
+      connectionId: base?.connectionId || local?.selectedConnectionId || activeConnectionId || (local?.connections?.[0]?.id || ''),
     }
     local.presets = [...list, preset]
     activePresetId = preset.id
@@ -157,13 +212,102 @@
     persistSettings()
   }
 
-  function close() {
+  function selectConnection(id) {
+    if (!id) return
+    activeConnectionId = id
+  }
+
+  function setDefaultConnection(id) {
+    if (!id) return
+    local.selectedConnectionId = id
+    persistSettings()
+  }
+
+  function addConnection() {
+    const list = Array.isArray(local?.connections) ? local.connections.slice() : []
+    const count = list.length + 1
+    let name = `Connection ${count}`
+    const names = new Set(list.map(c => c?.name).filter(Boolean))
+    while (names.has(name)) {
+      name = `Connection ${Math.floor(Math.random() * 90) + 10}`
+    }
+    const id = genConnectionId()
+    const connection = {
+      id,
+      name,
+      apiKey: '',
+      apiBaseUrl: DEFAULT_API_BASE_URL,
+    }
+    local.connections = [...list, connection]
+    modelCacheByConnection = { ...modelCacheByConnection, [id]: { ids: [], fetchedAt: 0 } }
+    activeConnectionId = id
+    persistSettings()
+  }
+
+  function updateActiveConnection(patch) {
+    const list = Array.isArray(local?.connections) ? local.connections : []
+    const idx = list.findIndex(c => c?.id === activeConnectionId)
+    if (idx < 0) return
+    const next = [...list]
+    const current = next[idx] || {}
+    const updated = { ...current, ...patch }
+    next[idx] = updated
+    local.connections = next
+    const shouldClearModels = ['apiKey', 'apiBaseUrl'].some((key) => Object.prototype.hasOwnProperty.call(patch || {}, key))
+    if (shouldClearModels) {
+      setModelsCache(current.id, [])
+      const cache = { ...modelCacheByConnection, [current.id]: { ids: [], fetchedAt: 0 } }
+      modelCacheByConnection = cache
+    }
+    persistSettings()
+  }
+
+  function removeConnection(id) {
+    const list = Array.isArray(local?.connections) ? local.connections : []
+    if (list.length <= 1) return
+    const next = list.filter(c => c?.id !== id)
+    if (!next.length) return
+    local.connections = next
+    if (local.selectedConnectionId === id) {
+      local.selectedConnectionId = next[0]?.id || ''
+    }
+    if (activeConnectionId === id) {
+      activeConnectionId = next.find(c => c?.id === local.selectedConnectionId)?.id || next[0]?.id || ''
+    }
+    const fallbackId = local.selectedConnectionId || activeConnectionId || next[0]?.id || ''
+    if (Array.isArray(local?.presets)) {
+      local.presets = local.presets.map(p => (p?.connectionId === id ? { ...p, connectionId: fallbackId } : p))
+    }
+    const cache = { ...modelCacheByConnection }
+    delete cache[id]
+    modelCacheByConnection = cache
+    const msgs = { ...refreshMessages }
+    delete msgs[id]
+    refreshMessages = msgs
+    if (refreshingConnectionId === id) refreshingConnectionId = ''
+    persistSettings()
+  }
+
+  async function fetchModelsForAllConnections() {
+    const list = Array.isArray(local?.connections) ? local.connections : []
+    for (const conn of list) {
+      if (conn?.apiKey) {
+        await refreshModelsNow(conn.id, { quiet: true })
+      }
+    }
+  }
+
+  async function close() {
+    await fetchModelsForAllConnections()
     // Reset local state to the persisted settings the next time we open
     local = loadSettings()
+    modelCacheByConnection = loadAllModelCaches()
     activePresetId = local?.selectedPresetId || local?.presets?.[0]?.id || ''
+    activeConnectionId = local?.selectedConnectionId || local?.connections?.[0]?.id || ''
     activeTab = 'connection'
     revealKey = false
-    refreshMsg = ''
+    refreshingConnectionId = ''
+    refreshMessages = {}
     props.onClose?.()
   }
 
@@ -172,27 +316,40 @@
       activeTab = id
     }
   }
-  async function refreshModelsNow() {
-    refreshMsg = ''
-    if (!local.apiKey) {
-      refreshMsg = 'Enter an API key first.'
+  async function refreshModelsNow(targetId = activeConnectionId, { quiet = false } = {}) {
+    const list = Array.isArray(local?.connections) ? local.connections : []
+    const connection = list.find(c => c?.id === targetId)
+    if (!connection) {
+      if (!quiet) {
+        refreshMessages = { ...refreshMessages, [targetId]: 'Select or add a connection first.' }
+      }
       return
     }
-    refreshing = true
+    if (!connection.apiKey) {
+      if (!quiet) {
+        refreshMessages = { ...refreshMessages, [targetId]: 'Enter an API key first.' }
+      }
+      return
+    }
+    refreshingConnectionId = targetId
+    if (!quiet) {
+      refreshMessages = { ...refreshMessages, [targetId]: 'Connecting…' }
+    }
     try {
-      const ids = await listModelsWithKey(local.apiKey, local.apiBaseUrl)
-      setModelsCache(ids)
-      modelIds = ids
-      refreshMsg = `Connected ✓ Fetched ${ids.length} models.`
+      const ids = await listModelsWithKey(connection.apiKey, connection.apiBaseUrl)
+      setModelsCache(targetId, ids)
+      modelCacheByConnection = { ...modelCacheByConnection, [targetId]: { ids, fetchedAt: Date.now() } }
+      refreshMessages = { ...refreshMessages, [targetId]: `Connected ✓ Fetched ${ids.length} models.` }
     } catch (err) {
       const msg = err?.message || 'Failed to refresh models.'
-      refreshMsg = `Error: ${msg}`
+      refreshMessages = { ...refreshMessages, [targetId]: `Error: ${msg}` }
     } finally {
-      refreshing = false
+      if (refreshingConnectionId === targetId) refreshingConnectionId = ''
     }
   }
 
   $effect(() => {
+    syncActiveConnection()
     syncActivePreset()
   })
 </script>
@@ -215,7 +372,7 @@
           <Icon name="close" size={20} />
         </button>
       </header>
-      <nav class="tab-bar" role="tablist" aria-label="Settings sections">
+      <div class="tab-bar" role="tablist" aria-label="Settings sections">
         {#each TABS as tab}
           <button
             id={`settings-tab-${tab.id}`}
@@ -229,7 +386,7 @@
             {tab.label}
           </button>
         {/each}
-      </nav>
+      </div>
       <div
         class="modal-body"
         role="tabpanel"
@@ -238,39 +395,96 @@
         <div class="modal-scroller">
           {#if activeTab === 'connection'}
             <section class="group">
-              <div class="group-title">OpenAI</div>
-              <label class="field">
-                <span>API Key</span>
-                <div class="row">
+              <div class="group-head">
+                <div class="group-title">Connections</div>
+                <button type="button" class="icon-btn" title="Add connection" aria-label="Add connection" onclick={addConnection}>
+                  <Icon name="add" size={20} />
+                </button>
+              </div>
+              <div class="preset-strip connection-strip">
+                {#each (local?.connections || []) as connection (connection.id)}
+                  <button
+                    type="button"
+                    class={`preset-pill ${connection.id === activeConnectionId ? 'active' : ''}`}
+                    onclick={() => selectConnection(connection.id)}
+                  >
+                    <span class="preset-pill-name">{connection?.name || connection?.id || 'Connection'}</span>
+                  </button>
+                {/each}
+              </div>
+              {#if activeConnection}
+                <label class="field">
+                  <span>Name</span>
                   <input
-                    type={revealKey ? 'text' : 'password'}
-                    placeholder="sk-..."
-                    bind:value={local.apiKey}
-                    autocomplete="off"
-                    oninput={() => persistSettings()}
+                    type="text"
+                    placeholder="Connection name"
+                    value={activeConnection.name || ''}
+                    oninput={(event) => updateActiveConnection({ name: event.currentTarget.value })}
+                    aria-label="Connection name"
                   />
-                  <button class="icon-btn" title={revealKey ? 'Hide key' : 'Show key'} onclick={() => (revealKey = !revealKey)} aria-label={revealKey ? 'Hide key' : 'Show key'}>
-                    <Icon name={revealKey ? 'visibility_off' : 'visibility'} size={20} />
+                </label>
+                <label class="field">
+                  <span>API Key</span>
+                  <div class="row">
+                    <input
+                      type={revealKey ? 'text' : 'password'}
+                      placeholder="sk-..."
+                      value={activeConnection.apiKey || ''}
+                      autocomplete="off"
+                      oninput={(event) => updateActiveConnection({ apiKey: event.currentTarget.value })}
+                      onblur={() => { if ((activeConnection.apiKey || '').trim()) refreshModelsNow(activeConnection.id) }}
+                      aria-label="API key"
+                    />
+                    <button class="icon-btn" title={revealKey ? 'Hide key' : 'Show key'} onclick={() => (revealKey = !revealKey)} aria-label={revealKey ? 'Hide key' : 'Show key'}>
+                      <Icon name={revealKey ? 'visibility_off' : 'visibility'} size={20} />
+                    </button>
+                    <button class="icon-btn" title="Refresh models" onclick={() => refreshModelsNow(activeConnection.id)} aria-label="Refresh models" disabled={activeConnectionRefreshing}>
+                      <Icon name="autorenew" size={20} />
+                    </button>
+                  </div>
+                </label>
+                <p class="hint">Your key is stored locally in this browser.</p>
+                <label class="field">
+                  <span>API base URL</span>
+                  <input
+                    type="text"
+                    placeholder={DEFAULT_API_BASE_URL}
+                    value={activeConnection.apiBaseUrl || ''}
+                    autocomplete="off"
+                    inputmode="url"
+                    oninput={(event) => updateActiveConnection({ apiBaseUrl: event.currentTarget.value })}
+                    aria-label="API base URL"
+                  />
+                </label>
+                <p class="hint">Leave blank to use the default OpenAI endpoint.</p>
+                <div class="connection-actions">
+                  <button
+                    type="button"
+                    class={`default-connection-btn ${local?.selectedConnectionId === activeConnection.id ? 'active' : ''}`}
+                    onclick={() => setDefaultConnection(activeConnection.id)}
+                    aria-label="Make default connection"
+                    disabled={local?.selectedConnectionId === activeConnection.id}
+                  >
+                    <Icon name="star" size={18} />
+                    <span>{local?.selectedConnectionId === activeConnection.id ? 'Default connection' : 'Make default'}</span>
                   </button>
-                  <button class="icon-btn" title="Refresh models" onclick={refreshModelsNow} aria-label="Refresh models" disabled={refreshing}>
-                    <Icon name="autorenew" size={20} />
-                  </button>
+                  {#if (local?.connections?.length || 0) > 1}
+                    <button
+                      type="button"
+                      class="preset-delete"
+                      onclick={() => removeConnection(activeConnection.id)}
+                      title="Delete connection"
+                      aria-label="Delete connection"
+                    >
+                      <Icon name="delete" size={18} />
+                      <span>Delete connection</span>
+                    </button>
+                  {/if}
                 </div>
-              </label>
-              <p class="hint">Your key is stored locally in this browser.</p>
-              <label class="field">
-                <span>API base URL</span>
-                <input
-                  type="text"
-                  placeholder="https://api.openai.com/v1"
-                  bind:value={local.apiBaseUrl}
-                  autocomplete="off"
-                  inputmode="url"
-                  oninput={() => persistSettings()}
-                  aria-label="API base URL"
-                />
-              </label>
-              <p class="hint">Leave blank to use the default OpenAI endpoint.</p>
+                {#if activeRefreshMsg}
+                  <p class="hint" aria-live="polite">{activeRefreshMsg}</p>
+                {/if}
+              {/if}
               <label class="field">
                 <span>API</span>
                 <select
@@ -286,9 +500,6 @@
                 </select>
               </label>
               <p class="hint">Chat Completions disables reasoning summaries.</p>
-              {#if refreshMsg}
-                <p class="hint" aria-live="polite">{refreshMsg}</p>
-              {/if}
             </section>
           {:else if activeTab === 'presets'}
             <section class="group presets">
@@ -321,6 +532,18 @@
                   />
                 </label>
                 <label class="field">
+                  <span>Connection</span>
+                  <select
+                    value={activePreset.connectionId || ''}
+                    onchange={(event) => updateActivePreset({ connectionId: event.currentTarget.value })}
+                    aria-label="Preset connection"
+                  >
+                    {#each (local?.connections || []) as connection (connection.id)}
+                      <option value={connection.id}>{connection?.name || connection?.id || 'Connection'}</option>
+                    {/each}
+                  </select>
+                </label>
+                <label class="field">
                   <span>Model</span>
                   <input
                     type="text"
@@ -330,9 +553,9 @@
                     list="preset-model-suggestions"
                     aria-label="Model"
                   />
-                  {#if modelIds?.length}
+                  {#if activePresetModels?.length}
                     <datalist id="preset-model-suggestions">
-                      {#each modelIds as mid}
+                      {#each activePresetModels as mid}
                         <option value={mid}>{mid}</option>
                       {/each}
                     </datalist>
@@ -531,6 +754,28 @@
   .preset-delete { display: inline-flex; align-items: center; gap: 6px; border: 1px solid rgba(214,69,69,0.4); border-radius: 8px; padding: 4px 8px; background: transparent; color: #d64545; cursor: pointer; width: fit-content; font-size: .85rem; }
   .preset-delete:hover { background: rgba(214,69,69,0.06); }
   .preset-delete:focus-visible { outline: 2px solid rgba(214,69,69,0.6); outline-offset: 2px; }
+  .connection-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .default-connection-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 4px 10px;
+    background: transparent;
+    color: var(--text);
+    cursor: pointer;
+    font-size: .85rem;
+  }
+  .default-connection-btn:not(.active):not(:disabled):hover {
+    border-color: color-mix(in srgb, var(--accent) 60%, transparent);
+    color: var(--accent);
+  }
+  .default-connection-btn.active {
+    background: color-mix(in srgb, var(--accent) 15%, transparent);
+    cursor: default;
+  }
+  .default-connection-btn:disabled { opacity: .7; cursor: not-allowed; }
   /* Toggle switch */
   .switch { display: inline-flex; align-items: center; gap: 10px; cursor: pointer; user-select: none; }
   .switch > input { position: absolute; opacity: 0; width: 1px; height: 1px; pointer-events: none; }

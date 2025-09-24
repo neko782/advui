@@ -44,6 +44,7 @@ function normalizeReasoningSummary(val) {
 function resolvePreset(settings, preferences = {}) {
   const list = Array.isArray(settings?.presets) ? settings.presets : []
   const byId = (id) => list.find(p => p && typeof p.id === 'string' && p.id === id)
+  const fallbackConnectionId = typeof settings?.selectedConnectionId === 'string' ? settings.selectedConnectionId : null
   let chosen = null
   if (preferences?.presetId && typeof preferences.presetId === 'string') {
     chosen = byId(preferences.presetId)
@@ -64,6 +65,7 @@ function resolvePreset(settings, preferences = {}) {
         reasoningEffort: normalizeReasoning(p.reasoningEffort),
         textVerbosity: normalizeVerbosity(p.textVerbosity),
         reasoningSummary: normalizeReasoningSummary(p.reasoningSummary),
+        connectionId: typeof p.connectionId === 'string' ? p.connectionId : fallbackConnectionId,
       }
     }
   }
@@ -85,6 +87,7 @@ function resolvePreset(settings, preferences = {}) {
       reasoningEffort: normalizeReasoning(chosen.reasoningEffort),
       textVerbosity: normalizeVerbosity(chosen.textVerbosity),
       reasoningSummary: normalizeReasoningSummary(chosen.reasoningSummary),
+      connectionId: typeof chosen.connectionId === 'string' ? chosen.connectionId : fallbackConnectionId,
     }
   }
   return {
@@ -98,6 +101,7 @@ function resolvePreset(settings, preferences = {}) {
     reasoningEffort: 'none',
     textVerbosity: 'medium',
     reasoningSummary: 'auto',
+    connectionId: fallbackConnectionId,
   }
 }
 
@@ -203,6 +207,14 @@ export async function saveChatContent(id, { nodes, settings, rootId }) {
     reasoningEffort: normalizeReasoning(pickSetting('reasoningEffort')),
     textVerbosity: normalizeVerbosity(pickSetting('textVerbosity')),
     reasoningSummary: normalizeReasoningSummary(pickSetting('reasoningSummary')),
+    connectionId: (() => {
+      const raw = pickSetting('connectionId')
+      if (typeof raw === 'string' && raw.trim()) return raw.trim()
+      if (typeof basePreset?.connectionId === 'string' && basePreset.connectionId.trim()) return basePreset.connectionId.trim()
+      return (typeof defaults?.selectedConnectionId === 'string' && defaults.selectedConnectionId.trim())
+        ? defaults.selectedConnectionId.trim()
+        : null
+    })(),
   }
   const nextNodesCandidate = Array.isArray(nodes) ? nodes : (existing?.nodes || [])
   const nextRootId = (rootId != null)
@@ -270,6 +282,11 @@ export async function createChat(initial = {}) {
   }
   const defaults = loadSettings()
   const preferredPreset = resolvePreset(defaults, { presetId: initial?.presetId, preset: initial?.preset })
+  const fallbackConnectionId = (() => {
+    if (typeof preferredPreset?.connectionId === 'string' && preferredPreset.connectionId.trim()) return preferredPreset.connectionId.trim()
+    if (typeof defaults?.selectedConnectionId === 'string' && defaults.selectedConnectionId.trim()) return defaults.selectedConnectionId.trim()
+    return null
+  })()
   const chat = {
     id,
     title: computeTitleFromNodes(baseNodes, rootId),
@@ -285,6 +302,16 @@ export async function createChat(initial = {}) {
       reasoningEffort: normalizeReasoning(hasOwn(initial?.settings, 'reasoningEffort') ? initial.settings.reasoningEffort : preferredPreset.reasoningEffort),
       textVerbosity: normalizeVerbosity(hasOwn(initial?.settings, 'textVerbosity') ? initial.settings.textVerbosity : preferredPreset.textVerbosity),
       reasoningSummary: normalizeReasoningSummary(hasOwn(initial?.settings, 'reasoningSummary') ? initial.settings.reasoningSummary : preferredPreset.reasoningSummary),
+      connectionId: (() => {
+        if (hasOwn(initial?.settings, 'connectionId')) {
+          const raw = initial.settings.connectionId
+          return (typeof raw === 'string' && raw.trim()) ? raw.trim() : fallbackConnectionId
+        }
+        if (typeof preferredPreset?.connectionId === 'string' && preferredPreset.connectionId.trim()) {
+          return preferredPreset.connectionId.trim()
+        }
+        return fallbackConnectionId
+      })(),
     },
     nodes: baseNodes,
     rootId,

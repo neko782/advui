@@ -32,8 +32,11 @@
       reasoningSummary={props.chatReasoningSummary}
       textVerbosity={props.chatTextVerbosity}
       modelIds={props.modelIds}
+      connections={props.connections}
+      connectionId={props.chatConnectionId}
       onToggle={props.onToggleChatSettings}
       onClose={props.onCloseChatSettings}
+      onChangeConnection={props.onChangeConnection}
       onInputModel={props.onChangeModel}
       onInputStreaming={props.onChangeStreaming}
       onInputMaxOutputTokens={props.onChangeMaxOutputTokens}

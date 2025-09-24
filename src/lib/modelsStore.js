@@ -1,48 +1,142 @@
 // Local cache for OpenAI models + helpers to fetch once and refresh on demand
 import { listModels } from './openaiClient.js'
-import { loadSettings } from './settingsStore.js'
+import { loadSettings, findConnection } from './settingsStore.js'
 
-const MODELS_KEY = 'openai.models.v1'
+const MODELS_KEY = 'openai.models.v2'
+const DEFAULT_CACHE_ENTRY = { ids: [], fetchedAt: 0 }
 
-export function loadModelsCache() {
+function getCacheKey(connectionId) {
+  if (typeof connectionId === 'string' && connectionId.trim()) return connectionId.trim()
+  return 'default'
+}
+
+function sanitizeIdList(ids) {
+  return Array.isArray(ids) ? ids.filter(id => typeof id === 'string' && id.trim()) : []
+}
+
+function readStore() {
   try {
     const raw = localStorage.getItem(MODELS_KEY)
-    if (!raw) return { ids: [], fetchedAt: 0 }
+    if (!raw) return { entries: {} }
     const parsed = JSON.parse(raw)
-    return {
-      ids: Array.isArray(parsed?.ids) ? parsed.ids.filter(x => typeof x === 'string') : [],
-      fetchedAt: Number(parsed?.fetchedAt) || 0,
+    if (parsed && typeof parsed === 'object' && parsed.entries && typeof parsed.entries === 'object') {
+      return { entries: parsed.entries }
     }
+    if (Array.isArray(parsed?.ids)) {
+      // migrate legacy v1 shape { ids, fetchedAt }
+      return {
+        entries: {
+          default: {
+            ids: sanitizeIdList(parsed.ids),
+            fetchedAt: Number(parsed?.fetchedAt) || 0,
+          },
+        },
+      }
+    }
+    return { entries: {} }
   } catch {
-    return { ids: [], fetchedAt: 0 }
+    return { entries: {} }
   }
 }
 
-function saveModelsCache(ids) {
-  const data = { ids: Array.isArray(ids) ? ids : [], fetchedAt: Date.now() }
-  localStorage.setItem(MODELS_KEY, JSON.stringify(data))
-  return data
+function writeStore(store) {
+  try {
+    localStorage.setItem(MODELS_KEY, JSON.stringify({ version: 2, entries: store.entries || {} }))
+  } catch {}
+  return store
 }
 
-// Ensure models are available locally.
-// If not cached yet, tries to fetch (requires API key). Otherwise returns cached immediately.
-export async function ensureModels() {
-  const cached = loadModelsCache()
+function getEntry(store, key) {
+  const entry = store.entries?.[key]
+  if (!entry || typeof entry !== 'object') return { ...DEFAULT_CACHE_ENTRY }
+  return {
+    ids: sanitizeIdList(entry.ids),
+    fetchedAt: Number(entry.fetchedAt) || 0,
+  }
+}
+
+export function loadModelsCache(connectionId) {
+  const key = getCacheKey(connectionId)
+  const store = readStore()
+  return getEntry(store, key)
+}
+
+export function loadAllModelCaches() {
+  const store = readStore()
+  const out = {}
+  for (const [key, value] of Object.entries(store.entries || {})) {
+    out[key] = getEntry({ entries: { [key]: value } }, key)
+  }
+  return out
+}
+
+function saveEntry(connectionId, ids) {
+  const key = getCacheKey(connectionId)
+  const store = readStore()
+  const entry = {
+    ids: sanitizeIdList(ids),
+    fetchedAt: Date.now(),
+  }
+  store.entries = { ...(store.entries || {}), [key]: entry }
+  writeStore(store)
+  return entry
+}
+
+function resolveConnection(input) {
+  if (!input) {
+    const settings = loadSettings()
+    const active = findConnection(settings, settings?.selectedConnectionId)
+    return {
+      id: active?.id || 'default',
+      apiKey: typeof active?.apiKey === 'string' ? active.apiKey : '',
+      apiBaseUrl: active?.apiBaseUrl,
+    }
+  }
+  if (typeof input === 'string') {
+    const settings = loadSettings()
+    const candidate = findConnection(settings, input)
+    const fallback = findConnection(settings)
+    const chosen = candidate || fallback
+    return {
+      id: chosen?.id || input || 'default',
+      apiKey: typeof chosen?.apiKey === 'string' ? chosen.apiKey : '',
+      apiBaseUrl: chosen?.apiBaseUrl,
+    }
+  }
+  const id = typeof input?.id === 'string' && input.id.trim()
+    ? input.id.trim()
+    : (typeof input?.connectionId === 'string' && input.connectionId.trim() ? input.connectionId.trim() : null)
+  return {
+    id: id || 'default',
+    apiKey: typeof input?.apiKey === 'string' ? input.apiKey : '',
+    apiBaseUrl: input?.apiBaseUrl,
+  }
+}
+
+export async function ensureModels(connectionInput) {
+  const connection = resolveConnection(connectionInput)
+  const cached = loadModelsCache(connection.id)
   if (cached.ids.length > 0) return cached
-  // no cached models; only fetch if API key is present
-  const { apiKey } = loadSettings()
-  if (!apiKey) return cached
-  const ids = await listModels()
-  return saveModelsCache(ids)
+  if (!connection.apiKey) return cached
+  const ids = await listModels({
+    connectionId: connection.id,
+    apiKey: connection.apiKey,
+    apiBaseUrl: connection.apiBaseUrl,
+  })
+  return saveEntry(connection.id, ids)
 }
 
-// Force-refresh models from the API (used by the Settings refresh button)
-export async function refreshModels() {
-  const ids = await listModels()
-  return saveModelsCache(ids)
+export async function refreshModels(connectionInput) {
+  const connection = resolveConnection(connectionInput)
+  if (!connection.apiKey) throw new Error('Missing OpenAI API key.')
+  const ids = await listModels({
+    connectionId: connection.id,
+    apiKey: connection.apiKey,
+    apiBaseUrl: connection.apiBaseUrl,
+  })
+  return saveEntry(connection.id, ids)
 }
 
-// Directly set/replace cached models (used after testing a one-off key)
-export function setModelsCache(ids) {
-  return saveModelsCache(ids)
+export function setModelsCache(connectionId, ids) {
+  return saveEntry(connectionId, ids)
 }

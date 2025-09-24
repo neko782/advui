@@ -1,6 +1,6 @@
 <script>
   // Svelte 5 runes API
-  import { loadSettings } from './settingsStore.js'
+  import { loadSettings, findConnection } from './settingsStore.js'
   import { ensureModels, loadModelsCache } from './modelsStore.js'
   import { respond } from './openaiClient.js'
   import { APIUserAbortError } from 'openai'
@@ -87,8 +87,8 @@
     return normalizePreset(null)
   }
   function presetSignature(state) {
-    const list = Array.isArray(state?.presets) ? state.presets : []
-    return list.map(p => [
+  const list = Array.isArray(state?.presets) ? state.presets : []
+  return list.map(p => [
       p?.id || '',
       p?.name || '',
       p?.model || '',
@@ -99,9 +99,20 @@
       p?.reasoningEffort || '',
       p?.textVerbosity || '',
       p?.reasoningSummary || '',
+      p?.connectionId || '',
     ].join('|')).join(';')
-  }
+}
   const initialPreset = pickPresetFromSettings(initialSettings)
+  const initialConnectionId = (() => {
+    const presetConn = typeof initialPreset?.connectionId === 'string' && initialPreset.connectionId.trim()
+      ? initialPreset.connectionId.trim()
+      : null
+    if (presetConn) return presetConn
+    const settingsConn = typeof initialSettings?.selectedConnectionId === 'string' && initialSettings.selectedConnectionId.trim()
+      ? initialSettings.selectedConnectionId.trim()
+      : null
+    return settingsConn
+  })()
   // Group per-chat settings in a single object (seeded from global defaults)
   let chatSettings = $state({
     model: initialPreset.model,
@@ -113,11 +124,20 @@
     reasoningEffort: initialPreset.reasoningEffort,
     textVerbosity: initialPreset.textVerbosity,
     reasoningSummary: initialPreset.reasoningSummary,
+    connectionId: initialConnectionId,
   })
   // Per-chat settings popover open state
   let chatSettingsOpen = $state(false)
   // Cached models (for datalist)
-  let modelIds = $state(loadModelsCache().ids || [])
+  let modelIds = $state(loadModelsCache(initialConnectionId).ids || [])
+  const connectionOptions = $derived((() => {
+    try {
+      const list = Array.isArray(settings?.connections) ? settings.connections : []
+      return list
+        .filter(conn => conn && typeof conn.id === 'string')
+        .map(conn => ({ id: conn.id, name: conn.name || conn.id }))
+    } catch { return [] }
+  })())
   let editingId = $state(null)
   let editingText = $state('')
   // editing DOM is handled in MessageBubble
@@ -260,6 +280,7 @@
       reasoningEffort: basePreset.reasoningEffort,
       textVerbosity: basePreset.textVerbosity,
       reasoningSummary: basePreset.reasoningSummary,
+      connectionId: basePreset.connectionId,
     }
     let nextNextId = 1
     let nextNextNodeId = 1
@@ -289,6 +310,15 @@
             reasoningEffort: normalizeReasoning(hasOwn(loaded?.settings, 'reasoningEffort') ? loaded.settings.reasoningEffort : basePreset.reasoningEffort),
             textVerbosity: normalizeVerbosity(hasOwn(loaded?.settings, 'textVerbosity') ? loaded.settings.textVerbosity : basePreset.textVerbosity),
             reasoningSummary: normalizeReasoningSummary(hasOwn(loaded?.settings, 'reasoningSummary') ? loaded.settings.reasoningSummary : basePreset.reasoningSummary),
+            connectionId: (() => {
+              const fromLoaded = hasOwn(loaded?.settings, 'connectionId') ? loaded.settings.connectionId : undefined
+              if (typeof fromLoaded === 'string' && fromLoaded.trim()) return fromLoaded.trim()
+              if (typeof basePreset?.connectionId === 'string' && basePreset.connectionId?.trim()) return basePreset.connectionId.trim()
+              const settingsConn = typeof nextSettings?.selectedConnectionId === 'string' && nextSettings.selectedConnectionId.trim()
+                ? nextSettings.selectedConnectionId.trim()
+                : null
+              return settingsConn
+            })(),
           }
           if (!nextNodes.length) {
             nextNextId = 2
@@ -322,6 +352,7 @@
             reasoningEffort: basePreset.reasoningEffort,
             textVerbosity: basePreset.textVerbosity,
             reasoningSummary: basePreset.reasoningSummary,
+            connectionId: basePreset.connectionId,
           }
         }
       } catch {
@@ -331,17 +362,18 @@
         nextRootId = 1
         nextNextId = 2
         nextNextNodeId = 2
-        nextChatSettings = {
-          model: basePreset.model,
-          streaming: basePreset.streaming,
-          presetId: basePreset.id,
-          maxOutputTokens: basePreset.maxOutputTokens,
-          topP: basePreset.topP,
-          temperature: basePreset.temperature,
-          reasoningEffort: basePreset.reasoningEffort,
-          textVerbosity: basePreset.textVerbosity,
-          reasoningSummary: basePreset.reasoningSummary,
-        }
+      nextChatSettings = {
+        model: basePreset.model,
+        streaming: basePreset.streaming,
+        presetId: basePreset.id,
+        maxOutputTokens: basePreset.maxOutputTokens,
+        topP: basePreset.topP,
+        temperature: basePreset.temperature,
+        reasoningEffort: basePreset.reasoningEffort,
+        textVerbosity: basePreset.textVerbosity,
+        reasoningSummary: basePreset.reasoningSummary,
+        connectionId: basePreset.connectionId,
+      }
       }
       // Precompute a persist signature for the loaded chat content
       try {
@@ -361,6 +393,7 @@
             reasoningEffort: nextChatSettings?.reasoningEffort || '',
             textVerbosity: nextChatSettings?.textVerbosity || '',
             reasoningSummary: nextChatSettings?.reasoningSummary || '',
+            connectionId: nextChatSettings?.connectionId || '',
           },
           rootId: nextRootId,
         })
@@ -373,6 +406,7 @@
           nextId = nextNextId
           nextNodeId = nextNextNodeId
           chatSettings = nextChatSettings
+          try { modelIds = loadModelsCache(nextChatSettings?.connectionId).ids || [] } catch {}
           rootId = nextRootId
           editingId = null
           editingText = ''
@@ -400,6 +434,7 @@
         reasoningEffort: basePreset.reasoningEffort,
         textVerbosity: basePreset.textVerbosity,
         reasoningSummary: basePreset.reasoningSummary,
+        connectionId: basePreset.connectionId,
       }
       try {
         const mini = (nextNodes || []).map(n => {
@@ -418,6 +453,7 @@
             reasoningEffort: nextChatSettings?.reasoningEffort || '',
             textVerbosity: nextChatSettings?.textVerbosity || '',
             reasoningSummary: nextChatSettings?.reasoningSummary || '',
+            connectionId: nextChatSettings?.connectionId || '',
           },
           rootId: nextRootId,
         })
@@ -429,6 +465,7 @@
           nextId = nextNextId
           nextNodeId = nextNextNodeId
           chatSettings = nextChatSettings
+          try { modelIds = loadModelsCache(nextChatSettings?.connectionId).ids || [] } catch {}
           rootId = nextRootId
           editingId = null
           editingText = ''
@@ -450,14 +487,49 @@
   onMount(async () => {
     mounted = true
     try {
-      const cached = loadModelsCache()
+      const connectionId = chatSettings?.connectionId
+      const cached = loadModelsCache(connectionId)
       if (!cached.ids?.length) {
-        const fresh = await ensureModels()
-        setTimeout(() => { modelIds = fresh.ids || [] }, 0)
+        const fresh = await ensureModels({ connectionId })
+        setTimeout(() => {
+          if (chatSettings?.connectionId === connectionId) {
+            modelIds = fresh.ids || []
+          }
+        }, 0)
       } else {
-        setTimeout(() => { modelIds = cached.ids }, 0)
+        setTimeout(() => {
+          if (chatSettings?.connectionId === connectionId) {
+            modelIds = cached.ids || []
+          }
+        }, 0)
       }
     } catch {}
+  })
+
+  $effect(() => {
+    const connectionId = chatSettings?.connectionId
+    const cached = loadModelsCache(connectionId)
+    const cachedIds = cached?.ids || []
+    modelIds = cachedIds
+    if (!cachedIds.length) {
+      ensureModels({ connectionId }).then((fresh) => {
+        if (chatSettings?.connectionId === connectionId && Array.isArray(fresh?.ids)) {
+          modelIds = fresh.ids
+        }
+      }).catch(() => {})
+    }
+  })
+
+  $effect(() => {
+    const list = Array.isArray(settings?.connections) ? settings.connections : []
+    if (!list.length) return
+    const ids = new Set(list.map(conn => conn?.id).filter(Boolean))
+    const current = chatSettings?.connectionId
+    if (current && ids.has(current)) return
+    const fallback = findConnection(settings, current)?.id || list[0]?.id || null
+    if (fallback && fallback !== current) {
+      chatSettings = { ...chatSettings, connectionId: fallback }
+    }
   })
 
   $effect(() => {
@@ -493,6 +565,7 @@
         settings?.apiKey !== next.apiKey ||
         presetSignature(settings) !== presetSignature(next) ||
         settings?.selectedPresetId !== next?.selectedPresetId ||
+        settings?.selectedConnectionId !== next?.selectedConnectionId ||
         !!settings?.debug !== !!next?.debug
       )
       if (changed) {
@@ -541,6 +614,7 @@
           reasoningEffort: chatSettings?.reasoningEffort || '',
           textVerbosity: chatSettings?.textVerbosity || '',
           reasoningSummary: chatSettings?.reasoningSummary || '',
+          connectionId: chatSettings?.connectionId || '',
         },
         rootId,
       })
@@ -694,7 +768,9 @@
       let reply = null
       let summaryBuffer = ''
       settings = loadSettings()
-      const { apiKey } = settings
+      const activeConnection = findConnection(settings, chatSettings?.connectionId)
+      const connectionId = activeConnection?.id || chatSettings?.connectionId || settings?.selectedConnectionId || null
+      const apiKey = typeof activeConnection?.apiKey === 'string' ? activeConnection.apiKey : ''
       if (role === 'user' && apiKey) {
         const history = buildVisible()
           .map(vm => vm.m)
@@ -709,6 +785,7 @@
           reasoningEffort: chatSettings.reasoningEffort,
           textVerbosity: chatSettings.textVerbosity,
           reasoningSummary: chatSettings.reasoningSummary,
+          connectionId,
         }
         if (chatSettings.streaming && typingVariantId != null) {
           reply = await respond({
@@ -882,7 +959,7 @@
   // When opening the chat settings, refresh datalist from cache (in case Settings changed it)
   $effect(() => {
     if (chatSettingsOpen) {
-      try { modelIds = loadModelsCache().ids || [] } catch {}
+      try { modelIds = loadModelsCache(chatSettings?.connectionId).ids || [] } catch {}
     }
   })
   // Message actions
@@ -1164,7 +1241,9 @@
       let reply = null
       let summaryBuffer = ''
       settings = loadSettings()
-      const { apiKey } = settings
+      const activeConnection = findConnection(settings, chatSettings?.connectionId)
+      const connectionId = activeConnection?.id || chatSettings?.connectionId || settings?.selectedConnectionId || null
+      const apiKey = typeof activeConnection?.apiKey === 'string' ? activeConnection.apiKey : ''
       const typingId = typingMsg.id
       const path = buildVisible()
       const insertIndex = path.findIndex(vm => vm.nodeId === curNode.id)
@@ -1181,6 +1260,7 @@
           reasoningEffort: chatSettings.reasoningEffort,
           textVerbosity: chatSettings.textVerbosity,
           reasoningSummary: chatSettings.reasoningSummary,
+          connectionId,
         }
         if (chatSettings.streaming) {
           reply = await respond({
@@ -1308,7 +1388,9 @@
       let reply = null
       let summaryBuffer = ''
       settings = loadSettings()
-      const { apiKey } = settings
+      const activeConnection = findConnection(settings, chatSettings?.connectionId)
+      const connectionId = activeConnection?.id || chatSettings?.connectionId || settings?.selectedConnectionId || null
+      const apiKey = typeof activeConnection?.apiKey === 'string' ? activeConnection.apiKey : ''
       const typingId = typingMsg.id
       if (apiKey) {
         // Build history up to (but not including) this assistant node (parent path)
@@ -1326,6 +1408,7 @@
           reasoningEffort: chatSettings.reasoningEffort,
           textVerbosity: chatSettings.textVerbosity,
           reasoningSummary: chatSettings.reasoningSummary,
+          connectionId,
         }
         if (chatSettings.streaming) {
           reply = await respond({
@@ -1438,7 +1521,9 @@
       let reply = null
       let summaryBuffer = ''
       settings = loadSettings()
-      const { apiKey } = settings
+      const activeConnection = findConnection(settings, chatSettings?.connectionId)
+      const connectionId = activeConnection?.id || chatSettings?.connectionId || settings?.selectedConnectionId || null
+      const apiKey = typeof activeConnection?.apiKey === 'string' ? activeConnection.apiKey : ''
       const typingId = typingMsg.id
       const history = buildVisibleUpTo(i + 1)
         .filter(m => !m.typing)
@@ -1453,6 +1538,7 @@
           reasoningEffort: chatSettings.reasoningEffort,
           textVerbosity: chatSettings.textVerbosity,
           reasoningSummary: chatSettings.reasoningSummary,
+          connectionId,
         }
         if (chatSettings.streaming) {
           reply = await respond({
@@ -1620,8 +1706,11 @@
     chatReasoningSummary={chatSettings.reasoningSummary}
     chatTextVerbosity={chatSettings.textVerbosity}
     modelIds={modelIds}
+    connections={connectionOptions}
+    chatConnectionId={chatSettings.connectionId}
     onToggleChatSettings={toggleChatSettings}
     onCloseChatSettings={() => (chatSettingsOpen = false)}
+    onChangeConnection={(val) => (chatSettings = { ...chatSettings, connectionId: (typeof val === 'string' && val.trim()) ? val.trim() : null })}
     onChangeModel={(val) => (chatSettings = { ...chatSettings, model: val })}
     onChangeStreaming={(val) => (chatSettings = { ...chatSettings, streaming: !!val })}
     onChangeMaxOutputTokens={(val) => (chatSettings = { ...chatSettings, maxOutputTokens: toIntOrNull(val) })}

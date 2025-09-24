@@ -23,6 +23,19 @@
   </button>
   <div class="send-menu chat-settings-menu" role="menu" aria-label="Chat settings">
     <div class="menu-section">
+      <div class="menu-label">Connection</div>
+      <select
+        value={props.connectionId || ''}
+        disabled={props.disabled}
+        onchange={(e) => (!props.disabled && props.onChangeConnection?.(e.currentTarget.value))}
+        aria-label="Connection"
+      >
+        {#each (props.connections || []) as conn (conn?.id || conn?.name)}
+          <option value={conn?.id || ''}>{conn?.name || conn?.id || 'Connection'}</option>
+        {/each}
+      </select>
+    </div>
+    <div class="menu-section">
       <div class="menu-label">Model</div>
       <input
         type="text"

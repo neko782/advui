@@ -2,24 +2,55 @@
 // Uses the official OpenAI SDK only (no fetch fallback)
 
 import OpenAI from 'openai'
-import { loadSettings } from './settingsStore.js'
+import { loadSettings, findConnection } from './settingsStore.js'
 
-export async function getClient() {
-  const { apiKey, apiBaseUrl } = loadSettings()
+function resolveConnection({ connectionId, connection, settings } = {}) {
+  if (connection && typeof connection === 'object') {
+    const id = typeof connection.id === 'string' && connection.id.trim()
+      ? connection.id.trim()
+      : (typeof connection.connectionId === 'string' && connection.connectionId.trim() ? connection.connectionId.trim() : null)
+    const apiKey = typeof connection.apiKey === 'string' ? connection.apiKey : ''
+    const apiBaseUrl = connection.apiBaseUrl
+    return { id, apiKey, apiBaseUrl }
+  }
+  const srcSettings = settings || loadSettings()
+  const resolved = findConnection(srcSettings, connectionId)
+  return {
+    id: resolved?.id || null,
+    apiKey: typeof resolved?.apiKey === 'string' ? resolved.apiKey : '',
+    apiBaseUrl: resolved?.apiBaseUrl,
+  }
+}
+
+function buildClientOptions({ apiKey, apiBaseUrl }) {
   if (!apiKey) return null
   const baseURL = typeof apiBaseUrl === 'string' && apiBaseUrl.trim() ? apiBaseUrl.trim() : ''
   const options = { apiKey, dangerouslyAllowBrowser: true }
   if (baseURL) options.baseURL = baseURL
-  return new OpenAI(options)
+  return options
+}
+
+export async function getClient(options = {}) {
+  const settings = options.settings || loadSettings()
+  const connection = resolveConnection({
+    connectionId: options.connectionId,
+    connection: options.connection,
+    settings,
+  })
+  if (!connection.apiKey) return null
+  const clientOptions = buildClientOptions(connection)
+  if (!clientOptions) return null
+  return new OpenAI(clientOptions)
 }
 
 function pickActivePreset(settings) {
   const list = Array.isArray(settings?.presets) ? settings.presets : []
-  if (!list.length) return { model: 'gpt-5', streaming: true }
+  const fallbackConnectionId = typeof settings?.selectedConnectionId === 'string' ? settings.selectedConnectionId : null
+  if (!list.length) return { model: 'gpt-5', streaming: true, connectionId: fallbackConnectionId }
   const selected = typeof settings?.selectedPresetId === 'string'
     ? list.find(p => p?.id === settings.selectedPresetId)
     : null
-  return selected || list[0] || { model: 'gpt-5', streaming: true }
+  return selected || list[0] || { model: 'gpt-5', streaming: true, connectionId: fallbackConnectionId }
 }
 
 // Create a response using either a single prompt string or an array of messages
@@ -28,6 +59,7 @@ export async function respond({
   prompt,
   messages,
   model,
+  connectionId,
   stream = false,
   onTextDelta,
   onEvent,
@@ -42,15 +74,30 @@ export async function respond({
   onAbort,
 }) {
   const settings = loadSettings()
-  const { apiKey } = settings
-  if (!apiKey) throw new Error('Missing OpenAI API key. Set it in Settings.')
   const preset = pickActivePreset(settings)
   const useModel = model || preset?.model || 'gpt-5'
+  const preferredConnectionId = typeof connectionId === 'string' && connectionId.trim()
+    ? connectionId.trim()
+    : (typeof preset?.connectionId === 'string' && preset.connectionId.trim()
+      ? preset.connectionId.trim()
+      : null)
+  const resolvedConnection = resolveConnection({
+    connectionId: preferredConnectionId,
+    settings,
+  })
+  if (!resolvedConnection.apiKey) {
+    throw new Error('Missing OpenAI API key. Set it in Settings.')
+  }
   const apiMode = settings?.apiMode === 'chat_completions' ? 'chat_completions' : 'responses'
   const useChatCompletions = apiMode === 'chat_completions'
 
   // SDK call only
-  const client = await getClient()
+  const effectiveConnectionId = resolvedConnection.id || preferredConnectionId || null
+  const client = await getClient({
+    settings,
+    connectionId: effectiveConnectionId,
+    connection: { ...resolvedConnection, id: effectiveConnectionId },
+  })
   if (!client) {
     throw new Error('OpenAI SDK is not available or is outdated.')
   }
@@ -290,8 +337,15 @@ export async function respond({
 }
 
 // List available models via the official SDK
-export async function listModels() {
-  const client = await getClient()
+export async function listModels(options = {}) {
+  let client = null
+  if (options?.apiKey) {
+    const clientOptions = buildClientOptions(options)
+    if (!clientOptions) throw new Error('Missing OpenAI API key.')
+    client = new OpenAI(clientOptions)
+  } else {
+    client = await getClient(options)
+  }
   if (!client) throw new Error('Missing OpenAI API key. Set it in Settings.')
   if (!client?.models?.list) throw new Error('OpenAI SDK does not support listing models.')
   const res = await client.models.list()
@@ -301,15 +355,7 @@ export async function listModels() {
 
 // List models using a provided API key (without saving it)
 export async function listModelsWithKey(apiKey, apiBaseUrl = '') {
-  if (!apiKey) throw new Error('Missing OpenAI API key.')
-  const baseURL = typeof apiBaseUrl === 'string' && apiBaseUrl.trim() ? apiBaseUrl.trim() : ''
-  const options = { apiKey, dangerouslyAllowBrowser: true }
-  if (baseURL) options.baseURL = baseURL
-  const client = new OpenAI(options)
-  if (!client?.models?.list) throw new Error('OpenAI SDK does not support listing models.')
-  const res = await client.models.list()
-  const items = Array.isArray(res?.data) ? res.data : []
-  return sortModels(items).map(m => m.id)
+  return listModels({ apiKey, apiBaseUrl })
 }
 
 function sortModels(items) {
