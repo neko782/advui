@@ -46,7 +46,7 @@
       </button>
     {/if}
 
-    <button class="action-btn" onclick={() => props.onCopy?.(m.content)} aria-label="Copy message" title="Copy" disabled={props.locked || m.typing}>
+    <button class="action-btn" onclick={() => props.onCopy?.(m.content)} aria-label="Copy message" title="Copy" disabled={m.typing}>
       <Icon name="content_copy" size={20} />
     </button>
     <button class="action-btn" onclick={() => props.onDelete?.(m.id)} aria-label="Delete message" title="Delete" disabled={props.locked || m.typing}>
