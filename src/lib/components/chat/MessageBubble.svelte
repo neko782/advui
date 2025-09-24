@@ -5,21 +5,26 @@
   let el = $state(null)
   let reasoningOpen = $state(false)
   let lastReasoningId = $state(null)
-  const reasoningSummaryText = $derived(() => {
-    const raw = props.message?.reasoningSummary
+  let autoOpened = $state(false)
+  let reasoningSummaryText = $state('')
+  let showReasoning = $state(false)
+
+  function extractReasoningSummary(msg) {
+    const raw = msg?.reasoningSummary
     if (typeof raw === 'string') return raw
     if (Array.isArray(raw)) {
-      try { return raw.filter((part) => typeof part === 'string').join('') } catch { return '' }
+      try {
+        return raw
+          .map((part) => {
+            if (typeof part === 'string') return part
+            if (part && typeof part === 'object' && typeof part.text === 'string') return part.text
+            return ''
+          })
+          .join('')
+      } catch {}
     }
     return ''
-  })
-  const hasReasoningSummary = $derived(() => reasoningSummaryText.trim().length > 0)
-  const showReasoning = $derived(() => {
-    const msg = props.message
-    if (!msg || msg.role !== 'assistant') return false
-    if (msg.reasoningSummaryLoading) return true
-    return hasReasoningSummary
-  })
+  }
 
   // When entering edit mode, seed text and move caret
   $effect(() => {
@@ -36,9 +41,37 @@
     const mid = props.message?.id ?? null
     if (mid !== lastReasoningId) {
       reasoningOpen = false
+      autoOpened = false
       lastReasoningId = mid
     }
   })
+
+  $effect(() => {
+    const msg = props.message
+    if (!msg) {
+      reasoningSummaryText = ''
+      showReasoning = false
+      return
+    }
+    const text = extractReasoningSummary(msg)
+    reasoningSummaryText = text
+    const available = (msg.role === 'assistant') && text.trim().length > 0
+    showReasoning = available
+    if (!available) {
+      reasoningOpen = false
+      autoOpened = false
+      return
+    }
+    if (!autoOpened) {
+      reasoningOpen = true
+      autoOpened = true
+    }
+  })
+
+  function toggleReasoning() {
+    reasoningOpen = !reasoningOpen
+    autoOpened = true
+  }
 
   function onPaste(e) {
     try {
@@ -64,10 +97,28 @@
     bind:this={el}
   ></div>
 {:else}
+  {#if showReasoning}
+    <div class={`reasoning ${props.message.role}`}>
+      <button
+        type="button"
+        class="reasoning-toggle"
+        aria-expanded={reasoningOpen}
+        onclick={toggleReasoning}
+      >
+        <span class="reasoning-label">Reasoning</span>
+        <span class={`chevron ${reasoningOpen ? 'open' : ''}`} aria-hidden="true"></span>
+      </button>
+      {#if reasoningOpen}
+        <div class="reasoning-body">
+          {@html renderMarkdown(reasoningSummaryText)}
+        </div>
+      {/if}
+    </div>
+  {/if}
   {#if props.message.typing}
     <div class={`bubble ${props.message.role}`} data-typing={true}>
       {#if props.message.content && props.message.content !== 'typing'}
-        {@html renderMarkdown(props.message.content)}
+          {@html renderMarkdown(props.message.content)}
       {:else}
         <span class="dots"><i></i><i></i><i></i></span>
       {/if}
@@ -76,37 +127,6 @@
     <div class={`bubble ${props.message.role}`}>
       {@html renderMarkdown(props.message.content)}
     </div>
-    {#if showReasoning}
-      <div class={`reasoning ${props.message.role}`}>
-        <button
-          type="button"
-          class="reasoning-toggle"
-          aria-expanded={reasoningOpen}
-          onclick={() => (reasoningOpen = !reasoningOpen)}
-        >
-          <span class="reasoning-label">Reasoning</span>
-          {#if props.message.reasoningSummaryLoading}
-            <span class="reasoning-status">loading…</span>
-          {:else if hasReasoningSummary}
-            <span class="reasoning-status">{reasoningOpen ? 'hide' : 'show'}</span>
-          {:else}
-            <span class="reasoning-status">not available</span>
-          {/if}
-          <span class={`chevron ${reasoningOpen ? 'open' : ''}`} aria-hidden="true"></span>
-        </button>
-        {#if reasoningOpen}
-          <div class="reasoning-body">
-            {#if props.message.reasoningSummaryLoading}
-              <p class="reasoning-placeholder">Model is still summarizing…</p>
-            {:else if hasReasoningSummary}
-              {@html renderMarkdown(reasoningSummaryText)}
-            {:else}
-              <p class="reasoning-placeholder">No reasoning summary was provided.</p>
-            {/if}
-          </div>
-        {/if}
-      </div>
-    {/if}
   {/if}
 {/if}
 
@@ -140,13 +160,15 @@
   .dots i:nth-child(2) { animation-delay: .15s; }
   .dots i:nth-child(3) { animation-delay: .30s; }
   @keyframes pop { 0%, 80%, 100% { transform: translateY(0); opacity: .45 } 40% { transform: translateY(-3px); opacity: .9 } }
-  .reasoning { display: grid; gap: 6px; margin-top: 4px; }
-  .reasoning.assistant { justify-self: start; }
-  .reasoning.user { justify-self: end; }
+  .reasoning { display: grid; gap: 6px; margin-bottom: 6px; }
+  .reasoning.assistant { justify-self: stretch; }
+  .reasoning.user { justify-self: stretch; }
   .reasoning-toggle {
     display: inline-flex;
     align-items: center;
-    gap: 8px;
+    justify-content: flex-start;
+    gap: 6px;
+    justify-self: start;
     font-size: 0.85rem;
     color: var(--muted);
     background: transparent;
@@ -156,7 +178,6 @@
   }
   .reasoning-toggle:focus-visible { outline: 1px solid var(--accent); outline-offset: 2px; }
   .reasoning-label { font-weight: 600; }
-  .reasoning-status { font-size: 0.8rem; text-transform: lowercase; }
   .chevron { width: 10px; height: 10px; position: relative; }
   .chevron::before {
     content: '';
@@ -177,5 +198,4 @@
   }
   .reasoning-body :global(p:first-child) { margin-top: 0; }
   .reasoning-body :global(p:last-child) { margin-bottom: 0; }
-  .reasoning-placeholder { margin: 0; font-style: italic; color: var(--muted); }
 </style>
