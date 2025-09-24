@@ -183,7 +183,7 @@
           <nav class="chat-list" aria-label="Chats">
             {#each (props.chats || []) as c (c.id)}
               <div
-                class={`chat-row ${props.selectedId === c.id ? 'active' : ''} ${(confirmDeleteId === c.id || editingId === c.id) ? 'show-actions' : ''}`}
+                class={`chat-row ${props.selectedId === c.id ? 'active' : ''} ${(confirmDeleteId === c.id || editingId === c.id || props.selectedId === c.id) ? 'show-actions' : ''}`}
                 title={c.title || 'Chat'}
               >
                 {#if editingId === c.id}

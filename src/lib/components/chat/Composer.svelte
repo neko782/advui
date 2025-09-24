@@ -158,4 +158,11 @@
   .send-group:hover .send-menu, .send-group:focus-within .send-menu { opacity: 1; transform: translateY(0); pointer-events: auto; }
   .menu-item { width: 100%; text-align: left; background: transparent; border: 1px solid var(--border); border-radius: 8px; color: var(--text); padding: 8px 10px; font: inherit; display: flex; align-items: center; gap: 8px; }
   .menu-item:disabled { opacity: .6; cursor: not-allowed; }
+
+  @media (max-width: 640px) {
+    .composer-input::placeholder {
+      color: transparent;
+      opacity: 0;
+    }
+  }
 </style>
