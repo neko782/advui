@@ -314,7 +314,7 @@
     overflow-x: hidden;
     z-index: 10;
   }
-  .sidebar.collapsed { width: 52px; }
+  .sidebar.collapsed { width: 52px; overflow-x: visible; }
   @media (prefers-color-scheme: dark) {
     .sidebar {
       --bg: #0f0f10;
@@ -362,7 +362,7 @@
   .new-chat-wrapper { position: relative; }
   .preset-menu {
     position: absolute;
-    top: 44px;
+    top: calc(100% + 4px);
     left: 0;
     right: 0;
     background: var(--panel);
@@ -374,7 +374,7 @@
     box-shadow: 0 8px 18px rgba(0,0,0,0.18);
     z-index: 20;
   }
-  .sidebar.collapsed .preset-menu { left: auto; right: 0; width: 220px; }
+  .sidebar.collapsed .preset-menu { left: calc(100% + 8px); right: auto; width: 220px; }
   .preset-menu-item {
     display: grid;
     align-items: start;
