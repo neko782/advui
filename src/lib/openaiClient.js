@@ -113,6 +113,7 @@ export async function respond({
     })
     let full = ''
     const summaryByIndex = new Map()
+    let summaryDelivered = false
     const buildSummary = () => {
       const ordered = Array.from(summaryByIndex.entries())
         .sort((a, b) => a[0] - b[0])
@@ -122,6 +123,7 @@ export async function respond({
       const combined = ordered.join('\n\n\n')
       return combined.replace(/\n{4,}/g, '\n\n\n')
     }
+    let completed = false
     try {
       for await (const event of streamIt) {
         try { onEvent?.(event) } catch {}
@@ -147,11 +149,22 @@ export async function respond({
           const finalText = text || existing
           if (finalText) summaryByIndex.set(idx, finalText)
           const summary = buildSummary()
-          try { onReasoningSummaryDone?.(summary, event) } catch {}
+          try {
+            onReasoningSummaryDone?.(summary, event)
+            summaryDelivered = true
+          } catch {}
         } else if (t === 'response.completed' || t === 'response.text.done' || t === 'response.done') {
-          // Let the SDK finish and close the stream naturally.
-          // Do not break early to avoid aborting the request.
-          continue
+          completed = true
+          if (!summaryDelivered) {
+            const summary = buildSummary()
+            if (summary) {
+              try {
+                onReasoningSummaryDone?.(summary, event)
+                summaryDelivered = true
+              } catch {}
+            }
+          }
+          break
         } else if (t === 'response.failed' || t === 'error') {
           const msg = event?.error?.message || 'Stream failed.'
           throw new Error(msg)
@@ -160,10 +173,21 @@ export async function respond({
     } catch (err) {
       // Re-throw so callers can handle
       throw err
+    } finally {
+      if (completed) {
+        try { streamIt.controller?.abort?.() } catch {}
+      }
+    }
+    const finalSummary = buildSummary()
+    if (!summaryDelivered && finalSummary) {
+      try {
+        onReasoningSummaryDone?.(finalSummary, null)
+        summaryDelivered = true
+      } catch {}
     }
     return {
       text: full,
-      reasoningSummary: buildSummary(),
+      reasoningSummary: finalSummary,
     }
   } else {
     const abortController = (typeof AbortController === 'function') ? new AbortController() : null
