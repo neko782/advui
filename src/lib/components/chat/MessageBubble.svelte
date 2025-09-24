@@ -164,7 +164,7 @@
   .dots i:nth-child(2) { animation-delay: .15s; }
   .dots i:nth-child(3) { animation-delay: .30s; }
   @keyframes pop { 0%, 80%, 100% { transform: translateY(0); opacity: .45 } 40% { transform: translateY(-3px); opacity: .9 } }
-  .reasoning { display: grid; gap: 6px; margin-bottom: 6px; }
+  .reasoning { display: grid; gap: 6px; margin: 10px 0 6px; }
   .reasoning.assistant { justify-self: stretch; }
   .reasoning.user { justify-self: stretch; }
   .reasoning-toggle {

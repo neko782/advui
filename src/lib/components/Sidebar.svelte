@@ -435,6 +435,7 @@
     display: flex;
     align-items: center;
     gap: 6px;
+    flex: 0 0 auto;
     padding: 2px 4px;
     padding-right: 60px;
     border-radius: 8px;
