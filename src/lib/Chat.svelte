@@ -1579,6 +1579,7 @@
   <MessageList
     bind:this={listCmp}
     items={buildVisible()}
+    chatId={props.chatId}
     notice={visibleNotice}
     total={nodes.length}
     locked={locked}

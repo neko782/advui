@@ -8,7 +8,7 @@
 </script>
 
 <div class="messages" bind:this={listEl}>
-  {#each props.items as vm (vm.m.id)}
+  {#each props.items as vm (`${props.chatId ?? ''}:${vm.m.id}`)}
     <MessageItem
       vm={vm}
       total={props.total}
