@@ -5,6 +5,8 @@ function genPresetId() {
   return `preset_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
+const API_MODE_VALUES = new Set(['responses', 'chat_completions'])
+
 const DEFAULT_PRESET_FIELDS = {
   model: 'gpt-4o-mini',
   streaming: true,
@@ -113,17 +115,20 @@ function attachCompatFields(out) {
     reasoningSummary: active.reasoningSummary || 'auto',
   };
   out.model = active.model;
+  const rawMode = typeof out.apiMode === 'string' ? out.apiMode : '';
+  out.apiMode = API_MODE_VALUES.has(rawMode) ? rawMode : 'responses';
   return out;
 }
 
 // Normalized shape returned by loadSettings():
-// { apiKey, presets, selectedPresetId, debug, defaultChat, model }
+// { apiKey, presets, selectedPresetId, debug, defaultChat, model, apiMode }
 export function loadSettings() {
   const defaults = attachCompatFields({
     apiKey: '',
     presets: [makeDefaultPreset()],
     selectedPresetId: 'preset-default',
     debug: false,
+    apiMode: 'responses',
   });
   try {
     const raw = localStorage.getItem(SETTINGS_KEY);
@@ -139,7 +144,10 @@ export function loadSettings() {
       : presets[0]?.id || makeDefaultPreset().id;
     const debug = typeof parsed?.debug === 'boolean' ? !!parsed.debug : false;
     const apiKey = typeof parsed?.apiKey === 'string' ? parsed.apiKey : '';
-    return attachCompatFields({ apiKey, presets, selectedPresetId, debug });
+    const mode = typeof parsed?.apiMode === 'string' && API_MODE_VALUES.has(parsed.apiMode)
+      ? parsed.apiMode
+      : 'responses';
+    return attachCompatFields({ apiKey, presets, selectedPresetId, debug, apiMode: mode });
   } catch {
     return defaults;
   }
@@ -156,6 +164,7 @@ export function saveSettings(next) {
     presets,
     selectedPresetId,
     debug: !!next?.debug,
+    apiMode: API_MODE_VALUES.has(next?.apiMode) ? next.apiMode : 'responses',
   });
   localStorage.setItem(SETTINGS_KEY, JSON.stringify(data));
 }

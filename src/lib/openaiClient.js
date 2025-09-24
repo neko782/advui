@@ -1,4 +1,4 @@
-// Client-side OpenAI Responses API helper
+// Client-side OpenAI helper for Responses and Chat Completions APIs
 // Uses the official OpenAI SDK only (no fetch fallback)
 
 import OpenAI from 'openai'
@@ -38,15 +38,25 @@ export async function respond({
   onReasoningSummaryDone,
   onAbort,
 }) {
-  const { apiKey } = loadSettings()
+  const settings = loadSettings()
+  const { apiKey } = settings
   if (!apiKey) throw new Error('Missing OpenAI API key. Set it in Settings.')
-  const s = loadSettings()
-  const preset = pickActivePreset(s)
+  const preset = pickActivePreset(settings)
   const useModel = model || preset?.model || 'gpt-4o-mini'
+  const apiMode = settings?.apiMode === 'chat_completions' ? 'chat_completions' : 'responses'
+  const useChatCompletions = apiMode === 'chat_completions'
 
   // SDK call only
   const client = await getClient()
-  if (!client?.responses?.create) {
+  if (!client) {
+    throw new Error('OpenAI SDK is not available or is outdated.')
+  }
+  const supportsResponses = !!client?.responses?.create
+  const supportsChatCompletions = !!client?.chat?.completions?.create
+  if (useChatCompletions && !supportsChatCompletions) {
+    throw new Error('OpenAI SDK does not support the Chat Completions API.')
+  }
+  if (!useChatCompletions && !supportsResponses) {
     throw new Error('OpenAI SDK is not available or is outdated.')
   }
   const provideAbort = (fn) => {
@@ -66,6 +76,12 @@ export async function respond({
     input = typeof prompt === 'string' ? prompt : ''
   }
   const request = { model: useModel, input }
+  const chatMessages = Array.isArray(input)
+    ? input
+    : (typeof input === 'string' && input
+      ? [{ role: 'user', content: input }]
+      : [])
+  const chatRequest = { model: useModel, messages: chatMessages }
   const toIntOrNull = (val) => {
     if (val === '' || val == null) return null
     const num = Number(val)
@@ -81,10 +97,13 @@ export async function respond({
   }
   const tokens = toIntOrNull(maxOutputTokens)
   if (tokens != null) request.max_output_tokens = tokens
+  if (tokens != null) chatRequest.max_completion_tokens = tokens
   const topPVal = toClampedNumber(topP, 0, 1)
   if (topPVal != null) request.top_p = topPVal
+  if (topPVal != null) chatRequest.top_p = topPVal
   const tempVal = toClampedNumber(temperature, 0, 2)
   if (tempVal != null) request.temperature = tempVal
+  if (tempVal != null) chatRequest.temperature = tempVal
   const reasoningOptions = {}
   if (typeof reasoningEffort === 'string' && reasoningEffort && reasoningEffort !== 'none') {
     reasoningOptions.effort = reasoningEffort
@@ -95,11 +114,50 @@ export async function respond({
   if (Object.keys(reasoningOptions).length) {
     request.reasoning = reasoningOptions
   }
+  if (reasoningOptions?.effort) {
+    chatRequest.reasoning_effort = reasoningOptions.effort
+  }
   if (typeof textVerbosity === 'string' && textVerbosity) {
     request.text = { verbosity: textVerbosity }
   }
 
   if (stream) {
+    if (useChatCompletions) {
+      const abortController = (typeof AbortController === 'function') ? new AbortController() : null
+      if (abortController) {
+        provideAbort(() => {
+          try { abortController.abort() } catch {}
+        })
+      }
+      const streamIt = await client.chat.completions.create(
+        { ...chatRequest, stream: true },
+        abortController ? { signal: abortController.signal } : undefined,
+      )
+      provideAbort(() => {
+        try { streamIt.controller?.abort?.() } catch {}
+      })
+      let full = ''
+      try {
+        for await (const chunk of streamIt) {
+          try { onEvent?.(chunk) } catch {}
+          const deltaText = collectChatDeltaText(chunk)
+          if (deltaText) {
+            full += deltaText
+            try { onTextDelta?.(full) } catch {}
+          }
+        }
+      } catch (err) {
+        throw err
+      } finally {
+        try { streamIt.controller?.abort?.() } catch {}
+      }
+      try { onReasoningSummaryDone?.('', null) } catch {}
+      return {
+        text: full,
+        reasoningSummary: '',
+      }
+    }
+
     // Stream via SDK's async iterator
     const abortController = (typeof AbortController === 'function') ? new AbortController() : null
     if (abortController) {
@@ -190,6 +248,25 @@ export async function respond({
       reasoningSummary: finalSummary,
     }
   } else {
+    if (useChatCompletions) {
+      const abortController = (typeof AbortController === 'function') ? new AbortController() : null
+      if (abortController) {
+        provideAbort(() => {
+          try { abortController.abort() } catch {}
+        })
+      } else if (typeof onAbort === 'function') {
+        // Still provide a callable no-op so callers can clear their abort handle
+        onAbort(() => {})
+      }
+      const res = await client.chat.completions.create(
+        chatRequest,
+        abortController ? { signal: abortController.signal } : undefined,
+      )
+      const text = extractOutputText(res)
+      try { onReasoningSummaryDone?.('', null) } catch {}
+      return { text, reasoningSummary: '' }
+    }
+
     const abortController = (typeof AbortController === 'function') ? new AbortController() : null
     if (abortController) {
       provideAbort(() => {
@@ -243,19 +320,64 @@ function sortModels(items) {
   return out
 }
 
+function collectContentText(content) {
+  if (content == null) return ''
+  if (typeof content === 'string') return content
+  if (typeof content === 'number') return String(content)
+  if (Array.isArray(content)) {
+    return content.map(item => collectContentText(item)).join('')
+  }
+  if (typeof content === 'object') {
+    if (typeof content.text === 'string') return content.text
+    if (Array.isArray(content.text)) return content.text.map(val => collectContentText(val)).join('')
+    if (typeof content.output_text === 'string') return content.output_text
+    if (Array.isArray(content.output_text)) return content.output_text.map(val => collectContentText(val)).join('')
+    if (typeof content.content === 'string') return content.content
+    if (Array.isArray(content.content)) return content.content.map(val => collectContentText(val)).join('')
+    if (typeof content.value === 'string') return content.value
+  }
+  return ''
+}
+
+function collectChatDeltaText(chunk) {
+  if (!chunk) return ''
+  const pieces = []
+  const choices = Array.isArray(chunk?.choices) ? chunk.choices : []
+  for (const choice of choices) {
+    const deltaText = collectContentText(choice?.delta?.content)
+    if (deltaText) {
+      pieces.push(deltaText)
+    } else {
+      const messageText = collectContentText(choice?.message?.content)
+      if (messageText) pieces.push(messageText)
+    }
+  }
+  return pieces.join('')
+}
+
 function extractOutputText(res) {
   // SDK convenience property
   if (res && typeof res.output_text === 'string' && res.output_text.length) return res.output_text
   try {
     // Try Responses API shape
     const parts = res?.output ?? res?.choices ?? []
-    // Walk common shapes
-    const text =
-      parts?.[0]?.content?.[0]?.text ??
-      parts?.[0]?.message?.content ??
-      res?.data?.[0]?.content?.[0]?.text ??
-      ''
-    if (typeof text === 'string' && text) return text
+    if (Array.isArray(parts) && parts.length) {
+      const first = parts[0]
+      const content = first?.content ?? first?.message?.content ?? first
+      const text = collectContentText(content)
+      if (text) return text
+    }
+    const dataContent = res?.data?.[0]?.content
+    const dataText = collectContentText(dataContent)
+    if (dataText) return dataText
+    if (Array.isArray(res?.choices)) {
+      for (const choice of res.choices) {
+        const msgText = collectContentText(choice?.message?.content)
+        if (msgText) return msgText
+        const deltaText = collectContentText(choice?.delta?.content)
+        if (deltaText) return deltaText
+      }
+    }
   } catch {}
   return JSON.stringify(res)
 }

@@ -258,6 +258,21 @@
                 </div>
               </label>
               <p class="hint">Your key is stored locally in this browser.</p>
+              <label class="field">
+                <span>API</span>
+                <select
+                  value={local.apiMode || 'responses'}
+                  onchange={(event) => {
+                    local.apiMode = event.currentTarget.value
+                    persistSettings()
+                  }}
+                  aria-label="API mode"
+                >
+                  <option value="responses">Responses API</option>
+                  <option value="chat_completions">Chat Completions API</option>
+                </select>
+              </label>
+              <p class="hint">Chat Completions disables reasoning summaries.</p>
               {#if refreshMsg}
                 <p class="hint" aria-live="polite">{refreshMsg}</p>
               {/if}
