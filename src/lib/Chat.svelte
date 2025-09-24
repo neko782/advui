@@ -17,6 +17,8 @@
   let inFlightAbort = $state(null)
   let inFlightTypingVariantId = $state(null)
   let abortRequested = $state(false)
+  let lastReportedChatId = null
+  let lastReportedSending = null
   // Lock all chat actions while a response is generating (sending or any typing)
   let locked = $state(false)
   let nextId = $state(1)
@@ -437,7 +439,7 @@
     })
   })
   // Load models once if not cached
-  import { onMount } from 'svelte'
+  import { onMount, onDestroy } from 'svelte'
   let mounted = false
   // Derive locked state from sending flag and any in-flight typing messages
   $effect(() => {
@@ -456,6 +458,25 @@
         setTimeout(() => { modelIds = cached.ids }, 0)
       }
     } catch {}
+  })
+
+  $effect(() => {
+    const chatId = props.chatId
+    if (!chatId) return
+    if (chatId !== lastReportedChatId) {
+      lastReportedChatId = chatId
+      lastReportedSending = null
+    }
+    const current = !!sending
+    if (current === lastReportedSending) return
+    lastReportedSending = current
+    try { props.onGeneratingChange?.(chatId, current) } catch {}
+  })
+
+  onDestroy(() => {
+    const chatId = props.chatId
+    if (!chatId) return
+    try { props.onGeneratingChange?.(chatId, false) } catch {}
   })
 
   // Re-read settings (including debug flag) when settingsVersion changes

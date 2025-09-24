@@ -72,6 +72,14 @@
     applyEdit(id, originalTitle)
   }
 
+  function isGenerating(id) {
+    if (!id) return false
+    try {
+      const map = props.generatingMap
+      return !!(map && map[id])
+    } catch { return false }
+  }
+
   function closePresetMenu() { presetMenuOpen = false }
 
   function handleNewChatClick() {
@@ -205,7 +213,12 @@
                       }
                     }}
                   >
-                    <span class="chat-title">{c.title || 'New Chat'}</span>
+                    <span class="chat-label">
+                      {#if isGenerating(c.id)}
+                        <span class="chat-spinner" aria-hidden="true"></span>
+                      {/if}
+                      <span class="chat-title">{c.title || 'New Chat'}</span>
+                    </span>
                   </button>
                 {/if}
                 <div class="chat-actions">
@@ -461,7 +474,27 @@
   }
   .chat-link:hover { background: color-mix(in srgb, var(--panel) 80%, var(--hover-bg) 20%); color: var(--text); }
   .chat-link.active { color: var(--text); }
+  .chat-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  .chat-spinner {
+    width: 12px;
+    height: 12px;
+    border-radius: 999px;
+    border: 2px solid currentColor;
+    border-top-color: transparent;
+    animation: chat-spinner-rotate 0.8s linear infinite;
+    flex: 0 0 auto;
+  }
   .chat-title { flex: 1 1 auto; min-width: 0; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  @keyframes chat-spinner-rotate {
+    to { transform: rotate(360deg); }
+  }
 
   .chat-main.editing {
     flex: 1 1 auto;

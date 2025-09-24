@@ -11,6 +11,7 @@
   let showSettings = $state(false)
   let settingsVersion = $state(0)
   let presets = $state([])
+  let generatingMap = $state({})
 
   const SIDEBAR_KEY = 'ui.sidebar.open.v1'
   function loadSidebarPref() {
@@ -24,11 +25,44 @@
     try { localStorage.setItem(SIDEBAR_KEY, val ? '1' : '0') } catch {}
   }
 
+  function setGenerating(chatId, isGenerating) {
+    if (!chatId) return
+    const current = generatingMap
+    if (isGenerating) {
+      if (current[chatId]) return
+      generatingMap = { ...current, [chatId]: true }
+      return
+    }
+    if (!current[chatId]) return
+    const next = { ...current }
+    delete next[chatId]
+    generatingMap = next
+  }
+
+  function pruneGenerating(activeIds = []) {
+    const allowed = new Set(activeIds)
+    const current = generatingMap
+    let changed = false
+    const next = { ...current }
+    for (const id of Object.keys(current)) {
+      if (!allowed.has(id)) {
+        delete next[id]
+        changed = true
+      }
+    }
+    if (changed) generatingMap = next
+  }
+
+  function onChatGeneratingChange(chatId, isGenerating) {
+    setGenerating(chatId, isGenerating)
+  }
+
   async function refresh() {
     try {
       // Show most recent chats first
       const list = (await getChats()).slice().sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
       chats = list
+      pruneGenerating(list.map(item => item.id).filter(Boolean))
       const saved = loadAll().selectedId
       if (saved && await getChat(saved)) {
         if (selectedId !== saved) selectedId = saved
@@ -114,6 +148,7 @@
   async function onDeleteChat(id) {
     if (!id) return
     await deleteChat(id)
+    setGenerating(id, false)
     if (selectedId === id) selectedId = null
     await refresh()
   }
@@ -131,6 +166,7 @@
     chats={chats}
     selectedId={selectedId}
     presets={presets}
+    generatingMap={generatingMap}
     onSelect={onSelectChat}
     onNewChat={onNewChat}
     onDeleteChat={onDeleteChat}
@@ -139,11 +175,17 @@
     onOpenSettings={onOpenSettings}
   />
   <div class="chat-pane">
-    {#if selectedId}
-      {#key selectedId}
-        <Chat chatId={selectedId} onNewChat={onNewChat} onChatUpdated={onChatUpdated} settingsVersion={settingsVersion} />
-      {/key}
-    {/if}
+    {#each (chats || []) as c (c.id)}
+      <div class={`chat-wrapper ${selectedId === c.id ? 'active' : ''}`} aria-hidden={selectedId === c.id ? 'false' : 'true'}>
+        <Chat
+          chatId={c.id}
+          onNewChat={onNewChat}
+          onChatUpdated={onChatUpdated}
+          settingsVersion={settingsVersion}
+          onGeneratingChange={onChatGeneratingChange}
+        />
+      </div>
+    {/each}
   </div>
   <div class="app-fade"></div>
   <SettingsModal
@@ -163,6 +205,17 @@
     height: 100dvh;
     overflow: hidden;
   }
-  .chat-pane { height: 100%; overflow: hidden; }
+  .chat-pane {
+    position: relative;
+    height: 100%;
+    overflow: hidden;
+  }
+  .chat-wrapper {
+    position: absolute;
+    inset: 0;
+    display: none;
+    height: 100%;
+  }
+  .chat-wrapper.active { display: block; }
   .app-fade { position: absolute; inset: 0; pointer-events: none; background: linear-gradient(180deg, transparent, transparent 35%, rgba(0,0,0,0.06) 100%); opacity: .18; mix-blend-mode: multiply; }
 </style>
