@@ -458,12 +458,16 @@ function collectChatDeltaText(chunk) {
 }
 
 function collectChatReasoningContent(reasoningContent) {
-  if (!Array.isArray(reasoningContent)) return ''
+  if (reasoningContent == null) return ''
+  if (typeof reasoningContent === 'string' || typeof reasoningContent === 'number') {
+    return String(reasoningContent)
+  }
   const pieces = []
-  for (const item of reasoningContent) {
+  const items = Array.isArray(reasoningContent) ? reasoningContent : [reasoningContent]
+  for (const item of items) {
     if (item == null) continue
-    if (typeof item === 'string') {
-      if (item) pieces.push(item)
+    if (typeof item === 'string' || typeof item === 'number') {
+      if (String(item)) pieces.push(String(item))
       continue
     }
     if (typeof item.text === 'string') {
