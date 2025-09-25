@@ -40,32 +40,34 @@
 
 <footer class="composer">
   <div class="composer-inner" class:mobile-input-focused={hideAuxControls}>
-    <ChatSettingsPopover
-      open={props.chatSettingsOpen}
-      disabled={props.locked}
-      model={props.chatModel}
-      streaming={props.chatStreaming}
-      maxOutputTokens={props.chatMaxOutputTokens}
-      topP={props.chatTopP}
-      temperature={props.chatTemperature}
-      reasoningEffort={props.chatReasoningEffort}
-      reasoningSummary={props.chatReasoningSummary}
-      textVerbosity={props.chatTextVerbosity}
-      modelIds={props.modelIds}
-      connections={props.connections}
-      connectionId={props.chatConnectionId}
-      onToggle={props.onToggleChatSettings}
-      onClose={props.onCloseChatSettings}
-      onChangeConnection={props.onChangeConnection}
-      onInputModel={props.onChangeModel}
-      onInputStreaming={props.onChangeStreaming}
-      onInputMaxOutputTokens={props.onChangeMaxOutputTokens}
-      onInputTopP={props.onChangeTopP}
-      onInputTemperature={props.onChangeTemperature}
-      onInputReasoningEffort={props.onChangeReasoningEffort}
-      onInputReasoningSummary={props.onChangeReasoningSummary}
-      onInputTextVerbosity={props.onChangeTextVerbosity}
-    />
+    <div class="chat-settings-slot">
+      <ChatSettingsPopover
+        open={props.chatSettingsOpen}
+        disabled={props.locked}
+        model={props.chatModel}
+        streaming={props.chatStreaming}
+        maxOutputTokens={props.chatMaxOutputTokens}
+        topP={props.chatTopP}
+        temperature={props.chatTemperature}
+        reasoningEffort={props.chatReasoningEffort}
+        reasoningSummary={props.chatReasoningSummary}
+        textVerbosity={props.chatTextVerbosity}
+        modelIds={props.modelIds}
+        connections={props.connections}
+        connectionId={props.chatConnectionId}
+        onToggle={props.onToggleChatSettings}
+        onClose={props.onCloseChatSettings}
+        onChangeConnection={props.onChangeConnection}
+        onInputModel={props.onChangeModel}
+        onInputStreaming={props.onChangeStreaming}
+        onInputMaxOutputTokens={props.onChangeMaxOutputTokens}
+        onInputTopP={props.onChangeTopP}
+        onInputTemperature={props.onChangeTemperature}
+        onInputReasoningEffort={props.onChangeReasoningEffort}
+        onInputReasoningSummary={props.onChangeReasoningSummary}
+        onInputTextVerbosity={props.onChangeTextVerbosity}
+      />
+    </div>
 
     <textarea
       class="composer-input"
@@ -180,11 +182,15 @@
   .send-group:hover .send-menu, .send-group:focus-within .send-menu { opacity: 1; transform: translateY(0); pointer-events: auto; }
   .menu-item { width: 100%; text-align: left; background: transparent; border: 1px solid var(--border); border-radius: 8px; color: var(--text); padding: 8px 10px; font: inherit; display: flex; align-items: center; gap: 8px; }
   .menu-item:disabled { opacity: .6; cursor: not-allowed; }
+  .chat-settings-slot { display: grid; place-items: center; }
 
   @media (max-width: 640px) {
     .composer-inner.mobile-input-focused {
       grid-template-columns: 1fr auto;
       gap: 10px;
+    }
+    .composer-inner.mobile-input-focused .chat-settings-slot {
+      display: none;
     }
     .composer-inner.mobile-input-focused .chat-settings-group,
     .composer-inner.mobile-input-focused .add-group {
