@@ -1190,7 +1190,16 @@
     const val = String(editingText)
     // Important: a branch should not inherit the existing variant's `next`.
     // Start a fresh path by clearing `next` on the new variant.
-    const newVariant = { id: nextId++, role: cur.role, content: val, time: Date.now(), typing: false, error: undefined, next: null }
+    const { next: _curNext, id: _curId, time: _curTime, typing: _curTyping, error: _curError, ...rest } = cur
+    const newVariant = {
+      ...rest,
+      id: nextId++,
+      content: val,
+      time: Date.now(),
+      typing: false,
+      error: undefined,
+      next: null,
+    }
     nodes = nodes.map(n => (n.id === curNode.id ? { ...n, variants: [...(n.variants || []), newVariant], active: (n.variants?.length || 0) } : n))
     persistNow()
     editingId = null
@@ -1223,7 +1232,16 @@
       }
     } catch {}
     // 1) Add a new variant and select it
-    const branched = { id: nextId++, role: cur.role, content: val, time: Date.now(), typing: false, error: undefined, next: null }
+    const { next: _prevNext, id: _prevId, time: _prevTime, typing: _prevTyping, error: _prevError, ...preserved } = cur
+    const branched = {
+      ...preserved,
+      id: nextId++,
+      content: val,
+      time: Date.now(),
+      typing: false,
+      error: undefined,
+      next: null,
+    }
     nodes = nodes.map(n => (n.id === curNode.id ? { ...n, variants: [...(n.variants || []), branched], active: (n.variants?.length || 0) } : n))
     persistNow()
     editingId = null
