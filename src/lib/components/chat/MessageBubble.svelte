@@ -8,6 +8,7 @@
   let autoOpened = $state(false)
   let reasoningSummaryText = $state('')
   let showReasoning = $state(false)
+  let wasEditing = $state(false)
 
   function extractReasoningSummary(msg) {
     const raw = msg?.reasoningSummary
@@ -30,13 +31,31 @@
 
   // When entering edit mode, seed text and move caret
   $effect(() => {
-    if (props.isEditing && el) {
-      try {
-        el.textContent = props.editingText || ''
+    if (!el) {
+      wasEditing = false
+      return
+    }
+
+    if (!props.isEditing) {
+      wasEditing = false
+      return
+    }
+
+    try {
+      const incoming = props.editingText ?? ''
+      const needsSync = el.textContent !== incoming
+
+      if (needsSync || !wasEditing) {
+        el.textContent = incoming
+      }
+
+      if (!wasEditing) {
         el.focus()
         placeCaretAtEnd(el)
-      } catch {}
-    }
+      }
+
+      wasEditing = true
+    } catch {}
   })
 
   $effect(() => {
