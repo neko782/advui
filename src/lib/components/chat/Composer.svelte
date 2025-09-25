@@ -2,12 +2,32 @@
   import Icon from '../../Icon.svelte'
   import { autoGrow } from '../../utils/dom.js'
   import ChatSettingsPopover from './ChatSettingsPopover.svelte'
+  import { onMount } from 'svelte'
   const props = $props()
   let inputEl
   // Auto-grow on mount
   $effect(() => { queueMicrotask(() => autoGrow(inputEl)) })
   // Also auto-grow whenever parent updates the input value (e.g., after send/add clears it)
   $effect(() => { void props.input; queueMicrotask(() => autoGrow(inputEl)) })
+
+  let isInputFocused = $state(false)
+  let isMobileViewport = $state(false)
+  const hideAuxControls = $derived(isInputFocused && isMobileViewport)
+
+  onMount(() => {
+    if (typeof window === 'undefined') return
+    const mql = window.matchMedia('(max-width: 640px)')
+    const update = () => { isMobileViewport = mql.matches }
+    update()
+    if (typeof mql.addEventListener === 'function') {
+      mql.addEventListener('change', update)
+      return () => { mql.removeEventListener('change', update) }
+    }
+    if (typeof mql.addListener === 'function') {
+      mql.addListener(update)
+      return () => { mql.removeListener(update) }
+    }
+  })
 
   function onKey(e) {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -19,7 +39,7 @@
 </script>
 
 <footer class="composer">
-  <div class="composer-inner">
+  <div class="composer-inner" class:mobile-input-focused={hideAuxControls}>
     <ChatSettingsPopover
       open={props.chatSettingsOpen}
       disabled={props.locked}
@@ -54,10 +74,12 @@
       value={props.input}
       oninput={(e) => { props.onInput?.(e.currentTarget.value); queueMicrotask(() => autoGrow(inputEl)) }}
       onkeydown={onKey}
+      onfocus={() => { isInputFocused = true }}
+      onblur={() => { isInputFocused = false }}
       bind:this={inputEl}
     ></textarea>
 
-    <div class="send-group" aria-haspopup="menu" title="Add to chat as">
+    <div class="send-group add-group" aria-haspopup="menu" title="Add to chat as">
       <button class="float-btn" onclick={() => props.onAdd?.('user')} disabled={props.locked} aria-label="Add to chat">
         <Icon name="add_comment" size={22} />
       </button>
@@ -160,6 +182,14 @@
   .menu-item:disabled { opacity: .6; cursor: not-allowed; }
 
   @media (max-width: 640px) {
+    .composer-inner.mobile-input-focused {
+      grid-template-columns: 1fr auto;
+      gap: 10px;
+    }
+    .composer-inner.mobile-input-focused .chat-settings-group,
+    .composer-inner.mobile-input-focused .add-group {
+      display: none;
+    }
     .composer-input::placeholder {
       color: transparent;
       opacity: 0;
