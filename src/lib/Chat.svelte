@@ -1215,6 +1215,7 @@
     const cur = curNode?.variants?.[loc.index]
     if (!curNode || !cur) return
     const val = String(editingText)
+    const branchIndex = Array.isArray(curNode?.variants) ? curNode.variants.length : 0
     // Special case: if nothing changed and this is the last visible message,
     // do not branch. For user messages, just generate the following reply.
     try {
@@ -1241,8 +1242,7 @@
       error: undefined,
       next: null,
     }
-    nodes = nodes.map(n => (n.id === curNode.id ? { ...n, variants: [...(n.variants || []), branched], active: (n.variants?.length || 0) } : n))
-    persistNow()
+    nodes = nodes.map(n => (n.id === curNode.id ? { ...n, variants: [...(n.variants || []), branched], active: branchIndex } : n))
     editingId = null
     editingText = ''
 
@@ -1250,6 +1250,7 @@
     resetGenerationState()
     const { connectionId, apiKey } = resolveConnectionContext()
     if (!apiKey) {
+      persistNow()
       showMissingApiKeyNotice()
       return
     }
@@ -1265,9 +1266,11 @@
       reasoningSummary: '',
       reasoningSummaryLoading: true,
     }
-    const typingNode = { id: nextNodeId++, variants: [typingMsg], active: 0 }
-    nodes = nodes.map(n => (n.id === curNode.id ? { ...n, variants: n.variants.map((v, i) => (i === (n.variants.length - 1) ? { ...v, next: typingNode.id } : v)) } : n))
+    const typingNodeId = nextNodeId++
+    const typingNode = { id: typingNodeId, variants: [typingMsg], active: 0 }
+    nodes = nodes.map(n => (n.id === curNode.id ? { ...n, variants: n.variants.map((v, i) => (i === branchIndex ? { ...v, next: typingNodeId } : v)) } : n))
     nodes = [...nodes, typingNode]
+    persistNow()
     sending = true
     inFlightTypingVariantId = typingMsg.id
 
