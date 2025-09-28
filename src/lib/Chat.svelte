@@ -962,7 +962,6 @@
   // keyboard handling lives in Composer
   // Toggle per-chat settings popover (click to open/close)
   function toggleChatSettings() {
-    if (locked) return
     chatSettingsOpen = !chatSettingsOpen
   }
   function closeChatSettings() { chatSettingsOpen = false }

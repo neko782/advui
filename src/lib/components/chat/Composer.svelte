@@ -43,7 +43,6 @@
     <div class="chat-settings-slot">
       <ChatSettingsPopover
         open={props.chatSettingsOpen}
-        disabled={props.locked}
         model={props.chatModel}
         streaming={props.chatStreaming}
         maxOutputTokens={props.chatMaxOutputTokens}
