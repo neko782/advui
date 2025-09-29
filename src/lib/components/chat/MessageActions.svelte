@@ -1,5 +1,5 @@
 <script>
-  import Icon from '../../Icon.svelte'
+  import { IconSend, IconCallSplit, IconPublishedWithChanges, IconClose, IconChevronLeft, IconChevronRight, IconAutorenew, IconContentCopy, IconDelete, IconEdit, IconArrowDownward, IconArrowUpward, IconDangerous } from '../../icons.js'
   const props = $props()
   // Ensure message reference stays reactive with Svelte 5 runes
   const m = $derived(props.message)
@@ -8,62 +8,62 @@
 <div class={`actions ${m.role}`}>
   {#if props.isEditing}
     <button class="action-btn" onclick={props.onApplyEditSend} aria-label="Send (branch + reply)" title="Send (branch + reply)" disabled={props.locked}>
-      <Icon name="send" size={20} />
+      <IconSend style="font-size: 20px;" />
     </button>
     <button class="action-btn" onclick={props.onApplyEditBranch} aria-label="Branch (no reply)" title="Branch (no reply)" disabled={props.locked}>
-      <Icon name="call_split" size={20} />
+      <IconCallSplit style="font-size: 20px;" />
     </button>
     <button class="action-btn" onclick={props.onApplyEditReplace} aria-label="Replace in current branch" title="Replace in current branch" disabled={props.locked}>
-      <Icon name="published_with_changes" size={20} />
+      <IconPublishedWithChanges style="font-size: 20px;" />
     </button>
     <button class="action-btn" onclick={props.onCancelEdit} aria-label="Cancel edit" title="Cancel" disabled={props.locked}>
-      <Icon name="close" size={20} />
+      <IconClose style="font-size: 20px;" />
     </button>
   {:else}
     {#if props.branchesLength > 1}
       <span class="variants">
         <button class="action-btn" onclick={() => props.onChangeVariant?.(-1)} aria-label="Previous branch" title="Previous" disabled={props.locked || m.typing || props.branchIndex <= 0}>
-          <Icon name="chevron_left" size={20} />
+          <IconChevronLeft style="font-size: 20px;" />
         </button>
         <span class="variant-counter" aria-live="polite">{(props.branchIndex || 0) + 1}/{props.branchesLength}</span>
         <button class="action-btn" onclick={() => props.onChangeVariant?.(1)} aria-label="Next branch" title="Next" disabled={props.locked || m.typing || props.branchIndex >= (props.branchesLength - 1)}>
-          <Icon name="chevron_right" size={20} />
+          <IconChevronRight style="font-size: 20px;" />
         </button>
       </span>
     {/if}
 
     {#if m.role === 'assistant'}
       <button class="action-btn" onclick={() => props.onRefreshAssistant?.(m.id)} aria-label="Regenerate response" title="Regenerate" disabled={props.locked || m.typing}>
-        <Icon name="autorenew" size={20} />
+        <IconAutorenew style="font-size: 20px;" />
       </button>
     {:else if m.role === 'user' && props.hasFollowingAssistant}
       <button class="action-btn" onclick={() => props.onRefreshAssistant?.(props.nextAssistantId)} aria-label="Regenerate following response" title="Regenerate following response" disabled={props.locked || props.nextAssistantTyping}>
-        <Icon name="autorenew" size={20} />
+        <IconAutorenew style="font-size: 20px;" />
       </button>
     {:else if m.role === 'user'}
       <button class="action-btn" onclick={() => props.onRefreshAfterUserIndex?.(props.index)} aria-label="Generate following response" title="Generate following response" disabled={props.locked}>
-        <Icon name="autorenew" size={20} />
+        <IconAutorenew style="font-size: 20px;" />
       </button>
     {/if}
 
     <button class="action-btn" onclick={() => props.onCopy?.(m.content)} aria-label="Copy message" title="Copy" disabled={m.typing}>
-      <Icon name="content_copy" size={20} />
+      <IconContentCopy style="font-size: 20px;" />
     </button>
     <button class="action-btn" onclick={() => props.onDelete?.(m.id)} aria-label="Delete message" title="Delete" disabled={props.locked || m.typing}>
-      <Icon name="delete" size={20} />
+      <IconDelete style="font-size: 20px;" />
     </button>
     <button class="action-btn" onclick={() => props.onEdit?.(m.id)} aria-label="Edit message" title="Edit" disabled={props.locked || m.typing}>
-      <Icon name="edit" size={20} />
+      <IconEdit style="font-size: 20px;" />
     </button>
     <button class="action-btn" onclick={() => props.onMoveDown?.(m.id)} aria-label="Move down" title="Down" disabled={props.locked || m.typing || props.index === ((props.visibleCount || props.total || 1) - 1)}>
-      <Icon name="arrow_downward" size={20} />
+      <IconArrowDownward style="font-size: 20px;" />
     </button>
     <button class="action-btn" onclick={() => props.onMoveUp?.(m.id)} aria-label="Move up" title="Up" disabled={props.locked || m.typing || props.index === 0}>
-      <Icon name="arrow_upward" size={20} />
+      <IconArrowUpward style="font-size: 20px;" />
     </button>
     {#if props.debug}
       <button class="action-btn debug" onclick={() => props.onDebugFuckBranch?.(m.id)} aria-label="Fuck up branching" title="Fuck up branching" disabled={props.locked || m.typing}>
-        <Icon name="dangerous" size={20} />
+        <IconDangerous style="font-size: 20px;" />
       </button>
     {/if}
   {/if}

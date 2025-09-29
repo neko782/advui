@@ -1,6 +1,6 @@
 <script>
   import { tick, onMount } from 'svelte'
-  import Icon from '../Icon.svelte'
+  import { IconMenu, IconEditSquare, IconClose, IconCheck, IconEdit, IconDelete, IconSettings } from '../icons.js'
   const props = $props()
 
   let confirmDeleteId = $state(null)
@@ -143,7 +143,7 @@
     <!-- Compact header with only the collapse toggle -->
     <div class="side-header">
       <button class="icon-btn" title="Toggle sidebar" aria-label="Toggle sidebar" aria-expanded={props.open ? 'true' : 'false'} onclick={() => props.onToggle?.()}>
-        <Icon name="menu" size={20} />
+        <IconMenu style="font-size: 20px;" />
       </button>
       {#if props.open}
         <div class="brand">
@@ -159,7 +159,7 @@
       <nav class="top-nav" aria-label="Primary">
         <div class="new-chat-wrapper">
           <button class="nav-item" onclick={handleNewChatClick} title="New chat" aria-label="New chat" aria-haspopup={(Array.isArray(props?.presets) && props.presets.length > 1) ? 'true' : 'false'} aria-expanded={presetMenuOpen ? 'true' : 'false'}>
-            <Icon name="edit_square" size={20} />
+            <IconEditSquare style="font-size: 20px;" />
             <span class="label">New chat</span>
           </button>
           {#if presetMenuOpen}
@@ -232,10 +232,10 @@
                 <div class="chat-actions">
                   {#if confirmDeleteId === c.id}
                     <button type="button" class="chat-action-btn cancel" onclick={() => cancelDelete(c.id)} aria-label="Cancel delete">
-                      <Icon name="close" size={18} />
+                      <IconClose style="font-size: 18px;" />
                     </button>
                     <button type="button" class="chat-action-btn confirm" onclick={() => confirmDelete(c.id)} aria-label="Confirm delete">
-                      <Icon name="check" size={18} />
+                      <IconCheck style="font-size: 18px;" />
                     </button>
                   {:else if editingId === c.id}
                     <button
@@ -245,7 +245,7 @@
                       onclick={() => cancelEdit(c.id)}
                       aria-label="Cancel edit"
                     >
-                      <Icon name="close" size={18} />
+                      <IconClose style="font-size: 18px;" />
                     </button>
                     <button
                       type="button"
@@ -254,7 +254,7 @@
                       onclick={() => applyEdit(c.id, c.title)}
                       aria-label="Confirm title"
                     >
-                      <Icon name="check" size={18} />
+                      <IconCheck style="font-size: 18px;" />
                     </button>
                   {:else}
                     <button
@@ -263,7 +263,7 @@
                       onclick={() => startEdit(c)}
                       aria-label="Edit chat title"
                     >
-                      <Icon name="edit" size={18} />
+                      <IconEdit style="font-size: 18px;" />
                     </button>
                     <button
                       type="button"
@@ -271,7 +271,7 @@
                       onclick={() => requestDelete(c.id)}
                       aria-label="Delete chat"
                     >
-                      <Icon name="delete" size={18} />
+                      <IconDelete style="font-size: 18px;" />
                     </button>
                   {/if}
                 </div>
@@ -284,7 +284,7 @@
       <!-- Footer actions pinned at the bottom -->
       <div class="side-footer">
         <button class="nav-item" onclick={() => props.onOpenSettings?.()} title="Settings" aria-label="Settings">
-          <Icon name="settings" size={20} />
+          <IconSettings style="font-size: 20px;" />
           <span class="label">Settings</span>
         </button>
       </div>

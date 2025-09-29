@@ -2,7 +2,7 @@
   import { loadSettings, saveSettings } from './settingsStore.js'
   import { setModelsCache, loadModelsCache, loadAllModelCaches } from './modelsStore.js'
   import { listModelsWithKey } from './openaiClient.js'
-  import Icon from './Icon.svelte'
+  import { IconClose, IconAdd, IconVisibility, IconVisibilityOff, IconAutorenew, IconDelete } from './icons.js'
 
   const props = $props()
 
@@ -365,7 +365,7 @@
       <header class="modal-head">
         <div class="title">Settings</div>
         <button class="icon-btn" onclick={close} aria-label="Close">
-          <Icon name="close" size={20} />
+          <IconClose style="font-size: 20px;" />
         </button>
       </header>
       <div class="tab-bar" role="tablist" aria-label="Settings sections">
@@ -427,7 +427,7 @@
               <div class="group-head">
                 <div class="group-title">Connections</div>
                 <button type="button" class="icon-btn" title="Add connection" aria-label="Add connection" onclick={addConnection}>
-                  <Icon name="add" size={20} />
+                  <IconAdd style="font-size: 20px;" />
                 </button>
               </div>
               <div class="preset-strip connection-strip">
@@ -465,10 +465,14 @@
                       aria-label="API key"
                     />
                     <button class="icon-btn" title={revealKey ? 'Hide key' : 'Show key'} onclick={() => (revealKey = !revealKey)} aria-label={revealKey ? 'Hide key' : 'Show key'}>
-                      <Icon name={revealKey ? 'visibility_off' : 'visibility'} size={20} />
+                      {#if revealKey}
+                        <IconVisibilityOff style="font-size: 20px;" />
+                      {:else}
+                        <IconVisibility style="font-size: 20px;" />
+                      {/if}
                     </button>
                     <button class="icon-btn" title="Refresh models" onclick={() => refreshModelsNow(activeConnection.id)} aria-label="Refresh models" disabled={activeConnectionRefreshing}>
-                      <Icon name="autorenew" size={20} />
+                      <IconAutorenew style="font-size: 20px;" />
                     </button>
                   </div>
                 </label>
@@ -506,7 +510,7 @@
                       title="Delete connection"
                       aria-label="Delete connection"
                     >
-                      <Icon name="delete" size={18} />
+                      <IconDelete style="font-size: 18px;" />
                       <span>Delete connection</span>
                     </button>
                   </div>
@@ -521,7 +525,7 @@
               <div class="group-head">
                 <div class="group-title">Presets</div>
                 <button type="button" class="icon-btn" title="Add preset" aria-label="Add preset" onclick={addPreset}>
-                  <Icon name="add" size={20} />
+                  <IconAdd style="font-size: 20px;" />
                 </button>
               </div>
               <div class="preset-strip">
@@ -670,7 +674,7 @@
                     title="Delete preset"
                     aria-label="Delete preset"
                   >
-                    <Icon name="delete" size={18} />
+                    <IconDelete style="font-size: 18px;" />
                     <span>Delete preset</span>
                   </button>
                 {/if}

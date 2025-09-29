@@ -1,5 +1,5 @@
 <script>
-  import Icon from '../../Icon.svelte'
+  import { IconPerson, IconSmartToy, IconTune } from '../../icons.js'
   const props = $props()
   let open = $state(false)
   let groupEl = $state(null)
@@ -100,15 +100,15 @@
       onkeydown={handleMenuKeydown}
     >
       <button role="menuitem" class="menu-item" onclick={() => handleSelect('user')} aria-label="Set role user" disabled={props.locked}>
-        <Icon name="person" size={18} />
+        <IconPerson style="font-size: 18px;" />
         User
       </button>
       <button role="menuitem" class="menu-item" onclick={() => handleSelect('assistant')} aria-label="Set role assistant" disabled={props.locked}>
-        <Icon name="smart_toy" size={18} />
+        <IconSmartToy style="font-size: 18px;" />
         Assistant
       </button>
       <button role="menuitem" class="menu-item" onclick={() => handleSelect('system')} aria-label="Set role system" disabled={props.locked}>
-        <Icon name="tune" size={18} />
+        <IconTune style="font-size: 18px;" />
         System
       </button>
     </div>

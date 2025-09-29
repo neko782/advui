@@ -1,4 +1,5 @@
 <script>
+  import { IconTune } from '../../icons.js'
   const props = $props()
   let root
   let menu
@@ -30,7 +31,7 @@
 
 <div class={`chat-settings-group ${props.open ? 'open' : ''}`} bind:this={root}>
   <button class="icon-btn" aria-label="Chat settings" disabled={props.disabled} onclick={() => (!props.disabled && props.onToggle?.())}>
-    <span class="material-symbols-rounded icon">tune</span>
+    <IconTune />
   </button>
   <div class="send-menu chat-settings-menu" role="menu" aria-label="Chat settings" bind:this={menu}>
     <!-- Connection comes first so people can quickly switch APIs -->

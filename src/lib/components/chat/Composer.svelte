@@ -1,5 +1,5 @@
 <script>
-  import Icon from '../../Icon.svelte'
+  import { IconAdd, IconClose, IconAddComment, IconPerson, IconSmartToy, IconTune, IconStop, IconSend } from '../../icons.js'
   import { autoGrow } from '../../utils/dom.js'
   import ChatSettingsPopover from './ChatSettingsPopover.svelte'
   import { onMount } from 'svelte'
@@ -139,7 +139,7 @@
     </div>
 
     <button class="icon-btn" onclick={triggerFileInput} disabled={props.locked} aria-label="Attach image" title="Attach image">
-      <span class="material-symbols-rounded icon">add</span>
+      <IconAdd />
     </button>
 
     <div class="input-wrapper">
@@ -149,7 +149,7 @@
             <div class="image-preview">
               <img src={`data:${img.mimeType};base64,${img.data}`} alt={img.name || 'Attached image'} />
               <button class="remove-image-btn" onclick={() => props.onRemoveImage?.(img.id)} aria-label="Remove image">
-                <Icon name="close" size={16} />
+                <IconClose style="font-size: 16px;" />
               </button>
             </div>
           {/each}
@@ -170,19 +170,19 @@
 
     <div class="send-group add-group" aria-haspopup="menu" title="Add to chat as">
       <button class="float-btn" onclick={() => props.onAdd?.('user')} disabled={props.locked} aria-label="Add to chat">
-        <Icon name="add_comment" size={22} />
+        <IconAddComment style="font-size: 22px;" />
       </button>
       <div class="send-menu" role="menu" aria-label="Add to chat as">
         <button role="menuitem" class="menu-item" onclick={() => props.onAdd?.('user')} disabled={props.locked} aria-label="Add as user">
-          <Icon name="person" size={18} />
+          <IconPerson style="font-size: 18px;" />
           User
         </button>
         <button role="menuitem" class="menu-item" onclick={() => props.onAdd?.('assistant')} disabled={props.locked} aria-label="Add as assistant">
-          <Icon name="smart_toy" size={18} />
+          <IconSmartToy style="font-size: 18px;" />
           Assistant
         </button>
         <button role="menuitem" class="menu-item" onclick={() => props.onAdd?.('system')} disabled={props.locked} aria-label="Add as system">
-          <Icon name="tune" size={18} />
+          <IconTune style="font-size: 18px;" />
           System
         </button>
       </div>
@@ -192,25 +192,25 @@
     {#if props.sending}
       <div class="send-group" title="Stop response">
         <button class="float-btn stop-btn" onclick={() => props.onStop?.()} aria-label="Stop response" disabled={!props.onStop}>
-          <Icon name="stop" size={22} />
+          <IconStop style="font-size: 22px;" />
         </button>
       </div>
     {:else}
       <div class="send-group" aria-haspopup="menu" title="Send as">
         <button class="float-btn" onclick={() => props.onSend?.('user')} disabled={props.locked} aria-label="Send">
-          <Icon name="send" size={22} />
+          <IconSend style="font-size: 22px;" />
         </button>
         <div class="send-menu" role="menu" aria-label="Send as">
           <button role="menuitem" class="menu-item" onclick={() => props.onSend?.('user')} disabled={props.locked} aria-label="Send as user">
-            <Icon name="send" size={18} />
+            <IconSend style="font-size: 18px;" />
             User
           </button>
           <button role="menuitem" class="menu-item" onclick={() => props.onSend?.('assistant')} disabled={props.locked} aria-label="Send as assistant">
-            <Icon name="send" size={18} />
+            <IconSend style="font-size: 18px;" />
             Assistant
           </button>
           <button role="menuitem" class="menu-item" onclick={() => props.onSend?.('system')} disabled={props.locked} aria-label="Send as system">
-            <Icon name="send" size={18} />
+            <IconSend style="font-size: 18px;" />
             System
           </button>
         </div>
