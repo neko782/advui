@@ -144,10 +144,19 @@
         <span class="dots"><i></i><i></i><i></i></span>
       {/if}
     </div>
-  {:else if props.message.content}
-    <div class={`bubble ${props.message.role}`}>
-      {@html renderMarkdown(props.message.content)}
-    </div>
+  {:else if props.message.content || (props.message.images && props.message.images.length > 0)}
+    {#if props.message.images && props.message.images.length > 0}
+      <div class={`message-images ${props.message.role}`}>
+        {#each props.message.images as img (img.id)}
+          <img src={`data:${img.mimeType};base64,${img.data}`} alt={img.name || 'Image'} class="message-image" />
+        {/each}
+      </div>
+    {/if}
+    {#if props.message.content}
+      <div class={`bubble ${props.message.role}`}>
+        {@html renderMarkdown(props.message.content)}
+      </div>
+    {/if}
   {/if}
 {/if}
 
@@ -226,4 +235,26 @@
   .reasoning-body :global(p:has(> strong) + p) { margin-top: 0.4em; }
   .reasoning-body :global(p:first-child) { margin-top: 0; }
   .reasoning-body :global(p:last-child) { margin-bottom: 0; }
+  .message-images {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 6px;
+  }
+  .message-images.assistant {
+    justify-content: flex-start;
+  }
+  .message-images.user {
+    justify-content: flex-end;
+  }
+  .message-images.system {
+    justify-content: center;
+  }
+  .message-image {
+    max-width: 300px;
+    max-height: 300px;
+    border-radius: 10px;
+    object-fit: contain;
+    border: 1px solid var(--border);
+  }
 </style>

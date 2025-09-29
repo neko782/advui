@@ -7,6 +7,7 @@
   import { copyText as copyToClipboard } from './utils/clipboard.js'
   import MessageList from './components/chat/MessageList.svelte'
   import Composer from './components/chat/Composer.svelte'
+  import { storeImage, generateImageId, fileToBase64 } from './imageStore.js'
 
   // Chat module imports
   import { loadChat } from './chat/services/chatLoader.js'
@@ -50,6 +51,7 @@
   let nodes = $state([])
   let rootId = $state(1)
   let input = $state('')
+  let attachedImages = $state([])
   let sending = $state(false)
   let locked = $state(false)
   let nextId = $state(1)
@@ -179,6 +181,31 @@
   let listCmp
   function scrollToBottom() {
     try { listCmp?.scrollToBottom?.() } catch {}
+  }
+
+  // Image handling
+  async function handleFilesSelected(files) {
+    try {
+      const imagePromises = files.map(async (file) => {
+        const id = generateImageId()
+        const base64 = await fileToBase64(file)
+        await storeImage(id, base64, file.type)
+        return {
+          id,
+          data: base64,
+          mimeType: file.type,
+          name: file.name
+        }
+      })
+      const images = await Promise.all(imagePromises)
+      attachedImages = [...attachedImages, ...images]
+    } catch (err) {
+      console.error('Failed to attach images:', err)
+    }
+  }
+
+  function removeAttachedImage(id) {
+    attachedImages = attachedImages.filter(img => img.id !== id)
   }
 
   // Message actions
@@ -388,8 +415,9 @@
 
     // Add user message
     let newNodeId = null
-    if (hasContent) {
-      const prepared = prepareUserMessage(nodes, rootId, trimmedInput, nextId, nextNodeId)
+    const hasImages = attachedImages.length > 0
+    if (hasContent || hasImages) {
+      const prepared = prepareUserMessage(nodes, rootId, trimmedInput, nextId, nextNodeId, attachedImages)
       if (prepared) {
         nodes = prepared.nodes
         rootId = prepared.rootId
@@ -400,6 +428,7 @@
     }
 
     input = ''
+    attachedImages = []
 
     // Add typing node
     let typingVariantId = null
@@ -488,7 +517,17 @@
   function addToChat(role = 'user') {
     if (locked) return
     const text = (typeof input === 'string') ? input : ''
-    const variant = { id: nextId++, role, content: text, time: Date.now(), typing: false, error: undefined, next: null }
+    const hasImages = attachedImages.length > 0
+    const variant = {
+      id: nextId++,
+      role,
+      content: text,
+      time: Date.now(),
+      typing: false,
+      error: undefined,
+      next: null,
+      images: hasImages ? attachedImages : undefined
+    }
     const node = { id: nextNodeId++, variants: [variant], active: 0 }
     const visible = buildVisible()
     const lastVm = visible.at(-1)
@@ -504,6 +543,7 @@
     nodes = arr
     persistNow()
     input = ''
+    attachedImages = []
     queueMicrotask(() => scrollToBottom())
   }
 
@@ -841,6 +881,7 @@
     modelIds={modelIds}
     connections={connectionOptions}
     chatConnectionId={chatSettings.connectionId}
+    attachedImages={attachedImages}
     onToggleChatSettings={toggleChatSettings}
     onCloseChatSettings={() => (chatSettingsOpen = false)}
     onChangeConnection={(val) => (chatSettings = { ...chatSettings, connectionId: (typeof val === 'string' && val.trim()) ? val.trim() : null })}
@@ -856,6 +897,8 @@
     onAdd={(role) => addToChat(role)}
     onStop={() => stopGeneration()}
     onSend={(role) => sendWithRole(role)}
+    onFilesSelected={handleFilesSelected}
+    onRemoveImage={removeAttachedImage}
   />
 </section>
 

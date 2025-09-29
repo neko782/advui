@@ -5,14 +5,15 @@ import { isAbortError } from '../../utils/errors.js'
 import { updateVariantById } from './variantActions.js'
 import { findNodeByMessageId } from '../../utils/treeUtils.js'
 
-export function prepareUserMessage(nodes, rootId, input, nextId, nextNodeId) {
+export function prepareUserMessage(nodes, rootId, input, nextId, nextNodeId, images = []) {
   const buildVisible = () => _buildVisible(nodes, rootId)
   const visible = buildVisible()
   const lastVm = visible.length ? visible[visible.length - 1] : null
   const parentNodeId = lastVm ? lastVm.nodeId : null
 
   const trimmedInput = (typeof input === 'string' ? input : '').trim()
-  if (!trimmedInput) return null
+  const hasImages = Array.isArray(images) && images.length > 0
+  if (!trimmedInput && !hasImages) return null
 
   const newMsg = {
     id: nextId,
@@ -21,7 +22,8 @@ export function prepareUserMessage(nodes, rootId, input, nextId, nextNodeId) {
     time: Date.now(),
     typing: false,
     error: undefined,
-    next: null
+    next: null,
+    images: hasImages ? images : undefined
   }
   const newNode = { id: nextNodeId, variants: [newMsg], active: 0 }
   const newNodeId = newNode.id
@@ -105,7 +107,13 @@ export async function generateResponse({
   const history = buildVisible()
     .map(vm => vm.m)
     .filter(m => !m.typing)
-    .map(({ role, content }) => ({ role, content }))
+    .map(({ role, content, images }) => {
+      const msg = { role, content }
+      if (images && Array.isArray(images) && images.length > 0) {
+        msg.images = images
+      }
+      return msg
+    })
 
   const responseOptions = {
     messages: history,
@@ -215,7 +223,13 @@ export function prepareRefreshAssistant(nodes, rootId, messageId, nextId) {
   const parentPathIndex = path.findIndex(vm => vm.nodeId === node.id) - 1
   const history = buildVisibleUpTo((parentPathIndex >= 0 ? parentPathIndex + 1 : 0))
     .filter(m => !m.typing)
-    .map(({ role, content }) => ({ role, content }))
+    .map(({ role, content, images }) => {
+      const msg = { role, content }
+      if (images && Array.isArray(images) && images.length > 0) {
+        msg.images = images
+      }
+      return msg
+    })
 
   return {
     nodes: updatedNodes,
@@ -257,7 +271,13 @@ export function prepareRefreshAfterUser(nodes, rootId, messageIndex, nextId, nex
 
   const history = buildVisibleUpTo(messageIndex + 1)
     .filter(m => !m.typing)
-    .map(({ role, content }) => ({ role, content }))
+    .map(({ role, content, images }) => {
+      const msg = { role, content }
+      if (images && Array.isArray(images) && images.length > 0) {
+        msg.images = images
+      }
+      return msg
+    })
 
   return {
     nodes: updatedNodes,

@@ -5,6 +5,8 @@
   import { onMount } from 'svelte'
   const props = $props()
   let inputEl
+  let fileInputEl
+  let isDragging = $state(false)
   // Auto-grow on mount
   $effect(() => { queueMicrotask(() => autoGrow(inputEl)) })
   // Also auto-grow whenever parent updates the input value (e.g., after send/add clears it)
@@ -36,9 +38,55 @@
       props.onSend?.('user')
     }
   }
+
+  function handleFileSelect(e) {
+    const files = e.target.files
+    if (files && files.length > 0) {
+      props.onFilesSelected?.(Array.from(files))
+    }
+    if (fileInputEl) fileInputEl.value = ''
+  }
+
+  function handleDragOver(e) {
+    e.preventDefault()
+    e.stopPropagation()
+    if (!isDragging) isDragging = true
+  }
+
+  function handleDragLeave(e) {
+    e.preventDefault()
+    e.stopPropagation()
+    if (isDragging) isDragging = false
+  }
+
+  function handleDrop(e) {
+    e.preventDefault()
+    e.stopPropagation()
+    isDragging = false
+
+    const files = e.dataTransfer?.files
+    if (files && files.length > 0) {
+      const imageFiles = Array.from(files).filter(f => f.type.startsWith('image/'))
+      if (imageFiles.length > 0) {
+        props.onFilesSelected?.(imageFiles)
+      }
+    }
+  }
+
+  function triggerFileInput() {
+    fileInputEl?.click()
+  }
 </script>
 
-<footer class="composer">
+<footer class="composer" class:dragging={isDragging} ondragover={handleDragOver} ondragleave={handleDragLeave} ondrop={handleDrop}>
+  <input
+    type="file"
+    accept="image/png,image/jpeg,image/jpg,image/webp,image/gif"
+    multiple
+    style="display: none"
+    onchange={handleFileSelect}
+    bind:this={fileInputEl}
+  />
   <div class="composer-inner" class:mobile-input-focused={hideAuxControls}>
     <div class="chat-settings-slot">
       <ChatSettingsPopover
@@ -68,17 +116,35 @@
       />
     </div>
 
-    <textarea
-      class="composer-input"
-      rows="1"
-      placeholder="Type a message…"
-      value={props.input}
-      oninput={(e) => { props.onInput?.(e.currentTarget.value); queueMicrotask(() => autoGrow(inputEl)) }}
-      onkeydown={onKey}
-      onfocus={() => { isInputFocused = true }}
-      onblur={() => { isInputFocused = false }}
-      bind:this={inputEl}
-    ></textarea>
+    <button class="icon-btn" onclick={triggerFileInput} disabled={props.locked} aria-label="Attach image" title="Attach image">
+      <span class="material-symbols-rounded icon">add</span>
+    </button>
+
+    <div class="input-wrapper">
+      {#if props.attachedImages && props.attachedImages.length > 0}
+        <div class="image-previews">
+          {#each props.attachedImages as img (img.id)}
+            <div class="image-preview">
+              <img src={`data:${img.mimeType};base64,${img.data}`} alt={img.name || 'Attached image'} />
+              <button class="remove-image-btn" onclick={() => props.onRemoveImage?.(img.id)} aria-label="Remove image">
+                <Icon name="close" size={16} />
+              </button>
+            </div>
+          {/each}
+        </div>
+      {/if}
+      <textarea
+        class="composer-input"
+        rows="1"
+        placeholder="Type a message…"
+        value={props.input}
+        oninput={(e) => { props.onInput?.(e.currentTarget.value); queueMicrotask(() => autoGrow(inputEl)) }}
+        onkeydown={onKey}
+        onfocus={() => { isInputFocused = true }}
+        onblur={() => { isInputFocused = false }}
+        bind:this={inputEl}
+      ></textarea>
+    </div>
 
     <div class="send-group add-group" aria-haspopup="menu" title="Add to chat as">
       <button class="float-btn" onclick={() => props.onAdd?.('user')} disabled={props.locked} aria-label="Add to chat">
@@ -132,15 +198,90 @@
 </footer>
 
 <style>
-  .composer { position: sticky; bottom: 0; left: 0; right: 0; background: transparent; }
+  .composer {
+    position: sticky;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: transparent;
+  }
+  .composer.dragging::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: color-mix(in srgb, var(--accent) 10%, transparent);
+    border: 2px dashed var(--accent);
+    border-radius: 12px;
+    pointer-events: none;
+    z-index: 1;
+  }
   .composer-inner {
     max-width: var(--page-max);
     margin-inline: auto;
     padding: 12px 0;
     display: grid;
-    grid-template-columns: auto 1fr auto auto;
-    align-items: center;
+    grid-template-columns: auto auto 1fr auto auto;
+    align-items: end;
     gap: 14px;
+  }
+  .icon-btn {
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: transparent;
+    min-width: 44px;
+    height: 44px;
+    display: grid;
+    place-items: center;
+    line-height: 1;
+    color: var(--text);
+  }
+  .icon-btn:disabled {
+    opacity: .6;
+    cursor: not-allowed;
+  }
+  .input-wrapper {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .image-previews {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 8px;
+  }
+  .image-preview {
+    position: relative;
+    width: 80px;
+    height: 80px;
+    border-radius: 8px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+  }
+  .image-preview img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+  .remove-image-btn {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.7);
+    color: white;
+    border: none;
+    display: grid;
+    place-items: center;
+    cursor: pointer;
+    opacity: 0.8;
+    transition: opacity 0.2s;
+  }
+  .remove-image-btn:hover {
+    opacity: 1;
   }
   .composer-input {
     resize: none;
@@ -188,7 +329,8 @@
       grid-template-columns: 1fr auto;
       gap: 10px;
     }
-    .composer-inner.mobile-input-focused .chat-settings-slot {
+    .composer-inner.mobile-input-focused .chat-settings-slot,
+    .composer-inner.mobile-input-focused .attachment-btn {
       display: none;
     }
     .composer-inner.mobile-input-focused .chat-settings-group,

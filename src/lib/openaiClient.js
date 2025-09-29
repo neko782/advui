@@ -123,14 +123,52 @@ export async function respond({
     // Normalize: strip extra fields like ids/typing and keep valid roles only
     const allowed = new Set(['system', 'user', 'assistant'])
     input = messages
-      .filter(m => m && typeof m.content === 'string' && allowed.has(m.role))
-      .map(({ role, content }) => ({ role, content }))
+      .filter(m => m && (typeof m.content === 'string' || (m.images && Array.isArray(m.images))) && allowed.has(m.role))
+      .map(({ role, content, images }) => {
+        // For Responses API: if there are images, convert content to array format
+        if (images && Array.isArray(images) && images.length > 0) {
+          const contentArray = []
+          if (content && typeof content === 'string') {
+            contentArray.push({ type: 'input_text', text: content })
+          }
+          for (const img of images) {
+            if (img && typeof img.id === 'string' && typeof img.data === 'string') {
+              const mimeType = img.mimeType || 'image/jpeg'
+              contentArray.push({
+                type: 'input_image',
+                image_url: `data:${mimeType};base64,${img.data}`,
+              })
+            }
+          }
+          return { role, content: contentArray }
+        }
+        return { role, content }
+      })
   } else {
     input = typeof prompt === 'string' ? prompt : ''
   }
   const request = { model: useModel, input }
+
+  // For Chat Completions API: convert image format
   const chatMessages = Array.isArray(input)
-    ? input
+    ? input.map(msg => {
+        // If content is an array (from Responses format), convert to Chat Completions format
+        if (Array.isArray(msg.content)) {
+          const contentArray = []
+          for (const part of msg.content) {
+            if (part.type === 'input_text' && part.text) {
+              contentArray.push({ type: 'text', text: part.text })
+            } else if (part.type === 'input_image' && part.image_url) {
+              contentArray.push({
+                type: 'image_url',
+                image_url: { url: part.image_url }
+              })
+            }
+          }
+          return { role: msg.role, content: contentArray }
+        }
+        return msg
+      })
     : (typeof input === 'string' && input
       ? [{ role: 'user', content: input }]
       : [])
