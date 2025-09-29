@@ -13,6 +13,10 @@
   import { pickPresetFromSettings, presetSignature } from './chat/services/chatInit.js'
   import { persistChatContent, computePersistSig } from './chat/services/chatPersistence.js'
   import { computeValidationNotice, computeGenerationNotice, assembleNotice, computeFollowingMap } from './chat/services/noticeHelpers.js'
+  import { resolveConnectionContext as _resolveConnectionContext } from './chat/services/connectionResolver.js'
+  import { createPersistenceScheduler } from './chat/services/persistenceScheduler.js'
+  import { createNoticeManager } from './chat/services/noticeManager.js'
+  import { createGenerationStateManager } from './chat/services/generationStateManager.js'
 
   // Action imports
   import { deleteMessage, setMessageRole, moveUp, moveDown } from './chat/actions/messageActions.js'
@@ -37,14 +41,16 @@
 
   const props = $props()
 
+  // Managers
+  const persistenceScheduler = createPersistenceScheduler()
+  const noticeManager = createNoticeManager()
+  const generationState = createGenerationStateManager()
+
   // State
   let nodes = $state([])
   let rootId = $state(1)
   let input = $state('')
   let sending = $state(false)
-  let inFlightAbort = $state(null)
-  let inFlightTypingVariantId = $state(null)
-  let abortRequested = $state(false)
   let locked = $state(false)
   let nextId = $state(1)
   let nextNodeId = $state(1)
@@ -116,30 +122,25 @@
   function buildVisibleUpTo(indexExclusive) { return _buildVisibleUpTo(nodes, rootId, indexExclusive) }
 
   function resolveConnectionContext() {
-    let latestSettings = settings
-    try {
-      latestSettings = loadSettings()
-      settings = latestSettings
-    } catch {}
-    let activeConnection = null
-    try {
-      activeConnection = findConnection(latestSettings, chatSettings?.connectionId)
-    } catch {}
-    const connectionId = activeConnection?.id || chatSettings?.connectionId || latestSettings?.selectedConnectionId || null
-    const apiKey = typeof activeConnection?.apiKey === 'string' ? activeConnection.apiKey : ''
-    return { latestSettings, activeConnection, connectionId, apiKey }
+    const result = _resolveConnectionContext(settings, chatSettings?.connectionId)
+    settings = result.latestSettings
+    return result
   }
 
   function showMissingApiKeyNotice() {
-    if (dismissedNotice && dismissedNotice.includes(NO_API_KEY_NOTICE_TEXT)) dismissedNotice = ''
-    missingApiKeyNotice = NO_API_KEY_NOTICE_TEXT
+    const result = noticeManager.showMissingApiKeyNotice(dismissedNotice)
+    dismissedNotice = result.dismissed
+    missingApiKeyNotice = result.missingApiKey
   }
 
   function clearMissingApiKeyNotice() {
-    if (missingApiKeyNotice) missingApiKeyNotice = ''
+    const result = noticeManager.clearMissingApiKeyNotice()
+    missingApiKeyNotice = result.missingApiKey
   }
 
-  function dismissNotice() { dismissedNotice = assembledNotice }
+  function dismissNotice() {
+    dismissedNotice = noticeManager.dismissNotice(assembledNotice)
+  }
 
   function updateVariant(variantId, transform) {
     nodes = updateVariantById(nodes, variantId, transform)
@@ -147,16 +148,11 @@
 
   // Generation state management
   function resetGenerationState() {
-    inFlightAbort = null
-    inFlightTypingVariantId = null
-    abortRequested = false
+    generationState.reset()
   }
 
   function registerAbortHandler(fn) {
-    inFlightAbort = (typeof fn === 'function') ? fn : null
-    if (abortRequested && typeof inFlightAbort === 'function') {
-      try { inFlightAbort() } catch {}
-    }
+    generationState.registerAbortHandler(fn)
   }
 
   function finishGeneration() {
@@ -175,17 +171,8 @@
     } catch {}
   }
 
-  let refreshScheduled = false
-  let refreshTimer = null
   function scheduleParentRefresh(updated) {
-    if (refreshScheduled) return
-    refreshScheduled = true
-    refreshTimer && clearTimeout(refreshTimer)
-    refreshTimer = setTimeout(() => {
-      refreshScheduled = false
-      refreshTimer = null
-      try { props.onChatUpdated?.(updated) } catch {}
-    }, 0)
+    persistenceScheduler.scheduleRefresh(props.onChatUpdated, updated)
   }
 
   // Scroll helper
@@ -322,7 +309,7 @@
     clearMissingApiKeyNotice()
 
     sending = true
-    inFlightTypingVariantId = prepared.typingVariantId
+    generationState.setTypingVariantId(prepared.typingVariantId)
     persistNow()
 
     try {
@@ -422,7 +409,7 @@
       nodes = prepared.nodes
       rootId = prepared.rootId
       typingVariantId = prepared.typingVariantId
-      inFlightTypingVariantId = typingVariantId
+      generationState.setTypingVariantId(typingVariantId)
       nextId = prepared.nextId
       nextNodeId = prepared.nextNodeId
     }
@@ -483,12 +470,8 @@
 
   function stopGeneration() {
     if (!sending) return
-    abortRequested = true
-    const abortFn = inFlightAbort
-    if (typeof abortFn === 'function') {
-      try { abortFn() } catch {}
-    }
-    const typingId = inFlightTypingVariantId
+    generationState.requestAbort()
+    const typingId = generationState.getTypingVariantId()
     if (typingId != null) {
       updateVariant(typingId, (prev) => ({
         ...prev,
@@ -498,7 +481,6 @@
         content: (prev.content === 'typing' ? '' : prev.content),
       }))
     }
-    inFlightAbort = null
     sending = false
     persistNow()
   }
@@ -542,7 +524,7 @@
     nodes = prepared.nodes
     nextId = prepared.nextId
     sending = true
-    inFlightTypingVariantId = prepared.typingVariantId
+    generationState.setTypingVariantId(prepared.typingVariantId)
 
     try {
       let summaryBuffer = ''
@@ -601,7 +583,7 @@
     nextId = prepared.nextId
     nextNodeId = prepared.nextNodeId
     sending = true
-    inFlightTypingVariantId = prepared.typingVariantId
+    generationState.setTypingVariantId(prepared.typingVariantId)
     persistNow()
 
     try {
@@ -808,6 +790,7 @@
     const chatId = props.chatId
     if (!chatId) return
     try { props.onGeneratingChange?.(chatId, false) } catch {}
+    persistenceScheduler.cancel()
   })
 </script>
 
