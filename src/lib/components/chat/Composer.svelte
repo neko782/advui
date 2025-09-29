@@ -32,7 +32,7 @@
   })
 
   function onKey(e) {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    if (e.key === 'Enter' && !e.shiftKey && !isMobileViewport) {
       if (props.locked) return
       e.preventDefault()
       props.onSend?.('user')
