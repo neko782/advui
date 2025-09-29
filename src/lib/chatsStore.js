@@ -3,7 +3,7 @@
 
 import { loadSettings } from './settingsStore.js'
 import { enforceUniqueParents } from './branching.js'
-import { getAllChats as storeGetAll, getChat as storeGetOne, putChat as storePut, deleteChat as storeDelete } from './chatStorage.js'
+import { getAllChats as storeGetAll, getChat as storeGetOne, putChat as storePut, deleteChat as storeDelete } from './storage.js'
 import { toIntOrNull, toClampedNumber } from './utils/numbers.js'
 
 export const SELECTED_KEY = 'openai.chats.selected.v1'
