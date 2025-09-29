@@ -48,3 +48,13 @@ button {
 
 /* Remove default margins from headings and paragraphs */
 h1,h2,h3,h4,h5,h6,p { margin: 0; }
+
+/* SVG icon styles - make unplugin-icons behave like font icons */
+svg {
+  display: inline-block;
+  vertical-align: middle;
+  width: 1em;
+  height: 1em;
+  fill: currentColor;
+  flex-shrink: 0;
+}
