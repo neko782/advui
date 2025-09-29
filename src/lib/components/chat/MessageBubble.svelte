@@ -43,7 +43,7 @@
 
     try {
       const incoming = props.editingText ?? ''
-      const needsSync = el.textContent !== incoming
+      const needsSync = el.innerText !== incoming
 
       if (needsSync || !wasEditing) {
         el.textContent = incoming
