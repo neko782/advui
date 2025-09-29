@@ -14,11 +14,12 @@
   let activePresetId = $state('')
   let activeConnectionId = $state('')
   const TABS = [
+    { id: 'general', label: 'General' },
     { id: 'connection', label: 'Connections' },
     { id: 'presets', label: 'Presets' },
     { id: 'developer', label: 'Developer' },
   ]
-  let activeTab = $state('connection')
+  let activeTab = $state('general')
 
   const REASONING_OPTIONS = ['none', 'minimal', 'low', 'medium', 'high']
   const TEXT_VERBOSITY_OPTIONS = ['low', 'medium', 'high']
@@ -299,7 +300,7 @@
     modelCacheByConnection = loadAllModelCaches()
     activePresetId = local?.selectedPresetId || local?.presets?.[0]?.id || ''
     activeConnectionId = local?.selectedConnectionId || local?.connections?.[0]?.id || ''
-    activeTab = 'connection'
+    activeTab = 'general'
     revealKey = false
     refreshingConnectionId = ''
     refreshMessages = {}
@@ -388,7 +389,40 @@
         aria-labelledby={`settings-tab-${activeTab}`}
       >
         <div class="modal-scroller">
-          {#if activeTab === 'connection'}
+          {#if activeTab === 'general'}
+            <section class="group">
+              <div class="group-title">Keyboard shortcuts</div>
+              <label class="field">
+                <span>Send message</span>
+                <select
+                  value={local.keybinds?.sendMessage || 'Enter'}
+                  onchange={(event) => { local.keybinds = { ...local.keybinds, sendMessage: event.currentTarget.value }; persistSettings() }}
+                  aria-label="Send message keybind"
+                >
+                  <option value="Enter">Enter</option>
+                  <option value="Shift+Enter">Shift+Enter</option>
+                  <option value="Ctrl+Enter">Ctrl+Enter (Cmd+Enter on Mac)</option>
+                  <option value="Alt+Enter">Alt+Enter</option>
+                  <option value="None">None</option>
+                </select>
+              </label>
+              <label class="field">
+                <span>New line</span>
+                <select
+                  value={local.keybinds?.newLine || 'Shift+Enter'}
+                  onchange={(event) => { local.keybinds = { ...local.keybinds, newLine: event.currentTarget.value }; persistSettings() }}
+                  aria-label="New line keybind"
+                >
+                  <option value="Enter">Enter</option>
+                  <option value="Shift+Enter">Shift+Enter</option>
+                  <option value="Ctrl+Enter">Ctrl+Enter (Cmd+Enter on Mac)</option>
+                  <option value="Alt+Enter">Alt+Enter</option>
+                  <option value="None">None</option>
+                </select>
+              </label>
+              <p class="hint">Configure keyboard shortcuts for actions in the composer. Does not apply on mobile devices.</p>
+            </section>
+          {:else if activeTab === 'connection'}
             <section class="group">
               <div class="group-head">
                 <div class="group-title">Connections</div>

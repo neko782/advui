@@ -32,10 +32,32 @@
   })
 
   function onKey(e) {
-    if (e.key === 'Enter' && !e.shiftKey && !isMobileViewport) {
-      if (props.locked) return
+    if (isMobileViewport) return
+    if (props.locked) return
+    if (e.key !== 'Enter') return
+
+    const keybinds = props.keybinds || { sendMessage: 'Enter', newLine: 'Shift+Enter' }
+
+    // Determine which key combination was pressed
+    let pressedKey = 'Enter'
+    if (e.shiftKey) pressedKey = 'Shift+Enter'
+    else if (e.ctrlKey || e.metaKey) pressedKey = 'Ctrl+Enter'
+    else if (e.altKey) pressedKey = 'Alt+Enter'
+
+    // Check if this key combination matches any action
+    let action = null
+    if (keybinds.sendMessage === pressedKey) action = 'send'
+    else if (keybinds.newLine === pressedKey) action = 'newline'
+
+    // Perform the action
+    if (action === 'send') {
       e.preventDefault()
       props.onSend?.('user')
+    } else if (action === 'newline') {
+      // Let default behavior happen (insert newline)
+    } else {
+      // No action bound to this key combination, prevent default
+      e.preventDefault()
     }
   }
 

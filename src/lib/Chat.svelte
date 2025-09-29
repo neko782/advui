@@ -777,7 +777,8 @@
         presetSignature(settings) !== presetSignature(next) ||
         settings?.selectedPresetId !== next?.selectedPresetId ||
         settings?.selectedConnectionId !== next?.selectedConnectionId ||
-        !!settings?.debug !== !!next?.debug
+        !!settings?.debug !== !!next?.debug ||
+        JSON.stringify(settings?.keybinds) !== JSON.stringify(next?.keybinds)
       )
       if (changed) {
         settings = next
@@ -882,6 +883,7 @@
     connections={connectionOptions}
     chatConnectionId={chatSettings.connectionId}
     attachedImages={attachedImages}
+    keybinds={settings?.keybinds}
     onToggleChatSettings={toggleChatSettings}
     onCloseChatSettings={() => (chatSettingsOpen = false)}
     onChangeConnection={(val) => (chatSettings = { ...chatSettings, connectionId: (typeof val === 'string' && val.trim()) ? val.trim() : null })}

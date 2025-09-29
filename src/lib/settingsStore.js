@@ -250,6 +250,24 @@ export function findConnection(settings, connectionId) {
 //   model,
 //   apiMode,
 // }
+const DEFAULT_KEYBINDS = {
+  sendMessage: 'Enter',
+  newLine: 'Shift+Enter',
+};
+
+const VALID_KEYBINDS = ['Enter', 'Shift+Enter', 'Ctrl+Enter', 'Alt+Enter', 'None'];
+
+function normalizeKeybinds(keybinds) {
+  if (!keybinds || typeof keybinds !== 'object') return { ...DEFAULT_KEYBINDS };
+
+  const normalized = {};
+  for (const action of ['sendMessage', 'newLine']) {
+    const value = keybinds[action];
+    normalized[action] = VALID_KEYBINDS.includes(value) ? value : DEFAULT_KEYBINDS[action];
+  }
+  return normalized;
+}
+
 export function loadSettings() {
   const defaults = attachCompatFields({
     apiKey: '',
@@ -260,6 +278,7 @@ export function loadSettings() {
     selectedPresetId: 'preset-default',
     debug: false,
     apiMode: 'responses',
+    keybinds: { ...DEFAULT_KEYBINDS },
   });
   try {
     const raw = localStorage.getItem(SETTINGS_KEY);
@@ -295,6 +314,7 @@ export function loadSettings() {
     const debug = typeof parsed?.debug === 'boolean' ? !!parsed.debug : false;
     const apiKey = typeof parsed?.apiKey === 'string' ? parsed.apiKey : '';
     const apiBaseUrl = normalizeApiBaseUrl(parsed?.apiBaseUrl);
+    const keybinds = normalizeKeybinds(parsed?.keybinds);
     return attachCompatFields({
       apiKey,
       apiBaseUrl,
@@ -304,6 +324,7 @@ export function loadSettings() {
       selectedPresetId,
       debug,
       apiMode: mode,
+      keybinds,
     });
   } catch {
     return defaults;
@@ -340,6 +361,7 @@ export function saveSettings(next) {
     || connections[0]
     || makeDefaultConnection({ apiMode: fallbackApiMode });
   const activeApiMode = API_MODE_VALUES.has(activeConnection?.apiMode) ? activeConnection.apiMode : 'responses';
+  const keybinds = normalizeKeybinds(next?.keybinds);
   const data = attachCompatFields({
     apiKey: typeof next?.apiKey === 'string' ? next.apiKey : '',
     apiBaseUrl: normalizeApiBaseUrl(next?.apiBaseUrl),
@@ -349,6 +371,7 @@ export function saveSettings(next) {
     selectedPresetId,
     debug: !!next?.debug,
     apiMode: activeApiMode,
+    keybinds,
   });
   localStorage.setItem(SETTINGS_KEY, JSON.stringify(data));
 }
