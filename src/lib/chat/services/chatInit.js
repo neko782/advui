@@ -23,6 +23,7 @@ export function normalizePreset(p) {
       reasoningEffort: 'none',
       textVerbosity: 'medium',
       reasoningSummary: 'auto',
+      connectionId: undefined,
     }
   }
   const model = (typeof p.model === 'string' && p.model.trim()) ? p.model.trim() : 'gpt-5'
@@ -34,7 +35,8 @@ export function normalizePreset(p) {
   const reasoningEffort = normalizeReasoning(p.reasoningEffort)
   const textVerbosity = normalizeVerbosity(p.textVerbosity)
   const reasoningSummary = normalizeReasoningSummary(p.reasoningSummary)
-  return { id, model, streaming, maxOutputTokens, topP, temperature, reasoningEffort, textVerbosity, reasoningSummary }
+  const connectionId = (typeof p.connectionId === 'string' && p.connectionId.trim()) ? p.connectionId.trim() : undefined
+  return { id, model, streaming, maxOutputTokens, topP, temperature, reasoningEffort, textVerbosity, reasoningSummary, connectionId }
 }
 
 export function pickPresetFromSettings(state) {

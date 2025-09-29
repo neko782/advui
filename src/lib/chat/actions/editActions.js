@@ -59,22 +59,20 @@ export function prepareBranchAndSend(nodes, rootId, editingId, editingText, next
 
   // Special case: if nothing changed and this is the last visible message,
   // do not branch. For user messages, just generate the following reply.
-  try {
-    const path = buildVisible()
-    const insertIndex = path.findIndex(vm => vm.nodeId === curNode.id)
-    const isLast = insertIndex >= 0 && insertIndex === (path.length - 1)
-    const noChange = (val === (cur.content || ''))
-    if (noChange && isLast) {
-      // No branching needed, just refresh after this message
-      return {
-        shouldRefreshOnly: true,
-        insertIndex,
-        nodes,
-        nextId,
-        nextNodeId
-      }
+  const path = buildVisible()
+  const insertIndex = path.findIndex(vm => vm.nodeId === curNode.id)
+  const isLast = insertIndex >= 0 && insertIndex === (path.length - 1)
+  const noChange = (val === (cur.content || ''))
+  if (noChange && isLast) {
+    // No branching needed, just refresh after this message
+    return {
+      shouldRefreshOnly: true,
+      insertIndex,
+      nodes,
+      nextId,
+      nextNodeId
     }
-  } catch {}
+  }
 
   // 1) Add a new variant and select it
   const { next: _prevNext, id: _prevId, time: _prevTime, typing: _prevTyping, error: _prevError, ...preserved } = cur
@@ -117,10 +115,12 @@ export function prepareBranchAndSend(nodes, rootId, editingId, editingText, next
   ))
   updatedNodes = [...updatedNodes, typingNode]
 
-  // 3) Build history for API call
-  const path = buildVisible()
-  const insertIndex = path.findIndex(vm => vm.nodeId === curNode.id)
-  const history = buildVisibleUpTo(insertIndex + 1)
+  // 3) Build history for API call using updated nodes
+  const buildVisibleUpdated = () => _buildVisible(updatedNodes, rootId)
+  const buildVisibleUpToUpdated = (indexExclusive) => _buildVisibleUpTo(updatedNodes, rootId, indexExclusive)
+  const pathForHistory = buildVisibleUpdated()
+  const historyInsertIndex = pathForHistory.findIndex(vm => vm.nodeId === curNode.id)
+  const history = buildVisibleUpToUpdated(historyInsertIndex + 1)
     .filter(m => !m.typing)
     .map(({ role, content }) => ({ role, content }))
 

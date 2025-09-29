@@ -25,7 +25,7 @@ export function computePersistSig(nodes, chatSettings, rootId) {
       rootId,
     })
   } catch {
-    return String(Math.random())
+    return ''
   }
 }
 

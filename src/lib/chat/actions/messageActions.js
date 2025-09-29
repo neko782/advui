@@ -39,60 +39,50 @@ export function setMessageRole(nodes, id, role) {
   }))
 }
 
-export function moveUp(nodes, rootId, messageId) {
+function moveMessage(nodes, rootId, messageId, direction) {
   const buildVisible = () => _buildVisible(nodes, rootId)
   const path = buildVisible()
-  const idx = path.findIndex(vm => vm.m.id === messageId)
-  if (idx <= 0) return { nodes, rootId }
+  const currentIdx = path.findIndex(vm => vm.m.id === messageId)
 
-  const B = path[idx]
-  const A = path[idx - 1]
-  const P = (idx - 2 >= 0) ? path[idx - 2] : null
-  const C = (idx + 1 < path.length) ? path[idx + 1] : null
+  // Validate bounds
+  if (direction === 'up' && currentIdx <= 0) return { nodes, rootId }
+  if (direction === 'down' && (currentIdx < 0 || currentIdx >= path.length - 1)) return { nodes, rootId }
 
-  if (!A || !B) return { nodes, rootId }
-  if (B.m?.typing) return { nodes, rootId }
+  const current = path[currentIdx]
+  const swapIdx = direction === 'up' ? currentIdx - 1 : currentIdx + 1
+  const swap = path[swapIdx]
+  const before = direction === 'up' ? (currentIdx - 2 >= 0 ? path[currentIdx - 2] : null) : (currentIdx - 1 >= 0 ? path[currentIdx - 1] : null)
+  const after = direction === 'up' ? (currentIdx + 1 < path.length ? path[currentIdx + 1] : null) : (currentIdx + 2 < path.length ? path[currentIdx + 2] : null)
+
+  if (!current || !swap || current.m?.typing) return { nodes, rootId }
 
   let arr = nodes.slice()
-  function setActiveNext(mid, toId) {
-    arr = arr.map(n => (n.id === mid
-      ? { ...n, variants: n.variants.map((v, i) => (i === (Number(n.active)||0) ? { ...v, next: toId ?? null } : v)) }
+  function setActiveNext(nodeId, nextNodeId) {
+    arr = arr.map(n => (n.id === nodeId
+      ? { ...n, variants: n.variants.map((v, i) => (i === (Number(n.active)||0) ? { ...v, next: nextNodeId ?? null } : v)) }
       : n))
   }
 
-  const nextRootId = P ? rootId : B.nodeId
-  if (P) { setActiveNext(P.nodeId, B.nodeId) }
-  setActiveNext(B.nodeId, A.nodeId)
-  setActiveNext(A.nodeId, C ? C.nodeId : null)
+  // Rewire the pointers based on direction
+  const newRootId = before ? rootId : (direction === 'up' ? current.nodeId : swap.nodeId)
+  if (before) {
+    setActiveNext(before.nodeId, direction === 'up' ? current.nodeId : swap.nodeId)
+  }
+  if (direction === 'up') {
+    setActiveNext(current.nodeId, swap.nodeId)
+    setActiveNext(swap.nodeId, after ? after.nodeId : null)
+  } else {
+    setActiveNext(swap.nodeId, current.nodeId)
+    setActiveNext(current.nodeId, after ? after.nodeId : null)
+  }
 
-  return { nodes: arr, rootId: nextRootId }
+  return { nodes: arr, rootId: newRootId }
+}
+
+export function moveUp(nodes, rootId, messageId) {
+  return moveMessage(nodes, rootId, messageId, 'up')
 }
 
 export function moveDown(nodes, rootId, messageId) {
-  const buildVisible = () => _buildVisible(nodes, rootId)
-  const path = buildVisible()
-  const idx = path.findIndex(vm => vm.m.id === messageId)
-  if (idx < 0 || idx >= (path.length - 1)) return { nodes, rootId }
-
-  const B = path[idx]
-  const C = path[idx + 1]
-  const P = (idx - 1 >= 0) ? path[idx - 1] : null
-  const D = (idx + 2 < path.length) ? path[idx + 2] : null
-
-  if (!B || !C) return { nodes, rootId }
-  if (B.m?.typing) return { nodes, rootId }
-
-  let arr = nodes.slice()
-  function setActiveNext(mid, toId) {
-    arr = arr.map(n => (n.id === mid
-      ? { ...n, variants: n.variants.map((v, i) => (i === (Number(n.active)||0) ? { ...v, next: toId ?? null } : v)) }
-      : n))
-  }
-
-  const nextRootId = P ? rootId : C.nodeId
-  if (P) { setActiveNext(P.nodeId, C.nodeId) }
-  setActiveNext(C.nodeId, B.nodeId)
-  setActiveNext(B.nodeId, D ? D.nodeId : null)
-
-  return { nodes: arr, rootId: nextRootId }
+  return moveMessage(nodes, rootId, messageId, 'down')
 }
