@@ -1,14 +1,7 @@
 // Message manipulation actions: delete, role change, move up/down
 import { VALID_MESSAGE_ROLES } from '../../constants/index.js'
 import { buildVisible as _buildVisible } from '../../branching.js'
-
-function findNodeByMessageId(nodes, mid) {
-  for (const n of nodes || []) {
-    const i = (n?.variants || []).findIndex(v => v?.id === mid)
-    if (i >= 0) return { node: n, index: i }
-  }
-  return { node: null, index: -1 }
-}
+import { findNodeByMessageId } from '../../utils/treeUtils.js'
 
 export function deleteMessage(nodes, rootId, messageId) {
   const loc = findNodeByMessageId(nodes, messageId)

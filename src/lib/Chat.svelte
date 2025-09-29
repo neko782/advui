@@ -33,6 +33,7 @@
   import { normalizeReasoning, normalizeVerbosity, normalizeReasoningSummary } from './utils/validation.js'
   import { NO_API_KEY_NOTICE_TEXT } from './constants/index.js'
   import { buildVisible as _buildVisible, buildVisibleUpTo as _buildVisibleUpTo } from './branching.js'
+  import { findNodeByMessageId } from './utils/treeUtils.js'
 
   const props = $props()
 
@@ -260,7 +261,7 @@
 
   function editMessage(id) {
     if (locked) return
-    const loc = (function findNodeByMessageId(mid){ for (const n of nodes||[]) { const i=(n?.variants||[]).findIndex(v=>v?.id===mid); if(i>=0) return {node:n,index:i} } return {node:null,index:-1} })(id)
+    const loc = findNodeByMessageId(nodes, id)
     const msg = loc?.node?.variants?.[loc.index]
     if (!msg || msg.typing) return
     editingId = id
@@ -643,10 +644,11 @@
     }
   }
 
-  // Debug function
+  // Debug function - intentionally named to indicate it deliberately breaks branching logic
+  // Creates duplicate branches for testing edge cases and branch corruption scenarios
   function debugFuckUpBranch(id) {
     if (locked) return
-    const loc = (function findNodeByMessageId(mid){ for (const n of nodes||[]) { const i=(n?.variants||[]).findIndex(v=>v?.id===mid); if(i>=0) return {node:n,index:i} } return {node:null,index:-1} })(id)
+    const loc = findNodeByMessageId(nodes, id)
     const node = loc?.node
     const cur = node?.variants?.[loc.index]
     if (!node || !cur) return

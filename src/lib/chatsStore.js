@@ -3,7 +3,8 @@
 
 import { loadSettings } from './settingsStore.js'
 import { enforceUniqueParents } from './branching.js'
-import { getAllChats as storeGetAll, getChat as storeGetOne, putChat as storePut, deleteChat as storeDelete } from './idb.js'
+import { getAllChats as storeGetAll, getChat as storeGetOne, putChat as storePut, deleteChat as storeDelete } from './chatStorage.js'
+import { toIntOrNull, toClampedNumber } from './utils/numbers.js'
 
 export const SELECTED_KEY = 'openai.chats.selected.v1'
 
@@ -13,21 +14,6 @@ const REASONING_VALUES = new Set(['none', 'minimal', 'low', 'medium', 'high'])
 const TEXT_VERBOSITY_VALUES = new Set(['low', 'medium', 'high'])
 const REASONING_SUMMARY_VALUES = new Set(['auto', 'concise', 'detailed'])
 const hasOwn = (obj, key) => Object.prototype.hasOwnProperty.call(obj || {}, key)
-
-function toIntOrNull(val) {
-  if (val === '' || val == null) return null
-  const num = Number(val)
-  if (!Number.isFinite(num)) return null
-  const rounded = Math.max(1, Math.floor(num))
-  return Number.isFinite(rounded) ? rounded : null
-}
-
-function toClampedNumber(val, min, max) {
-  if (val === '' || val == null) return null
-  const num = Number(val)
-  if (!Number.isFinite(num)) return null
-  return Math.min(max, Math.max(min, num))
-}
 
 function normalizeReasoning(val) {
   return REASONING_VALUES.has(val) ? val : 'none'

@@ -3,6 +3,7 @@
 
 import OpenAI from 'openai'
 import { loadSettings, findConnection } from './settingsStore.js'
+import { toIntOrNull, toClampedNumber } from './utils/numbers.js'
 
 function resolveConnection({ connectionId, connection, settings } = {}) {
   if (connection && typeof connection === 'object') {
@@ -134,19 +135,6 @@ export async function respond({
       ? [{ role: 'user', content: input }]
       : [])
   const chatRequest = { model: useModel, messages: chatMessages }
-  const toIntOrNull = (val) => {
-    if (val === '' || val == null) return null
-    const num = Number(val)
-    if (!Number.isFinite(num)) return null
-    const rounded = Math.max(1, Math.floor(num))
-    return Number.isFinite(rounded) ? rounded : null
-  }
-  const toClampedNumber = (val, min, max) => {
-    if (val === '' || val == null) return null
-    const num = Number(val)
-    if (!Number.isFinite(num)) return null
-    return Math.min(max, Math.max(min, num))
-  }
   const tokens = toIntOrNull(maxOutputTokens)
   if (tokens != null) request.max_output_tokens = tokens
   if (tokens != null) chatRequest.max_completion_tokens = tokens

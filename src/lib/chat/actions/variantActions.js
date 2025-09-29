@@ -1,12 +1,5 @@
 // Variant/branching actions
-
-function findNodeByMessageId(nodes, mid) {
-  for (const n of nodes || []) {
-    const i = (n?.variants || []).findIndex(v => v?.id === mid)
-    if (i >= 0) return { node: n, index: i }
-  }
-  return { node: null, index: -1 }
-}
+import { findNodeByMessageId } from '../../utils/treeUtils.js'
 
 export function changeVariant(nodes, messageId, delta) {
   const loc = findNodeByMessageId(nodes, messageId)

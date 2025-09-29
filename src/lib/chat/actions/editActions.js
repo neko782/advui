@@ -1,13 +1,6 @@
 // Edit actions: commit, replace, branch
 import { buildVisible as _buildVisible, buildVisibleUpTo as _buildVisibleUpTo } from '../../branching.js'
-
-function findNodeByMessageId(nodes, mid) {
-  for (const n of nodes || []) {
-    const i = (n?.variants || []).findIndex(v => v?.id === mid)
-    if (i >= 0) return { node: n, index: i }
-  }
-  return { node: null, index: -1 }
-}
+import { findNodeByMessageId } from '../../utils/treeUtils.js'
 
 export function commitEditReplace(nodes, editingId, editingText) {
   if (editingId == null) return nodes

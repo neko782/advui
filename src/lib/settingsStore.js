@@ -1,4 +1,6 @@
 // Simple localStorage-backed settings store for API connections and chat presets
+import { toIntOrNull, toClampedNumber } from './utils/numbers.js'
+
 export const SETTINGS_KEY = 'openai.settings.v1';
 
 function genPresetId() {
@@ -43,22 +45,6 @@ function makeDefaultConnection({ apiKey = '', apiBaseUrl = DEFAULT_API_BASE_URL,
     apiBaseUrl: normalizeApiBaseUrl(apiBaseUrl),
     apiMode: normalizedMode,
   };
-}
-
-function toIntOrNull(val) {
-  if (val === '' || val == null) return null;
-  const num = Number(val);
-  if (!Number.isFinite(num)) return null;
-  const rounded = Math.max(1, Math.floor(num));
-  return Number.isFinite(rounded) ? rounded : null;
-}
-
-function toClampedNumber(val, min, max) {
-  if (val === '' || val == null) return null;
-  const num = Number(val);
-  if (!Number.isFinite(num)) return null;
-  const clamped = Math.min(max, Math.max(min, num));
-  return clamped;
 }
 
 function normalizeApiBaseUrl(value) {
