@@ -264,9 +264,17 @@ describe('loadChat', () => {
     }
     chatsStore.getChat.mockResolvedValue(loadedChat)
 
+    // Mock computePersistSig to throw
+    const chatPersistence = await import('./chatPersistence.js')
+    const origCompute = chatPersistence.computePersistSig
+    vi.spyOn(chatPersistence, 'computePersistSig').mockImplementation(() => {
+      throw new Error('Signature computation failed')
+    })
+
     const result = await loadChat('chat123')
 
-    expect(result.persistSig).toBeDefined()
+    expect(result.persistSig).toBe('')
+    chatPersistence.computePersistSig.mockRestore()
   })
 
   it('should normalize all chat settings fields', async () => {
@@ -290,10 +298,13 @@ describe('loadChat', () => {
 
     expect(result.chatSettings.model).toBe('custom')
     expect(result.chatSettings.streaming).toBe(false)
-    // Validation functions should normalize invalid values
-    expect(typeof result.chatSettings.reasoningEffort).toBe('string')
-    expect(typeof result.chatSettings.textVerbosity).toBe('string')
-    expect(typeof result.chatSettings.reasoningSummary).toBe('string')
+    // Validation functions should sanitize invalid values to safe defaults
+    expect(result.chatSettings.maxOutputTokens).toBe(null)
+    expect(result.chatSettings.topP).toBe(1)
+    expect(result.chatSettings.temperature).toBe(0)
+    expect(result.chatSettings.reasoningEffort).toBe('none')
+    expect(result.chatSettings.textVerbosity).toBe('medium')
+    expect(result.chatSettings.reasoningSummary).toBe('auto')
   })
 
   it('should handle settings with no presets', async () => {

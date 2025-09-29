@@ -33,5 +33,17 @@ describe('sanitizeGraphIfNeeded', () => {
     expect(result.notice).toContain('Auto-fixed')
     expect(result.notice).toContain('multiple parents')
     expect(result.nodes).not.toBe(nodes)
+
+    // Verify enforceUniqueParents actually cleared extra edges
+    const incomingEdges = []
+    for (const n of result.nodes) {
+      for (const v of n.variants || []) {
+        if (v.next === 3) {
+          incomingEdges.push({ nodeId: n.id, next: v.next })
+        }
+      }
+    }
+    expect(incomingEdges.length).toBe(1)
+    expect(incomingEdges[0].nodeId).toBe(1)
   })
 })
