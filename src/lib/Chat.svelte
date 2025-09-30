@@ -7,7 +7,7 @@
   import { copyText as copyToClipboard } from './utils/clipboard.js'
   import MessageList from './components/chat/MessageList.svelte'
   import Composer from './components/chat/Composer.svelte'
-  import { storeImage, generateImageId, fileToBase64 } from './imageStore.js'
+  import { storeImage, generateImageId, fileToBase64, getImage } from './imageStore.js'
 
   // Chat module imports
   import { loadChat } from './chat/services/chatLoader.js'
@@ -52,6 +52,7 @@
   let rootId = $state(1)
   let input = $state('')
   let attachedImages = $state([])
+  let imageCache = $state({})
   let sending = $state(false)
   let locked = $state(false)
   let nextId = $state(1)
@@ -189,13 +190,15 @@
       const imagePromises = files.map(async (file) => {
         const id = generateImageId()
         const base64 = await fileToBase64(file)
-        await storeImage(id, base64, file.type)
-        return {
+        await storeImage(id, base64, file.type, file.name)
+        const image = {
           id,
           data: base64,
           mimeType: file.type,
           name: file.name
         }
+        cacheImageData(image)
+        return image
       })
       const images = await Promise.all(imagePromises)
       attachedImages = [...attachedImages, ...images]
@@ -206,6 +209,256 @@
 
   function removeAttachedImage(id) {
     attachedImages = attachedImages.filter(img => img.id !== id)
+  }
+
+  function toImageRef(img) {
+    if (!img || typeof img !== 'object') return null
+    const id = typeof img.id === 'string' && img.id.trim() ? img.id.trim() : null
+    if (!id) return null
+    const ref = { id }
+    if (typeof img.mimeType === 'string' && img.mimeType.trim()) ref.mimeType = img.mimeType.trim()
+    if (typeof img.name === 'string' && img.name.trim()) ref.name = img.name.trim()
+    return ref
+  }
+
+  function buildImageRefs(list) {
+    if (!Array.isArray(list)) return []
+    const refs = []
+    const seen = new Set()
+    for (const img of list) {
+      const ref = toImageRef(img)
+      if (!ref || seen.has(ref.id)) continue
+      seen.add(ref.id)
+      refs.push(ref)
+    }
+    return refs
+  }
+
+  function cacheImageData(image) {
+    if (!image || typeof image !== 'object') return
+    const id = typeof image.id === 'string' && image.id.trim() ? image.id.trim() : null
+    const data = typeof image.data === 'string' && image.data ? image.data : null
+    if (!id || !data) return
+    const mimeType = typeof image.mimeType === 'string' && image.mimeType.trim() ? image.mimeType.trim() : undefined
+    const name = typeof image.name === 'string' && image.name.trim() ? image.name.trim() : undefined
+    const existing = imageCache[id] || {}
+    const next = {
+      data,
+      mimeType: mimeType || existing.mimeType,
+      name: name || existing.name,
+    }
+    if (existing.data === next.data && existing.mimeType === next.mimeType && existing.name === next.name) return
+    imageCache = { ...imageCache, [id]: next }
+  }
+
+  const pendingImageLoads = new Set()
+
+  async function fetchImageRecord(meta) {
+    const id = typeof meta?.id === 'string' && meta.id.trim() ? meta.id.trim() : null
+    if (!id) return
+    if (pendingImageLoads.has(id)) return
+    if (imageCache[id]?.data) return
+    if (typeof indexedDB === 'undefined') return
+    pendingImageLoads.add(id)
+    try {
+      const record = await getImage(id)
+      if (record && typeof record.data === 'string' && record.data) {
+        cacheImageData({
+          id,
+          data: record.data,
+          mimeType: record.mimeType || meta?.mimeType,
+          name: record.name || meta?.name,
+        })
+      }
+    } catch {}
+    finally {
+      pendingImageLoads.delete(id)
+    }
+  }
+
+  function ensureImagesAvailable(list) {
+    if (!Array.isArray(list) || !list.length) return
+    const tasks = []
+    for (const meta of list) {
+      const id = typeof meta?.id === 'string' && meta.id.trim() ? meta.id.trim() : null
+      if (!id) continue
+      if (imageCache[id]?.data) continue
+      tasks.push(fetchImageRecord(meta))
+    }
+    if (tasks.length) Promise.allSettled(tasks).catch(() => {})
+  }
+
+  function resolveImagesForMessage(images) {
+    const refs = buildImageRefs(images)
+    if (!refs.length) return []
+    return refs.map(ref => {
+      const cached = imageCache[ref.id]
+      if (cached?.data) {
+        return {
+          ...ref,
+          data: cached.data,
+          mimeType: ref.mimeType || cached.mimeType,
+          name: ref.name ?? cached.name,
+        }
+      }
+      return ref
+    })
+  }
+
+  function sanitizeNodesImageData(nodesInput) {
+    if (!Array.isArray(nodesInput)) return nodesInput
+    let mutated = false
+    const sanitizedNodes = nodesInput.map(node => {
+      if (!node || typeof node !== 'object') return node
+      const variants = Array.isArray(node.variants) ? node.variants : []
+      let variantsChanged = false
+      const sanitizedVariants = variants.map(variant => {
+        if (!variant || typeof variant !== 'object') return variant
+        const refs = buildImageRefs(variant.images)
+        const hasImages = refs.length > 0
+        const originalImages = Array.isArray(variant.images) ? variant.images : []
+        let needsUpdate = hasImages
+          ? (originalImages.length !== refs.length)
+          : originalImages.length > 0
+        if (!needsUpdate && hasImages) {
+          for (let i = 0; i < refs.length; i++) {
+            const orig = originalImages[i]
+            const ref = refs[i]
+            if (typeof orig === 'string') { needsUpdate = true; break }
+            if (!orig || typeof orig !== 'object') { needsUpdate = true; break }
+            const origMime = (typeof orig.mimeType === 'string' && orig.mimeType.trim()) || ''
+            const origName = (typeof orig.name === 'string' && orig.name.trim()) || ''
+            const refMime = ref.mimeType || ''
+            const refName = ref.name || ''
+            const hasData = typeof orig.data === 'string' && orig.data
+            if (orig.id !== ref.id || origMime !== refMime || origName !== refName || hasData) {
+              needsUpdate = true
+              break
+            }
+          }
+        }
+        if (!needsUpdate) return variant
+
+        variantsChanged = true
+        if (hasImages) {
+          for (const orig of originalImages) {
+            if (orig && typeof orig === 'object' && typeof orig.data === 'string' && orig.data) {
+              cacheImageData(orig)
+            }
+          }
+          return { ...variant, images: refs }
+        }
+
+        for (const orig of originalImages) {
+          if (orig && typeof orig === 'object' && typeof orig.data === 'string' && orig.data) {
+            cacheImageData(orig)
+          }
+        }
+        const cleaned = { ...variant }
+        delete cleaned.images
+        return cleaned
+      })
+      if (!variantsChanged) return node
+      mutated = true
+      return { ...node, variants: sanitizedVariants }
+    })
+    return mutated ? sanitizedNodes : nodesInput
+  }
+
+  $effect(() => {
+    const visible = buildVisible()
+    const missing = []
+    const seen = new Set()
+    for (const vm of visible) {
+      const imgs = Array.isArray(vm?.m?.images) ? vm.m.images : []
+      for (const img of imgs) {
+        if (img == null) continue
+        if (typeof img === 'string') {
+          const id = img.trim()
+          if (!id || imageCache[id]?.data || seen.has(id)) continue
+          seen.add(id)
+          missing.push({ id })
+          continue
+        }
+        if (typeof img !== 'object') continue
+        if (typeof img.data === 'string' && img.data) {
+          cacheImageData(img)
+          continue
+        }
+        const id = typeof img.id === 'string' && img.id.trim() ? img.id.trim() : null
+        if (!id || imageCache[id]?.data || seen.has(id)) continue
+        seen.add(id)
+        missing.push({ id, mimeType: img.mimeType, name: img.name })
+      }
+    }
+    if (missing.length) ensureImagesAvailable(missing)
+  })
+
+  const visibleMessages = $derived((() => {
+    const base = buildVisible()
+    return base.map(vm => {
+      const msg = vm.m
+      if (!msg) return vm
+      if (!Array.isArray(msg.images) || !msg.images.length) return vm
+      const resolved = resolveImagesForMessage(msg.images)
+      return { ...vm, m: { ...msg, images: resolved } }
+    })
+  })())
+
+  function withImageData(nodesInput) {
+    if (!Array.isArray(nodesInput)) return nodesInput
+    let mutated = false
+    const enrichedNodes = nodesInput.map(node => {
+      if (!node || typeof node !== 'object') return node
+      const variants = Array.isArray(node.variants) ? node.variants : []
+      let variantsChanged = false
+      const enrichedVariants = variants.map(variant => {
+        if (!variant || typeof variant !== 'object') return variant
+        const images = Array.isArray(variant.images) ? variant.images : []
+        if (!images.length) return variant
+        let changed = false
+        const enrichedImages = images.map(image => {
+          if (image == null) return image
+          if (typeof image === 'string') {
+            const id = image.trim()
+            if (!id) return image
+            const cached = imageCache[id]
+            if (cached?.data) {
+              changed = true
+              return {
+                id,
+                mimeType: cached.mimeType,
+                name: cached.name,
+                data: cached.data,
+              }
+            }
+            return { id }
+          }
+          if (typeof image !== 'object') return image
+          if (typeof image.data === 'string' && image.data) return image
+          const id = typeof image.id === 'string' && image.id.trim() ? image.id.trim() : null
+          if (!id) return image
+          const cached = imageCache[id]
+          if (cached?.data) {
+            changed = true
+            return {
+              ...image,
+              data: cached.data,
+              mimeType: image.mimeType || cached.mimeType,
+              name: image.name ?? cached.name,
+            }
+          }
+          return image
+        })
+        if (!changed) return variant
+        variantsChanged = true
+        return { ...variant, images: enrichedImages }
+      })
+      if (!variantsChanged) return node
+      mutated = true
+      return { ...node, variants: enrichedVariants }
+    })
+    return mutated ? enrichedNodes : nodesInput
   }
 
   // Message actions
@@ -341,8 +594,9 @@
 
     try {
       let summaryBuffer = ''
+      const requestNodes = withImageData(nodes)
       const reply = await generateResponse({
-        nodes,
+        nodes: requestNodes,
         rootId,
         chatSettings,
         connectionId,
@@ -415,9 +669,10 @@
 
     // Add user message
     let newNodeId = null
-    const hasImages = attachedImages.length > 0
+    const imageRefs = buildImageRefs(attachedImages)
+    const hasImages = imageRefs.length > 0
     if (hasContent || hasImages) {
-      const prepared = prepareUserMessage(nodes, rootId, trimmedInput, nextId, nextNodeId, attachedImages)
+      const prepared = prepareUserMessage(nodes, rootId, trimmedInput, nextId, nextNodeId, imageRefs)
       if (prepared) {
         nodes = prepared.nodes
         rootId = prepared.rootId
@@ -450,8 +705,9 @@
       let reply = null
       let summaryBuffer = ''
       if (role === 'user' && apiKey) {
+        const requestNodes = withImageData(nodes)
         reply = await generateResponse({
-          nodes,
+          nodes: requestNodes,
           rootId,
           chatSettings,
           connectionId,
@@ -517,7 +773,8 @@
   function addToChat(role = 'user') {
     if (locked) return
     const text = (typeof input === 'string') ? input : ''
-    const hasImages = attachedImages.length > 0
+    const imageRefs = buildImageRefs(attachedImages)
+    const hasImages = imageRefs.length > 0
     const variant = {
       id: nextId++,
       role,
@@ -526,7 +783,7 @@
       typing: false,
       error: undefined,
       next: null,
-      images: hasImages ? attachedImages : undefined
+      images: hasImages ? imageRefs : undefined
     }
     const node = { id: nextNodeId++, variants: [variant], active: 0 }
     const visible = buildVisible()
@@ -569,7 +826,7 @@
     try {
       let summaryBuffer = ''
       const reply = await generateResponse({
-        nodes: prepared.nodes,
+        nodes: withImageData(prepared.nodes),
         rootId,
         chatSettings,
         connectionId,
@@ -629,7 +886,7 @@
     try {
       let summaryBuffer = ''
       const reply = await generateResponse({
-        nodes: prepared.nodes,
+        nodes: withImageData(prepared.nodes),
         rootId,
         chatSettings,
         connectionId,
@@ -699,7 +956,8 @@
       setTimeout(() => {
         try {
           settings = result.settings
-          nodes = result.nodes
+          const sanitizedNodes = sanitizeNodesImageData(result.nodes)
+          nodes = sanitizedNodes
           nextId = result.nextId
           nextNodeId = result.nextNodeId
           chatSettings = result.chatSettings
@@ -838,7 +1096,7 @@
 <section class="chat-shell">
   <MessageList
     bind:this={listCmp}
-    items={buildVisible()}
+    items={visibleMessages}
     chatId={props.chatId}
     notice={visibleNotice}
     total={nodes.length}

@@ -31,7 +31,7 @@ function openDB() {
   })
 }
 
-export async function storeImage(id, base64Data, mimeType) {
+export async function storeImage(id, base64Data, mimeType, name) {
   try {
     const db = await openDB()
     const transaction = db.transaction([STORE_NAME], 'readwrite')
@@ -41,6 +41,7 @@ export async function storeImage(id, base64Data, mimeType) {
       id,
       data: base64Data,
       mimeType,
+      name,
       timestamp: Date.now()
     }
 

@@ -147,7 +147,9 @@
         <div class="image-previews">
           {#each props.attachedImages as img (img.id)}
             <div class="image-preview">
-              <img src={`data:${img.mimeType};base64,${img.data}`} alt={img.name || 'Attached image'} />
+              {#if img?.data}
+                <img src={`data:${img.mimeType || 'image/png'};base64,${img.data}`} alt={img.name || img.id || 'Attached image'} />
+              {/if}
               <button class="remove-image-btn" onclick={() => props.onRemoveImage?.(img.id)} aria-label="Remove image">
                 <IconClose style="font-size: 16px;" />
               </button>

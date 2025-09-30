@@ -5,6 +5,31 @@ import { isAbortError } from '../../utils/errors.js'
 import { updateVariantById } from './variantActions.js'
 import { findNodeByMessageId } from '../../utils/treeUtils.js'
 
+function normalizeImages(images) {
+  if (!Array.isArray(images)) return []
+  const seen = new Set()
+  const out = []
+  for (const entry of images) {
+    if (entry == null) continue
+    if (typeof entry === 'string') {
+      const id = entry.trim()
+      if (!id || seen.has(id)) continue
+      seen.add(id)
+      out.push({ id })
+      continue
+    }
+    if (typeof entry !== 'object') continue
+    const id = typeof entry.id === 'string' && entry.id.trim() ? entry.id.trim() : null
+    if (!id || seen.has(id)) continue
+    const img = { id }
+    if (typeof entry.mimeType === 'string' && entry.mimeType.trim()) img.mimeType = entry.mimeType.trim()
+    if (typeof entry.name === 'string' && entry.name.trim()) img.name = entry.name.trim()
+    seen.add(id)
+    out.push(img)
+  }
+  return out
+}
+
 export function prepareUserMessage(nodes, rootId, input, nextId, nextNodeId, images = []) {
   const buildVisible = () => _buildVisible(nodes, rootId)
   const visible = buildVisible()
@@ -12,7 +37,8 @@ export function prepareUserMessage(nodes, rootId, input, nextId, nextNodeId, ima
   const parentNodeId = lastVm ? lastVm.nodeId : null
 
   const trimmedInput = (typeof input === 'string' ? input : '').trim()
-  const hasImages = Array.isArray(images) && images.length > 0
+  const normalizedImages = normalizeImages(images)
+  const hasImages = normalizedImages.length > 0
   if (!trimmedInput && !hasImages) return null
 
   const newMsg = {
@@ -23,7 +49,7 @@ export function prepareUserMessage(nodes, rootId, input, nextId, nextNodeId, ima
     typing: false,
     error: undefined,
     next: null,
-    images: hasImages ? images : undefined
+    images: hasImages ? normalizedImages : undefined
   }
   const newNode = { id: nextNodeId, variants: [newMsg], active: 0 }
   const newNodeId = newNode.id
@@ -109,8 +135,9 @@ export async function generateResponse({
     .filter(m => !m.typing)
     .map(({ role, content, images }) => {
       const msg = { role, content }
-      if (images && Array.isArray(images) && images.length > 0) {
-        msg.images = images
+      const normalized = normalizeImages(images)
+      if (normalized.length > 0) {
+        msg.images = normalized
       }
       return msg
     })
@@ -225,8 +252,9 @@ export function prepareRefreshAssistant(nodes, rootId, messageId, nextId) {
     .filter(m => !m.typing)
     .map(({ role, content, images }) => {
       const msg = { role, content }
-      if (images && Array.isArray(images) && images.length > 0) {
-        msg.images = images
+      const normalized = normalizeImages(images)
+      if (normalized.length > 0) {
+        msg.images = normalized
       }
       return msg
     })
@@ -273,8 +301,9 @@ export function prepareRefreshAfterUser(nodes, rootId, messageIndex, nextId, nex
     .filter(m => !m.typing)
     .map(({ role, content, images }) => {
       const msg = { role, content }
-      if (images && Array.isArray(images) && images.length > 0) {
-        msg.images = images
+      const normalized = normalizeImages(images)
+      if (normalized.length > 0) {
+        msg.images = normalized
       }
       return msg
     })

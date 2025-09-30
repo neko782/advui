@@ -64,7 +64,9 @@ describe('prepareUserMessage', () => {
     const result = prepareUserMessage(nodes, rootId, '', 10, 2, images)
 
     expect(result).not.toBeNull()
-    expect(result.nodes[0].variants[0].images).toEqual(images)
+    expect(result.nodes[0].variants[0].images).toEqual([
+      { id: 'image1.png' }
+    ])
   })
 
   it('should set new node as root if no parent', () => {
@@ -83,7 +85,10 @@ describe('prepareUserMessage', () => {
 
     const result = prepareUserMessage(nodes, rootId, 'check these out', 10, 1, images)
 
-    expect(result.nodes[0].variants[0].images).toEqual(images)
+    expect(result.nodes[0].variants[0].images).toEqual([
+      { id: 'img1.png' },
+      { id: 'img2.jpg' }
+    ])
   })
 
   it('should not include images field if no images', () => {
@@ -255,7 +260,9 @@ describe('generateResponse', () => {
     })
 
     const call = openaiClient.respond.mock.calls[0][0]
-    expect(call.messages[0].images).toEqual(['img1.png'])
+    expect(call.messages[0].images).toEqual([
+      { id: 'img1.png' }
+    ])
   })
 
   it('should use streaming when enabled', async () => {
@@ -555,6 +562,8 @@ describe('prepareRefreshAfterUser', () => {
 
     const result = prepareRefreshAfterUser(nodes, rootId, 0, 10, 2)
 
-    expect(result.history[0].images).toEqual(['img.png'])
+    expect(result.history[0].images).toEqual([
+      { id: 'img.png' }
+    ])
   })
 })

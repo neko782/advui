@@ -148,7 +148,9 @@
     {#if props.message.images && props.message.images.length > 0}
       <div class={`message-images ${props.message.role}`}>
         {#each props.message.images as img (img.id)}
-          <img src={`data:${img.mimeType};base64,${img.data}`} alt={img.name || 'Image'} class="message-image" />
+          {#if img?.data}
+            <img src={`data:${img.mimeType || 'image/png'};base64,${img.data}`} alt={img.name || img.id || 'Image'} class="message-image" />
+          {/if}
         {/each}
       </div>
     {/if}
