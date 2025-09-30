@@ -31,7 +31,7 @@
 
 <div class={`chat-settings-group ${props.open ? 'open' : ''}`} bind:this={root}>
   <button class="icon-btn" aria-label="Chat settings" disabled={props.disabled} onclick={() => (!props.disabled && props.onToggle?.())}>
-    <IconTune />
+    <IconTune style="font-size: 22px;" />
   </button>
   <div class="send-menu chat-settings-menu" role="menu" aria-label="Chat settings" bind:this={menu}>
     <!-- Connection comes first so people can quickly switch APIs -->

@@ -139,7 +139,7 @@
     </div>
 
     <button class="icon-btn" onclick={triggerFileInput} disabled={props.locked} aria-label="Attach image" title="Attach image">
-      <IconAdd />
+      <IconAdd style="font-size: 22px;" />
     </button>
 
     <div class="input-wrapper">
