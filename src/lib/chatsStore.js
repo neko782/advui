@@ -203,9 +203,17 @@ export async function saveChatContent(id, { nodes, settings, rootId }) {
     })(),
   }
   const nextNodesCandidate = Array.isArray(nodes) ? nodes : (existing?.nodes || [])
-  const nextRootId = (rootId != null)
-    ? rootId
-    : (existing?.rootId != null ? existing.rootId : (nextNodesCandidate[0]?.id || 1))
+  const hasNodes = nextNodesCandidate.length > 0
+  let nextRootId
+  if (rootId != null) {
+    nextRootId = rootId
+  } else if (!hasNodes) {
+    nextRootId = null
+  } else if (existing?.rootId != null && nextNodesCandidate.some(n => n?.id === existing.rootId)) {
+    nextRootId = existing.rootId
+  } else {
+    nextRootId = nextNodesCandidate[0]?.id ?? null
+  }
   // Enforce single-parent invariant before persisting (skip in debug mode)
   const dbg = !!defaults?.debug
   const nextNodes = dbg ? nextNodesCandidate : enforceUniqueParents(nextNodesCandidate, nextRootId)

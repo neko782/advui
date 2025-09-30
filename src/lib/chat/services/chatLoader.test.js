@@ -150,10 +150,25 @@ describe('loadChat', () => {
     expect(result.chatSettings.connectionId).toBe('loaded-conn')
   })
 
-  it('should create default system message if loaded chat has no nodes', async () => {
+  it('should keep chat empty when loaded chat has no nodes and null root', async () => {
     const loadedChat = {
       nodes: [],
       rootId: null
+    }
+    chatsStore.getChat.mockResolvedValue(loadedChat)
+
+    const result = await loadChat('chat123')
+
+    expect(result.nodes).toEqual([])
+    expect(result.rootId).toBeNull()
+    expect(result.nextId).toBe(1)
+    expect(result.nextNodeId).toBe(1)
+  })
+
+  it('should create default system message when legacy chat is missing nodes but root is defined', async () => {
+    const loadedChat = {
+      nodes: [],
+      rootId: 1
     }
     chatsStore.getChat.mockResolvedValue(loadedChat)
 

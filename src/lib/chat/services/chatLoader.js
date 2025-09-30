@@ -70,10 +70,16 @@ export async function loadChat(chatId) {
       }
 
       if (!nextNodes.length) {
-        nextNextId = 2
-        nextNextNodeId = 2
-        nextNodes = [{ id: 1, variants: [{ ...makeSystemPrologue(1) }], active: 0 }]
-        nextRootId = 1
+        if (loaded?.rootId == null) {
+          nextRootId = null
+          nextNextId = 1
+          nextNextNodeId = 1
+        } else {
+          nextNextId = 2
+          nextNextNodeId = 2
+          nextNodes = [{ id: 1, variants: [{ ...makeSystemPrologue(1) }], active: 0 }]
+          nextRootId = 1
+        }
       } else {
         const ids = recomputeNextIds(nextNodes)
         nextNextId = ids.nextId
