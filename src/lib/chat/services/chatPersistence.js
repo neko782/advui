@@ -2,34 +2,48 @@
 import { saveChatContent } from '../../chatsStore.js'
 import { sanitizeGraphIfNeeded } from './graphValidation.js'
 
-function sanitizeImages(images) {
+function sanitizeImages(images, stripData = false) {
   if (!Array.isArray(images)) return []
-  const out = []
-  const seen = new Set()
+  const map = new Map()
   for (const entry of images) {
     if (entry == null) continue
+    let id = null
+    let mimeType
+    let name
+    let data
     if (typeof entry === 'string') {
-      const id = entry.trim()
-      if (!id || seen.has(id)) continue
-      seen.add(id)
-      out.push({ id })
+      id = entry.trim()
+      if (!id) continue
+    } else if (typeof entry === 'object') {
+      id = typeof entry.id === 'string' && entry.id.trim() ? entry.id.trim() : null
+      if (!id) continue
+      if (typeof entry.mimeType === 'string' && entry.mimeType.trim()) mimeType = entry.mimeType.trim()
+      if (typeof entry.name === 'string' && entry.name.trim()) name = entry.name.trim()
+      if (!stripData && typeof entry.data === 'string' && entry.data) data = entry.data
+    } else {
       continue
     }
-    if (typeof entry !== 'object') continue
-    const id = typeof entry.id === 'string' && entry.id.trim() ? entry.id.trim() : null
-    if (!id || seen.has(id)) continue
+
+    const existing = map.get(id)
+    if (existing) {
+      if (!existing.mimeType && mimeType) existing.mimeType = mimeType
+      if (!existing.name && name) existing.name = name
+      if (!existing.data && data) existing.data = data
+      continue
+    }
+
     const img = { id }
-    if (typeof entry.mimeType === 'string' && entry.mimeType.trim()) img.mimeType = entry.mimeType.trim()
-    if (typeof entry.name === 'string' && entry.name.trim()) img.name = entry.name.trim()
-    seen.add(id)
-    out.push(img)
+    if (mimeType) img.mimeType = mimeType
+    if (name) img.name = name
+    if (!stripData && data) img.data = data
+    map.set(id, img)
   }
-  return out
+  return [...map.values()]
 }
 
 function sanitizeVariantImages(variant) {
   if (!variant || typeof variant !== 'object') return { variant, changed: false }
-  const normalized = sanitizeImages(variant.images)
+  const normalized = sanitizeImages(variant.images, true)
   const hasImages = normalized.length > 0
   const originalImages = Array.isArray(variant.images) ? variant.images : []
 

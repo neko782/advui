@@ -265,6 +265,38 @@ describe('generateResponse', () => {
     ])
   })
 
+  it('should preserve image data when provided', async () => {
+    const nodes = [
+      {
+        id: 1,
+        active: 0,
+        variants: [{
+          id: 1,
+          role: 'user',
+          content: 'with image',
+          images: [{ id: 'img2', mimeType: 'image/png', data: 'AAA' }],
+          next: null
+        }]
+      }
+    ]
+    const rootId = 1
+
+    openaiClient.respond.mockResolvedValue({ text: 'ok' })
+
+    await generateResponse({
+      nodes,
+      rootId,
+      chatSettings: { model: 'gpt-5' },
+      connectionId: 'conn1',
+      streaming: false
+    })
+
+    const call = openaiClient.respond.mock.calls[0][0]
+    expect(call.messages[0].images).toEqual([
+      { id: 'img2', mimeType: 'image/png', data: 'AAA' }
+    ])
+  })
+
   it('should use streaming when enabled', async () => {
     const nodes = [
       { id: 1, active: 0, variants: [{ id: 1, role: 'user', content: 'hello', next: null }] }
