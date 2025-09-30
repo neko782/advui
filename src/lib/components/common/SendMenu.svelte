@@ -4,18 +4,34 @@
   const props = $props()
 </script>
 
-<div class={`send-group ${props.className || ''}`} aria-haspopup="menu">
+<div class={`send-group ${props.className || ''}`} aria-haspopup="menu" data-side={props.side || 'top'}>
   <slot />
   <div class={`send-menu ${props.side || 'top'}`} role="menu">
     <slot name="menu" />
   </div>
-  <!-- Hover bridge created via CSS ::before on .send-menu -->
+  <!-- Hover bridge handled via ::before on .send-group sized to the trigger -->
 </div>
 
 <style>
   .send-group { position: relative; display: grid; place-items: center; z-index: 0; }
   .send-group:hover,
   .send-group:focus-within { z-index: 20; }
+  .send-group::before {
+    content: '';
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    width: max(100%, 44px);
+    height: 16px;
+    pointer-events: none;
+  }
+  .send-group:not([data-side])::before { display: none; }
+  .send-group[data-side='top']::before { bottom: 100%; }
+  .send-group[data-side='bottom']::before { top: 100%; }
+  .send-group[data-side='left']::before,
+  .send-group[data-side='right']::before { display: none; }
+  .send-group:hover::before,
+  .send-group:focus-within::before { pointer-events: auto; }
   .send-menu {
     position: absolute;
     right: 0;
@@ -33,23 +49,11 @@
     min-width: 160px;
     z-index: 10;
   }
-  .send-menu::before {
-    content: '';
-    position: absolute;
-    left: 0;
-    right: 0;
-    height: 10px;
-    pointer-events: none;
-  }
   .send-group:hover .send-menu,
   .send-group:focus-within .send-menu { opacity: 1; transform: translateY(0); pointer-events: auto; }
-  .send-group:hover .send-menu::before,
-  .send-group:focus-within .send-menu::before { pointer-events: auto; }
 
   .send-menu.top { bottom: calc(100% + 10px); }
   .send-menu.bottom { top: calc(100% + 10px); }
-  .send-menu.top::before { bottom: -10px; }
-  .send-menu.bottom::before { top: -10px; }
 
   .menu-item {
     width: 100%;

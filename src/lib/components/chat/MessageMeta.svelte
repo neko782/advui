@@ -74,6 +74,7 @@
     aria-haspopup="menu"
     title="Change role"
     data-open={open}
+    data-side="bottom"
     bind:this={groupEl}
     onfocusout={handleFocusOut}
   >
@@ -128,11 +129,13 @@
   .role-badge:hover, .role-badge:focus-visible { color: var(--text); border-color: color-mix(in srgb, var(--border), #ffffff 16%); }
   .role-badge:disabled { cursor: not-allowed; }
   .send-group { position: relative; display: grid; place-items: center; z-index: 0; }
+  .send-group::before { content: ''; position: absolute; left: 50%; transform: translateX(-50%); width: max(100%, 44px); height: 12px; pointer-events: none; }
+  .send-group:not([data-side])::before { display: none; }
+  .send-group[data-side="bottom"]::before { top: 100%; }
+  .send-group[data-open="true"]::before { pointer-events: auto; }
   .send-group[data-open="true"] { z-index: 20; }
   .send-menu { position: absolute; top: calc(100% + 8px); display: grid; gap: 6px; padding: 8px; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--float-shadow); opacity: 0; transform: translateY(-6px); transition: opacity .12s ease, transform .12s ease; pointer-events: none; min-width: 160px; z-index: 1000; }
-  .send-menu::before { content: ''; position: absolute; left: 0; right: 0; height: 8px; top: -8px; pointer-events: none; }
   .send-group[data-open="true"] .send-menu { opacity: 1; transform: translateY(0); pointer-events: auto; }
-  .send-group[data-open="true"] .send-menu::before { pointer-events: auto; }
   /* Side-aware anchoring for role menu */
   .meta.assistant .send-group .send-menu { left: 0; right: auto; }
   .meta.user .send-group .send-menu { right: 0; left: auto; }
