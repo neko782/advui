@@ -138,7 +138,7 @@
       />
     </div>
 
-    <button class="icon-btn" onclick={triggerFileInput} disabled={props.locked} aria-label="Attach image" title="Attach image">
+    <button class="icon-btn attachment-btn" onclick={triggerFileInput} disabled={props.locked} aria-label="Attach image" title="Attach image">
       <IconAdd style="font-size: 22px;" />
     </button>
 
