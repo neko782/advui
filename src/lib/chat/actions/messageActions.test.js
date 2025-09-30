@@ -17,7 +17,7 @@ describe('deleteMessage', () => {
     expect(result.nodes[0].variants[0].next).toBeNull()
   })
 
-  it('should not delete root node', () => {
+  it('should delete root node and clear root', () => {
     const nodes = [
       { id: 1, active: 0, variants: [{ id: 1, role: 'user', content: 'hi', next: null }] }
     ]
@@ -25,8 +25,8 @@ describe('deleteMessage', () => {
 
     const result = deleteMessage(nodes, rootId, 1)
 
-    expect(result.nodes).toEqual(nodes)
-    expect(result.rootId).toBe(rootId)
+    expect(result.nodes).toHaveLength(0)
+    expect(result.rootId).toBeNull()
   })
 
   it('should return unchanged if message not found', () => {
@@ -75,6 +75,21 @@ describe('deleteMessage', () => {
 
     expect(result.nodes).toHaveLength(2)
     expect(result.nodes[1].variants[0].next).toBeNull()
+  })
+
+  it('should choose new root from remaining nodes without parents', () => {
+    const nodes = [
+      { id: 1, active: 0, variants: [{ id: 10, role: 'system', content: 'root', next: 2 }] },
+      { id: 2, active: 0, variants: [{ id: 20, role: 'user', content: 'child', next: null }] },
+      { id: 3, active: 0, variants: [{ id: 30, role: 'user', content: 'orphan', next: null }] }
+    ]
+    const rootId = 1
+
+    const result = deleteMessage(nodes, rootId, 10)
+
+    expect(result.nodes).toHaveLength(1)
+    expect(result.nodes[0].id).toBe(3)
+    expect(result.rootId).toBe(3)
   })
 })
 

@@ -6,7 +6,7 @@ import { findNodeByMessageId } from '../../utils/treeUtils.js'
 export function deleteMessage(nodes, rootId, messageId) {
   const loc = findNodeByMessageId(nodes, messageId)
   if (!loc?.node) return { nodes, rootId }
-  if (loc.node.id === rootId) return { nodes, rootId } // do not allow deleting root node
+  const deletingRoot = loc.node.id === rootId
 
   // Collect subtree starting from this node by following any variant next pointers
   const toDelete = new Set()
@@ -27,7 +27,27 @@ export function deleteMessage(nodes, rootId, messageId) {
     variants: (n.variants || []).map(v => (toDelete.has(Number(v?.next)) ? { ...v, next: null } : v))
   }))
 
-  return { nodes: cleaned, rootId }
+  if (!cleaned.length) {
+    return { nodes: cleaned, rootId: deletingRoot ? null : rootId }
+  }
+
+  const rootStillExists = cleaned.some(n => n.id === rootId)
+  if (rootStillExists && !deletingRoot) {
+    return { nodes: cleaned, rootId }
+  }
+
+  const remainingKeys = new Set(cleaned.map(n => String(n.id)))
+  const hasParent = new Set()
+  for (const n of cleaned) {
+    for (const v of n.variants || []) {
+      if (v?.next == null) continue
+      const key = String(v.next)
+      if (remainingKeys.has(key)) hasParent.add(key)
+    }
+  }
+
+  const fallbackRoot = cleaned.find(n => !hasParent.has(String(n.id))) || cleaned[0]
+  return { nodes: cleaned, rootId: fallbackRoot ? fallbackRoot.id : null }
 }
 
 export function setMessageRole(nodes, id, role) {
