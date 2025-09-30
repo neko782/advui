@@ -2,24 +2,25 @@ import { describe, it, expect } from 'vitest'
 import { deleteMessage, setMessageRole, moveUp, moveDown } from './messageActions.js'
 
 describe('deleteMessage', () => {
-  it('should delete a message and its subtree', () => {
+  it('should delete a message and connect parent to the next branch', () => {
     const nodes = [
-      { id: 1, active: 0, variants: [{ id: 1, role: 'user', content: 'hi', next: 2 }] },
-      { id: 2, active: 0, variants: [{ id: 2, role: 'assistant', content: 'hello', next: 3 }] },
-      { id: 3, active: 0, variants: [{ id: 3, role: 'user', content: 'bye', next: null }] }
+      { id: 1, active: 0, variants: [{ id: 1, role: 'system', content: 'sys', next: 2 }] },
+      { id: 2, active: 0, variants: [{ id: 2, role: 'user', content: 'hi', next: 3 }] },
+      { id: 3, active: 0, variants: [{ id: 3, role: 'assistant', content: 'hello', next: null }] }
     ]
     const rootId = 1
 
     const result = deleteMessage(nodes, rootId, 2)
 
-    expect(result.nodes).toHaveLength(1)
-    expect(result.nodes[0].id).toBe(1)
-    expect(result.nodes[0].variants[0].next).toBeNull()
+    expect(result.nodes).toHaveLength(2)
+    expect(result.nodes.find(n => n.id === 2)).toBeUndefined()
+    const rootNode = result.nodes.find(n => n.id === 1)
+    expect(rootNode.variants[0].next).toBe(3)
   })
 
-  it('should delete root node and clear root', () => {
+  it('should delete root node and clear root when no successors', () => {
     const nodes = [
-      { id: 1, active: 0, variants: [{ id: 1, role: 'user', content: 'hi', next: null }] }
+      { id: 1, active: 0, variants: [{ id: 1, role: 'system', content: 'hi', next: null }] }
     ]
     const rootId = 1
 
@@ -27,6 +28,22 @@ describe('deleteMessage', () => {
 
     expect(result.nodes).toHaveLength(0)
     expect(result.rootId).toBeNull()
+  })
+
+  it('should delete root node and promote next node to root', () => {
+    const nodes = [
+      { id: 1, active: 0, variants: [{ id: 1, role: 'system', content: 'sys', next: 2 }] },
+      { id: 2, active: 0, variants: [{ id: 2, role: 'user', content: 'hi', next: 3 }] },
+      { id: 3, active: 0, variants: [{ id: 3, role: 'assistant', content: 'hello', next: null }] }
+    ]
+    const rootId = 1
+
+    const result = deleteMessage(nodes, rootId, 1)
+
+    expect(result.nodes).toHaveLength(2)
+    expect(result.rootId).toBe(2)
+    const promoted = result.nodes.find(n => n.id === 2)
+    expect(promoted.variants[0].next).toBe(3)
   })
 
   it('should return unchanged if message not found', () => {
@@ -41,26 +58,27 @@ describe('deleteMessage', () => {
     expect(result.rootId).toBe(rootId)
   })
 
-  it('should delete entire branching subtree', () => {
+  it('should drop alternate branches while keeping the active continuation', () => {
     const nodes = [
-      { id: 1, active: 0, variants: [{ id: 1, role: 'user', content: 'hi', next: 2 }] },
+      { id: 1, active: 0, variants: [{ id: 10, role: 'system', content: 'sys', next: 2 }] },
       {
         id: 2,
         active: 0,
         variants: [
-          { id: 2, role: 'assistant', content: 'branch 1', next: 3 },
-          { id: 3, role: 'assistant', content: 'branch 2', next: 4 }
+          { id: 20, role: 'assistant', content: 'branch 1', next: 3 },
+          { id: 21, role: 'assistant', content: 'branch 2', next: 4 }
         ]
       },
-      { id: 3, active: 0, variants: [{ id: 5, role: 'user', content: 'follow 1', next: null }] },
-      { id: 4, active: 0, variants: [{ id: 6, role: 'user', content: 'follow 2', next: null }] }
+      { id: 3, active: 0, variants: [{ id: 30, role: 'user', content: 'follow 1', next: null }] },
+      { id: 4, active: 0, variants: [{ id: 40, role: 'user', content: 'follow 2', next: null }] }
     ]
     const rootId = 1
 
-    const result = deleteMessage(nodes, rootId, 2)
+    const result = deleteMessage(nodes, rootId, 20)
 
-    expect(result.nodes).toHaveLength(1)
-    expect(result.nodes[0].id).toBe(1)
+    expect(result.nodes.map(n => n.id)).toEqual([1, 3])
+    const rootNode = result.nodes.find(n => n.id === 1)
+    expect(rootNode.variants[0].next).toBe(3)
   })
 
   it('should clean dangling next pointers', () => {
@@ -74,13 +92,13 @@ describe('deleteMessage', () => {
     const result = deleteMessage(nodes, rootId, 3)
 
     expect(result.nodes).toHaveLength(2)
-    expect(result.nodes[1].variants[0].next).toBeNull()
+    const parent = result.nodes.find(n => n.id === 2)
+    expect(parent.variants[0].next).toBeNull()
   })
 
   it('should choose new root from remaining nodes without parents', () => {
     const nodes = [
-      { id: 1, active: 0, variants: [{ id: 10, role: 'system', content: 'root', next: 2 }] },
-      { id: 2, active: 0, variants: [{ id: 20, role: 'user', content: 'child', next: null }] },
+      { id: 1, active: 0, variants: [{ id: 10, role: 'system', content: 'root', next: null }] },
       { id: 3, active: 0, variants: [{ id: 30, role: 'user', content: 'orphan', next: null }] }
     ]
     const rootId = 1

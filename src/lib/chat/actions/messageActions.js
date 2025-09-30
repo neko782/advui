@@ -8,46 +8,110 @@ export function deleteMessage(nodes, rootId, messageId) {
   if (!loc?.node) return { nodes, rootId }
   const deletingRoot = loc.node.id === rootId
 
-  // Collect subtree starting from this node by following any variant next pointers
-  const toDelete = new Set()
-  function collect(nodeId) {
-    if (toDelete.has(nodeId)) return
-    toDelete.add(nodeId)
-    const n = nodes.find(nn => nn.id === nodeId)
-    for (const v of n?.variants || []) {
-      if (v?.next != null) collect(v.next)
+  const variants = Array.isArray(loc.node?.variants) ? loc.node.variants : []
+  const variant = variants[loc.index]
+  const preferredChild = (variant && variant.next != null) ? Number(variant.next) : null
+
+  // Find parent variant pointing to this node (unique parent invariant)
+  let parentNodeId = null
+  let parentVariantIndex = -1
+  for (const n of nodes) {
+    const list = Array.isArray(n?.variants) ? n.variants : []
+    for (let i = 0; i < list.length; i++) {
+      const nextId = list[i]?.next
+      if (nextId != null && Number(nextId) === loc.node.id) {
+        parentNodeId = n.id
+        parentVariantIndex = i
+        break
+      }
+    }
+    if (parentNodeId != null) break
+  }
+
+  const nodesById = new Map(nodes.map(n => [n.id, n]))
+
+  function collectProtected(nodeId, out, guard = new Set()) {
+    if (nodeId == null) return
+    const id = Number(nodeId)
+    if (!Number.isFinite(id) || guard.has(id)) return
+    guard.add(id)
+    const node = nodesById.get(id)
+    if (!node) return
+    out.add(id)
+    for (const v of node?.variants || []) {
+      if (v?.next != null) collectProtected(v.next, out, guard)
     }
   }
-  collect(loc.node.id)
+
+  const protectedNodes = new Set()
+  if (preferredChild != null) collectProtected(preferredChild, protectedNodes)
+
+  const toDelete = new Set([loc.node.id])
+  function collect(nodeId, guard = new Set()) {
+    if (nodeId == null) return
+    const id = Number(nodeId)
+    if (!Number.isFinite(id) || guard.has(id) || protectedNodes.has(id)) return
+    guard.add(id)
+    toDelete.add(id)
+    const node = nodesById.get(id)
+    if (!node) return
+    for (const v of node?.variants || []) {
+      if (v?.next != null) collect(v.next, guard)
+    }
+  }
+
+  for (const v of variants) {
+    if (v?.next == null) continue
+    const nextId = Number(v.next)
+    if (!Number.isFinite(nextId)) continue
+    if (preferredChild != null && nextId === preferredChild) continue
+    collect(nextId)
+  }
 
   // Remove nodes and clean dangling next pointers
   const remaining = nodes.filter(n => !toDelete.has(n.id))
+  const toDeleteNumeric = new Set([...toDelete].map(Number))
   const cleaned = remaining.map(n => ({
     ...n,
-    variants: (n.variants || []).map(v => (toDelete.has(Number(v?.next)) ? { ...v, next: null } : v))
+    variants: (n.variants || []).map((v, i) => {
+      let nextVal = v?.next ?? null
+      if (Number.isFinite(Number(nextVal)) && toDeleteNumeric.has(Number(nextVal))) {
+        nextVal = null
+      }
+      if (n.id === parentNodeId && i === parentVariantIndex) {
+        nextVal = preferredChild ?? null
+      }
+      return (nextVal === v?.next)
+        ? v
+        : { ...v, next: nextVal }
+    })
   }))
 
   if (!cleaned.length) {
     return { nodes: cleaned, rootId: deletingRoot ? null : rootId }
   }
 
-  const rootStillExists = cleaned.some(n => n.id === rootId)
-  if (rootStillExists && !deletingRoot) {
-    return { nodes: cleaned, rootId }
+  let nextRootId = rootId
+  if (deletingRoot) {
+    nextRootId = preferredChild ?? null
   }
 
-  const remainingKeys = new Set(cleaned.map(n => String(n.id)))
-  const hasParent = new Set()
-  for (const n of cleaned) {
-    for (const v of n.variants || []) {
-      if (v?.next == null) continue
-      const key = String(v.next)
-      if (remainingKeys.has(key)) hasParent.add(key)
+  const rootStillExists = cleaned.some(n => n.id === nextRootId)
+  if (!rootStillExists) {
+    const remainingKeys = new Set(cleaned.map(n => n.id))
+    const hasParent = new Set()
+    for (const n of cleaned) {
+      for (const v of n.variants || []) {
+        const nextId = Number(v?.next)
+        if (Number.isFinite(nextId) && remainingKeys.has(nextId)) hasParent.add(nextId)
+      }
     }
+
+    const fallbackRoot = cleaned.find(n => !hasParent.has(n.id)) || cleaned[0]
+    nextRootId = fallbackRoot ? fallbackRoot.id : null
   }
 
-  const fallbackRoot = cleaned.find(n => !hasParent.has(String(n.id))) || cleaned[0]
-  return { nodes: cleaned, rootId: fallbackRoot ? fallbackRoot.id : null }
+  return { nodes: cleaned, rootId: nextRootId }
 }
 
 export function setMessageRole(nodes, id, role) {
