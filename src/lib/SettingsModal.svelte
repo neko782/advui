@@ -24,6 +24,7 @@
   const REASONING_OPTIONS = ['none', 'minimal', 'low', 'medium', 'high']
   const TEXT_VERBOSITY_OPTIONS = ['low', 'medium', 'high']
   const REASONING_SUMMARY_OPTIONS = ['auto', 'concise', 'detailed']
+  const DEFAULT_SYSTEM_PROMPT = 'You are a helpful assistant.'
 
   function parseMaxTokens(value) {
     if (value === '' || value == null) return null
@@ -103,16 +104,17 @@
         id: genPresetId(),
         name: 'Preset 1',
         model: 'gpt-5',
-        streaming: true,
-        maxOutputTokens: null,
-        topP: null,
-        temperature: null,
-        reasoningEffort: 'none',
-        textVerbosity: 'medium',
-        reasoningSummary: 'auto',
-        connectionId: local?.selectedConnectionId || activeConnectionId || (local?.connections?.[0]?.id || ''),
-      }]
-    }
+      streaming: true,
+      maxOutputTokens: null,
+      topP: null,
+      temperature: null,
+      reasoningEffort: 'none',
+      textVerbosity: 'medium',
+      reasoningSummary: 'auto',
+      connectionId: local?.selectedConnectionId || activeConnectionId || (local?.connections?.[0]?.id || ''),
+      systemPrompt: DEFAULT_SYSTEM_PROMPT,
+    }]
+  }
     const updatedList = Array.isArray(local?.presets) ? local.presets : []
     const hasActive = updatedList.some(p => p?.id === activePresetId)
     const fallback = updatedList.find(p => p?.id === local?.selectedPresetId)
@@ -188,6 +190,7 @@
       textVerbosity: base?.textVerbosity || 'medium',
       reasoningSummary: base?.reasoningSummary || 'auto',
       connectionId: base?.connectionId || local?.selectedConnectionId || activeConnectionId || (local?.connections?.[0]?.id || ''),
+      systemPrompt: typeof base?.systemPrompt === 'string' ? base.systemPrompt : DEFAULT_SYSTEM_PROMPT,
     }
     local.presets = [...list, preset]
     activePresetId = preset.id
@@ -551,6 +554,16 @@
                   />
                 </label>
                 <label class="field">
+                  <span>System prompt</span>
+                  <textarea
+                    rows="3"
+                    placeholder={DEFAULT_SYSTEM_PROMPT}
+                    value={typeof activePreset.systemPrompt === 'string' ? activePreset.systemPrompt : ''}
+                    oninput={(event) => updateActivePreset({ systemPrompt: event.currentTarget.value })}
+                    aria-label="System prompt"
+                  ></textarea>
+                </label>
+                <label class="field">
                   <span>Model</span>
                   <input
                     type="text"
@@ -757,7 +770,24 @@
   .field { display: grid; gap: 6px; }
   .field > span { font-size: .9rem; color: var(--muted); }
   .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
-  input[type="text"], input[type="password"], input[type="number"], select { flex: 1; border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; background: var(--bg); color: var(--text); font: inherit; }
+  input[type="text"],
+  input[type="password"],
+  input[type="number"],
+  select,
+  textarea {
+    flex: 1;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+    background: var(--bg);
+    color: var(--text);
+    font: inherit;
+  }
+  textarea {
+    min-height: 96px;
+    line-height: 1.4;
+    resize: vertical;
+  }
   .hint { color: var(--muted); font-size: .9rem; margin-top: 4px; }
   /* API key action buttons size */
   .row .icon-btn { height: 38px; width: 38px; }

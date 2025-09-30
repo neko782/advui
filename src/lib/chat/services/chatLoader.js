@@ -1,7 +1,7 @@
 // Chat loading and initialization
 import { getChat as loadChatById } from '../../chatsStore.js'
 import { loadSettings } from '../../settingsStore.js'
-import { makeSystemPrologue, pickPresetFromSettings, buildChatSettings, recomputeNextIds } from './chatInit.js'
+import { makeSystemPrologue, pickPresetFromSettings, buildChatSettings, recomputeNextIds, DEFAULT_SYSTEM_PROMPT } from './chatInit.js'
 import { migrateLegacyGraphToNodes } from './legacyMigration.js'
 import { computePersistSig } from './chatPersistence.js'
 import { parseMaxTokens, parseTopP, parseTemperature, normalizeReasoning, normalizeVerbosity, normalizeReasoningSummary } from '../../utils/validation.js'
@@ -11,6 +11,15 @@ const hasOwn = (obj, key) => Object.prototype.hasOwnProperty.call(obj || {}, key
 export async function loadChat(chatId) {
   const nextSettings = loadSettings()
   const basePreset = pickPresetFromSettings(nextSettings)
+  const presetsList = Array.isArray(nextSettings?.presets) ? nextSettings.presets : []
+  const fallbackPrompt = typeof basePreset?.systemPrompt === 'string' ? basePreset.systemPrompt : DEFAULT_SYSTEM_PROMPT
+  const resolveSystemPrompt = (presetId) => {
+    if (typeof presetId === 'string') {
+      const match = presetsList.find(p => p?.id === presetId)
+      if (match && typeof match.systemPrompt === 'string') return match.systemPrompt
+    }
+    return fallbackPrompt
+  }
 
   let nextNodes = []
   let nextRootId = 1
@@ -77,7 +86,8 @@ export async function loadChat(chatId) {
         } else {
           nextNextId = 2
           nextNextNodeId = 2
-          nextNodes = [{ id: 1, variants: [{ ...makeSystemPrologue(1) }], active: 0 }]
+          const prompt = resolveSystemPrompt(loaded?.presetId || nextChatSettings?.presetId)
+          nextNodes = [{ id: 1, variants: [{ ...makeSystemPrologue(1, prompt) }], active: 0 }]
           nextRootId = 1
         }
       } else {
@@ -86,14 +96,16 @@ export async function loadChat(chatId) {
         nextNextNodeId = ids.nextNodeId
       }
     } else {
-      nextNodes = [{ id: 1, variants: [{ ...makeSystemPrologue(1) }], active: 0 }]
+      const prompt = resolveSystemPrompt(nextChatSettings?.presetId)
+      nextNodes = [{ id: 1, variants: [{ ...makeSystemPrologue(1, prompt) }], active: 0 }]
       nextRootId = 1
       nextNextId = 2
       nextNextNodeId = 2
       nextChatSettings = buildChatSettings(basePreset, nextSettings)
     }
   } catch {
-    nextNodes = [{ id: 1, variants: [{ ...makeSystemPrologue(1) }], active: 0 }]
+    const prompt = resolveSystemPrompt(nextChatSettings?.presetId)
+    nextNodes = [{ id: 1, variants: [{ ...makeSystemPrologue(1, prompt) }], active: 0 }]
     nextRootId = 1
     nextNextId = 2
     nextNextNodeId = 2

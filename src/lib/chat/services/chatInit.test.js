@@ -6,7 +6,8 @@ import {
   presetSignature,
   computeInitialConnectionId,
   buildChatSettings,
-  recomputeNextIds
+  recomputeNextIds,
+  DEFAULT_SYSTEM_PROMPT
 } from './chatInit.js'
 
 describe('makeSystemPrologue', () => {
@@ -15,7 +16,7 @@ describe('makeSystemPrologue', () => {
 
     expect(msg.id).toBe(1)
     expect(msg.role).toBe('system')
-    expect(msg.content).toBe('You are a helpful assistant.')
+    expect(msg.content).toBe(DEFAULT_SYSTEM_PROMPT)
     expect(msg.time).toBeGreaterThan(0)
   })
 
@@ -23,6 +24,13 @@ describe('makeSystemPrologue', () => {
     const msg = makeSystemPrologue(42)
 
     expect(msg.id).toBe(42)
+  })
+
+  it('should include custom prompt when provided', () => {
+    const prompt = 'Follow the company handbook.'
+    const msg = makeSystemPrologue(7, prompt)
+
+    expect(msg.content).toBe(prompt)
   })
 })
 
@@ -37,7 +45,8 @@ describe('normalizePreset', () => {
       temperature: 0.7,
       reasoningEffort: 'medium',
       textVerbosity: 'medium',
-      reasoningSummary: 'auto'
+      reasoningSummary: 'auto',
+      systemPrompt: 'Act like a pirate.',
     }
 
     const result = normalizePreset(preset)
@@ -55,6 +64,7 @@ describe('normalizePreset', () => {
     expect(result.reasoningEffort).toBe('none')
     expect(result.textVerbosity).toBe('medium')
     expect(result.reasoningSummary).toBe('auto')
+    expect(result.systemPrompt).toBe(DEFAULT_SYSTEM_PROMPT)
   })
 
   it('should trim model string', () => {

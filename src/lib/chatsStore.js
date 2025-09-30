@@ -5,6 +5,7 @@ import { loadSettings } from './settingsStore.js'
 import { enforceUniqueParents } from './branching.js'
 import { getAllChats as storeGetAll, getChat as storeGetOne, putChat as storePut, deleteChat as storeDelete } from './storage.js'
 import { toIntOrNull, toClampedNumber } from './utils/numbers.js'
+import { DEFAULT_SYSTEM_PROMPT } from './chat/services/chatInit.js'
 
 export const SELECTED_KEY = 'openai.chats.selected.v1'
 
@@ -52,6 +53,7 @@ function resolvePreset(settings, preferences = {}) {
         textVerbosity: normalizeVerbosity(p.textVerbosity),
         reasoningSummary: normalizeReasoningSummary(p.reasoningSummary),
         connectionId: typeof p.connectionId === 'string' ? p.connectionId : fallbackConnectionId,
+        systemPrompt: typeof p.systemPrompt === 'string' ? p.systemPrompt : DEFAULT_SYSTEM_PROMPT,
       }
     }
   }
@@ -74,6 +76,7 @@ function resolvePreset(settings, preferences = {}) {
       textVerbosity: normalizeVerbosity(chosen.textVerbosity),
       reasoningSummary: normalizeReasoningSummary(chosen.reasoningSummary),
       connectionId: typeof chosen.connectionId === 'string' ? chosen.connectionId : fallbackConnectionId,
+      systemPrompt: typeof chosen.systemPrompt === 'string' ? chosen.systemPrompt : DEFAULT_SYSTEM_PROMPT,
     }
   }
   return {
@@ -88,6 +91,7 @@ function resolvePreset(settings, preferences = {}) {
     textVerbosity: 'medium',
     reasoningSummary: 'auto',
     connectionId: fallbackConnectionId,
+    systemPrompt: DEFAULT_SYSTEM_PROMPT,
   }
 }
 
@@ -257,7 +261,12 @@ export async function renameChat(id, title) {
 
 export async function createChat(initial = {}) {
   const id = `c_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`
-  const systemVariant = { id: 1, role: 'system', content: 'You are a helpful assistant.', time: Date.now(), typing: false, error: undefined, next: null }
+  const defaults = loadSettings()
+  const preferredPreset = resolvePreset(defaults, { presetId: initial?.presetId, preset: initial?.preset })
+  const systemPrompt = typeof preferredPreset?.systemPrompt === 'string'
+    ? preferredPreset.systemPrompt
+    : DEFAULT_SYSTEM_PROMPT
+  const systemVariant = { id: 1, role: 'system', content: systemPrompt, time: Date.now(), typing: false, error: undefined, next: null }
   let baseNodes = []
   let rootId = 1
   if (Array.isArray(initial?.nodes)) {
@@ -274,8 +283,6 @@ export async function createChat(initial = {}) {
     baseNodes = [{ id: 1, variants: [systemVariant], active: 0 }]
     rootId = 1
   }
-  const defaults = loadSettings()
-  const preferredPreset = resolvePreset(defaults, { presetId: initial?.presetId, preset: initial?.preset })
   const fallbackConnectionId = (() => {
     if (typeof preferredPreset?.connectionId === 'string' && preferredPreset.connectionId.trim()) return preferredPreset.connectionId.trim()
     if (typeof defaults?.selectedConnectionId === 'string' && defaults.selectedConnectionId.trim()) return defaults.selectedConnectionId.trim()

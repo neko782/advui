@@ -2,11 +2,13 @@
 import { loadSettings } from '../../settingsStore.js'
 import { normalizeReasoning, normalizeVerbosity, normalizeReasoningSummary, parseMaxTokens, parseTopP, parseTemperature } from '../../utils/validation.js'
 
-export function makeSystemPrologue(idBase = 1) {
+export const DEFAULT_SYSTEM_PROMPT = 'You are a helpful assistant.'
+
+export function makeSystemPrologue(idBase = 1, prompt = DEFAULT_SYSTEM_PROMPT) {
   return {
     id: idBase,
     role: 'system',
-    content: 'You are a helpful assistant.',
+    content: typeof prompt === 'string' ? prompt : DEFAULT_SYSTEM_PROMPT,
     time: Date.now()
   }
 }
@@ -24,6 +26,7 @@ export function normalizePreset(p) {
       textVerbosity: 'medium',
       reasoningSummary: 'auto',
       connectionId: undefined,
+      systemPrompt: DEFAULT_SYSTEM_PROMPT,
     }
   }
   const model = (typeof p.model === 'string' && p.model.trim()) ? p.model.trim() : 'gpt-5'
@@ -36,7 +39,8 @@ export function normalizePreset(p) {
   const textVerbosity = normalizeVerbosity(p.textVerbosity)
   const reasoningSummary = normalizeReasoningSummary(p.reasoningSummary)
   const connectionId = (typeof p.connectionId === 'string' && p.connectionId.trim()) ? p.connectionId.trim() : undefined
-  return { id, model, streaming, maxOutputTokens, topP, temperature, reasoningEffort, textVerbosity, reasoningSummary, connectionId }
+  const systemPrompt = (typeof p.systemPrompt === 'string') ? p.systemPrompt : DEFAULT_SYSTEM_PROMPT
+  return { id, model, streaming, maxOutputTokens, topP, temperature, reasoningEffort, textVerbosity, reasoningSummary, connectionId, systemPrompt }
 }
 
 export function pickPresetFromSettings(state) {
@@ -63,6 +67,7 @@ export function presetSignature(state) {
     p?.textVerbosity || '',
     p?.reasoningSummary || '',
     p?.connectionId || '',
+    p?.systemPrompt || '',
   ].join('|')).join(';')
 }
 

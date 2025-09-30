@@ -25,6 +25,7 @@ const DEFAULT_PRESET_FIELDS = {
   textVerbosity: 'medium',
   reasoningSummary: 'auto',
   connectionId: null,
+  systemPrompt: 'You are a helpful assistant.',
 };
 
 function makeDefaultPreset(connectionId = null) {
@@ -112,6 +113,9 @@ function normalizePreset(raw, index = 0, { allowedConnectionIds = [], fallbackCo
   preset.reasoningSummary = REASONING_SUMMARY_VALUES.has(preset.reasoningSummary)
     ? preset.reasoningSummary
     : 'auto';
+  preset.systemPrompt = typeof preset.systemPrompt === 'string'
+    ? preset.systemPrompt
+    : DEFAULT_PRESET_FIELDS.systemPrompt;
   const nameSource = typeof preset.name === 'string' && preset.name.trim()
     ? preset.name.trim()
     : `Preset ${index + 1}`;
@@ -165,6 +169,9 @@ function deriveDefaultPreset(parsed, options = {}) {
     connectionId: parsed?.defaultChat?.connectionId
       || parsed?.connectionId
       || null,
+    systemPrompt: typeof parsed?.defaultChat?.systemPrompt === 'string'
+      ? parsed.defaultChat.systemPrompt
+      : DEFAULT_PRESET_FIELDS.systemPrompt,
   };
   const fromDefault = normalizePreset(candidate, 0, options);
   return fromDefault || makeDefaultPreset(options?.fallbackConnectionId);
