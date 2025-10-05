@@ -188,6 +188,7 @@
     background: transparent;
     justify-self: start;
     padding-inline-start: 0;
+    box-shadow: none;
   }
   .bubble.user { background: var(--user); color: var(--text); justify-self: end; }
   .bubble.system { justify-self: center; background: transparent; color: var(--muted); border: 1px dashed var(--border); }

@@ -1180,16 +1180,14 @@
     --actions-inset-x: clamp(0px, calc(var(--bubble-pad-x) - 4px), 100vw);
   }
 
-  @media (prefers-color-scheme: dark) {
-    .chat-shell {
-      --bg: #0f0f10;
-      --panel: #141414;
-      --border: #2a2a2a;
-      --text: #e6e6e6;
-      --muted: #a3a3a3;
-      --assistant: #1c1c1c;
-      --user: #222222;
-    }
+  :global(:root[data-theme='dark']) .chat-shell {
+    --bg: #0f0f10;
+    --panel: #141414;
+    --border: #2a2a2a;
+    --text: #e6e6e6;
+    --muted: #a3a3a3;
+    --assistant: #1c1c1c;
+    --user: #222222;
   }
 
   .chat-shell {

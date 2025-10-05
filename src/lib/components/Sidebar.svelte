@@ -323,14 +323,12 @@
     padding-left: env(safe-area-inset-left, 0px);
   }
   .sidebar.collapsed { width: 52px; overflow-x: visible; padding: 0; }
-  @media (prefers-color-scheme: dark) {
-    .sidebar {
-      --bg: #0f0f10;
-      --panel: #141414;
-      --border: #2a2a2a;
-      --text: #e6e6e6;
-      --muted: #a3a3a3;
-    }
+  :global(:root[data-theme='dark']) .sidebar {
+    --bg: #0f0f10;
+    --panel: #141414;
+    --border: #2a2a2a;
+    --text: #e6e6e6;
+    --muted: #a3a3a3;
   }
   .sidebar-inner { height: 100%; display: grid; grid-template-rows: auto 1fr; }
   .side-body { display: flex; flex-direction: column; min-height: 0; min-width: 0; }

@@ -190,10 +190,8 @@
   .switch > input { position: absolute; opacity: 0; width: 1px; height: 1px; pointer-events: none; }
   .switch-ui { width: 38px; height: 22px; border-radius: 999px; background: var(--border); position: relative; transition: background-color .15s ease; box-shadow: inset 0 0 0 1px var(--border); }
   .switch-ui::after { content: ''; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,0.15); transition: transform .15s ease, background-color .15s ease; }
-  @media (prefers-color-scheme: dark) {
-    .switch-ui { background: #2a2a2a; box-shadow: inset 0 0 0 1px #2f2f2f; }
-    .switch-ui::after { background: #e6e6e6; }
-  }
+  :global(:root[data-theme='dark']) .switch-ui { background: #2a2a2a; box-shadow: inset 0 0 0 1px #2f2f2f; }
+  :global(:root[data-theme='dark']) .switch-ui::after { background: #e6e6e6; }
   .switch > input:checked + .switch-ui { background: color-mix(in srgb, var(--accent), #0000 70%); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent), #0000 60%); }
   .switch > input:checked + .switch-ui::after { transform: translateX(16px); }
   .switch-label { font-size: .95rem; }

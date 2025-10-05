@@ -84,17 +84,27 @@
     height: 28px;
     display: grid;
     place-items: center;
-    color: var(--muted);
+    color: color-mix(in srgb, var(--muted) 70%, var(--text) 30%);
     background: transparent;
     border: none;
     border-radius: 8px;
     line-height: 1;
     padding: 0;
     cursor: default;
-    transition: color .15s ease;
+    transition: color .15s ease, background-color .15s ease;
   }
-  .action-btn:hover { color: #ffffff; }
-  .action-btn:focus-visible { color: #ffffff; }
+  .action-btn:hover,
+  .action-btn:focus-visible {
+    color: var(--text);
+    background-color: color-mix(in srgb, var(--text) 12%, transparent 88%);
+  }
+  :global(:root[data-theme='dark']) .action-btn {
+    color: color-mix(in srgb, var(--muted) 55%, var(--text) 45%);
+  }
+  :global(:root[data-theme='dark']) .action-btn:hover,
+  :global(:root[data-theme='dark']) .action-btn:focus-visible {
+    background-color: color-mix(in srgb, var(--text) 18%, transparent 82%);
+  }
   .action-btn:disabled { opacity: .5; cursor: not-allowed; }
   /* No special styles for .debug to keep consistency with other buttons */
 </style>

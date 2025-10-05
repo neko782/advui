@@ -5,6 +5,7 @@
   import { loadAll, getChats, createChat, setSelected, getChat, deleteChat, renameChat } from './lib/chatsStore.js'
   import { loadSettings } from './lib/settingsStore.js'
   import { ensureModels } from './lib/modelsStore.js'
+  import { initTheme } from './lib/themeStore.js'
 
   let chats = $state([])
   let selectedId = $state(null)
@@ -153,6 +154,7 @@
     } catch {}
   }
   onMount(() => {
+    initTheme()
     ensureStartupModels().catch(() => {})
     // Defer initial population to avoid mutating state during mount flush
     setTimeout(async () => {
