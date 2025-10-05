@@ -98,6 +98,52 @@
   function triggerFileInput() {
     fileInputEl?.click()
   }
+
+  function handlePaste(e) {
+    const clipboard = e?.clipboardData
+    if (!clipboard) return
+
+    const imageFiles = []
+    const items = clipboard.items
+    if (items && items.length > 0) {
+      for (const item of items) {
+        if (!item || item.kind !== 'file') continue
+        const file = item.getAsFile?.()
+        if (file && typeof file.type === 'string' && file.type.startsWith('image/')) {
+          imageFiles.push(file)
+        }
+      }
+    }
+
+    if (imageFiles.length === 0 && clipboard.files?.length > 0) {
+      for (const file of Array.from(clipboard.files)) {
+        if (file && typeof file.type === 'string' && file.type.startsWith('image/')) {
+          imageFiles.push(file)
+        }
+      }
+    }
+
+    if (imageFiles.length === 0) return
+
+    const hasTextData = (() => {
+      try {
+        if (!clipboard.types) return false
+        for (const type of clipboard.types) {
+          if (type === 'text/plain' || type === 'text/html') {
+            const data = clipboard.getData?.(type)
+            if (typeof data === 'string' && data.trim()) return true
+          }
+        }
+      } catch {}
+      return false
+    })()
+
+    if (!hasTextData) {
+      e.preventDefault()
+    }
+
+    props.onFilesSelected?.(imageFiles)
+  }
 </script>
 
 <footer class="composer" class:dragging={isDragging} ondragover={handleDragOver} ondragleave={handleDragLeave} ondrop={handleDrop}>
@@ -164,6 +210,7 @@
         value={props.input}
         oninput={(e) => { props.onInput?.(e.currentTarget.value); queueMicrotask(() => autoGrow(inputEl)) }}
         onkeydown={onKey}
+        onpaste={handlePaste}
         onfocus={() => { isInputFocused = true }}
         onblur={() => { isInputFocused = false }}
         bind:this={inputEl}
