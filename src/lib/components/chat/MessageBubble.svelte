@@ -181,20 +181,20 @@
   .bubble { display: block; max-width: 100%; padding: 10px var(--bubble-pad-x); border-radius: 14px; border: none; white-space: normal; overflow-wrap: anywhere; word-break: break-word; line-height: 1.4; font-size: 0.98rem; box-shadow: 0 1px 0 rgba(0,0,0,0.04); }
   .bubble.editing { white-space: pre-wrap; }
   .bubble.editing.editor-area {
-    min-width: 0;
-    width: auto;
+    display: block;
+    width: 100%;
     max-width: 100%;
+    min-width: 0;
     resize: none;
     outline: none;
     overflow: hidden;
-    background: inherit;
-    color: inherit;
     font: inherit;
-    text-align: inherit;
-    justify-self: inherit;
-    align-self: inherit;
     box-sizing: border-box;
     min-height: 32px;
+  }
+  .bubble.editing.editor-area.user {
+    justify-self: end;
+    margin-inline-start: auto;
   }
   /* Markdown content inside bubbles rendered via {@html} */
   .bubble :global(h1), .bubble :global(h2), .bubble :global(h3), .bubble :global(h4), .bubble :global(h5), .bubble :global(h6) { margin: 0.2em 0 0.4em; line-height: 1.25; }
