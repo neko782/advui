@@ -10,4 +10,8 @@ export default defineConfig({
       compiler: 'svelte',
     }),
   ],
+  test: {
+    environment: 'happy-dom',
+    globals: true,
+  },
 })

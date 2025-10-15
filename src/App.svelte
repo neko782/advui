@@ -142,6 +142,8 @@
   }
 
   import { onMount } from 'svelte'
+  import { migrateChatsToIndexedDB } from './lib/utils/storageMigration.js'
+
   async function ensureStartupModels() {
     try {
       const settings = loadSettings()
@@ -160,6 +162,17 @@
     setTimeout(async () => {
       sidebarOpen = loadSidebarPref()
       syncPresets()
+
+      // Migrate chats from localStorage to IndexedDB if needed
+      try {
+        const migrationResult = await migrateChatsToIndexedDB()
+        if (migrationResult.success && migrationResult.migrated > 0) {
+          console.log(`Successfully migrated ${migrationResult.migrated} chats to IndexedDB`)
+        }
+      } catch (err) {
+        console.error('Failed to migrate chats:', err)
+      }
+
       await unlockAllChats()
       await ensureOneChat()
       await refresh()
