@@ -1,6 +1,8 @@
 <script>
   import { tick, onMount, onDestroy } from 'svelte'
   import { IconMenu, IconEditSquare, IconClose, IconCheck, IconEdit, IconDelete, IconSettings, IconSearch, IconDescription, IconMoreVert } from '../icons.js'
+  import ConfirmModal from './ConfirmModal.svelte'
+  import EditModal from './EditModal.svelte'
   const props = $props()
 
   let confirmDeleteId = $state(null)
@@ -12,6 +14,12 @@
   let presetMenuEl = $state(null)
   let lastSidebarOpen = $state(props.open ?? true)
   let chatMenuOpen = $state(null) // Track which chat's menu is open
+
+  // Modal state
+  let deleteModalOpen = $state(false)
+  let deleteModalChatId = $state(null)
+  let editModalOpen = $state(false)
+  let editModalChat = $state(null)
 
   // Search state
   let searchQuery = $state('')
@@ -103,13 +111,46 @@
   function handleMenuEdit(chat, event) {
     event?.stopPropagation()
     closeChatMenu()
-    startEdit(chat)
+    editModalChat = chat
+    editModalOpen = true
   }
 
   function handleMenuDelete(chatId, event) {
     event?.stopPropagation()
     closeChatMenu()
-    requestDelete(chatId)
+    deleteModalChatId = chatId
+    deleteModalOpen = true
+  }
+
+  async function confirmEditModal(newTitle) {
+    if (!editModalChat) return
+    const trimmed = (newTitle || '').trim()
+    const nextTitle = trimmed || 'New Chat'
+    const chatId = editModalChat.id
+    const originalTitle = editModalChat.title
+    editModalOpen = false
+    editModalChat = null
+    if (nextTitle !== (originalTitle || 'New Chat')) {
+      await props.onRenameChat?.(chatId, nextTitle)
+    }
+  }
+
+  function cancelEditModal() {
+    editModalOpen = false
+    editModalChat = null
+  }
+
+  async function confirmDeleteModal() {
+    if (!deleteModalChatId) return
+    const chatId = deleteModalChatId
+    deleteModalOpen = false
+    deleteModalChatId = null
+    await props.onDeleteChat?.(chatId)
+  }
+
+  function cancelDeleteModal() {
+    deleteModalOpen = false
+    deleteModalChatId = null
   }
 
   function handleNewChatClick() {
@@ -323,6 +364,15 @@
                 oninput={(e) => searchQuery = e.currentTarget.value}
                 aria-label="Search chats"
               />
+              <button
+                type="button"
+                class="search-mode-btn {searchMode === 'content' ? 'active' : ''}"
+                onclick={toggleSearchMode}
+                aria-label={searchMode === 'title' ? 'Switch to content search' : 'Switch to title search'}
+                title={searchMode === 'title' ? 'Search in content' : 'Search in titles'}
+              >
+                <IconDescription style="font-size: 18px;" />
+              </button>
               {#if searchQuery}
                 <button
                   type="button"
@@ -335,15 +385,6 @@
                 </button>
               {/if}
             </div>
-            <button
-              type="button"
-              class="search-mode-btn {searchMode === 'content' ? 'active' : ''}"
-              onclick={toggleSearchMode}
-              aria-label={searchMode === 'title' ? 'Switch to content search' : 'Switch to title search'}
-              title={searchMode === 'title' ? 'Search in content' : 'Search in titles'}
-            >
-              <IconDescription style="font-size: 18px;" />
-            </button>
           </div>
 
           <nav class="chat-list" aria-label="Chats">
@@ -473,6 +514,29 @@
     <div class="side-fade"></div>
   {/if}
 </aside>
+
+<ConfirmModal
+  open={deleteModalOpen}
+  title="Delete Chat"
+  message="Are you sure you want to delete this chat? This action cannot be undone."
+  confirmText="Delete"
+  cancelText="Cancel"
+  danger={true}
+  onConfirm={confirmDeleteModal}
+  onCancel={cancelDeleteModal}
+/>
+
+<EditModal
+  open={editModalOpen}
+  title="Edit Chat Title"
+  label="Chat title"
+  placeholder="New Chat"
+  value={editModalChat?.title || ''}
+  confirmText="Save"
+  cancelText="Cancel"
+  onConfirm={confirmEditModal}
+  onCancel={cancelEditModal}
+/>
 
 <style>
   .sidebar {
@@ -846,8 +910,6 @@
 
   /* Search styles */
   .search-wrapper {
-    display: flex;
-    gap: 4px;
     padding: 0 16px 6px;
     margin-top: 2px;
   }
@@ -912,25 +974,32 @@
   .search-mode-btn {
     display: grid;
     place-items: center;
-    min-width: 28px;
-    height: 28px;
+    min-width: 24px;
+    height: 24px;
     border: 0;
-    border-radius: 6px;
+    border-radius: 4px;
     background: transparent;
     color: var(--muted);
     cursor: pointer;
-    transition: background-color 150ms ease, color 150ms ease;
+    transition: background-color 150ms ease, color 150ms ease, opacity 150ms ease;
     flex: 0 0 auto;
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .search-input-wrapper:hover .search-mode-btn,
+  .search-input-wrapper:focus-within .search-mode-btn {
+    opacity: 1;
+    pointer-events: auto;
   }
 
   .search-mode-btn:hover,
   .search-mode-btn:focus-visible {
-    background: var(--panel);
+    background: var(--hover-bg);
     color: var(--text);
   }
 
   .search-mode-btn.active {
-    background: var(--panel);
     color: var(--text);
   }
 </style>
