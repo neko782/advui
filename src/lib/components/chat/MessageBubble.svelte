@@ -9,6 +9,7 @@
   let reasoningSummaryText = $state('')
   let showReasoning = $state(false)
   let lastSyncedEditingId = $state(null)
+  const EDIT_GROW_OPTS = { maxHeight: Number.POSITIVE_INFINITY, minHeight: 32 }
 
   function extractReasoningSummary(msg) {
     const raw = msg?.reasoningSummary
@@ -45,7 +46,7 @@
       try {
         const next = props.editingText ?? ''
         el.value = next
-        queueMicrotask(() => autoGrow(el))
+        queueMicrotask(() => autoGrow(el, EDIT_GROW_OPTS))
         el.focus()
         const len = next.length
         if (typeof el.setSelectionRange === 'function') {
@@ -58,7 +59,7 @@
   $effect(() => {
     if (!props.isEditing || !el) return
     void props.editingText
-    queueMicrotask(() => autoGrow(el))
+    queueMicrotask(() => autoGrow(el, EDIT_GROW_OPTS))
   })
 
   $effect(() => {
@@ -108,7 +109,7 @@
           const end = target.selectionEnd ?? target.value.length
           target.setRangeText(text, start, end, 'end')
           props.onEditInput?.(target.value)
-          queueMicrotask(() => autoGrow(target))
+          queueMicrotask(() => autoGrow(target, EDIT_GROW_OPTS))
         } else {
           document.execCommand('insertText', false, text)
         }
@@ -125,7 +126,7 @@
     oninput={(e) => {
       const target = e.currentTarget
       props.onEditInput?.(target.value)
-      queueMicrotask(() => autoGrow(target))
+      queueMicrotask(() => autoGrow(target, EDIT_GROW_OPTS))
     }}
     onkeydown={props.onEditKeydown}
     onpaste={onPaste}
@@ -180,11 +181,18 @@
   .bubble { display: block; max-width: 100%; padding: 10px var(--bubble-pad-x); border-radius: 14px; border: none; white-space: normal; overflow-wrap: anywhere; word-break: break-word; line-height: 1.4; font-size: 0.98rem; box-shadow: 0 1px 0 rgba(0,0,0,0.04); }
   .bubble.editing { white-space: pre-wrap; }
   .bubble.editing.editor-area {
+    min-width: 0;
+    width: auto;
+    max-width: 100%;
     resize: none;
     outline: none;
     overflow: hidden;
-    background: transparent;
+    background: inherit;
+    color: inherit;
     font: inherit;
+    text-align: inherit;
+    justify-self: inherit;
+    align-self: inherit;
     box-sizing: border-box;
     min-height: 32px;
   }
