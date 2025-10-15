@@ -187,10 +187,7 @@
     resize: none;
     outline: none;
     overflow: hidden;
-    background: inherit;
-    color: inherit;
     font: inherit;
-    text-align: inherit;
     box-sizing: border-box;
     min-height: 32px;
   }
