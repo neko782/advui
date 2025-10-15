@@ -173,6 +173,7 @@
         connections={props.connections}
         connectionId={props.chatConnectionId}
         showThinkingControls={props.showThinkingControls}
+        presets={props.presets}
         onToggle={props.onToggleChatSettings}
         onClose={props.onCloseChatSettings}
         onChangeConnection={props.onChangeConnection}
@@ -186,6 +187,7 @@
         onInputTextVerbosity={props.onChangeTextVerbosity}
         onInputThinkingEnabled={props.onChangeThinkingEnabled}
         onInputThinkingBudgetTokens={props.onChangeThinkingBudgetTokens}
+        onSelectPreset={props.onSelectPreset}
       />
     </div>
 

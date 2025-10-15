@@ -274,7 +274,9 @@
   onMount(() => {
     function handlePointerDown(event) {
       if (presetMenuOpen) {
-        if (presetMenuEl && !presetMenuEl.contains(event.target)) {
+        const target = event.target
+        const inNewChatWrapper = target.closest('.new-chat-wrapper')
+        if (!presetMenuEl?.contains(target) && !inNewChatWrapper) {
           presetMenuOpen = false
         }
       }

@@ -1,21 +1,82 @@
 <script>
-  import { IconTune } from '../../icons.js'
+  import { IconTune, IconLayers } from '../../icons.js'
   const props = $props()
   let root
   let menu
   let wasOpen = false
   let expandedGroups = $state({ general: false, sampling: false, reasoning: false })
+  let presetMenuOpen = $state(false)
+  let presetMenuEl = $state(null)
+  let presetButtonEl = $state(null)
+  let presetMenuPosition = $state({ bottom: 0, left: 0 })
 
   function toggleGroup(group) {
     expandedGroups = { ...expandedGroups, [group]: !expandedGroups[group] }
   }
 
+  function togglePresetMenu() {
+    if (!presetMenuOpen && presetButtonEl) {
+      const rect = presetButtonEl.getBoundingClientRect()
+      const menuWidth = 220 // min-width from CSS
+      const padding = 8
+
+      // Calculate position, checking if it would overflow
+      let leftPos = rect.left
+
+      // If menu would overflow right side, align to right edge instead
+      if (leftPos + menuWidth > window.innerWidth - padding) {
+        leftPos = rect.right - menuWidth
+        // If still overflowing on left, align to padding from right edge
+        if (leftPos < padding) {
+          leftPos = window.innerWidth - menuWidth - padding
+        }
+      }
+
+      presetMenuPosition = {
+        bottom: window.innerHeight - rect.top + 4,
+        left: Math.max(padding, leftPos)
+      }
+    }
+    presetMenuOpen = !presetMenuOpen
+  }
+
+  function closePresetMenu() {
+    presetMenuOpen = false
+  }
+
+  function selectPreset(preset) {
+    closePresetMenu()
+    props.onSelectPreset?.(preset)
+  }
+
   // Close when clicking outside or pressing Escape
   $effect(() => {
     function onDocClick(e) {
-      try { if (props.open && root && !root.contains(e.target)) props.onClose?.() } catch {}
+      try {
+        // Check if click is on preset menu (which is rendered outside root)
+        const isInPresetMenu = presetMenuEl && presetMenuEl.contains(e.target)
+        const isPresetWrapper = e.target.closest('.preset-toggle-wrapper')
+
+        // Close settings if clicked outside, but not if clicking preset menu
+        if (props.open && root && !root.contains(e.target) && !isInPresetMenu && !isPresetWrapper) {
+          props.onClose?.()
+        }
+
+        // Close preset menu if clicked outside both the menu and the button
+        if (presetMenuOpen && !isInPresetMenu && !isPresetWrapper) {
+          closePresetMenu()
+        }
+      } catch {}
     }
-    function onKeydown(e) { if (e.key === 'Escape' && props.open) props.onClose?.() }
+    function onKeydown(e) {
+      if (e.key === 'Escape') {
+        if (presetMenuOpen) {
+          closePresetMenu()
+        } else if (props.open) {
+          props.onClose?.()
+        }
+      }
+    }
     window.addEventListener('click', onDocClick, true)
     window.addEventListener('keydown', onKeydown)
     return () => {
@@ -198,15 +259,32 @@
     <!-- Model at the bottom -->
     <div class="menu-section">
       <div class="menu-label">Model</div>
-      <input
-        type="text"
-        placeholder="gpt-5"
-        value={props.model}
-        disabled={props.disabled}
-        oninput={(e) => (!props.disabled && props.onInputModel?.(e.currentTarget.value))}
-        list="model-suggestions"
-        aria-label="Model"
-      />
+      <div class="model-input-wrapper">
+        <input
+          type="text"
+          placeholder="gpt-5"
+          value={props.model}
+          disabled={props.disabled}
+          oninput={(e) => (!props.disabled && props.onInputModel?.(e.currentTarget.value))}
+          list="model-suggestions"
+          aria-label="Model"
+        />
+        {#if Array.isArray(props.presets) && props.presets.length > 0}
+          <div class="preset-toggle-wrapper">
+            <button
+              type="button"
+              class="preset-toggle-btn"
+              bind:this={presetButtonEl}
+              onclick={togglePresetMenu}
+              disabled={props.disabled}
+              aria-label="Switch preset"
+              title="Switch preset"
+            >
+              <IconLayers style="font-size: 18px;" />
+            </button>
+          </div>
+        {/if}
+      </div>
       {#if props.modelIds?.length}
         <datalist id="model-suggestions">
           {#each props.modelIds as mid}
@@ -217,6 +295,26 @@
     </div>
   </div>
 </div>
+
+{#if presetMenuOpen}
+  <div
+    class="preset-menu"
+    bind:this={presetMenuEl}
+    aria-label="Choose preset"
+    style="bottom: {presetMenuPosition.bottom}px; left: {presetMenuPosition.left}px;"
+  >
+    {#each (props.presets || []) as preset (preset.id || preset.name)}
+      <button
+        type="button"
+        class="preset-menu-item"
+        onclick={() => selectPreset(preset)}
+      >
+        <span class="preset-menu-name">{preset?.name || 'Preset'}</span>
+        <span class="preset-menu-model">{preset?.model || ''}</span>
+      </button>
+    {/each}
+  </div>
+{/if}
 
 <style>
   .icon-btn { border: 1px solid var(--border); border-radius: 10px; background: transparent; min-width: 44px; height: 44px; display: grid; place-items: center; line-height: 1; }
@@ -305,4 +403,87 @@
   }
   .chat-settings-group.open .chat-settings-menu { opacity: 1; pointer-events: auto; transform: translateY(0); }
   .chat-settings-group::before { content: ''; position: absolute; left: 0; bottom: 100%; width: 220px; height: 12px; }
+
+  /* Model section with preset button */
+  .model-input-wrapper {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 6px;
+    align-items: center;
+  }
+  .model-input-wrapper > input {
+    min-width: 0;
+  }
+  .preset-toggle-wrapper {
+    position: relative;
+  }
+  .preset-toggle-btn {
+    width: 36px;
+    height: 36px;
+    display: grid;
+    place-items: center;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg);
+    color: var(--text);
+    cursor: pointer;
+    transition: background-color .15s ease, border-color .15s ease;
+    flex-shrink: 0;
+  }
+  .preset-toggle-btn:hover {
+    background: var(--panel);
+    border-color: var(--accent);
+  }
+  .preset-toggle-btn:disabled {
+    opacity: .6;
+    cursor: not-allowed;
+  }
+  .preset-menu {
+    position: fixed;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 6px;
+    display: grid;
+    gap: 4px;
+    box-shadow: 0 8px 18px rgba(0,0,0,0.18);
+    z-index: 300;
+    max-height: 300px;
+    overflow-y: auto;
+    min-width: 220px;
+  }
+  .preset-menu-item {
+    display: grid;
+    align-items: start;
+    gap: 2px;
+    text-align: left;
+    border: 0;
+    border-radius: 8px;
+    padding: 8px 10px;
+    background: transparent;
+    color: var(--text);
+    font: inherit;
+    cursor: pointer;
+    transition: background-color 150ms ease;
+  }
+  .preset-menu-item:hover,
+  .preset-menu-item:focus-visible {
+    background: var(--hover-bg);
+  }
+  .preset-menu-name {
+    font-weight: 600;
+  }
+  .preset-menu-model {
+    font-size: .85rem;
+    color: var(--muted);
+  }
+  /* Hover background for preset menu */
+  :global(:root[data-theme='light']) .preset-menu-item:hover,
+  :global(:root[data-theme='light']) .preset-menu-item:focus-visible {
+    background: color-mix(in oklab, var(--bg), var(--text) 8%);
+  }
+  :global(:root[data-theme='dark']) .preset-menu-item:hover,
+  :global(:root[data-theme='dark']) .preset-menu-item:focus-visible {
+    background: color-mix(in oklab, var(--bg), var(--text) 8%);
+  }
 </style>

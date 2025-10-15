@@ -1204,6 +1204,27 @@
     chatSettingsOpen = !chatSettingsOpen
   }
 
+  function handleSelectPreset(preset) {
+    if (!preset || typeof preset !== 'object') return
+    // Apply preset settings (excluding systemPrompt)
+    chatSettings = {
+      ...chatSettings,
+      model: preset.model || chatSettings.model,
+      streaming: typeof preset.streaming === 'boolean' ? preset.streaming : chatSettings.streaming,
+      maxOutputTokens: preset.maxOutputTokens ?? chatSettings.maxOutputTokens,
+      topP: preset.topP ?? chatSettings.topP,
+      temperature: preset.temperature ?? chatSettings.temperature,
+      reasoningEffort: preset.reasoningEffort || chatSettings.reasoningEffort,
+      textVerbosity: preset.textVerbosity || chatSettings.textVerbosity,
+      reasoningSummary: preset.reasoningSummary || chatSettings.reasoningSummary,
+      thinkingEnabled: typeof preset.thinkingEnabled === 'boolean' ? preset.thinkingEnabled : chatSettings.thinkingEnabled,
+      thinkingBudgetTokens: preset.thinkingBudgetTokens ?? chatSettings.thinkingBudgetTokens,
+      connectionId: preset.connectionId || chatSettings.connectionId,
+      presetId: preset.id || chatSettings.presetId,
+    }
+    persistNow()
+  }
+
   // Lifecycle effects
   $effect(() => {
     const cid = props.chatId
@@ -1214,6 +1235,7 @@
     ready = false
     forcedLock = false
     persistSig = ''
+    chatSettingsOpen = false
     if (!cid) return
 
     loadChat(cid).then((result) => {
@@ -1425,6 +1447,7 @@
     attachedImages={attachedImages}
     keybinds={settings?.keybinds}
     showThinkingControls={!!settings?.showThinkingSettings}
+    presets={settings?.presets}
     onToggleChatSettings={toggleChatSettings}
     onCloseChatSettings={() => (chatSettingsOpen = false)}
     onChangeConnection={(val) => (chatSettings = { ...chatSettings, connectionId: (typeof val === 'string' && val.trim()) ? val.trim() : null })}
@@ -1438,6 +1461,7 @@
     onChangeTextVerbosity={(val) => (chatSettings = { ...chatSettings, textVerbosity: normalizeVerbosity(val) })}
     onChangeThinkingEnabled={(val) => (chatSettings = { ...chatSettings, thinkingEnabled: !!val })}
     onChangeThinkingBudgetTokens={(val) => (chatSettings = { ...chatSettings, thinkingBudgetTokens: toIntOrNull(val) })}
+    onSelectPreset={handleSelectPreset}
     onInput={(val) => (input = val)}
     onAdd={(role) => addToChat(role)}
     onStop={() => stopGeneration()}
