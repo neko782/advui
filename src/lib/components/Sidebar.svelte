@@ -1,6 +1,6 @@
 <script>
   import { tick, onMount, onDestroy } from 'svelte'
-  import { IconMenu, IconEditSquare, IconClose, IconCheck, IconEdit, IconDelete, IconSettings, IconSearch, IconDescription } from '../icons.js'
+  import { IconMenu, IconEditSquare, IconClose, IconCheck, IconEdit, IconDelete, IconSettings, IconSearch, IconDescription, IconMoreVert } from '../icons.js'
   const props = $props()
 
   let confirmDeleteId = $state(null)
@@ -11,6 +11,7 @@
   let presetMenuOpen = $state(false)
   let presetMenuEl = $state(null)
   let lastSidebarOpen = $state(props.open ?? true)
+  let chatMenuOpen = $state(null) // Track which chat's menu is open
 
   // Search state
   let searchQuery = $state('')
@@ -90,6 +91,26 @@
   }
 
   function closePresetMenu() { presetMenuOpen = false }
+
+  function toggleChatMenu(chatId, event) {
+    event?.stopPropagation()
+    event?.preventDefault()
+    chatMenuOpen = chatMenuOpen === chatId ? null : chatId
+  }
+
+  function closeChatMenu() { chatMenuOpen = null }
+
+  function handleMenuEdit(chat, event) {
+    event?.stopPropagation()
+    closeChatMenu()
+    startEdit(chat)
+  }
+
+  function handleMenuDelete(chatId, event) {
+    event?.stopPropagation()
+    closeChatMenu()
+    requestDelete(chatId)
+  }
 
   function handleNewChatClick() {
     const list = Array.isArray(props?.presets) ? props.presets : []
@@ -199,14 +220,24 @@
 
   onMount(() => {
     function handlePointerDown(event) {
-      if (!presetMenuOpen) return
-      if (presetMenuEl && !presetMenuEl.contains(event.target)) {
-        presetMenuOpen = false
+      if (presetMenuOpen) {
+        if (presetMenuEl && !presetMenuEl.contains(event.target)) {
+          presetMenuOpen = false
+        }
+      }
+      if (chatMenuOpen) {
+        const target = event.target
+        const chatMenuEl = target.closest('.chat-menu')
+        const menuBtn = target.closest('.chat-menu-btn')
+        if (!chatMenuEl && !menuBtn) {
+          chatMenuOpen = null
+        }
       }
     }
     function handleKeydown(event) {
-      if (event.key === 'Escape' && presetMenuOpen) {
-        presetMenuOpen = false
+      if (event.key === 'Escape') {
+        if (presetMenuOpen) presetMenuOpen = false
+        if (chatMenuOpen) chatMenuOpen = null
       }
     }
     document.addEventListener('pointerdown', handlePointerDown)
@@ -318,7 +349,7 @@
           <nav class="chat-list" aria-label="Chats">
             {#each filteredChats as c (c.id)}
               <div
-                class={`chat-row ${props.selectedId === c.id ? 'active' : ''} ${(confirmDeleteId === c.id || editingId === c.id || props.selectedId === c.id) ? 'show-actions' : ''}`}
+                class={`chat-row ${props.selectedId === c.id ? 'active' : ''} ${(confirmDeleteId === c.id || editingId === c.id || props.selectedId === c.id || chatMenuOpen === c.id) ? 'show-actions' : ''}`}
                 title={c.title || 'Chat'}
               >
                 {#if editingId === c.id}
@@ -389,22 +420,38 @@
                       <IconCheck style="font-size: 18px;" />
                     </button>
                   {:else}
-                    <button
-                      type="button"
-                      class="chat-action-btn"
-                      onclick={() => startEdit(c)}
-                      aria-label="Edit chat title"
-                    >
-                      <IconEdit style="font-size: 18px;" />
-                    </button>
-                    <button
-                      type="button"
-                      class="chat-action-btn"
-                      onclick={() => requestDelete(c.id)}
-                      aria-label="Delete chat"
-                    >
-                      <IconDelete style="font-size: 18px;" />
-                    </button>
+                    <div class="chat-menu-wrapper">
+                      <button
+                        type="button"
+                        class="chat-action-btn chat-menu-btn"
+                        onclick={(e) => toggleChatMenu(c.id, e)}
+                        aria-label="Chat options"
+                        aria-haspopup="true"
+                        aria-expanded={chatMenuOpen === c.id ? 'true' : 'false'}
+                      >
+                        <IconMoreVert style="font-size: 18px;" />
+                      </button>
+                      {#if chatMenuOpen === c.id}
+                        <div class="chat-menu">
+                          <button
+                            type="button"
+                            class="chat-menu-item"
+                            onclick={(e) => handleMenuEdit(c, e)}
+                          >
+                            <IconEdit style="font-size: 18px;" />
+                            <span>Edit</span>
+                          </button>
+                          <button
+                            type="button"
+                            class="chat-menu-item"
+                            onclick={(e) => handleMenuDelete(c.id, e)}
+                          >
+                            <IconDelete style="font-size: 18px;" />
+                            <span>Delete</span>
+                          </button>
+                        </div>
+                      {/if}
+                    </div>
                   {/if}
                 </div>
               </div>
@@ -641,7 +688,11 @@
     padding: 2px 4px;
     padding-right: 60px;
     border-radius: 8px;
-    overflow: hidden;
+    overflow: visible;
+    z-index: 1;
+  }
+  .chat-row.show-actions {
+    z-index: 50;
   }
   .chat-row.active { background: var(--panel); }
   .chat-row:hover { background: var(--panel); }
@@ -745,6 +796,48 @@
   .chat-action-btn.confirm:focus-visible { color: #15803d; }
   .chat-action-btn.cancel:hover,
   .chat-action-btn.cancel:focus-visible { color: #b91c1c; }
+
+  .chat-menu-wrapper {
+    position: relative;
+  }
+
+  .chat-menu {
+    position: absolute;
+    top: calc(100% + 4px);
+    right: 0;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 4px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    z-index: 100;
+    min-width: 140px;
+  }
+
+  .chat-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    text-align: left;
+    padding: 8px 10px;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text);
+    font: inherit;
+    cursor: pointer;
+    transition: background-color 120ms ease;
+    white-space: nowrap;
+  }
+
+  .chat-menu-item:hover,
+  .chat-menu-item:focus-visible {
+    background: var(--hover-bg);
+  }
 
   .side-footer { padding: 8px; border-top: 1px solid var(--border); margin-top: auto; }
   /* Remove horizontal separator in collapsed mode */
