@@ -6,6 +6,8 @@ export function createGenerationStateManager() {
   let inFlightTypingVariantId = null
   let abortRequested = false
   let abortExecuted = false
+  let generationActive = false
+  let generationSequence = 0
 
   /**
    * Resets all generation state
@@ -15,6 +17,48 @@ export function createGenerationStateManager() {
     inFlightTypingVariantId = null
     abortRequested = false
     abortExecuted = false
+    generationActive = false
+  }
+
+  /**
+   * Starts a new generation and returns its sequence number
+   * @returns {number} The generation sequence number
+   */
+  function startGeneration() {
+    generationActive = true
+    generationSequence++
+    abortRequested = false
+    abortExecuted = false
+    return generationSequence
+  }
+
+  /**
+   * Marks generation as complete if the sequence matches
+   * @param {number} sequence - The generation sequence number
+   * @returns {boolean} Whether the generation was marked complete
+   */
+  function completeGeneration(sequence) {
+    if (sequence !== generationSequence) {
+      return false
+    }
+    generationActive = false
+    return true
+  }
+
+  /**
+   * Checks if a generation is currently active
+   * @returns {boolean}
+   */
+  function isGenerationActive() {
+    return generationActive
+  }
+
+  /**
+   * Gets the current generation sequence number
+   * @returns {number}
+   */
+  function getGenerationSequence() {
+    return generationSequence
   }
 
   /**
@@ -88,6 +132,10 @@ export function createGenerationStateManager() {
 
   return {
     reset,
+    startGeneration,
+    completeGeneration,
+    isGenerationActive,
+    getGenerationSequence,
     registerAbortHandler,
     requestAbort,
     setTypingVariantId,
