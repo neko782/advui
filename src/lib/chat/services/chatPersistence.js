@@ -43,9 +43,22 @@ function sanitizeImages(images, stripData = false) {
 
 function sanitizeVariantImages(variant) {
   if (!variant || typeof variant !== 'object') return { variant, changed: false }
-  const normalized = sanitizeImages(variant.images, true)
+  const imagesInput = variant.images
+  const normalized = sanitizeImages(imagesInput, true)
   const hasImages = normalized.length > 0
-  const originalImages = Array.isArray(variant.images) ? variant.images : []
+
+  if (!Array.isArray(imagesInput)) {
+    if (!hasImages && !('images' in variant)) return { variant, changed: false }
+    const cleaned = { ...variant }
+    if (hasImages) {
+      cleaned.images = normalized
+    } else {
+      delete cleaned.images
+    }
+    return { variant: cleaned, changed: true }
+  }
+
+  const originalImages = imagesInput
 
   if (!hasImages) {
     if (!originalImages.length) return { variant, changed: false }

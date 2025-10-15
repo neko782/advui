@@ -1,15 +1,16 @@
+import { klona } from 'klona'
+
 export function deepClone(value) {
-  if (typeof structuredClone === 'function') {
-    try {
-      return structuredClone(value);
-    } catch (err) {
-      console.warn('structuredClone failed, falling back to JSON clone:', err);
-    }
-  }
   try {
-    return JSON.parse(JSON.stringify(value));
+    return klona(value)
   } catch (err) {
-    console.error('deepClone failed:', err);
-    return value;
+    console.warn('deepClone failed via klona, falling back to JSON clone:', err)
+  }
+
+  try {
+    return JSON.parse(JSON.stringify(value))
+  } catch (jsonErr) {
+    console.error('deepClone JSON fallback failed:', jsonErr)
+    return value
   }
 }

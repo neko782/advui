@@ -1,7 +1,7 @@
 // Chat loading and initialization
 import { getChat as loadChatById } from '../../chatsStore.js'
 import { loadSettings } from '../../settingsStore.js'
-import { makeSystemPrologue, pickPresetFromSettings, buildChatSettings, recomputeNextIds, DEFAULT_SYSTEM_PROMPT } from './chatInit.js'
+import { makeSystemPrologue, pickPresetFromSettings, buildChatSettings, recomputeNextIds, computeInitialConnectionId, DEFAULT_SYSTEM_PROMPT } from './chatInit.js'
 import { migrateLegacyGraphToNodes } from './legacyMigration.js'
 import { computePersistSig } from './chatPersistence.js'
 import { parseMaxTokens, parseTopP, parseTemperature, normalizeReasoning, normalizeVerbosity, normalizeReasoningSummary, parseThinkingBudgetTokens } from '../../utils/validation.js'

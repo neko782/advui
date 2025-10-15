@@ -1486,25 +1486,25 @@
     position: absolute;
     bottom: 6px;
     right: 6px;
-    width: 14px;
-    height: 14px;
+    width: 18px;
+    height: 18px;
     border: none;
-    background: transparent;
-    opacity: 0.04;
+    border-radius: 50%;
+    background: color-mix(in srgb, var(--accent), transparent 35%);
+    opacity: 0.75;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.18);
     cursor: pointer;
   }
 
   .hidden-debug-lock:focus-visible,
   .hidden-debug-lock:hover {
-    opacity: 0.5;
-    background: color-mix(in srgb, var(--accent), transparent 80%);
-    border-radius: 50%;
+    opacity: 1;
+    background: color-mix(in srgb, var(--accent), transparent 20%);
   }
 
   .hidden-debug-lock[aria-pressed='true'] {
-    opacity: 0.4;
-    background: color-mix(in srgb, var(--accent), transparent 65%);
-    border-radius: 50%;
+    opacity: 1;
+    background: color-mix(in srgb, var(--accent), transparent 10%);
   }
 
   .chat-shell {
