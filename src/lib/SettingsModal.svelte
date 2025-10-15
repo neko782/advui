@@ -1093,23 +1093,23 @@
   .hint { color: var(--muted); font-size: .9rem; margin-top: 4px; }
   /* API key action buttons size */
   .row .icon-btn { height: 38px; width: 38px; }
-  .group { display: grid; gap: 6px; }
+  .group { display: grid; gap: 4px; }
   .group-title { font-weight: 600; }
   .group-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
   .group-head .icon-btn { flex-shrink: 0; }
   .presets .group-head .icon-btn { width: 28px; height: 28px; border-radius: 6px; }
-  .preset-group-divider { height: 1px; background: var(--border); margin: 8px 0 2px; }
+  .preset-group-divider { height: 1px; background: var(--border); margin: 0; }
   .preset-group-header {
     font-size: .8rem;
     font-weight: 600;
     color: var(--muted);
     text-transform: uppercase;
     letter-spacing: 0.5px;
-    margin-bottom: 0;
+    margin: 0 0 4px;
     width: 100%;
     border: none;
     background: transparent;
-    padding: 6px 0 4px;
+    padding: 4px 0;
     display: flex;
     align-items: center;
     justify-content: space-between;

@@ -39,29 +39,7 @@
     <IconTune style="font-size: 22px;" />
   </button>
   <div class="send-menu chat-settings-menu" role="menu" aria-label="Chat settings" bind:this={menu}>
-    <!-- Model comes first, outside of groups -->
-    <div class="menu-section">
-      <div class="menu-label">Model</div>
-      <input
-        type="text"
-        placeholder="gpt-5"
-        value={props.model}
-        disabled={props.disabled}
-        oninput={(e) => (!props.disabled && props.onInputModel?.(e.currentTarget.value))}
-        list="model-suggestions"
-        aria-label="Model"
-      />
-      {#if props.modelIds?.length}
-        <datalist id="model-suggestions">
-          {#each props.modelIds as mid}
-            <option value={mid}>{mid}</option>
-          {/each}
-        </datalist>
-      {/if}
-    </div>
-
     <!-- General group -->
-    <div class="group-divider"></div>
     <button class="group-header" onclick={() => toggleGroup('general')}>
       <span>General</span>
       <svg class={`chevron ${expandedGroups.general ? 'expanded' : ''}`} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -215,6 +193,28 @@
         </div>
       {/if}
     {/if}
+
+    <!-- Model at the bottom -->
+    <div class="group-divider"></div>
+    <div class="menu-section">
+      <div class="menu-label">Model</div>
+      <input
+        type="text"
+        placeholder="gpt-5"
+        value={props.model}
+        disabled={props.disabled}
+        oninput={(e) => (!props.disabled && props.onInputModel?.(e.currentTarget.value))}
+        list="model-suggestions"
+        aria-label="Model"
+      />
+      {#if props.modelIds?.length}
+        <datalist id="model-suggestions">
+          {#each props.modelIds as mid}
+            <option value={mid}>{mid}</option>
+          {/each}
+        </datalist>
+      {/if}
+    </div>
   </div>
 </div>
 
@@ -222,21 +222,21 @@
   .icon-btn { border: 1px solid var(--border); border-radius: 10px; background: transparent; min-width: 44px; height: 44px; display: grid; place-items: center; line-height: 1; }
   .icon-btn:disabled { opacity: .6; cursor: not-allowed; }
   .icon { font-size: 22px; }
-  .chat-settings-menu { min-width: 260px; gap: 6px; padding: 12px; }
+  .chat-settings-menu { min-width: 260px; padding: 12px; }
   .menu-section { display: grid; gap: 6px; }
   .menu-label { font-size: .9rem; color: var(--muted); }
-  .group-divider { height: 1px; background: var(--border); margin: 2px 0; }
+  .group-divider { height: 1px; background: var(--border); margin: 0; }
   .group-header {
     font-size: .8rem;
     font-weight: 600;
     color: var(--muted);
     text-transform: uppercase;
     letter-spacing: 0.5px;
-    margin-bottom: 0;
+    margin: 0 0 4px;
     width: 100%;
     border: none;
     background: transparent;
-    padding: 6px 0 4px;
+    padding: 4px 0;
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -276,7 +276,7 @@
   .chat-settings-group { position: relative; display: grid; place-items: center; }
   .chat-settings-menu {
     display: grid;
-    gap: 12px;
+    gap: 2px;
     position: absolute;
     top: auto;
     bottom: calc(100% + 10px);
