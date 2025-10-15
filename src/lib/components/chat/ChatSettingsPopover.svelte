@@ -222,21 +222,22 @@
   .icon-btn { border: 1px solid var(--border); border-radius: 10px; background: transparent; min-width: 44px; height: 44px; display: grid; place-items: center; line-height: 1; }
   .icon-btn:disabled { opacity: .6; cursor: not-allowed; }
   .icon { font-size: 22px; }
-  .chat-settings-menu { min-width: 260px; padding: 12px; }
-  .menu-section { display: grid; gap: 6px; }
-  .menu-label { font-size: .9rem; color: var(--muted); }
-  .group-divider { height: 1px; background: var(--border); margin: 0; }
+  .chat-settings-menu { min-width: 270px; padding: 14px; }
+  .menu-section { display: grid; gap: 6px; margin-bottom: 10px; }
+  .menu-section:not(.menu-section + .menu-section) { padding-top: 8px; }
+  .menu-label { font-size: .9rem; color: var(--muted); font-weight: 500; }
+  .group-divider { height: 1px; background: var(--border); margin: 4px 0; }
   .group-header {
     font-size: .8rem;
     font-weight: 600;
     color: var(--muted);
     text-transform: uppercase;
     letter-spacing: 0.5px;
-    margin: 0 0 4px;
+    margin: 0;
     width: 100%;
     border: none;
     background: transparent;
-    padding: 4px 0;
+    padding: 6px 0;
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -262,6 +263,13 @@
     color: var(--text);
     font: inherit;
     box-sizing: border-box;
+    transition: border-color .15s ease;
+  }
+  input[type="text"]:focus,
+  input[type="number"]:focus,
+  select:focus {
+    outline: none;
+    border-color: var(--accent);
   }
   /* Toggle switch */
   .switch { display: inline-flex; align-items: center; gap: 10px; cursor: pointer; user-select: none; }
@@ -276,7 +284,7 @@
   .chat-settings-group { position: relative; display: grid; place-items: center; }
   .chat-settings-menu {
     display: grid;
-    gap: 2px;
+    gap: 0;
     position: absolute;
     top: auto;
     bottom: calc(100% + 10px);
@@ -284,7 +292,7 @@
     right: auto;
     background: var(--panel);
     border: 1px solid var(--border);
-    border-radius: 10px;
+    border-radius: 12px;
     box-shadow: var(--float-shadow);
     max-height: calc(100vh - 120px);
     overflow-y: auto;
