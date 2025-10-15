@@ -1,6 +1,7 @@
 // Local cache for OpenAI models + helpers to fetch once and refresh on demand
 import { listModels } from './openaiClient.js'
 import { loadSettings, findConnection } from './settingsStore.js'
+import { safeRead, safeWrite } from './utils/localStorageHelper.js'
 
 const MODELS_KEY = 'openai.models.v2'
 const DEFAULT_CACHE_ENTRY = { ids: [], fetchedAt: 0 }
@@ -15,10 +16,7 @@ function sanitizeIdList(ids) {
 }
 
 function readStore() {
-  try {
-    const raw = localStorage.getItem(MODELS_KEY)
-    if (!raw) return { entries: {} }
-    const parsed = JSON.parse(raw)
+  return safeRead(MODELS_KEY, { entries: {} }, (parsed) => {
     if (parsed && typeof parsed === 'object' && parsed.entries && typeof parsed.entries === 'object') {
       return { entries: parsed.entries }
     }
@@ -34,15 +32,14 @@ function readStore() {
       }
     }
     return { entries: {} }
-  } catch {
-    return { entries: {} }
-  }
+  })
 }
 
 function writeStore(store) {
-  try {
-    localStorage.setItem(MODELS_KEY, JSON.stringify({ version: 2, entries: store.entries || {} }))
-  } catch {}
+  const ok = safeWrite(MODELS_KEY, { version: 2, entries: store.entries || {} })
+  if (!ok) {
+    console.error('Failed to persist models cache.')
+  }
   return store
 }
 

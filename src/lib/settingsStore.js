@@ -1,11 +1,9 @@
 // Simple localStorage-backed settings store for API connections and chat presets
-import { toIntOrNull, toClampedNumber } from './utils/numbers.js'
+import { toIntOrNull } from './utils/numbers.js'
+import { safeRead, safeWrite } from './utils/localStorageHelper.js'
+import { DEFAULT_PRESET_FIELDS, makeDefaultPreset, ensurePresetList, deriveDefaultPreset } from './utils/presetHelpers.js'
 
 export const SETTINGS_KEY = 'openai.settings.v1';
-
-function genPresetId() {
-  return `preset_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
-}
 
 function genConnectionId() {
   return `connection_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
@@ -14,30 +12,6 @@ function genConnectionId() {
 const API_MODE_VALUES = new Set(['responses', 'chat_completions'])
 
 const DEFAULT_API_BASE_URL = 'https://api.openai.com/v1';
-
-const DEFAULT_PRESET_FIELDS = {
-  model: 'gpt-5',
-  streaming: true,
-  maxOutputTokens: null,
-  topP: null,
-  temperature: null,
-  reasoningEffort: 'none',
-  textVerbosity: 'medium',
-  reasoningSummary: 'auto',
-  thinkingEnabled: false,
-  thinkingBudgetTokens: null,
-  connectionId: null,
-  systemPrompt: 'You are a helpful assistant.',
-};
-
-function makeDefaultPreset(connectionId = null) {
-  return {
-    id: 'preset-default',
-    name: 'Default',
-    ...DEFAULT_PRESET_FIELDS,
-    connectionId,
-  };
-}
 
 function makeDefaultConnection({ apiKey = '', apiBaseUrl = DEFAULT_API_BASE_URL, apiMode = 'responses' } = {}) {
   const normalizedMode = API_MODE_VALUES.has(apiMode) ? apiMode : 'responses';
@@ -56,10 +30,6 @@ function normalizeApiBaseUrl(value) {
   if (!trimmed) return DEFAULT_API_BASE_URL;
   return trimmed;
 }
-
-const REASONING_VALUES = new Set(['none', 'minimal', 'low', 'medium', 'high']);
-const TEXT_VERBOSITY_VALUES = new Set(['low', 'medium', 'high']);
-const REASONING_SUMMARY_VALUES = new Set(['auto', 'concise', 'detailed']);
 
 function normalizeConnection(raw, index = 0, { fallbackApiMode = 'responses' } = {}) {
   if (!raw || typeof raw !== 'object') return null;
@@ -100,87 +70,6 @@ function ensureConnectionList(list, fallback = {}) {
       apiMode: mode,
     };
   });
-}
-
-function normalizePreset(raw, index = 0, { allowedConnectionIds = [], fallbackConnectionId = null } = {}) {
-  if (!raw || typeof raw !== 'object') return null;
-  const preset = { ...raw };
-  preset.model = typeof preset.model === 'string' && preset.model.trim() ? preset.model.trim() : 'gpt-5';
-  preset.streaming = typeof preset.streaming === 'boolean' ? preset.streaming : true;
-  preset.maxOutputTokens = toIntOrNull(preset.maxOutputTokens);
-  preset.topP = toClampedNumber(preset.topP, 0, 1) ?? null;
-  preset.temperature = toClampedNumber(preset.temperature, 0, 2) ?? null;
-  preset.reasoningEffort = REASONING_VALUES.has(preset.reasoningEffort) ? preset.reasoningEffort : 'none';
-  preset.textVerbosity = TEXT_VERBOSITY_VALUES.has(preset.textVerbosity) ? preset.textVerbosity : 'medium';
-  preset.reasoningSummary = REASONING_SUMMARY_VALUES.has(preset.reasoningSummary)
-    ? preset.reasoningSummary
-    : 'auto';
-  preset.thinkingEnabled = typeof preset.thinkingEnabled === 'boolean' ? preset.thinkingEnabled : false;
-  preset.thinkingBudgetTokens = toIntOrNull(preset.thinkingBudgetTokens);
-  preset.systemPrompt = typeof preset.systemPrompt === 'string'
-    ? preset.systemPrompt
-    : DEFAULT_PRESET_FIELDS.systemPrompt;
-  const nameSource = typeof preset.name === 'string' && preset.name.trim()
-    ? preset.name.trim()
-    : `Preset ${index + 1}`;
-  preset.name = nameSource;
-  preset.id = typeof preset.id === 'string' && preset.id.trim()
-    ? preset.id.trim()
-    : genPresetId();
-  const requestedConnectionId = typeof preset.connectionId === 'string' && preset.connectionId.trim()
-    ? preset.connectionId.trim()
-    : null;
-  const available = Array.isArray(allowedConnectionIds) ? allowedConnectionIds : [];
-  const fallback = fallbackConnectionId && typeof fallbackConnectionId === 'string'
-    ? fallbackConnectionId
-    : (available[0] || null);
-  preset.connectionId = available.includes(requestedConnectionId) ? requestedConnectionId : fallback;
-  return preset;
-}
-
-function ensurePresetList(list, options = {}) {
-  const arr = Array.isArray(list) ? list : [];
-  const normalized = arr
-    .map((p, i) => normalizePreset(p, i, options))
-    .filter(Boolean);
-  if (!normalized.length) {
-    const fallbackConnectionId = options?.fallbackConnectionId || (options?.allowedConnectionIds?.[0] || null);
-    return [makeDefaultPreset(fallbackConnectionId)];
-  }
-  const seen = new Set();
-  return normalized.map((p) => {
-    let id = p.id;
-    while (seen.has(id)) id = genPresetId();
-    seen.add(id);
-    return { ...p, id };
-  });
-}
-
-function deriveDefaultPreset(parsed, options = {}) {
-  const candidate = {
-    id: 'preset-default',
-    name: 'Default',
-    model: (parsed?.defaultChat?.model) || parsed?.model || 'gpt-5',
-    streaming: typeof parsed?.defaultChat?.streaming === 'boolean'
-      ? parsed.defaultChat.streaming
-      : true,
-    maxOutputTokens: parsed?.defaultChat?.maxOutputTokens ?? null,
-    topP: parsed?.defaultChat?.topP ?? null,
-    temperature: parsed?.defaultChat?.temperature ?? null,
-    reasoningEffort: parsed?.defaultChat?.reasoningEffort || 'none',
-    textVerbosity: parsed?.defaultChat?.textVerbosity || 'medium',
-    reasoningSummary: parsed?.defaultChat?.reasoningSummary || 'auto',
-    thinkingEnabled: !!parsed?.defaultChat?.thinkingEnabled,
-    thinkingBudgetTokens: toIntOrNull(parsed?.defaultChat?.thinkingBudgetTokens),
-    connectionId: parsed?.defaultChat?.connectionId
-      || parsed?.connectionId
-      || null,
-    systemPrompt: typeof parsed?.defaultChat?.systemPrompt === 'string'
-      ? parsed.defaultChat.systemPrompt
-      : DEFAULT_PRESET_FIELDS.systemPrompt,
-  };
-  const fromDefault = normalizePreset(candidate, 0, options);
-  return fromDefault || makeDefaultPreset(options?.fallbackConnectionId);
 }
 
 function attachCompatFields(out) {
@@ -297,10 +186,9 @@ export function loadSettings() {
     keybinds: { ...DEFAULT_KEYBINDS },
     showThinkingSettings: false,
   });
+  const parsed = safeRead(SETTINGS_KEY, null, (value) => (value && typeof value === 'object' ? value : null));
+  if (!parsed) return defaults;
   try {
-    const raw = localStorage.getItem(SETTINGS_KEY);
-    if (!raw) return defaults;
-    const parsed = JSON.parse(raw);
     const mode = typeof parsed?.apiMode === 'string' && API_MODE_VALUES.has(parsed.apiMode)
       ? parsed.apiMode
       : 'responses';
@@ -345,7 +233,8 @@ export function loadSettings() {
       keybinds,
       showThinkingSettings,
     });
-  } catch {
+  } catch (err) {
+    console.error('Failed to load settings, falling back to defaults:', err);
     return defaults;
   }
 }
@@ -394,5 +283,9 @@ export function saveSettings(next) {
     keybinds,
     showThinkingSettings,
   });
-  localStorage.setItem(SETTINGS_KEY, JSON.stringify(data));
+  const ok = safeWrite(SETTINGS_KEY, data);
+  if (!ok) {
+    throw new Error('Failed to persist settings.');
+  }
+  return data;
 }
