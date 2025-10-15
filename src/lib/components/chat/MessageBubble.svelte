@@ -184,17 +184,15 @@
     display: block;
     width: 100%;
     max-width: 100%;
-    min-width: 0;
     resize: none;
     outline: none;
     overflow: hidden;
+    background: inherit;
+    color: inherit;
     font: inherit;
+    text-align: inherit;
     box-sizing: border-box;
     min-height: 32px;
-  }
-  .bubble.editing.editor-area.user {
-    justify-self: end;
-    margin-inline-start: auto;
   }
   /* Markdown content inside bubbles rendered via {@html} */
   .bubble :global(h1), .bubble :global(h2), .bubble :global(h3), .bubble :global(h4), .bubble :global(h5), .bubble :global(h6) { margin: 0.2em 0 0.4em; line-height: 1.25; }
