@@ -1,6 +1,6 @@
 <script>
-  import { tick, onMount } from 'svelte'
-  import { IconMenu, IconEditSquare, IconClose, IconCheck, IconEdit, IconDelete, IconSettings } from '../icons.js'
+  import { tick, onMount, onDestroy } from 'svelte'
+  import { IconMenu, IconEditSquare, IconClose, IconCheck, IconEdit, IconDelete, IconSettings, IconSearch, IconDescription } from '../icons.js'
   const props = $props()
 
   let confirmDeleteId = $state(null)
@@ -11,6 +11,14 @@
   let presetMenuOpen = $state(false)
   let presetMenuEl = $state(null)
   let lastSidebarOpen = $state(props.open ?? true)
+
+  // Search state
+  let searchQuery = $state('')
+  let searchMode = $state('title') // 'title' or 'content'
+  let searchDebounceTimer = null
+
+  // Cache for extracted content to avoid re-processing
+  let contentCache = new Map()
 
   function selectChat(id) {
     if (!id || editingId === id || confirmDeleteId === id) return
@@ -107,6 +115,88 @@
     props.onNewChat?.({ presetId: preset.id })
   }
 
+  // Search functionality
+  function toggleSearchMode() {
+    searchMode = searchMode === 'title' ? 'content' : 'title'
+  }
+
+  function clearSearch() {
+    searchQuery = ''
+  }
+
+  // Extract text content from chat nodes for content search
+  function extractChatContent(chat) {
+    if (!chat?.nodes || !Array.isArray(chat.nodes)) return ''
+
+    // Create cache key from chat ID and updatedAt timestamp
+    const cacheKey = `${chat.id}-${chat.updatedAt || 0}`
+
+    // Return cached content if available
+    if (contentCache.has(cacheKey)) {
+      return contentCache.get(cacheKey)
+    }
+
+    let content = []
+    const maxChars = 100000 // Limit to prevent memory issues
+    let charCount = 0
+
+    for (const node of chat.nodes) {
+      if (charCount >= maxChars) break
+      if (!node?.variants || !Array.isArray(node.variants)) continue
+
+      for (const variant of node.variants) {
+        if (charCount >= maxChars) break
+        if (variant?.content && typeof variant.content === 'string') {
+          const text = variant.content.trim()
+          if (text) {
+            content.push(text)
+            charCount += text.length
+          }
+        }
+      }
+    }
+
+    const result = content.join(' ')
+
+    // Cache the result (with size limit to prevent memory issues)
+    if (contentCache.size > 100) {
+      // Remove oldest entries (first 20)
+      const keysToDelete = Array.from(contentCache.keys()).slice(0, 20)
+      keysToDelete.forEach(key => contentCache.delete(key))
+    }
+    contentCache.set(cacheKey, result)
+
+    return result
+  }
+
+  // Optimized search that handles large data
+  function matchesSearch(chat, query, mode) {
+    if (!query || !query.trim()) return true
+
+    const searchTerm = query.toLowerCase().trim()
+
+    if (mode === 'title') {
+      const title = (chat?.title || '').toLowerCase()
+      return title.includes(searchTerm)
+    } else {
+      // Content search
+      const title = (chat?.title || '').toLowerCase()
+      if (title.includes(searchTerm)) return true
+
+      const content = extractChatContent(chat).toLowerCase()
+      return content.includes(searchTerm)
+    }
+  }
+
+  // Filtered chats based on search
+  const filteredChats = $derived((() => {
+    const query = searchQuery.trim()
+    if (!query) return props.chats || []
+
+    const chats = props.chats || []
+    return chats.filter(chat => matchesSearch(chat, query, searchMode))
+  })())
+
   onMount(() => {
     function handlePointerDown(event) {
       if (!presetMenuOpen) return
@@ -135,6 +225,12 @@
     lastSidebarOpen = isOpen
     const count = Array.isArray(props?.presets) ? props.presets.length : 0
     if (count <= 1 && presetMenuOpen) presetMenuOpen = false
+  })
+
+  onDestroy(() => {
+    if (searchDebounceTimer) {
+      clearTimeout(searchDebounceTimer)
+    }
   })
 </script>
 
@@ -183,8 +279,44 @@
         <!-- Chat list as simple ghost-text buttons -->
         <div class="chat-section">
           <div class="section-label">Chats</div>
+
+          <!-- Search bar -->
+          <div class="search-wrapper">
+            <div class="search-input-wrapper">
+              <IconSearch style="font-size: 18px; color: var(--muted);" />
+              <input
+                type="text"
+                class="search-input"
+                placeholder={searchMode === 'title' ? 'Search chats...' : 'Search in content...'}
+                value={searchQuery}
+                oninput={(e) => searchQuery = e.currentTarget.value}
+                aria-label="Search chats"
+              />
+              {#if searchQuery}
+                <button
+                  type="button"
+                  class="search-clear-btn"
+                  onclick={clearSearch}
+                  aria-label="Clear search"
+                  title="Clear search"
+                >
+                  <IconClose style="font-size: 18px;" />
+                </button>
+              {/if}
+            </div>
+            <button
+              type="button"
+              class="search-mode-btn {searchMode === 'content' ? 'active' : ''}"
+              onclick={toggleSearchMode}
+              aria-label={searchMode === 'title' ? 'Switch to content search' : 'Switch to title search'}
+              title={searchMode === 'title' ? 'Search in content' : 'Search in titles'}
+            >
+              <IconDescription style="font-size: 18px;" />
+            </button>
+          </div>
+
           <nav class="chat-list" aria-label="Chats">
-            {#each (props.chats || []) as c (c.id)}
+            {#each filteredChats as c (c.id)}
               <div
                 class={`chat-row ${props.selectedId === c.id ? 'active' : ''} ${(confirmDeleteId === c.id || editingId === c.id || props.selectedId === c.id) ? 'show-actions' : ''}`}
                 title={c.title || 'Chat'}
@@ -618,4 +750,94 @@
   /* Remove horizontal separator in collapsed mode */
   .sidebar.collapsed .side-footer { border-top: 0; }
   .side-fade { position: absolute; inset: 0; pointer-events: none; background: linear-gradient(180deg, transparent, transparent 40%, rgba(0,0,0,0.04) 100%); mix-blend-mode: multiply; opacity: .35; }
+
+  /* Search styles */
+  .search-wrapper {
+    display: flex;
+    gap: 4px;
+    padding: 0 16px 6px;
+    margin-top: 2px;
+  }
+
+  .search-input-wrapper {
+    flex: 1 1 auto;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    transition: background-color 150ms ease;
+    min-width: 0;
+  }
+
+  .search-input-wrapper:hover {
+    background: color-mix(in srgb, var(--panel), transparent 60%);
+  }
+
+  .search-input-wrapper:focus-within {
+    background: var(--panel);
+  }
+
+  .search-input {
+    flex: 1 1 auto;
+    border: none;
+    background: transparent;
+    color: var(--text);
+    font: inherit;
+    font-size: 0.85rem;
+    outline: none;
+    min-width: 0;
+  }
+
+  .search-input::placeholder {
+    color: var(--muted);
+    opacity: 0.7;
+  }
+
+  .search-clear-btn {
+    display: grid;
+    place-items: center;
+    width: 20px;
+    height: 20px;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+    transition: background-color 120ms ease, color 120ms ease;
+    flex: 0 0 auto;
+  }
+
+  .search-clear-btn:hover,
+  .search-clear-btn:focus-visible {
+    background: var(--hover-bg);
+    color: var(--text);
+  }
+
+  .search-mode-btn {
+    display: grid;
+    place-items: center;
+    min-width: 28px;
+    height: 28px;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+    transition: background-color 150ms ease, color 150ms ease;
+    flex: 0 0 auto;
+  }
+
+  .search-mode-btn:hover,
+  .search-mode-btn:focus-visible {
+    background: var(--panel);
+    color: var(--text);
+  }
+
+  .search-mode-btn.active {
+    background: var(--panel);
+    color: var(--text);
+  }
 </style>
