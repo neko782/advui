@@ -30,7 +30,9 @@
     handleGenerationSuccess,
     handleGenerationError,
     prepareRefreshAssistant,
-    prepareRefreshAfterUser
+    prepareRefreshAfterUser,
+    validateTypingVariantVisible,
+    logGenerationEvent
   } from './chat/actions/generationActions.js'
 
   // Utilities
@@ -655,9 +657,16 @@
   async function applyEditSend() {
     if (locked) return
     if (editingId == null) return
+    if (generationState.isGenerationActive()) {
+      logGenerationEvent(debug, 'Blocked applyEditSend: generation already active')
+      return
+    }
 
     const prepared = prepareBranchAndSend(nodes, rootId, editingId, editingText, nextId, nextNodeId)
-    if (!prepared) return
+    if (!prepared) {
+      logGenerationEvent(debug, 'Failed to prepare branch and send')
+      return
+    }
 
     if (prepared.shouldRefreshOnly) {
       editingId = null
@@ -666,63 +675,93 @@
       return
     }
 
+    const typingVariantId = prepared.typingVariantId
     nodes = prepared.nodes
     nextId = prepared.nextId
     nextNodeId = prepared.nextNodeId
     editingId = null
     editingText = ''
 
+    // Validate typing node is visible before starting generation
+    if (!validateTypingVariantVisible(nodes, rootId, typingVariantId)) {
+      logGenerationEvent(debug, 'Typing node not visible in applyEditSend', { typingVariantId })
+      nodes = handleGenerationError(nodes, typingVariantId, new Error('Typing node not visible'))
+      persistNow()
+      return
+    }
+
     resetGenerationState()
+    const genSeq = generationState.startGeneration()
+    logGenerationEvent(debug, 'Starting applyEditSend', { sequence: genSeq, typingVariantId })
+
     const { connectionId, apiKey } = resolveConnectionContext()
     if (!apiKey) {
       persistNow()
       showMissingApiKeyNotice()
+      generationState.completeGeneration(genSeq)
       return
     }
     clearMissingApiKeyNotice()
 
     sending = true
-    generationState.setTypingVariantId(prepared.typingVariantId)
+    generationState.setTypingVariantId(typingVariantId)
     persistNow()
 
     try {
       let summaryBuffer = ''
       const requestNodes = withImageData(nodes)
+      logGenerationEvent(debug, 'Starting API request', { typingVariantId })
       const reply = await generateResponse({
         nodes: requestNodes,
         rootId,
         chatSettings,
         connectionId,
         streaming: chatSettings.streaming,
-        typingVariantId: prepared.typingVariantId,
+        typingVariantId,
         onAbort: registerAbortHandler,
         onTextDelta: (full) => {
-          updateVariant(prepared.typingVariantId, (prev) => ({ ...prev, content: full }))
+          if (generationState.getGenerationSequence() === genSeq) {
+            updateVariant(typingVariantId, (prev) => ({ ...prev, content: full }))
+          }
         },
         onReasoningSummaryDelta: (fullSummary) => {
-          if (typeof fullSummary === 'string') summaryBuffer = fullSummary
-          updateVariant(prepared.typingVariantId, (prev) => ({
-            ...prev,
-            reasoningSummary: summaryBuffer,
-            reasoningSummaryLoading: true,
-          }))
+          if (generationState.getGenerationSequence() === genSeq && typeof fullSummary === 'string') {
+            summaryBuffer = fullSummary
+            updateVariant(typingVariantId, (prev) => ({
+              ...prev,
+              reasoningSummary: summaryBuffer,
+              reasoningSummaryLoading: true,
+            }))
+          }
         },
         onReasoningSummaryDone: (fullSummary) => {
-          if (typeof fullSummary === 'string') summaryBuffer = fullSummary
-          updateVariant(prepared.typingVariantId, (prev) => ({
-            ...prev,
-            reasoningSummary: summaryBuffer,
-            reasoningSummaryLoading: false,
-          }))
+          if (generationState.getGenerationSequence() === genSeq && typeof fullSummary === 'string') {
+            summaryBuffer = fullSummary
+            updateVariant(typingVariantId, (prev) => ({
+              ...prev,
+              reasoningSummary: summaryBuffer,
+              reasoningSummaryLoading: false,
+            }))
+          }
         },
       })
-      nodes = handleGenerationSuccess(nodes, prepared.typingVariantId, reply, summaryBuffer)
+      logGenerationEvent(debug, 'API request completed', { typingVariantId })
+      if (generationState.getGenerationSequence() === genSeq) {
+        nodes = handleGenerationSuccess(nodes, typingVariantId, reply, summaryBuffer)
+      }
       persistNow()
     } catch (err) {
-      nodes = handleGenerationError(nodes, prepared.typingVariantId, err)
+      logGenerationEvent(debug, 'Generation error', { error: err?.message, typingVariantId })
+      if (generationState.getGenerationSequence() === genSeq) {
+        nodes = handleGenerationError(nodes, typingVariantId, err)
+      }
       persistNow()
     } finally {
-      finishGeneration()
+      if (generationState.getGenerationSequence() === genSeq) {
+        generationState.completeGeneration(genSeq)
+        finishGeneration()
+        logGenerationEvent(debug, 'Generation finished', { sequence: genSeq })
+      }
     }
   }
 
@@ -734,7 +773,14 @@
   // Send message
   async function sendWithRole(role = 'user') {
     if (locked || sending) return
+    if (generationState.isGenerationActive()) {
+      logGenerationEvent(debug, 'Blocked send: generation already active')
+      return
+    }
+
     resetGenerationState()
+    const genSeq = generationState.startGeneration()
+    logGenerationEvent(debug, 'Starting send', { sequence: genSeq, role })
 
     const rawInput = (typeof input === 'string') ? input : ''
     const trimmedInput = rawInput.trim()
@@ -742,6 +788,7 @@
 
     if (!hasContent && role !== 'user') {
       input = ''
+      generationState.completeGeneration(genSeq)
       return
     }
 
@@ -758,21 +805,22 @@
       resolveConnectionContext()
     }
 
-    sending = true
-
     // Add user message
     let newNodeId = null
     const imageRefs = buildImageRefs(attachedImages)
     const hasImages = imageRefs.length > 0
     if (hasContent || hasImages) {
       const prepared = prepareUserMessage(nodes, rootId, trimmedInput, nextId, nextNodeId, imageRefs)
-      if (prepared) {
-        nodes = prepared.nodes
-        rootId = prepared.rootId
-        nextId = prepared.nextId
-        nextNodeId = prepared.nextNodeId
-        newNodeId = prepared.newNodeId
+      if (!prepared) {
+        logGenerationEvent(debug, 'Failed to prepare user message')
+        generationState.completeGeneration(genSeq)
+        return
       }
+      nodes = prepared.nodes
+      rootId = prepared.rootId
+      nextId = prepared.nextId
+      nextNodeId = prepared.nextNodeId
+      newNodeId = prepared.newNodeId
     }
 
     input = ''
@@ -783,12 +831,31 @@
     if (role === 'user' && apiKey) {
       const parentNodeId = (hasContent && newNodeId != null) ? newNodeId : (buildVisible().at(-1)?.nodeId || null)
       const prepared = prepareTypingNode(nodes, rootId, parentNodeId, nextId, nextNodeId)
+      if (!prepared) {
+        logGenerationEvent(debug, 'Failed to prepare typing node')
+        persistNow()
+        generationState.completeGeneration(genSeq)
+        return
+      }
       nodes = prepared.nodes
       rootId = prepared.rootId
       typingVariantId = prepared.typingVariantId
-      generationState.setTypingVariantId(typingVariantId)
       nextId = prepared.nextId
       nextNodeId = prepared.nextNodeId
+
+      // Validate typing node is visible
+      if (!validateTypingVariantVisible(nodes, rootId, typingVariantId)) {
+        logGenerationEvent(debug, 'Typing node not visible', { typingVariantId })
+        // Recovery: mark as not typing and continue
+        nodes = handleGenerationError(nodes, typingVariantId, new Error('Typing node not visible'))
+        persistNow()
+        generationState.completeGeneration(genSeq)
+        return
+      }
+
+      sending = true
+      generationState.setTypingVariantId(typingVariantId)
+      logGenerationEvent(debug, 'Typing node prepared', { typingVariantId })
     }
 
     persistNow()
@@ -799,6 +866,7 @@
       let summaryBuffer = ''
       if (role === 'user' && apiKey) {
         const requestNodes = withImageData(nodes)
+        logGenerationEvent(debug, 'Starting API request', { typingVariantId })
         reply = await generateResponse({
           nodes: requestNodes,
           rootId,
@@ -808,39 +876,51 @@
           typingVariantId,
           onAbort: registerAbortHandler,
           onTextDelta: (full) => {
-            updateVariant(typingVariantId, (prev) => ({ ...prev, content: full }))
+            if (generationState.getGenerationSequence() === genSeq) {
+              updateVariant(typingVariantId, (prev) => ({ ...prev, content: full }))
+            }
           },
           onReasoningSummaryDelta: (fullSummary) => {
-            if (typeof fullSummary === 'string') summaryBuffer = fullSummary
-            updateVariant(typingVariantId, (prev) => ({
-              ...prev,
-              reasoningSummary: summaryBuffer,
-              reasoningSummaryLoading: true,
-            }))
+            if (generationState.getGenerationSequence() === genSeq && typeof fullSummary === 'string') {
+              summaryBuffer = fullSummary
+              updateVariant(typingVariantId, (prev) => ({
+                ...prev,
+                reasoningSummary: summaryBuffer,
+                reasoningSummaryLoading: true,
+              }))
+            }
           },
           onReasoningSummaryDone: (fullSummary) => {
-            if (typeof fullSummary === 'string') summaryBuffer = fullSummary
-            updateVariant(typingVariantId, (prev) => ({
-              ...prev,
-              reasoningSummary: summaryBuffer,
-              reasoningSummaryLoading: false,
-            }))
+            if (generationState.getGenerationSequence() === genSeq && typeof fullSummary === 'string') {
+              summaryBuffer = fullSummary
+              updateVariant(typingVariantId, (prev) => ({
+                ...prev,
+                reasoningSummary: summaryBuffer,
+                reasoningSummaryLoading: false,
+              }))
+            }
           },
         })
+        logGenerationEvent(debug, 'API request completed', { typingVariantId })
       } else if (role === 'user') {
         showMissingApiKeyNotice()
       }
-      if (role === 'user' && typingVariantId != null) {
+      if (role === 'user' && typingVariantId != null && generationState.getGenerationSequence() === genSeq) {
         nodes = handleGenerationSuccess(nodes, typingVariantId, reply, summaryBuffer)
       }
       persistNow()
     } catch (err) {
-      if (role === 'user' && typingVariantId != null) {
+      logGenerationEvent(debug, 'Generation error', { error: err?.message, typingVariantId })
+      if (role === 'user' && typingVariantId != null && generationState.getGenerationSequence() === genSeq) {
         nodes = handleGenerationError(nodes, typingVariantId, err)
       }
       persistNow()
     } finally {
-      finishGeneration()
+      if (generationState.getGenerationSequence() === genSeq) {
+        generationState.completeGeneration(genSeq)
+        finishGeneration()
+        logGenerationEvent(debug, 'Generation finished', { sequence: genSeq })
+      }
     }
   }
 
@@ -900,13 +980,37 @@
   // Refresh actions
   async function refreshAssistant(id) {
     if (locked) return
+    if (generationState.isGenerationActive()) {
+      logGenerationEvent(debug, 'Blocked refreshAssistant: generation already active')
+      return
+    }
+
     const prepared = prepareRefreshAssistant(nodes, rootId, id, nextId)
-    if (!prepared) return
+    if (!prepared) {
+      logGenerationEvent(debug, 'Failed to prepare refresh assistant')
+      return
+    }
+
+    const typingVariantId = prepared.typingVariantId
+
+    // Validate typing node is visible before starting generation
+    if (!validateTypingVariantVisible(prepared.nodes, rootId, typingVariantId)) {
+      logGenerationEvent(debug, 'Typing node not visible in refreshAssistant', { typingVariantId })
+      nodes = prepared.nodes
+      nextId = prepared.nextId
+      nodes = handleGenerationError(nodes, typingVariantId, new Error('Typing node not visible'))
+      persistNow()
+      return
+    }
 
     resetGenerationState()
+    const genSeq = generationState.startGeneration()
+    logGenerationEvent(debug, 'Starting refreshAssistant', { sequence: genSeq, typingVariantId })
+
     const { connectionId, apiKey } = resolveConnectionContext()
     if (!apiKey) {
       showMissingApiKeyNotice()
+      generationState.completeGeneration(genSeq)
       return
     }
     clearMissingApiKeyNotice()
@@ -914,57 +1018,101 @@
     nodes = prepared.nodes
     nextId = prepared.nextId
     sending = true
-    generationState.setTypingVariantId(prepared.typingVariantId)
+    generationState.setTypingVariantId(typingVariantId)
+    persistNow()
 
     try {
       let summaryBuffer = ''
+      const requestNodes = withImageData(nodes)
+      logGenerationEvent(debug, 'Starting API request', { typingVariantId })
       const reply = await generateResponse({
-        nodes: withImageData(prepared.nodes),
+        nodes: requestNodes,
         rootId,
         chatSettings,
         connectionId,
         streaming: chatSettings.streaming,
-        typingVariantId: prepared.typingVariantId,
+        typingVariantId,
         onAbort: registerAbortHandler,
         onTextDelta: (full) => {
-          updateVariant(prepared.typingVariantId, (prev) => ({ ...prev, content: full }))
+          if (generationState.getGenerationSequence() === genSeq) {
+            updateVariant(typingVariantId, (prev) => ({ ...prev, content: full }))
+          }
         },
         onReasoningSummaryDelta: (fullSummary) => {
-          if (typeof fullSummary === 'string') summaryBuffer = fullSummary
-          updateVariant(prepared.typingVariantId, (prev) => ({
-            ...prev,
-            reasoningSummary: summaryBuffer,
-            reasoningSummaryLoading: true,
-          }))
+          if (generationState.getGenerationSequence() === genSeq && typeof fullSummary === 'string') {
+            summaryBuffer = fullSummary
+            updateVariant(typingVariantId, (prev) => ({
+              ...prev,
+              reasoningSummary: summaryBuffer,
+              reasoningSummaryLoading: true,
+            }))
+          }
         },
         onReasoningSummaryDone: (fullSummary) => {
-          if (typeof fullSummary === 'string') summaryBuffer = fullSummary
-          updateVariant(prepared.typingVariantId, (prev) => ({
-            ...prev,
-            reasoningSummary: summaryBuffer,
-            reasoningSummaryLoading: false,
-          }))
+          if (generationState.getGenerationSequence() === genSeq && typeof fullSummary === 'string') {
+            summaryBuffer = fullSummary
+            updateVariant(typingVariantId, (prev) => ({
+              ...prev,
+              reasoningSummary: summaryBuffer,
+              reasoningSummaryLoading: false,
+            }))
+          }
         },
       })
-      nodes = handleGenerationSuccess(nodes, prepared.typingVariantId, reply, summaryBuffer)
+      logGenerationEvent(debug, 'API request completed', { typingVariantId })
+      if (generationState.getGenerationSequence() === genSeq) {
+        nodes = handleGenerationSuccess(nodes, typingVariantId, reply, summaryBuffer)
+      }
       persistNow()
     } catch (err) {
-      nodes = handleGenerationError(nodes, prepared.typingVariantId, err)
+      logGenerationEvent(debug, 'Generation error', { error: err?.message, typingVariantId })
+      if (generationState.getGenerationSequence() === genSeq) {
+        nodes = handleGenerationError(nodes, typingVariantId, err)
+      }
       persistNow()
     } finally {
-      finishGeneration()
+      if (generationState.getGenerationSequence() === genSeq) {
+        generationState.completeGeneration(genSeq)
+        finishGeneration()
+        logGenerationEvent(debug, 'Generation finished', { sequence: genSeq })
+      }
     }
   }
 
   async function refreshAfterUserIndex(i) {
     if (locked) return
+    if (generationState.isGenerationActive()) {
+      logGenerationEvent(debug, 'Blocked refreshAfterUserIndex: generation already active')
+      return
+    }
+
     const prepared = prepareRefreshAfterUser(nodes, rootId, i, nextId, nextNodeId)
-    if (!prepared) return
+    if (!prepared) {
+      logGenerationEvent(debug, 'Failed to prepare refresh after user')
+      return
+    }
+
+    const typingVariantId = prepared.typingVariantId
+
+    // Validate typing node is visible before starting generation
+    if (!validateTypingVariantVisible(prepared.nodes, rootId, typingVariantId)) {
+      logGenerationEvent(debug, 'Typing node not visible in refreshAfterUserIndex', { typingVariantId })
+      nodes = prepared.nodes
+      nextId = prepared.nextId
+      nextNodeId = prepared.nextNodeId
+      nodes = handleGenerationError(nodes, typingVariantId, new Error('Typing node not visible'))
+      persistNow()
+      return
+    }
 
     resetGenerationState()
+    const genSeq = generationState.startGeneration()
+    logGenerationEvent(debug, 'Starting refreshAfterUserIndex', { sequence: genSeq, index: i, typingVariantId })
+
     const { connectionId, apiKey } = resolveConnectionContext()
     if (!apiKey) {
       showMissingApiKeyNotice()
+      generationState.completeGeneration(genSeq)
       return
     }
     clearMissingApiKeyNotice()
@@ -973,46 +1121,64 @@
     nextId = prepared.nextId
     nextNodeId = prepared.nextNodeId
     sending = true
-    generationState.setTypingVariantId(prepared.typingVariantId)
+    generationState.setTypingVariantId(typingVariantId)
     persistNow()
 
     try {
       let summaryBuffer = ''
+      const requestNodes = withImageData(nodes)
+      logGenerationEvent(debug, 'Starting API request', { typingVariantId })
       const reply = await generateResponse({
-        nodes: withImageData(prepared.nodes),
+        nodes: requestNodes,
         rootId,
         chatSettings,
         connectionId,
         streaming: chatSettings.streaming,
-        typingVariantId: prepared.typingVariantId,
+        typingVariantId,
         onAbort: registerAbortHandler,
         onTextDelta: (full) => {
-          updateVariant(prepared.typingVariantId, (prev) => ({ ...prev, content: full }))
+          if (generationState.getGenerationSequence() === genSeq) {
+            updateVariant(typingVariantId, (prev) => ({ ...prev, content: full }))
+          }
         },
         onReasoningSummaryDelta: (fullSummary) => {
-          if (typeof fullSummary === 'string') summaryBuffer = fullSummary
-          updateVariant(prepared.typingVariantId, (prev) => ({
-            ...prev,
-            reasoningSummary: summaryBuffer,
-            reasoningSummaryLoading: true,
-          }))
+          if (generationState.getGenerationSequence() === genSeq && typeof fullSummary === 'string') {
+            summaryBuffer = fullSummary
+            updateVariant(typingVariantId, (prev) => ({
+              ...prev,
+              reasoningSummary: summaryBuffer,
+              reasoningSummaryLoading: true,
+            }))
+          }
         },
         onReasoningSummaryDone: (fullSummary) => {
-          if (typeof fullSummary === 'string') summaryBuffer = fullSummary
-          updateVariant(prepared.typingVariantId, (prev) => ({
-            ...prev,
-            reasoningSummary: summaryBuffer,
-            reasoningSummaryLoading: false,
-          }))
+          if (generationState.getGenerationSequence() === genSeq && typeof fullSummary === 'string') {
+            summaryBuffer = fullSummary
+            updateVariant(typingVariantId, (prev) => ({
+              ...prev,
+              reasoningSummary: summaryBuffer,
+              reasoningSummaryLoading: false,
+            }))
+          }
         },
       })
-      nodes = handleGenerationSuccess(nodes, prepared.typingVariantId, reply, summaryBuffer)
+      logGenerationEvent(debug, 'API request completed', { typingVariantId })
+      if (generationState.getGenerationSequence() === genSeq) {
+        nodes = handleGenerationSuccess(nodes, typingVariantId, reply, summaryBuffer)
+      }
       persistNow()
     } catch (err) {
-      nodes = handleGenerationError(nodes, prepared.typingVariantId, err)
+      logGenerationEvent(debug, 'Generation error', { error: err?.message, typingVariantId })
+      if (generationState.getGenerationSequence() === genSeq) {
+        nodes = handleGenerationError(nodes, typingVariantId, err)
+      }
       persistNow()
     } finally {
-      finishGeneration()
+      if (generationState.getGenerationSequence() === genSeq) {
+        generationState.completeGeneration(genSeq)
+        finishGeneration()
+        logGenerationEvent(debug, 'Generation finished', { sequence: genSeq })
+      }
     }
   }
 

@@ -5,6 +5,78 @@ import { isAbortError } from '../../utils/errors.js'
 import { updateVariantById } from './variantActions.js'
 import { findNodeByMessageId } from '../../utils/treeUtils.js'
 
+/**
+ * Validates that a typing variant is visible in the current graph
+ * @param {Array} nodes - The graph nodes
+ * @param {number} rootId - The root node ID
+ * @param {number} typingVariantId - The typing variant ID to check
+ * @returns {boolean} True if the typing variant is visible
+ */
+export function validateTypingVariantVisible(nodes, rootId, typingVariantId) {
+  if (typingVariantId == null) return false
+  try {
+    const visible = _buildVisible(nodes, rootId)
+    return visible.some(vm => vm?.m?.id === typingVariantId && vm?.m?.typing === true)
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Creates a generation context with all necessary state
+ * This ensures atomic updates and proper error handling
+ */
+export function createGenerationContext({ nodes, rootId, nextId, nextNodeId }) {
+  return {
+    nodes: Array.isArray(nodes) ? nodes.slice() : [],
+    rootId: rootId ?? null,
+    nextId: typeof nextId === 'number' ? nextId : 1,
+    nextNodeId: typeof nextNodeId === 'number' ? nextNodeId : 1,
+    typingVariantId: null,
+    error: null,
+  }
+}
+
+/**
+ * Applies a state update and validates it
+ * Returns null if the update is invalid
+ */
+export function applyGenerationUpdate(context, update) {
+  if (!update || typeof update !== 'object') return null
+
+  const nextContext = {
+    ...context,
+    nodes: Array.isArray(update.nodes) ? update.nodes : context.nodes,
+    rootId: update.rootId !== undefined ? update.rootId : context.rootId,
+    nextId: typeof update.nextId === 'number' ? update.nextId : context.nextId,
+    nextNodeId: typeof update.nextNodeId === 'number' ? update.nextNodeId : context.nextNodeId,
+  }
+
+  if (update.typingVariantId !== undefined) {
+    nextContext.typingVariantId = update.typingVariantId
+  }
+
+  // Validate that typing variant is visible if one was set
+  if (nextContext.typingVariantId != null) {
+    const isVisible = validateTypingVariantVisible(nextContext.nodes, nextContext.rootId, nextContext.typingVariantId)
+    if (!isVisible) {
+      nextContext.error = 'Typing variant is not visible in graph'
+      return null
+    }
+  }
+
+  return nextContext
+}
+
+/**
+ * Logs generation lifecycle events when debug mode is enabled
+ */
+export function logGenerationEvent(debug, event, data = {}) {
+  if (!debug) return
+  const timestamp = new Date().toISOString()
+  console.log(`[Generation ${timestamp}] ${event}`, data)
+}
+
 function normalizeImages(images) {
   if (!Array.isArray(images)) return []
   const map = new Map()
