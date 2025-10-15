@@ -13,6 +13,115 @@ export const SELECTED_KEY = 'openai.chats.selected.v1'
 
 const hasOwn = (obj, key) => Object.prototype.hasOwnProperty.call(obj || {}, key)
 
+function sanitizeVariantLockState(variant) {
+  if (!variant || typeof variant !== 'object') return variant
+  let mutated = false
+  let next = variant
+  if (hasOwn(next, 'locked')) {
+    if (!mutated) next = { ...next }
+    delete next.locked
+    mutated = true
+  }
+  if (next?.typing) {
+    if (!mutated) next = { ...next }
+    next.typing = false
+    mutated = true
+  } else if (hasOwn(next, 'typing') && typeof next.typing !== 'boolean') {
+    if (!mutated) next = { ...next }
+    next.typing = false
+    mutated = true
+  }
+  return mutated ? next : variant
+}
+
+function sanitizeNodeLockState(node) {
+  if (!node || typeof node !== 'object') return node
+  let mutated = false
+  let next = node
+  if (hasOwn(next, 'locked')) {
+    if (!mutated) next = { ...next }
+    delete next.locked
+    mutated = true
+  }
+  const variants = Array.isArray(next?.variants) ? next.variants : null
+  if (variants && variants.length) {
+    const sanitizedVariants = variants.map(sanitizeVariantLockState)
+    let changed = false
+    for (let i = 0; i < variants.length; i += 1) {
+      if (sanitizedVariants[i] !== variants[i]) {
+        changed = true
+        break
+      }
+    }
+    if (changed) {
+      if (!mutated) next = { ...next }
+      next.variants = sanitizedVariants
+      mutated = true
+    }
+  }
+  return mutated ? next : node
+}
+
+function sanitizeChatLockState(chat) {
+  if (!chat || typeof chat !== 'object') return chat
+  let mutated = false
+  let next = chat
+  if (hasOwn(next, 'locked')) {
+    next = { ...next }
+    delete next.locked
+    mutated = true
+  }
+  if (Array.isArray(next?.nodes) && next.nodes.length) {
+    const sanitizedNodes = next.nodes.map(sanitizeNodeLockState)
+    let changed = false
+    for (let i = 0; i < next.nodes.length; i += 1) {
+      if (sanitizedNodes[i] !== next.nodes[i]) {
+        changed = true
+        break
+      }
+    }
+    if (changed) {
+      if (!mutated) next = { ...next }
+      next.nodes = sanitizedNodes
+      mutated = true
+    }
+  }
+  return mutated ? next : chat
+}
+
+function applyVariantLockState(variant) {
+  if (!variant || typeof variant !== 'object') return variant
+  return {
+    ...variant,
+    locked: true,
+    typing: true,
+  }
+}
+
+function applyNodeLockState(node) {
+  if (!node || typeof node !== 'object') return node
+  const variants = Array.isArray(node?.variants)
+    ? node.variants.map(applyVariantLockState)
+    : node.variants
+  return {
+    ...node,
+    locked: true,
+    variants,
+  }
+}
+
+function applyChatLockState(chat) {
+  if (!chat || typeof chat !== 'object') return chat
+  const next = {
+    ...chat,
+    locked: true,
+  }
+  if (Array.isArray(chat?.nodes)) {
+    next.nodes = chat.nodes.map(applyNodeLockState)
+  }
+  return next
+}
+
 export function loadAll() {
   // Back-compat shim for existing callers that expect { selectedId }
   const selection = safeRead(SELECTED_KEY, { selectedId: null }, (value) => {
@@ -34,6 +143,20 @@ export function setSelected(id) {
 export async function getChats() {
   // Return all chats; sort done by callers if needed
   try { return await storeGetAll() } catch { return [] }
+}
+
+export async function unlockAllChats() {
+  try {
+    const list = await storeGetAll()
+    for (const chat of list) {
+      const sanitized = sanitizeChatLockState(chat)
+      if (sanitized !== chat) {
+        await storePut(sanitized)
+      }
+    }
+  } catch {
+    /* ignore unlock errors */
+  }
 }
 
 export async function getChat(id) {
@@ -262,4 +385,21 @@ export async function createChat(initial = {}) {
   const persisted = await storePut(chat)
   setSelected(id)
   return { id, chat: persisted || chat }
+}
+
+export async function debugSetChatLockState(id, shouldLock = true) {
+  if (!id) return null
+  try {
+    const chat = await storeGetOne(id)
+    if (!chat) return null
+    let next = shouldLock ? applyChatLockState(chat) : sanitizeChatLockState(chat)
+    if (next === chat) {
+      next = { ...next }
+    }
+    next.updatedAt = Date.now()
+    await storePut(next)
+    return next
+  } catch {
+    return null
+  }
 }
