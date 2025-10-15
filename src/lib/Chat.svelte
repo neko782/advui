@@ -3,7 +3,7 @@
   import { onMount, onDestroy } from 'svelte'
   import { loadSettings, findConnection } from './settingsStore.js'
   import { ensureModels, loadModelsCache } from './modelsStore.js'
-  import { saveChatContent } from './chatsStore.js'
+  import { saveChatContent, debugSetChatLockState } from './chatsStore.js'
   import { copyText as copyToClipboard } from './utils/clipboard.js'
   import MessageList from './components/chat/MessageList.svelte'
   import Composer from './components/chat/Composer.svelte'
@@ -54,6 +54,7 @@
   let attachedImages = $state([])
   let imageCache = $state({})
   let sending = $state(false)
+  let forcedLock = $state(false)
   let locked = $state(false)
   let nextId = $state(1)
   let nextNodeId = $state(1)
@@ -163,6 +164,96 @@
   function finishGeneration() {
     sending = false
     resetGenerationState()
+  }
+
+  function applyDebugLockToVariants(list) {
+    if (!Array.isArray(list)) return list
+    return list.map((variant) => {
+      if (!variant || typeof variant !== 'object') return variant
+      return {
+        ...variant,
+        locked: true,
+        typing: true,
+      }
+    })
+  }
+
+  function applyDebugLockToNodes(list) {
+    if (!Array.isArray(list)) return list
+    return list.map((node) => {
+      if (!node || typeof node !== 'object') return node
+      return {
+        ...node,
+        locked: true,
+        variants: applyDebugLockToVariants(node.variants),
+      }
+    })
+  }
+
+  function clearDebugLockFromVariants(list) {
+    if (!Array.isArray(list)) return list
+    return list.map((variant) => {
+      if (!variant || typeof variant !== 'object') return variant
+      let next = variant
+      let mutated = false
+      if (next.locked) {
+        if (!mutated) next = { ...next }
+        delete next.locked
+        mutated = true
+      }
+      if (next.typing) {
+        if (!mutated) next = { ...next }
+        next.typing = false
+        mutated = true
+      }
+      return mutated ? next : variant
+    })
+  }
+
+  function clearDebugLockFromNodes(list) {
+    if (!Array.isArray(list)) return list
+    return list.map((node) => {
+      if (!node || typeof node !== 'object') return node
+      let next = node
+      let mutated = false
+      if (next.locked) {
+        next = { ...next }
+        delete next.locked
+        mutated = true
+      }
+      const variants = clearDebugLockFromVariants(next.variants)
+      if (variants !== next.variants) {
+        if (!mutated) next = { ...next }
+        next.variants = variants
+        mutated = true
+      }
+      return mutated ? next : node
+    })
+  }
+
+  async function toggleDebugLock() {
+    if (!debug) return
+    const chatId = props.chatId
+    if (!forcedLock) {
+      forcedLock = true
+      nodes = applyDebugLockToNodes(nodes)
+      try {
+        await persistNow()
+      } catch {}
+      if (chatId) {
+        try { await debugSetChatLockState(chatId, true) } catch {}
+      }
+      return
+    }
+
+    nodes = clearDebugLockFromNodes(nodes)
+    forcedLock = false
+    try {
+      await persistNow()
+    } catch {}
+    if (chatId) {
+      try { await debugSetChatLockState(chatId, false) } catch {}
+    }
   }
 
   // Persistence
@@ -951,6 +1042,7 @@
     }
     lastChatId = cid
     ready = false
+    forcedLock = false
     persistSig = ''
     if (!cid) return
 
@@ -982,8 +1074,9 @@
 
   $effect(() => {
     try {
-      locked = !!(sending || (Array.isArray(nodes) && nodes.some(n => (n?.variants || []).some(v => v?.typing))))
-    } catch { locked = !!sending }
+      const autoLocked = !!(sending || (Array.isArray(nodes) && nodes.some(n => (n?.variants || []).some(v => v?.typing))))
+      locked = !!(forcedLock || autoLocked)
+    } catch { locked = !!(forcedLock || sending) }
   })
 
   $effect(() => {
@@ -1046,6 +1139,20 @@
         debug = !!next?.debug
       }
     } catch {}
+  })
+
+  $effect(() => {
+    if (!debug && forcedLock) {
+      nodes = clearDebugLockFromNodes(nodes)
+      forcedLock = false
+      const chatId = props.chatId
+      Promise.resolve().then(async () => {
+        try { await persistNow() } catch {}
+        if (chatId) {
+          try { await debugSetChatLockState(chatId, false) } catch {}
+        }
+      }).catch(() => {})
+    }
   })
 
   $effect(() => {
@@ -1168,10 +1275,21 @@
     onFilesSelected={handleFilesSelected}
     onRemoveImage={removeAttachedImage}
   />
+  {#if debug}
+    <button
+      type="button"
+      class="hidden-debug-lock"
+      onclick={toggleDebugLock}
+      aria-label={forcedLock ? 'Clear simulated lock' : 'Simulate persisted lock leak'}
+      aria-pressed={forcedLock ? 'true' : 'false'}
+      title={forcedLock ? 'Clear simulated lock' : 'Simulate persisted lock leak'}
+    />
+  {/if}
 </section>
 
 <style>
   .chat-shell {
+    position: relative;
     --bg: color-mix(in oklab, canvas, #f3f4f6 10%);
     --panel: color-mix(in srgb, #ffffff 92%, #e6e6e6);
     --border: color-mix(in srgb, #c8c8c8 60%, #0000);
@@ -1196,6 +1314,31 @@
     --muted: #a3a3a3;
     --assistant: #1c1c1c;
     --user: #222222;
+  }
+
+  .hidden-debug-lock {
+    position: absolute;
+    bottom: 6px;
+    right: 6px;
+    width: 14px;
+    height: 14px;
+    border: none;
+    background: transparent;
+    opacity: 0.04;
+    cursor: pointer;
+  }
+
+  .hidden-debug-lock:focus-visible,
+  .hidden-debug-lock:hover {
+    opacity: 0.5;
+    background: color-mix(in srgb, var(--accent), transparent 80%);
+    border-radius: 50%;
+  }
+
+  .hidden-debug-lock[aria-pressed='true'] {
+    opacity: 0.4;
+    background: color-mix(in srgb, var(--accent), transparent 65%);
+    border-radius: 50%;
   }
 
   .chat-shell {

@@ -2,7 +2,7 @@
   import Chat from './lib/Chat.svelte'
   import Sidebar from './lib/components/Sidebar.svelte'
   import SettingsModal from './lib/SettingsModal.svelte'
-  import { loadAll, getChats, createChat, setSelected, getChat, deleteChat, renameChat } from './lib/chatsStore.js'
+  import { loadAll, getChats, createChat, setSelected, getChat, deleteChat, renameChat, unlockAllChats } from './lib/chatsStore.js'
   import { loadSettings } from './lib/settingsStore.js'
   import { ensureModels } from './lib/modelsStore.js'
   import { initTheme } from './lib/themeStore.js'
@@ -160,6 +160,7 @@
     setTimeout(async () => {
       sidebarOpen = loadSidebarPref()
       syncPresets()
+      await unlockAllChats()
       await ensureOneChat()
       await refresh()
     }, 0)
