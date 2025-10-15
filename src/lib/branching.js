@@ -1,3 +1,5 @@
+import { deepClone } from './utils/immutable.js'
+
 // Branching helpers: node-based conversation graph.
 // New architecture:
 // - nodes: array of { id, variants: Message[], active?: number }
@@ -176,7 +178,7 @@ export function validateTree(nodes, rootId) {
 //   2) Otherwise, the first encountered incoming edge
 export function enforceUniqueParents(nodes, rootId) {
   const list = Array.isArray(nodes)
-    ? nodes.map(n => ({ ...n, variants: (n?.variants || []).map(v => ({ ...v })) }))
+    ? deepClone(nodes)
     : []
   if (!list.length) return list
 

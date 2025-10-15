@@ -1,3 +1,5 @@
+import { safeRead, safeWrite } from './utils/localStorageHelper.js'
+
 const THEME_KEY = 'ui.theme.preference.v1'
 const THEME_VALUES = new Set(['light', 'dark', 'system'])
 export const THEME_OPTIONS = ['light', 'dark', 'system']
@@ -41,22 +43,12 @@ function getSystemTheme() {
 }
 
 function readStoredMode() {
-  if (typeof localStorage === 'undefined') return 'system'
-  try {
-    const raw = localStorage.getItem(THEME_KEY)
-    return normalizeMode(raw)
-  } catch {
-    return 'system'
-  }
+  const stored = safeRead(THEME_KEY, 'system', (value) => (typeof value === 'string' ? value : 'system'))
+  return normalizeMode(stored)
 }
 
 function persistMode(mode) {
-  if (typeof localStorage === 'undefined') return
-  try {
-    localStorage.setItem(THEME_KEY, mode)
-  } catch {
-    /* ignore */
-  }
+  safeWrite(THEME_KEY, mode)
 }
 
 function applyDocumentAttributes(mode, theme) {

@@ -73,13 +73,15 @@ export async function loadChat(chatId) {
         })(),
         thinkingBudgetTokens: parseThinkingBudgetTokens(hasOwn(loaded?.settings, 'thinkingBudgetTokens') ? loaded.settings.thinkingBudgetTokens : basePreset.thinkingBudgetTokens),
         connectionId: (() => {
-          const fromLoaded = hasOwn(loaded?.settings, 'connectionId') ? loaded.settings.connectionId : undefined
-          if (typeof fromLoaded === 'string' && fromLoaded.trim()) return fromLoaded.trim()
-          if (typeof basePreset?.connectionId === 'string' && basePreset.connectionId?.trim()) return basePreset.connectionId.trim()
-          const settingsConn = typeof nextSettings?.selectedConnectionId === 'string' && nextSettings.selectedConnectionId.trim()
-            ? nextSettings.selectedConnectionId.trim()
-            : null
-          return settingsConn
+          const candidatePreset = {
+            ...basePreset,
+            connectionId: (() => {
+              const fromLoaded = hasOwn(loaded?.settings, 'connectionId') ? loaded.settings.connectionId : undefined
+              if (typeof fromLoaded === 'string' && fromLoaded.trim()) return fromLoaded.trim()
+              return basePreset?.connectionId || null
+            })(),
+          }
+          return computeInitialConnectionId(candidatePreset, nextSettings)
         })(),
       }
 

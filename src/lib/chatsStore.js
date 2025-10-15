@@ -5,259 +5,35 @@ import { loadSettings } from './settingsStore.js'
 import { enforceUniqueParents } from './branching.js'
 import { getAllChats as storeGetAll, getChat as storeGetOne, putChat as storePut, deleteChat as storeDelete } from './storage.js'
 import { toIntOrNull, toClampedNumber } from './utils/numbers.js'
-import { DEFAULT_SYSTEM_PROMPT } from './chat/services/chatInit.js'
+import { safeRead, safeWrite } from './utils/localStorageHelper.js'
+import { resolvePreset, DEFAULT_SYSTEM_PROMPT, computeConnectionId } from './utils/presetHelpers.js'
+import { normalizeReasoning, normalizeVerbosity, normalizeReasoningSummary } from './utils/validation.js'
 
 export const SELECTED_KEY = 'openai.chats.selected.v1'
 
-function safeParse(raw, fallback) { try { return JSON.parse(raw) } catch { return fallback } }
-
-const REASONING_VALUES = new Set(['none', 'minimal', 'low', 'medium', 'high'])
-const TEXT_VERBOSITY_VALUES = new Set(['low', 'medium', 'high'])
-const REASONING_SUMMARY_VALUES = new Set(['auto', 'concise', 'detailed'])
 const hasOwn = (obj, key) => Object.prototype.hasOwnProperty.call(obj || {}, key)
-
-function sanitizeVariantLockState(variant) {
-  if (!variant || typeof variant !== 'object') return variant
-  let mutated = false
-  let next = variant
-  if (hasOwn(next, 'locked')) {
-    if (!mutated) next = { ...next }
-    delete next.locked
-    mutated = true
-  }
-  if (next?.typing) {
-    if (!mutated) next = { ...next }
-    next.typing = false
-    mutated = true
-  } else if (hasOwn(next, 'typing') && typeof next.typing !== 'boolean') {
-    if (!mutated) next = { ...next }
-    next.typing = false
-    mutated = true
-  }
-  return mutated ? next : variant
-}
-
-function sanitizeNodeLockState(node) {
-  if (!node || typeof node !== 'object') return node
-  let mutated = false
-  let next = node
-  if (hasOwn(next, 'locked')) {
-    if (!mutated) next = { ...next }
-    delete next.locked
-    mutated = true
-  }
-  const variants = Array.isArray(next?.variants) ? next.variants : null
-  if (variants && variants.length) {
-    const sanitizedVariants = variants.map(sanitizeVariantLockState)
-    let changed = false
-    for (let i = 0; i < variants.length; i += 1) {
-      if (sanitizedVariants[i] !== variants[i]) {
-        changed = true
-        break
-      }
-    }
-    if (changed) {
-      if (!mutated) next = { ...next }
-      next.variants = sanitizedVariants
-      mutated = true
-    }
-  }
-  return mutated ? next : node
-}
-
-function sanitizeChatLockState(chat) {
-  if (!chat || typeof chat !== 'object') return chat
-  let mutated = false
-  let next = chat
-  if (hasOwn(next, 'locked')) {
-    next = { ...next }
-    delete next.locked
-    mutated = true
-  }
-  if (Array.isArray(next?.nodes) && next.nodes.length) {
-    const sanitizedNodes = next.nodes.map(sanitizeNodeLockState)
-    let changed = false
-    for (let i = 0; i < next.nodes.length; i += 1) {
-      if (sanitizedNodes[i] !== next.nodes[i]) {
-        changed = true
-        break
-      }
-    }
-    if (changed) {
-      if (!mutated) next = { ...next }
-      next.nodes = sanitizedNodes
-      mutated = true
-    }
-  }
-  return mutated ? next : chat
-}
-
-function applyVariantLockState(variant) {
-  if (!variant || typeof variant !== 'object') return variant
-  return {
-    ...variant,
-    locked: true,
-    typing: true,
-  }
-}
-
-function applyNodeLockState(node) {
-  if (!node || typeof node !== 'object') return node
-  const variants = Array.isArray(node?.variants)
-    ? node.variants.map(applyVariantLockState)
-    : node.variants
-  return {
-    ...node,
-    locked: true,
-    variants,
-  }
-}
-
-function applyChatLockState(chat) {
-  if (!chat || typeof chat !== 'object') return chat
-  const next = {
-    ...chat,
-    locked: true,
-  }
-  if (Array.isArray(chat?.nodes)) {
-    next.nodes = chat.nodes.map(applyNodeLockState)
-  }
-  return next
-}
-
-function normalizeReasoning(val) {
-  return REASONING_VALUES.has(val) ? val : 'none'
-}
-
-function normalizeVerbosity(val) {
-  return TEXT_VERBOSITY_VALUES.has(val) ? val : 'medium'
-}
-
-function normalizeReasoningSummary(val) {
-  return REASONING_SUMMARY_VALUES.has(val) ? val : 'auto'
-}
-
-function resolvePreset(settings, preferences = {}) {
-  const list = Array.isArray(settings?.presets) ? settings.presets : []
-  const byId = (id) => list.find(p => p && typeof p.id === 'string' && p.id === id)
-  const fallbackConnectionId = typeof settings?.selectedConnectionId === 'string' ? settings.selectedConnectionId : null
-  let chosen = null
-  if (preferences?.presetId && typeof preferences.presetId === 'string') {
-    chosen = byId(preferences.presetId)
-  }
-  if (!chosen && preferences?.preset && typeof preferences.preset === 'object') {
-    const p = preferences.preset
-    const id = typeof p.id === 'string' ? p.id : null
-    chosen = id ? byId(id) : null
-    if (!chosen) {
-      chosen = {
-        id,
-        name: typeof p.name === 'string' ? p.name : '',
-        model: typeof p.model === 'string' && p.model.trim() ? p.model.trim() : 'gpt-5',
-        streaming: typeof p.streaming === 'boolean' ? p.streaming : true,
-        maxOutputTokens: toIntOrNull(p.maxOutputTokens),
-        topP: toClampedNumber(p.topP, 0, 1),
-        temperature: toClampedNumber(p.temperature, 0, 2),
-        reasoningEffort: normalizeReasoning(p.reasoningEffort),
-        textVerbosity: normalizeVerbosity(p.textVerbosity),
-        reasoningSummary: normalizeReasoningSummary(p.reasoningSummary),
-        thinkingEnabled: !!p.thinkingEnabled,
-        thinkingBudgetTokens: toIntOrNull(p.thinkingBudgetTokens),
-        connectionId: typeof p.connectionId === 'string' ? p.connectionId : fallbackConnectionId,
-        systemPrompt: typeof p.systemPrompt === 'string' ? p.systemPrompt : DEFAULT_SYSTEM_PROMPT,
-      }
-    }
-  }
-  if (!chosen && typeof settings?.selectedPresetId === 'string') {
-    chosen = byId(settings.selectedPresetId)
-  }
-  if (!chosen) {
-    chosen = list[0] || null
-  }
-  if (chosen) {
-    return {
-      id: typeof chosen.id === 'string' ? chosen.id : null,
-      name: typeof chosen.name === 'string' ? chosen.name : '',
-      model: typeof chosen.model === 'string' && chosen.model.trim() ? chosen.model.trim() : 'gpt-5',
-      streaming: typeof chosen.streaming === 'boolean' ? chosen.streaming : true,
-      maxOutputTokens: toIntOrNull(chosen.maxOutputTokens),
-      topP: toClampedNumber(chosen.topP, 0, 1),
-      temperature: toClampedNumber(chosen.temperature, 0, 2),
-      reasoningEffort: normalizeReasoning(chosen.reasoningEffort),
-      textVerbosity: normalizeVerbosity(chosen.textVerbosity),
-      reasoningSummary: normalizeReasoningSummary(chosen.reasoningSummary),
-      thinkingEnabled: !!chosen.thinkingEnabled,
-      thinkingBudgetTokens: toIntOrNull(chosen.thinkingBudgetTokens),
-      connectionId: typeof chosen.connectionId === 'string' ? chosen.connectionId : fallbackConnectionId,
-      systemPrompt: typeof chosen.systemPrompt === 'string' ? chosen.systemPrompt : DEFAULT_SYSTEM_PROMPT,
-    }
-  }
-  return {
-    id: null,
-    name: '',
-    model: 'gpt-5',
-    streaming: true,
-    maxOutputTokens: null,
-    topP: null,
-    temperature: null,
-    reasoningEffort: 'none',
-    textVerbosity: 'medium',
-    reasoningSummary: 'auto',
-    thinkingEnabled: false,
-    thinkingBudgetTokens: null,
-    connectionId: fallbackConnectionId,
-    systemPrompt: DEFAULT_SYSTEM_PROMPT,
-  }
-}
 
 export function loadAll() {
   // Back-compat shim for existing callers that expect { selectedId }
-  try {
-    const raw = localStorage.getItem(SELECTED_KEY)
-    const sel = safeParse(raw, { selectedId: null })
-    return { chats: [], selectedId: sel?.selectedId || null }
-  } catch { return { chats: [], selectedId: null } }
+  const selection = safeRead(SELECTED_KEY, { selectedId: null }, (value) => {
+    if (value && typeof value === 'object' && 'selectedId' in value) return value
+    return { selectedId: null }
+  })
+  return { chats: [], selectedId: selection?.selectedId ?? null }
 }
 
 export function setSelected(id) {
-  try {
-    const val = { selectedId: id || null }
-    localStorage.setItem(SELECTED_KEY, JSON.stringify(val))
-    return val
-  } catch { return { selectedId: null } }
+  const val = { selectedId: id || null }
+  const ok = safeWrite(SELECTED_KEY, val)
+  if (!ok) {
+    console.error('Failed to persist selected chat id.')
+  }
+  return val
 }
 
 export async function getChats() {
   // Return all chats; sort done by callers if needed
   try { return await storeGetAll() } catch { return [] }
-}
-
-export async function unlockAllChats() {
-  try {
-    const list = await storeGetAll()
-    for (const chat of list) {
-      const sanitized = sanitizeChatLockState(chat)
-      if (sanitized !== chat) {
-        await storePut(sanitized)
-      }
-    }
-  } catch {}
-}
-
-export async function debugSetChatLockState(id, shouldLock = true) {
-  if (!id) return null
-  try {
-    const chat = await storeGetOne(id)
-    if (!chat) return null
-    let next = shouldLock ? applyChatLockState(chat) : sanitizeChatLockState(chat)
-    const now = Date.now()
-    if (next === chat) {
-      next = { ...next }
-    }
-    next.updatedAt = now
-    await storePut(next)
-    return next
-  } catch { return null }
 }
 
 export async function getChat(id) {
@@ -312,7 +88,13 @@ function migrateMessagesToGraph(messages) {
 
 export async function upsertChat(chat) {
   // Persist chat to localStorage
-  try { await storePut(chat); return chat } catch { return chat }
+  try {
+    const persisted = await storePut(chat)
+    return persisted || chat
+  } catch (err) {
+    console.error('Failed to upsert chat:', err)
+    return chat
+  }
 }
 
 export async function saveChatContent(id, { nodes, settings, rootId }) {
@@ -327,6 +109,18 @@ export async function saveChatContent(id, { nodes, settings, rootId }) {
     if (hasOwn(basePreset, key)) return basePreset[key]
     return undefined
   }
+  const rawConnectionOverride = pickSetting('connectionId')
+  const candidatePreset = {
+    ...basePreset,
+    connectionId: (() => {
+      if (typeof rawConnectionOverride === 'string' && rawConnectionOverride.trim()) return rawConnectionOverride.trim()
+      return basePreset?.connectionId || null
+    })(),
+  }
+  const resolvedConnectionId = computeConnectionId({
+    preset: candidatePreset,
+    settings: defaults,
+  })
   const baseSettings = {
     model: (settings?.model || existing?.settings?.model || basePreset.model || 'gpt-5'),
     streaming: (typeof settings?.streaming === 'boolean')
@@ -342,14 +136,7 @@ export async function saveChatContent(id, { nodes, settings, rootId }) {
     reasoningSummary: normalizeReasoningSummary(pickSetting('reasoningSummary')),
     thinkingEnabled: !!pickSetting('thinkingEnabled'),
     thinkingBudgetTokens: toIntOrNull(pickSetting('thinkingBudgetTokens')),
-    connectionId: (() => {
-      const raw = pickSetting('connectionId')
-      if (typeof raw === 'string' && raw.trim()) return raw.trim()
-      if (typeof basePreset?.connectionId === 'string' && basePreset.connectionId.trim()) return basePreset.connectionId.trim()
-      return (typeof defaults?.selectedConnectionId === 'string' && defaults.selectedConnectionId.trim())
-        ? defaults.selectedConnectionId.trim()
-        : null
-    })(),
+    connectionId: resolvedConnectionId,
   }
   const nextNodesCandidate = Array.isArray(nodes) ? nodes : (existing?.nodes || [])
   const hasNodes = nextNodesCandidate.length > 0
@@ -379,8 +166,8 @@ export async function saveChatContent(id, { nodes, settings, rootId }) {
     title: computeTitleFromNodes(nextNodes, nextRootId),
     updatedAt: Date.now(),
   }
-  await storePut(updated)
-  return updated
+  const persisted = await storePut(updated)
+  return persisted || updated
 }
 
 export async function deleteChat(id) {
@@ -400,8 +187,8 @@ export async function renameChat(id, title) {
     title: nextTitle,
     updatedAt: Date.now(),
   }
-  await storePut(updated)
-  return updated
+  const persisted = await storePut(updated)
+  return persisted || updated
 }
 
 export async function createChat(initial = {}) {
@@ -428,11 +215,22 @@ export async function createChat(initial = {}) {
     baseNodes = [{ id: 1, variants: [systemVariant], active: 0 }]
     rootId = 1
   }
-  const fallbackConnectionId = (() => {
-    if (typeof preferredPreset?.connectionId === 'string' && preferredPreset.connectionId.trim()) return preferredPreset.connectionId.trim()
-    if (typeof defaults?.selectedConnectionId === 'string' && defaults.selectedConnectionId.trim()) return defaults.selectedConnectionId.trim()
-    return null
+  const connectionOverride = (() => {
+    if (hasOwn(initial?.settings, 'connectionId')) return initial.settings.connectionId
+    if (hasOwn(initial, 'connectionId')) return initial.connectionId
+    return undefined
   })()
+  const candidatePreset = {
+    ...preferredPreset,
+    connectionId: (() => {
+      if (typeof connectionOverride === 'string' && connectionOverride.trim()) return connectionOverride.trim()
+      return preferredPreset?.connectionId || null
+    })(),
+  }
+  const resolvedConnectionId = computeConnectionId({
+    preset: candidatePreset,
+    settings: defaults,
+  })
   const chat = {
     id,
     title: computeTitleFromNodes(baseNodes, rootId),
@@ -455,22 +253,13 @@ export async function createChat(initial = {}) {
         return !!preferredPreset.thinkingEnabled
       })(),
       thinkingBudgetTokens: toIntOrNull(hasOwn(initial?.settings, 'thinkingBudgetTokens') ? initial.settings.thinkingBudgetTokens : preferredPreset.thinkingBudgetTokens),
-      connectionId: (() => {
-        if (hasOwn(initial?.settings, 'connectionId')) {
-          const raw = initial.settings.connectionId
-          return (typeof raw === 'string' && raw.trim()) ? raw.trim() : fallbackConnectionId
-        }
-        if (typeof preferredPreset?.connectionId === 'string' && preferredPreset.connectionId.trim()) {
-          return preferredPreset.connectionId.trim()
-        }
-        return fallbackConnectionId
-      })(),
+      connectionId: resolvedConnectionId,
     },
     nodes: baseNodes,
     rootId,
     presetId: (typeof initial?.presetId === 'string') ? initial.presetId : (preferredPreset?.id || null),
   }
-  await storePut(chat)
+  const persisted = await storePut(chat)
   setSelected(id)
-  return { id, chat }
+  return { id, chat: persisted || chat }
 }
