@@ -562,7 +562,6 @@
 
 <style>
   .sidebar {
-    --bg: color-mix(in oklab, canvas, #f3f4f6 10%);
     --panel: color-mix(in srgb, #ffffff 92%, #e6e6e6);
     --border: color-mix(in srgb, #c8c8c8 60%, #0000);
     --text: color-mix(in srgb, #1b1f24 92%, #0000);
@@ -589,7 +588,6 @@
   }
   .sidebar.collapsed { width: 52px; overflow-x: visible; padding: 0; }
   :global(:root[data-theme='dark']) .sidebar {
-    --bg: #0f0f10;
     --panel: #141414;
     --border: #2a2a2a;
     --text: #e6e6e6;
