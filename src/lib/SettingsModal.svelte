@@ -42,6 +42,7 @@
   let refreshMessages = $state({})
   let activePresetId = $state('')
   let activeConnectionId = $state('')
+  let expandedPresetGroups = $state({ general: false, sampling: false, reasoning: false })
   const TABS = [
     { id: 'general', label: 'General' },
     { id: 'connection', label: 'Connections' },
@@ -50,6 +51,10 @@
   ]
   let activeTab = $state('general')
   let themeState = $state({ mode: 'system', theme: 'light' })
+
+  function togglePresetGroup(group) {
+    expandedPresetGroups = { ...expandedPresetGroups, [group]: !expandedPresetGroups[group] }
+  }
 
   // Import/Export state
   let importExportStatus = $state('')
@@ -831,129 +836,151 @@
                     </datalist>
                   {/if}
                 </label>
-                <label class="switch" title="Stream">
-                  <input
-                    type="checkbox"
-                    checked={!!activePreset.streaming}
-                    onchange={(event) => updateActivePreset({ streaming: !!event.currentTarget.checked })}
-                    aria-label="Stream"
-                  />
-                  <span class="switch-ui" aria-hidden="true"></span>
-                  <span class="switch-label">Stream</span>
-                </label>
-                <label class="field">
-                  <span>Max output tokens</span>
-                  <input
-                    type="number"
-                    min="1"
-                    step="1024"
-                    placeholder="Auto"
-                    value={activePreset.maxOutputTokens ?? ''}
-                    oninput={(event) => updateActivePreset({ maxOutputTokens: parseMaxTokens(event.currentTarget.value) })}
-                    aria-label="Max output tokens"
-                  />
-                </label>
-                <label class="field">
-                  <span>Top P</span>
-                  <input
-                    type="number"
-                    min="0"
-                    max="1"
-                    step="0.1"
-                    placeholder="Default"
-                    value={activePreset.topP ?? ''}
-                    oninput={(event) => updateActivePreset({ topP: parseTopP(event.currentTarget.value) })}
-                    aria-label="top_p"
-                  />
-                </label>
-                <label class="field">
-                  <span>Temperature</span>
-                  <input
-                    type="number"
-                    min="0"
-                    max="2"
-                    step="0.1"
-                    placeholder="Default"
-                    value={activePreset.temperature ?? ''}
-                    oninput={(event) => updateActivePreset({ temperature: parseTemperature(event.currentTarget.value) })}
-                    aria-label="Temperature"
-                  />
-                </label>
-                <label class="field">
-                  <span>Reasoning effort</span>
-                  <select
-                    value={activePreset.reasoningEffort || 'none'}
-                    onchange={(event) => updateActivePreset({ reasoningEffort: parseReasoning(event.currentTarget.value) })}
-                    aria-label="Reasoning effort"
-                  >
-                    <option value="none">none</option>
-                    <option value="minimal">minimal</option>
-                    <option value="low">low</option>
-                    <option value="medium">medium</option>
-                    <option value="high">high</option>
-                  </select>
-                </label>
-                <label class="field">
-                  <span>Reasoning summary</span>
-                  <select
-                    value={activePreset.reasoningSummary || 'auto'}
-                    onchange={(event) => updateActivePreset({ reasoningSummary: parseReasoningSummary(event.currentTarget.value) })}
-                    aria-label="Reasoning summary"
-                  >
-                    <option value="auto">auto</option>
-                    <option value="concise">concise</option>
-                    <option value="detailed">detailed</option>
-                  </select>
-                </label>
-                {#if local.showThinkingSettings}
-                  <label class="switch" title="Enable Anthropic thinking">
+
+                <div class="preset-group-divider"></div>
+                <button class="preset-group-header" onclick={() => togglePresetGroup('general')}>
+                  <span>General</span>
+                  <svg class={`chevron ${expandedPresetGroups.general ? 'expanded' : ''}`} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="6 9 12 15 18 9"></polyline>
+                  </svg>
+                </button>
+
+                {#if expandedPresetGroups.general}
+                  <label class="switch" title="Stream">
                     <input
                       type="checkbox"
-                      checked={!!activePreset.thinkingEnabled}
-                      onchange={(event) => updateActivePreset({ thinkingEnabled: !!event.currentTarget.checked })}
-                      aria-label="Enable Anthropic thinking"
+                      checked={!!activePreset.streaming}
+                      onchange={(event) => updateActivePreset({ streaming: !!event.currentTarget.checked })}
+                      aria-label="Stream"
                     />
                     <span class="switch-ui" aria-hidden="true"></span>
-                    <span class="switch-label">Anthropic thinking</span>
+                    <span class="switch-label">Stream</span>
                   </label>
                   <label class="field">
-                    <span>Thinking budget tokens</span>
+                    <span>Text verbosity</span>
+                    <select
+                      value={activePreset.textVerbosity || 'medium'}
+                      onchange={(event) => updateActivePreset({ textVerbosity: parseVerbosity(event.currentTarget.value) })}
+                      aria-label="Text verbosity"
+                    >
+                      <option value="low">low</option>
+                      <option value="medium">medium</option>
+                      <option value="high">high</option>
+                    </select>
+                  </label>
+                  <label class="field">
+                    <span>Connection</span>
+                    <select
+                      value={activePreset.connectionId || ''}
+                      onchange={(event) => updateActivePreset({ connectionId: event.currentTarget.value })}
+                      aria-label="Preset connection"
+                    >
+                      {#each (local?.connections || []) as connection (connection.id)}
+                        <option value={connection.id}>{connection?.name || connection?.id || 'Connection'}</option>
+                      {/each}
+                    </select>
+                  </label>
+                {/if}
+
+                <div class="preset-group-divider"></div>
+                <button class="preset-group-header" onclick={() => togglePresetGroup('sampling')}>
+                  <span>Sampling</span>
+                  <svg class={`chevron ${expandedPresetGroups.sampling ? 'expanded' : ''}`} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="6 9 12 15 18 9"></polyline>
+                  </svg>
+                </button>
+
+                {#if expandedPresetGroups.sampling}
+                  <label class="field">
+                    <span>Top P</span>
                     <input
                       type="number"
-                      min="1"
-                      step="100"
-                      placeholder="Budget tokens"
-                      value={activePreset.thinkingBudgetTokens ?? ''}
-                      oninput={(event) => updateActivePreset({ thinkingBudgetTokens: parseThinkingBudget(event.currentTarget.value) })}
-                      aria-label="Thinking budget tokens"
-                      disabled={!activePreset.thinkingEnabled}
+                      min="0"
+                      max="1"
+                      step="0.1"
+                      placeholder="Default"
+                      value={activePreset.topP ?? ''}
+                      oninput={(event) => updateActivePreset({ topP: parseTopP(event.currentTarget.value) })}
+                      aria-label="top_p"
+                    />
+                  </label>
+                  <label class="field">
+                    <span>Temperature</span>
+                    <input
+                      type="number"
+                      min="0"
+                      max="2"
+                      step="0.1"
+                      placeholder="Default"
+                      value={activePreset.temperature ?? ''}
+                      oninput={(event) => updateActivePreset({ temperature: parseTemperature(event.currentTarget.value) })}
+                      aria-label="Temperature"
                     />
                   </label>
                 {/if}
-                <label class="field">
-                  <span>Text verbosity</span>
-                  <select
-                    value={activePreset.textVerbosity || 'medium'}
-                    onchange={(event) => updateActivePreset({ textVerbosity: parseVerbosity(event.currentTarget.value) })}
-                    aria-label="Text verbosity"
-                  >
-                    <option value="low">low</option>
-                    <option value="medium">medium</option>
-                    <option value="high">high</option>
-                  </select>
-                </label>
-                <label class="field">
-                  <span>Connection</span>
-                  <select
-                    value={activePreset.connectionId || ''}
-                    onchange={(event) => updateActivePreset({ connectionId: event.currentTarget.value })}
-                    aria-label="Preset connection"
-                  >
-                    {#each (local?.connections || []) as connection (connection.id)}
-                      <option value={connection.id}>{connection?.name || connection?.id || 'Connection'}</option>
-                    {/each}
-                  </select>
-                </label>
+
+                <div class="preset-group-divider"></div>
+                <button class="preset-group-header" onclick={() => togglePresetGroup('reasoning')}>
+                  <span>Reasoning</span>
+                  <svg class={`chevron ${expandedPresetGroups.reasoning ? 'expanded' : ''}`} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="6 9 12 15 18 9"></polyline>
+                  </svg>
+                </button>
+
+                {#if expandedPresetGroups.reasoning}
+                  <label class="field">
+                    <span>Reasoning effort</span>
+                    <select
+                      value={activePreset.reasoningEffort || 'none'}
+                      onchange={(event) => updateActivePreset({ reasoningEffort: parseReasoning(event.currentTarget.value) })}
+                      aria-label="Reasoning effort"
+                    >
+                      <option value="none">none</option>
+                      <option value="minimal">minimal</option>
+                      <option value="low">low</option>
+                      <option value="medium">medium</option>
+                      <option value="high">high</option>
+                    </select>
+                  </label>
+                  <label class="field">
+                    <span>Reasoning summary</span>
+                    <select
+                      value={activePreset.reasoningSummary || 'auto'}
+                      onchange={(event) => updateActivePreset({ reasoningSummary: parseReasoningSummary(event.currentTarget.value) })}
+                      aria-label="Reasoning summary"
+                    >
+                      <option value="auto">auto</option>
+                      <option value="concise">concise</option>
+                      <option value="detailed">detailed</option>
+                    </select>
+                  </label>
+                  {#if local.showThinkingSettings}
+                    <label class="switch" title="Enable Anthropic thinking">
+                      <input
+                        type="checkbox"
+                        checked={!!activePreset.thinkingEnabled}
+                        onchange={(event) => updateActivePreset({ thinkingEnabled: !!event.currentTarget.checked })}
+                        aria-label="Enable Anthropic thinking"
+                      />
+                      <span class="switch-ui" aria-hidden="true"></span>
+                      <span class="switch-label">Anthropic thinking</span>
+                    </label>
+                    <label class="field">
+                      <span>Thinking budget tokens</span>
+                      <input
+                        type="number"
+                        min="1"
+                        step="100"
+                        placeholder="Budget tokens"
+                        value={activePreset.thinkingBudgetTokens ?? ''}
+                        oninput={(event) => updateActivePreset({ thinkingBudgetTokens: parseThinkingBudget(event.currentTarget.value) })}
+                        aria-label="Thinking budget tokens"
+                        disabled={!activePreset.thinkingEnabled}
+                      />
+                    </label>
+                  {/if}
+                {/if}
+
                 {#if (local?.presets?.length || 0) > 1}
                   <button
                     type="button"
@@ -1042,7 +1069,7 @@
   .modal-scroller { height: 100%; overflow-y: auto; padding: 24px; display: grid; gap: 24px; align-content: start; }
   .icon-btn { border: 1px solid var(--border); border-radius: 8px; background: transparent; width: 32px; height: 32px; display: grid; place-items: center; line-height: 1; color: var(--text); }
   .icon-btn:disabled { opacity: .6; cursor: not-allowed; }
-  .field { display: grid; gap: 6px; }
+  .field { display: grid; gap: 4px; }
   .field > span { font-size: .9rem; color: var(--muted); }
   .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
   input[type="text"],
@@ -1066,11 +1093,37 @@
   .hint { color: var(--muted); font-size: .9rem; margin-top: 4px; }
   /* API key action buttons size */
   .row .icon-btn { height: 38px; width: 38px; }
-  .group { display: grid; gap: 8px; }
+  .group { display: grid; gap: 6px; }
   .group-title { font-weight: 600; }
   .group-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
   .group-head .icon-btn { flex-shrink: 0; }
   .presets .group-head .icon-btn { width: 28px; height: 28px; border-radius: 6px; }
+  .preset-group-divider { height: 1px; background: var(--border); margin: 8px 0 2px; }
+  .preset-group-header {
+    font-size: .8rem;
+    font-weight: 600;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 0;
+    width: 100%;
+    border: none;
+    background: transparent;
+    padding: 6px 0 4px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    cursor: pointer;
+    user-select: none;
+  }
+  .preset-group-header:hover { color: var(--text); }
+  .chevron {
+    transition: transform .2s ease;
+    flex-shrink: 0;
+  }
+  .chevron.expanded {
+    transform: rotate(180deg);
+  }
   .preset-strip { display: flex; flex-wrap: wrap; gap: 6px; }
   .preset-pill { border: 1px solid var(--border); border-radius: 999px; padding: 4px 10px; background: var(--bg); color: var(--text); cursor: pointer; display: inline-flex; align-items: center; gap: 4px; font-size: .85rem; transition: background-color .15s ease, color .15s ease, border-color .15s ease; }
   .preset-pill:hover { border-color: color-mix(in srgb, var(--border) 55%, var(--accent) 45%); }

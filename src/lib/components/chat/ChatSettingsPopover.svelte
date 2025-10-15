@@ -4,6 +4,11 @@
   let root
   let menu
   let wasOpen = false
+  let expandedGroups = $state({ general: false, sampling: false, reasoning: false })
+
+  function toggleGroup(group) {
+    expandedGroups = { ...expandedGroups, [group]: !expandedGroups[group] }
+  }
 
   // Close when clicking outside or pressing Escape
   $effect(() => {
@@ -34,141 +39,7 @@
     <IconTune style="font-size: 22px;" />
   </button>
   <div class="send-menu chat-settings-menu" role="menu" aria-label="Chat settings" bind:this={menu}>
-    <!-- Connection comes first so people can quickly switch APIs -->
-    <div class="menu-section">
-      <div class="menu-label">Connection</div>
-      <select
-        value={props.connectionId || ''}
-        disabled={props.disabled}
-        onchange={(e) => (!props.disabled && props.onChangeConnection?.(e.currentTarget.value))}
-        aria-label="Connection"
-      >
-        {#each (props.connections || []) as conn (conn?.id || conn?.name)}
-          <option value={conn?.id || ''}>{conn?.name || conn?.id || 'Connection'}</option>
-        {/each}
-      </select>
-    </div>
-    <!-- Remaining chat settings follow the preset menu order -->
-    <div class="menu-section">
-      <div class="menu-label">Text verbosity</div>
-      <select
-        value={props.textVerbosity || 'medium'}
-        disabled={props.disabled}
-        onchange={(e) => (!props.disabled && props.onInputTextVerbosity?.(e.currentTarget.value))}
-        aria-label="Text verbosity"
-      >
-        <option value="low">low</option>
-        <option value="medium">medium</option>
-        <option value="high">high</option>
-      </select>
-    </div>
-    <div class="menu-section">
-      <div class="menu-label">Reasoning summary</div>
-      <select
-        value={props.reasoningSummary || 'auto'}
-        disabled={props.disabled}
-        onchange={(e) => (!props.disabled && props.onInputReasoningSummary?.(e.currentTarget.value))}
-        aria-label="Reasoning summary"
-      >
-        <option value="auto">auto</option>
-        <option value="concise">concise</option>
-        <option value="detailed">detailed</option>
-      </select>
-    </div>
-    {#if props.showThinkingControls}
-      <div class="menu-section">
-        <label class="switch" title="Enable Anthropic thinking">
-          <input
-            type="checkbox"
-            checked={!!props.thinkingEnabled}
-            disabled={props.disabled}
-            onchange={(e) => (!props.disabled && props.onInputThinkingEnabled?.(e.currentTarget.checked))}
-            aria-label="Enable Anthropic thinking"
-          />
-          <span class="switch-ui" aria-hidden="true"></span>
-          <span class="switch-label">Anthropic thinking</span>
-        </label>
-        <input
-          type="number"
-          min="1"
-          step="100"
-          placeholder="Budget tokens"
-          value={props.thinkingBudgetTokens ?? ''}
-          disabled={props.disabled || !props.thinkingEnabled}
-          oninput={(e) => (!props.disabled && props.onInputThinkingBudgetTokens?.(e.currentTarget.value))}
-          aria-label="Thinking budget tokens"
-        />
-      </div>
-    {/if}
-    <div class="menu-section">
-      <div class="menu-label">Reasoning effort</div>
-      <select
-        value={props.reasoningEffort || 'none'}
-        disabled={props.disabled}
-        onchange={(e) => (!props.disabled && props.onInputReasoningEffort?.(e.currentTarget.value))}
-        aria-label="Reasoning effort"
-      >
-        <option value="none">none</option>
-        <option value="minimal">minimal</option>
-        <option value="low">low</option>
-        <option value="medium">medium</option>
-        <option value="high">high</option>
-      </select>
-    </div>
-    <div class="menu-section">
-      <div class="menu-label">Temperature</div>
-      <input
-        type="number"
-        min="0"
-        max="2"
-        step="0.1"
-        placeholder="Default"
-        value={props.temperature ?? ''}
-        disabled={props.disabled}
-        oninput={(e) => (!props.disabled && props.onInputTemperature?.(e.currentTarget.value))}
-        aria-label="Temperature"
-      />
-    </div>
-    <div class="menu-section">
-      <div class="menu-label">Top P</div>
-      <input
-        type="number"
-        min="0"
-        max="1"
-        step="0.1"
-        placeholder="Default"
-        value={props.topP ?? ''}
-        disabled={props.disabled}
-        oninput={(e) => (!props.disabled && props.onInputTopP?.(e.currentTarget.value))}
-        aria-label="top_p"
-      />
-    </div>
-    <div class="menu-section">
-      <div class="menu-label">Max output tokens</div>
-      <input
-        type="number"
-        min="1"
-        step="1024"
-        placeholder="Auto"
-        value={props.maxOutputTokens ?? ''}
-        disabled={props.disabled}
-        oninput={(e) => (!props.disabled && props.onInputMaxOutputTokens?.(e.currentTarget.value))}
-        aria-label="Max output tokens"
-      />
-    </div>
-    <div class="menu-section">
-      <label class="switch" title="Stream">
-        <input
-          type="checkbox"
-          checked={!!props.streaming}
-          disabled={props.disabled}
-          onchange={(e) => (!props.disabled && props.onInputStreaming?.(e.currentTarget.checked))}
-          aria-label="Stream"
-        />
-        <span class="switch-ui" aria-hidden="true"></span>
-        <span class="switch-label">Stream</span>
-      </label>
-    </div>
+    <!-- Model comes first, outside of groups -->
     <div class="menu-section">
       <div class="menu-label">Model</div>
       <input
@@ -188,6 +59,162 @@
         </datalist>
       {/if}
     </div>
+
+    <!-- General group -->
+    <div class="group-divider"></div>
+    <button class="group-header" onclick={() => toggleGroup('general')}>
+      <span>General</span>
+      <svg class={`chevron ${expandedGroups.general ? 'expanded' : ''}`} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <polyline points="6 9 12 15 18 9"></polyline>
+      </svg>
+    </button>
+
+    {#if expandedGroups.general}
+      <div class="menu-section">
+        <label class="switch" title="Stream">
+          <input
+            type="checkbox"
+            checked={!!props.streaming}
+            disabled={props.disabled}
+            onchange={(e) => (!props.disabled && props.onInputStreaming?.(e.currentTarget.checked))}
+            aria-label="Stream"
+          />
+          <span class="switch-ui" aria-hidden="true"></span>
+          <span class="switch-label">Stream</span>
+        </label>
+      </div>
+      <div class="menu-section">
+        <div class="menu-label">Text verbosity</div>
+        <select
+          value={props.textVerbosity || 'medium'}
+          disabled={props.disabled}
+          onchange={(e) => (!props.disabled && props.onInputTextVerbosity?.(e.currentTarget.value))}
+          aria-label="Text verbosity"
+        >
+          <option value="low">low</option>
+          <option value="medium">medium</option>
+          <option value="high">high</option>
+        </select>
+      </div>
+      <div class="menu-section">
+        <div class="menu-label">Connection</div>
+        <select
+          value={props.connectionId || ''}
+          disabled={props.disabled}
+          onchange={(e) => (!props.disabled && props.onChangeConnection?.(e.currentTarget.value))}
+          aria-label="Connection"
+        >
+          {#each (props.connections || []) as conn (conn?.id || conn?.name)}
+            <option value={conn?.id || ''}>{conn?.name || conn?.id || 'Connection'}</option>
+          {/each}
+        </select>
+      </div>
+    {/if}
+
+    <!-- Sampling group -->
+    <div class="group-divider"></div>
+    <button class="group-header" onclick={() => toggleGroup('sampling')}>
+      <span>Sampling</span>
+      <svg class={`chevron ${expandedGroups.sampling ? 'expanded' : ''}`} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <polyline points="6 9 12 15 18 9"></polyline>
+      </svg>
+    </button>
+
+    {#if expandedGroups.sampling}
+      <div class="menu-section">
+        <div class="menu-label">Top P</div>
+        <input
+          type="number"
+          min="0"
+          max="1"
+          step="0.1"
+          placeholder="Default"
+          value={props.topP ?? ''}
+          disabled={props.disabled}
+          oninput={(e) => (!props.disabled && props.onInputTopP?.(e.currentTarget.value))}
+          aria-label="top_p"
+        />
+      </div>
+      <div class="menu-section">
+        <div class="menu-label">Temperature</div>
+        <input
+          type="number"
+          min="0"
+          max="2"
+          step="0.1"
+          placeholder="Default"
+          value={props.temperature ?? ''}
+          disabled={props.disabled}
+          oninput={(e) => (!props.disabled && props.onInputTemperature?.(e.currentTarget.value))}
+          aria-label="Temperature"
+        />
+      </div>
+    {/if}
+
+    <!-- Reasoning group -->
+    <div class="group-divider"></div>
+    <button class="group-header" onclick={() => toggleGroup('reasoning')}>
+      <span>Reasoning</span>
+      <svg class={`chevron ${expandedGroups.reasoning ? 'expanded' : ''}`} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <polyline points="6 9 12 15 18 9"></polyline>
+      </svg>
+    </button>
+
+    {#if expandedGroups.reasoning}
+      <div class="menu-section">
+        <div class="menu-label">Reasoning effort</div>
+        <select
+          value={props.reasoningEffort || 'none'}
+          disabled={props.disabled}
+          onchange={(e) => (!props.disabled && props.onInputReasoningEffort?.(e.currentTarget.value))}
+          aria-label="Reasoning effort"
+        >
+          <option value="none">none</option>
+          <option value="minimal">minimal</option>
+          <option value="low">low</option>
+          <option value="medium">medium</option>
+          <option value="high">high</option>
+        </select>
+      </div>
+      <div class="menu-section">
+        <div class="menu-label">Reasoning summary</div>
+        <select
+          value={props.reasoningSummary || 'auto'}
+          disabled={props.disabled}
+          onchange={(e) => (!props.disabled && props.onInputReasoningSummary?.(e.currentTarget.value))}
+          aria-label="Reasoning summary"
+        >
+          <option value="auto">auto</option>
+          <option value="concise">concise</option>
+          <option value="detailed">detailed</option>
+        </select>
+      </div>
+      {#if props.showThinkingControls}
+        <div class="menu-section">
+          <label class="switch" title="Enable Anthropic thinking">
+            <input
+              type="checkbox"
+              checked={!!props.thinkingEnabled}
+              disabled={props.disabled}
+              onchange={(e) => (!props.disabled && props.onInputThinkingEnabled?.(e.currentTarget.checked))}
+              aria-label="Enable Anthropic thinking"
+            />
+            <span class="switch-ui" aria-hidden="true"></span>
+            <span class="switch-label">Anthropic thinking</span>
+          </label>
+          <input
+            type="number"
+            min="1"
+            step="100"
+            placeholder="Budget tokens"
+            value={props.thinkingBudgetTokens ?? ''}
+            disabled={props.disabled || !props.thinkingEnabled}
+            oninput={(e) => (!props.disabled && props.onInputThinkingBudgetTokens?.(e.currentTarget.value))}
+            aria-label="Thinking budget tokens"
+          />
+        </div>
+      {/if}
+    {/if}
   </div>
 </div>
 
@@ -195,9 +222,35 @@
   .icon-btn { border: 1px solid var(--border); border-radius: 10px; background: transparent; min-width: 44px; height: 44px; display: grid; place-items: center; line-height: 1; }
   .icon-btn:disabled { opacity: .6; cursor: not-allowed; }
   .icon { font-size: 22px; }
-  .chat-settings-menu { min-width: 260px; gap: 12px; padding: 12px; }
-  .menu-section { display: grid; gap: 8px; }
+  .chat-settings-menu { min-width: 260px; gap: 6px; padding: 12px; }
+  .menu-section { display: grid; gap: 6px; }
   .menu-label { font-size: .9rem; color: var(--muted); }
+  .group-divider { height: 1px; background: var(--border); margin: 2px 0; }
+  .group-header {
+    font-size: .8rem;
+    font-weight: 600;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 0;
+    width: 100%;
+    border: none;
+    background: transparent;
+    padding: 6px 0 4px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    cursor: pointer;
+    user-select: none;
+  }
+  .group-header:hover { color: var(--text); }
+  .chevron {
+    transition: transform .2s ease;
+    flex-shrink: 0;
+  }
+  .chevron.expanded {
+    transform: rotate(180deg);
+  }
   input[type="text"],
   input[type="number"],
   select {
