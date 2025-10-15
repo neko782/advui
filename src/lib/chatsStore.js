@@ -52,6 +52,8 @@ function resolvePreset(settings, preferences = {}) {
         reasoningEffort: normalizeReasoning(p.reasoningEffort),
         textVerbosity: normalizeVerbosity(p.textVerbosity),
         reasoningSummary: normalizeReasoningSummary(p.reasoningSummary),
+        thinkingEnabled: !!p.thinkingEnabled,
+        thinkingBudgetTokens: toIntOrNull(p.thinkingBudgetTokens),
         connectionId: typeof p.connectionId === 'string' ? p.connectionId : fallbackConnectionId,
         systemPrompt: typeof p.systemPrompt === 'string' ? p.systemPrompt : DEFAULT_SYSTEM_PROMPT,
       }
@@ -75,6 +77,8 @@ function resolvePreset(settings, preferences = {}) {
       reasoningEffort: normalizeReasoning(chosen.reasoningEffort),
       textVerbosity: normalizeVerbosity(chosen.textVerbosity),
       reasoningSummary: normalizeReasoningSummary(chosen.reasoningSummary),
+      thinkingEnabled: !!chosen.thinkingEnabled,
+      thinkingBudgetTokens: toIntOrNull(chosen.thinkingBudgetTokens),
       connectionId: typeof chosen.connectionId === 'string' ? chosen.connectionId : fallbackConnectionId,
       systemPrompt: typeof chosen.systemPrompt === 'string' ? chosen.systemPrompt : DEFAULT_SYSTEM_PROMPT,
     }
@@ -90,6 +94,8 @@ function resolvePreset(settings, preferences = {}) {
     reasoningEffort: 'none',
     textVerbosity: 'medium',
     reasoningSummary: 'auto',
+    thinkingEnabled: false,
+    thinkingBudgetTokens: null,
     connectionId: fallbackConnectionId,
     systemPrompt: DEFAULT_SYSTEM_PROMPT,
   }
@@ -197,6 +203,8 @@ export async function saveChatContent(id, { nodes, settings, rootId }) {
     reasoningEffort: normalizeReasoning(pickSetting('reasoningEffort')),
     textVerbosity: normalizeVerbosity(pickSetting('textVerbosity')),
     reasoningSummary: normalizeReasoningSummary(pickSetting('reasoningSummary')),
+    thinkingEnabled: !!pickSetting('thinkingEnabled'),
+    thinkingBudgetTokens: toIntOrNull(pickSetting('thinkingBudgetTokens')),
     connectionId: (() => {
       const raw = pickSetting('connectionId')
       if (typeof raw === 'string' && raw.trim()) return raw.trim()
@@ -303,6 +311,13 @@ export async function createChat(initial = {}) {
       reasoningEffort: normalizeReasoning(hasOwn(initial?.settings, 'reasoningEffort') ? initial.settings.reasoningEffort : preferredPreset.reasoningEffort),
       textVerbosity: normalizeVerbosity(hasOwn(initial?.settings, 'textVerbosity') ? initial.settings.textVerbosity : preferredPreset.textVerbosity),
       reasoningSummary: normalizeReasoningSummary(hasOwn(initial?.settings, 'reasoningSummary') ? initial.settings.reasoningSummary : preferredPreset.reasoningSummary),
+      thinkingEnabled: (() => {
+        if (hasOwn(initial?.settings, 'thinkingEnabled')) {
+          return !!initial.settings.thinkingEnabled
+        }
+        return !!preferredPreset.thinkingEnabled
+      })(),
+      thinkingBudgetTokens: toIntOrNull(hasOwn(initial?.settings, 'thinkingBudgetTokens') ? initial.settings.thinkingBudgetTokens : preferredPreset.thinkingBudgetTokens),
       connectionId: (() => {
         if (hasOwn(initial?.settings, 'connectionId')) {
           const raw = initial.settings.connectionId

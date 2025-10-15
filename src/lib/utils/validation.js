@@ -25,3 +25,7 @@ export function parseTopP(value) {
 export function parseTemperature(value) {
   return toClampedNumber(value, 0, 2)
 }
+
+export function parseThinkingBudgetTokens(value) {
+  return toIntOrNull(value)
+}

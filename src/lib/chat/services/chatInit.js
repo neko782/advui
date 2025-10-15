@@ -1,6 +1,6 @@
 // Chat initialization and preset management
 import { loadSettings } from '../../settingsStore.js'
-import { normalizeReasoning, normalizeVerbosity, normalizeReasoningSummary, parseMaxTokens, parseTopP, parseTemperature } from '../../utils/validation.js'
+import { normalizeReasoning, normalizeVerbosity, normalizeReasoningSummary, parseMaxTokens, parseTopP, parseTemperature, parseThinkingBudgetTokens } from '../../utils/validation.js'
 
 export const DEFAULT_SYSTEM_PROMPT = 'You are a helpful assistant.'
 
@@ -25,6 +25,8 @@ export function normalizePreset(p) {
       reasoningEffort: 'none',
       textVerbosity: 'medium',
       reasoningSummary: 'auto',
+      thinkingEnabled: false,
+      thinkingBudgetTokens: null,
       connectionId: undefined,
       systemPrompt: DEFAULT_SYSTEM_PROMPT,
     }
@@ -38,9 +40,11 @@ export function normalizePreset(p) {
   const reasoningEffort = normalizeReasoning(p.reasoningEffort)
   const textVerbosity = normalizeVerbosity(p.textVerbosity)
   const reasoningSummary = normalizeReasoningSummary(p.reasoningSummary)
+  const thinkingEnabled = !!p.thinkingEnabled
+  const thinkingBudgetTokens = parseThinkingBudgetTokens(p.thinkingBudgetTokens)
   const connectionId = (typeof p.connectionId === 'string' && p.connectionId.trim()) ? p.connectionId.trim() : undefined
   const systemPrompt = (typeof p.systemPrompt === 'string') ? p.systemPrompt : DEFAULT_SYSTEM_PROMPT
-  return { id, model, streaming, maxOutputTokens, topP, temperature, reasoningEffort, textVerbosity, reasoningSummary, connectionId, systemPrompt }
+  return { id, model, streaming, maxOutputTokens, topP, temperature, reasoningEffort, textVerbosity, reasoningSummary, thinkingEnabled, thinkingBudgetTokens, connectionId, systemPrompt }
 }
 
 export function pickPresetFromSettings(state) {
@@ -66,6 +70,8 @@ export function presetSignature(state) {
     p?.reasoningEffort || '',
     p?.textVerbosity || '',
     p?.reasoningSummary || '',
+    p?.thinkingEnabled ? '1' : '0',
+    p?.thinkingBudgetTokens ?? '',
     p?.connectionId || '',
     p?.systemPrompt || '',
   ].join('|')).join(';')
@@ -93,6 +99,8 @@ export function buildChatSettings(preset, settings) {
     reasoningEffort: preset.reasoningEffort,
     textVerbosity: preset.textVerbosity,
     reasoningSummary: preset.reasoningSummary,
+    thinkingEnabled: !!preset.thinkingEnabled,
+    thinkingBudgetTokens: parseThinkingBudgetTokens(preset.thinkingBudgetTokens),
     connectionId: computeInitialConnectionId(preset, settings),
   }
 }

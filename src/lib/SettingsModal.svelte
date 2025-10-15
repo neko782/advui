@@ -73,6 +73,10 @@
     return REASONING_SUMMARY_OPTIONS.includes(value) ? value : 'auto'
   }
 
+  function parseThinkingBudget(value) {
+    return parseMaxTokens(value)
+  }
+
   function genPresetId() {
     return `preset_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`
   }
@@ -457,6 +461,23 @@
               </label>
               <p class="hint">Configure keyboard shortcuts for actions in the composer. Does not apply on mobile devices.</p>
             </section>
+            <section class="group">
+              <div class="group-title">Features</div>
+              <label class="switch" title="Show thinking controls">
+                <input
+                  type="checkbox"
+                  checked={!!local.showThinkingSettings}
+                  onchange={(event) => {
+                    local.showThinkingSettings = !!event.currentTarget.checked
+                    persistSettings()
+                  }}
+                  aria-label="Show thinking controls"
+                />
+                <span class="switch-ui" aria-hidden="true"></span>
+                <span class="switch-label">Anthropic thinking controls</span>
+              </label>
+              <p class="hint">Enable control of Anthropic-style thinking parameters in chat settings.</p>
+            </section>
           {:else if activeTab === 'connection'}
             <section class="group">
               <div class="group-head">
@@ -687,6 +708,31 @@
                     <option value="detailed">detailed</option>
                   </select>
                 </label>
+                {#if local.showThinkingSettings}
+                  <label class="switch" title="Enable Anthropic thinking">
+                    <input
+                      type="checkbox"
+                      checked={!!activePreset.thinkingEnabled}
+                      onchange={(event) => updateActivePreset({ thinkingEnabled: !!event.currentTarget.checked })}
+                      aria-label="Enable Anthropic thinking"
+                    />
+                    <span class="switch-ui" aria-hidden="true"></span>
+                    <span class="switch-label">Anthropic thinking</span>
+                  </label>
+                  <label class="field">
+                    <span>Thinking budget tokens</span>
+                    <input
+                      type="number"
+                      min="1"
+                      step="100"
+                      placeholder="Budget tokens"
+                      value={activePreset.thinkingBudgetTokens ?? ''}
+                      oninput={(event) => updateActivePreset({ thinkingBudgetTokens: parseThinkingBudget(event.currentTarget.value) })}
+                      aria-label="Thinking budget tokens"
+                      disabled={!activePreset.thinkingEnabled}
+                    />
+                  </label>
+                {/if}
                 <label class="field">
                   <span>Text verbosity</span>
                   <select

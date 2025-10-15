@@ -89,6 +89,8 @@
     reasoningEffort: initialPreset.reasoningEffort,
     textVerbosity: initialPreset.textVerbosity,
     reasoningSummary: initialPreset.reasoningSummary,
+    thinkingEnabled: initialPreset.thinkingEnabled,
+    thinkingBudgetTokens: initialPreset.thinkingBudgetTokens,
     connectionId: initialConnectionId,
   })
 
@@ -1036,7 +1038,8 @@
         settings?.selectedPresetId !== next?.selectedPresetId ||
         settings?.selectedConnectionId !== next?.selectedConnectionId ||
         !!settings?.debug !== !!next?.debug ||
-        JSON.stringify(settings?.keybinds) !== JSON.stringify(next?.keybinds)
+        JSON.stringify(settings?.keybinds) !== JSON.stringify(next?.keybinds) ||
+        !!settings?.showThinkingSettings !== !!next?.showThinkingSettings
       )
       if (changed) {
         settings = next
@@ -1137,11 +1140,14 @@
     chatReasoningEffort={chatSettings.reasoningEffort}
     chatReasoningSummary={chatSettings.reasoningSummary}
     chatTextVerbosity={chatSettings.textVerbosity}
+    chatThinkingEnabled={chatSettings.thinkingEnabled}
+    chatThinkingBudgetTokens={chatSettings.thinkingBudgetTokens}
     modelIds={modelIds}
     connections={connectionOptions}
     chatConnectionId={chatSettings.connectionId}
     attachedImages={attachedImages}
     keybinds={settings?.keybinds}
+    showThinkingControls={!!settings?.showThinkingSettings}
     onToggleChatSettings={toggleChatSettings}
     onCloseChatSettings={() => (chatSettingsOpen = false)}
     onChangeConnection={(val) => (chatSettings = { ...chatSettings, connectionId: (typeof val === 'string' && val.trim()) ? val.trim() : null })}
@@ -1153,6 +1159,8 @@
     onChangeReasoningEffort={(val) => (chatSettings = { ...chatSettings, reasoningEffort: normalizeReasoning(val) })}
     onChangeReasoningSummary={(val) => (chatSettings = { ...chatSettings, reasoningSummary: normalizeReasoningSummary(val) })}
     onChangeTextVerbosity={(val) => (chatSettings = { ...chatSettings, textVerbosity: normalizeVerbosity(val) })}
+    onChangeThinkingEnabled={(val) => (chatSettings = { ...chatSettings, thinkingEnabled: !!val })}
+    onChangeThinkingBudgetTokens={(val) => (chatSettings = { ...chatSettings, thinkingBudgetTokens: toIntOrNull(val) })}
     onInput={(val) => (input = val)}
     onAdd={(role) => addToChat(role)}
     onStop={() => stopGeneration()}

@@ -4,7 +4,7 @@ import { loadSettings } from '../../settingsStore.js'
 import { makeSystemPrologue, pickPresetFromSettings, buildChatSettings, recomputeNextIds, DEFAULT_SYSTEM_PROMPT } from './chatInit.js'
 import { migrateLegacyGraphToNodes } from './legacyMigration.js'
 import { computePersistSig } from './chatPersistence.js'
-import { parseMaxTokens, parseTopP, parseTemperature, normalizeReasoning, normalizeVerbosity, normalizeReasoningSummary } from '../../utils/validation.js'
+import { parseMaxTokens, parseTopP, parseTemperature, normalizeReasoning, normalizeVerbosity, normalizeReasoningSummary, parseThinkingBudgetTokens } from '../../utils/validation.js'
 
 const hasOwn = (obj, key) => Object.prototype.hasOwnProperty.call(obj || {}, key)
 
@@ -67,6 +67,11 @@ export async function loadChat(chatId) {
         reasoningEffort: normalizeReasoning(hasOwn(loaded?.settings, 'reasoningEffort') ? loaded.settings.reasoningEffort : basePreset.reasoningEffort),
         textVerbosity: normalizeVerbosity(hasOwn(loaded?.settings, 'textVerbosity') ? loaded.settings.textVerbosity : basePreset.textVerbosity),
         reasoningSummary: normalizeReasoningSummary(hasOwn(loaded?.settings, 'reasoningSummary') ? loaded.settings.reasoningSummary : basePreset.reasoningSummary),
+        thinkingEnabled: (() => {
+          if (hasOwn(loaded?.settings, 'thinkingEnabled')) return !!loaded.settings.thinkingEnabled
+          return !!basePreset.thinkingEnabled
+        })(),
+        thinkingBudgetTokens: parseThinkingBudgetTokens(hasOwn(loaded?.settings, 'thinkingBudgetTokens') ? loaded.settings.thinkingBudgetTokens : basePreset.thinkingBudgetTokens),
         connectionId: (() => {
           const fromLoaded = hasOwn(loaded?.settings, 'connectionId') ? loaded.settings.connectionId : undefined
           if (typeof fromLoaded === 'string' && fromLoaded.trim()) return fromLoaded.trim()

@@ -165,6 +165,8 @@ export async function generateResponse({
     reasoningEffort: chatSettings.reasoningEffort,
     textVerbosity: chatSettings.textVerbosity,
     reasoningSummary: chatSettings.reasoningSummary,
+    thinkingEnabled: chatSettings.thinkingEnabled,
+    thinkingBudgetTokens: chatSettings.thinkingBudgetTokens,
     connectionId,
   }
 

@@ -24,6 +24,8 @@ const DEFAULT_PRESET_FIELDS = {
   reasoningEffort: 'none',
   textVerbosity: 'medium',
   reasoningSummary: 'auto',
+  thinkingEnabled: false,
+  thinkingBudgetTokens: null,
   connectionId: null,
   systemPrompt: 'You are a helpful assistant.',
 };
@@ -113,6 +115,8 @@ function normalizePreset(raw, index = 0, { allowedConnectionIds = [], fallbackCo
   preset.reasoningSummary = REASONING_SUMMARY_VALUES.has(preset.reasoningSummary)
     ? preset.reasoningSummary
     : 'auto';
+  preset.thinkingEnabled = typeof preset.thinkingEnabled === 'boolean' ? preset.thinkingEnabled : false;
+  preset.thinkingBudgetTokens = toIntOrNull(preset.thinkingBudgetTokens);
   preset.systemPrompt = typeof preset.systemPrompt === 'string'
     ? preset.systemPrompt
     : DEFAULT_PRESET_FIELDS.systemPrompt;
@@ -166,6 +170,8 @@ function deriveDefaultPreset(parsed, options = {}) {
     reasoningEffort: parsed?.defaultChat?.reasoningEffort || 'none',
     textVerbosity: parsed?.defaultChat?.textVerbosity || 'medium',
     reasoningSummary: parsed?.defaultChat?.reasoningSummary || 'auto',
+    thinkingEnabled: !!parsed?.defaultChat?.thinkingEnabled,
+    thinkingBudgetTokens: toIntOrNull(parsed?.defaultChat?.thinkingBudgetTokens),
     connectionId: parsed?.defaultChat?.connectionId
       || parsed?.connectionId
       || null,
@@ -217,6 +223,8 @@ function attachCompatFields(out) {
     reasoningEffort: active.reasoningEffort || 'none',
     textVerbosity: active.textVerbosity || 'medium',
     reasoningSummary: active.reasoningSummary || 'auto',
+    thinkingEnabled: !!active.thinkingEnabled,
+    thinkingBudgetTokens: toIntOrNull(active.thinkingBudgetTokens),
     connectionId: active.connectionId || fallbackConnectionId,
   };
   out.model = active.model;
@@ -227,6 +235,7 @@ function attachCompatFields(out) {
   out.apiMode = activeApiMode;
   out.apiKey = typeof activeConnection?.apiKey === 'string' ? activeConnection.apiKey : '';
   out.apiBaseUrl = normalizeApiBaseUrl(activeConnection?.apiBaseUrl);
+  out.showThinkingSettings = !!out.showThinkingSettings;
   return out;
 }
 
@@ -286,6 +295,7 @@ export function loadSettings() {
     debug: false,
     apiMode: 'responses',
     keybinds: { ...DEFAULT_KEYBINDS },
+    showThinkingSettings: false,
   });
   try {
     const raw = localStorage.getItem(SETTINGS_KEY);
@@ -322,6 +332,7 @@ export function loadSettings() {
     const apiKey = typeof parsed?.apiKey === 'string' ? parsed.apiKey : '';
     const apiBaseUrl = normalizeApiBaseUrl(parsed?.apiBaseUrl);
     const keybinds = normalizeKeybinds(parsed?.keybinds);
+    const showThinkingSettings = !!parsed?.showThinkingSettings;
     return attachCompatFields({
       apiKey,
       apiBaseUrl,
@@ -332,6 +343,7 @@ export function loadSettings() {
       debug,
       apiMode: mode,
       keybinds,
+      showThinkingSettings,
     });
   } catch {
     return defaults;
@@ -369,6 +381,7 @@ export function saveSettings(next) {
     || makeDefaultConnection({ apiMode: fallbackApiMode });
   const activeApiMode = API_MODE_VALUES.has(activeConnection?.apiMode) ? activeConnection.apiMode : 'responses';
   const keybinds = normalizeKeybinds(next?.keybinds);
+  const showThinkingSettings = !!next?.showThinkingSettings;
   const data = attachCompatFields({
     apiKey: typeof next?.apiKey === 'string' ? next.apiKey : '',
     apiBaseUrl: normalizeApiBaseUrl(next?.apiBaseUrl),
@@ -379,6 +392,7 @@ export function saveSettings(next) {
     debug: !!next?.debug,
     apiMode: activeApiMode,
     keybinds,
+    showThinkingSettings,
   });
   localStorage.setItem(SETTINGS_KEY, JSON.stringify(data));
 }

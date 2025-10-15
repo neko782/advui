@@ -167,9 +167,12 @@
         reasoningEffort={props.chatReasoningEffort}
         reasoningSummary={props.chatReasoningSummary}
         textVerbosity={props.chatTextVerbosity}
+        thinkingEnabled={props.chatThinkingEnabled}
+        thinkingBudgetTokens={props.chatThinkingBudgetTokens}
         modelIds={props.modelIds}
         connections={props.connections}
         connectionId={props.chatConnectionId}
+        showThinkingControls={props.showThinkingControls}
         onToggle={props.onToggleChatSettings}
         onClose={props.onCloseChatSettings}
         onChangeConnection={props.onChangeConnection}
@@ -181,6 +184,8 @@
         onInputReasoningEffort={props.onChangeReasoningEffort}
         onInputReasoningSummary={props.onChangeReasoningSummary}
         onInputTextVerbosity={props.onChangeTextVerbosity}
+        onInputThinkingEnabled={props.onChangeThinkingEnabled}
+        onInputThinkingBudgetTokens={props.onChangeThinkingBudgetTokens}
       />
     </div>
 

@@ -72,6 +72,8 @@ export async function respond({
   reasoningEffort,
   textVerbosity,
   reasoningSummary,
+  thinkingEnabled,
+  thinkingBudgetTokens,
   onReasoningSummaryDelta,
   onReasoningSummaryDone,
   onAbort,
@@ -197,6 +199,19 @@ export async function respond({
   }
   if (typeof textVerbosity === 'string' && textVerbosity) {
     request.text = { verbosity: textVerbosity }
+  }
+  const thinkingBudget = toIntOrNull(thinkingBudgetTokens)
+  const thinkingConfig = (() => {
+    if (!thinkingEnabled) return null
+    const body = { type: 'enabled' }
+    if (thinkingBudget != null) body.budget_tokens = thinkingBudget
+    return body
+  })()
+  if (thinkingConfig) {
+    request.thinking = thinkingConfig
+    chatRequest.thinking = thinkingConfig
+    request.extra_body = { ...(request.extra_body || {}), thinking: thinkingConfig }
+    chatRequest.extra_body = { ...(chatRequest.extra_body || {}), thinking: thinkingConfig }
   }
 
   if (stream) {

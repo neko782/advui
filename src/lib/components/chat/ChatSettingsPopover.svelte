@@ -75,6 +75,31 @@
         <option value="detailed">detailed</option>
       </select>
     </div>
+    {#if props.showThinkingControls}
+      <div class="menu-section">
+        <label class="switch" title="Enable Anthropic thinking">
+          <input
+            type="checkbox"
+            checked={!!props.thinkingEnabled}
+            disabled={props.disabled}
+            onchange={(e) => (!props.disabled && props.onInputThinkingEnabled?.(e.currentTarget.checked))}
+            aria-label="Enable Anthropic thinking"
+          />
+          <span class="switch-ui" aria-hidden="true"></span>
+          <span class="switch-label">Anthropic thinking</span>
+        </label>
+        <input
+          type="number"
+          min="1"
+          step="100"
+          placeholder="Budget tokens"
+          value={props.thinkingBudgetTokens ?? ''}
+          disabled={props.disabled || !props.thinkingEnabled}
+          oninput={(e) => (!props.disabled && props.onInputThinkingBudgetTokens?.(e.currentTarget.value))}
+          aria-label="Thinking budget tokens"
+        />
+      </div>
+    {/if}
     <div class="menu-section">
       <div class="menu-label">Reasoning effort</div>
       <select

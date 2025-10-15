@@ -111,6 +111,8 @@ export function computePersistSig(nodes, chatSettings, rootId) {
         reasoningEffort: chatSettings?.reasoningEffort || '',
         textVerbosity: chatSettings?.textVerbosity || '',
         reasoningSummary: chatSettings?.reasoningSummary || '',
+        thinkingEnabled: !!chatSettings?.thinkingEnabled,
+        thinkingBudgetTokens: chatSettings?.thinkingBudgetTokens ?? null,
         connectionId: chatSettings?.connectionId || '',
       },
       rootId,

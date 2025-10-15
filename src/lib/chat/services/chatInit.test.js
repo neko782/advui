@@ -47,6 +47,9 @@ describe('normalizePreset', () => {
       textVerbosity: 'medium',
       reasoningSummary: 'auto',
       systemPrompt: 'Act like a pirate.',
+      connectionId: 'conn-1',
+      thinkingEnabled: true,
+      thinkingBudgetTokens: 2400,
     }
 
     const result = normalizePreset(preset)
@@ -65,6 +68,8 @@ describe('normalizePreset', () => {
     expect(result.textVerbosity).toBe('medium')
     expect(result.reasoningSummary).toBe('auto')
     expect(result.systemPrompt).toBe(DEFAULT_SYSTEM_PROMPT)
+    expect(result.thinkingEnabled).toBe(false)
+    expect(result.thinkingBudgetTokens).toBeNull()
   })
 
   it('should trim model string', () => {
@@ -287,6 +292,8 @@ describe('buildChatSettings', () => {
       reasoningEffort: 'high',
       textVerbosity: 'verbose',
       reasoningSummary: 'always',
+      thinkingEnabled: true,
+      thinkingBudgetTokens: 1800,
       connectionId: 'conn1'
     }
     const settings = { selectedConnectionId: 'fallback-conn' }
@@ -302,6 +309,8 @@ describe('buildChatSettings', () => {
     expect(result.reasoningEffort).toBe('high')
     expect(result.textVerbosity).toBe('verbose')
     expect(result.reasoningSummary).toBe('always')
+    expect(result.thinkingEnabled).toBe(true)
+    expect(result.thinkingBudgetTokens).toBe(1800)
     expect(result.connectionId).toBe('conn1')
   })
 
@@ -315,6 +324,8 @@ describe('buildChatSettings', () => {
     const result = buildChatSettings(preset, settings)
 
     expect(result.connectionId).toBe('settings-conn')
+    expect(result.thinkingEnabled).toBe(false)
+    expect(result.thinkingBudgetTokens).toBeNull()
   })
 })
 
