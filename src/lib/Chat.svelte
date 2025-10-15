@@ -598,13 +598,19 @@
   }
 
   // Edit actions
+  function normalizeEditableText(raw) {
+    if (typeof raw !== 'string') return ''
+    return raw.replace(/\r\n?/g, '\n').replace(/\u00a0/g, ' ')
+  }
+
   function onEditableInput(eOrText) {
     if (editingId == null) return
     try {
-      if (typeof eOrText === 'string') {
-        editingText = eOrText
-      } else {
-        editingText = eOrText?.currentTarget?.innerText ?? editingText
+      const next = typeof eOrText === 'string'
+        ? eOrText
+        : eOrText?.currentTarget?.innerText
+      if (typeof next === 'string') {
+        editingText = normalizeEditableText(next)
       }
     } catch {}
   }

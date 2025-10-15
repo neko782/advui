@@ -1,5 +1,5 @@
 <script>
-  import { placeCaretAtEnd } from '../../utils/dom.js'
+  import { autoGrow } from '../../utils/dom.js'
   import { renderMarkdown } from '../../utils/markdown.js'
   const props = $props()
   let el = $state(null)
@@ -43,11 +43,22 @@
     if (currentMessageId !== lastSyncedEditingId) {
       lastSyncedEditingId = currentMessageId
       try {
-        el.innerText = props.editingText ?? ''
+        const next = props.editingText ?? ''
+        el.value = next
+        queueMicrotask(() => autoGrow(el))
         el.focus()
-        placeCaretAtEnd(el)
+        const len = next.length
+        if (typeof el.setSelectionRange === 'function') {
+          el.setSelectionRange(len, len)
+        }
       } catch {}
     }
+  })
+
+  $effect(() => {
+    if (!props.isEditing || !el) return
+    void props.editingText
+    queueMicrotask(() => autoGrow(el))
   })
 
   $effect(() => {
@@ -91,24 +102,35 @@
       const text = e.clipboardData?.getData('text/plain')
       if (text != null) {
         e.preventDefault()
-        document.execCommand('insertText', false, text)
+        const target = e.currentTarget
+        if (target && typeof target.setRangeText === 'function') {
+          const start = target.selectionStart ?? target.value.length
+          const end = target.selectionEnd ?? target.value.length
+          target.setRangeText(text, start, end, 'end')
+          props.onEditInput?.(target.value)
+          queueMicrotask(() => autoGrow(target))
+        } else {
+          document.execCommand('insertText', false, text)
+        }
       }
     } catch {}
   }
 </script>
 
 {#if props.isEditing}
-  <div
-    class={`bubble ${props.message.role} editing`}
-    contenteditable="true"
-    role="textbox"
-    tabindex="0"
-    aria-multiline="true"
-    oninput={(e) => props.onEditInput?.(e.currentTarget.innerText)}
+  <textarea
+    class={`bubble ${props.message.role} editing editor-area`}
+    rows="1"
+    value={props.editingText ?? ''}
+    oninput={(e) => {
+      const target = e.currentTarget
+      props.onEditInput?.(target.value)
+      queueMicrotask(() => autoGrow(target))
+    }}
     onkeydown={props.onEditKeydown}
     onpaste={onPaste}
     bind:this={el}
-  ></div>
+  ></textarea>
 {:else}
   {#if showReasoning}
     <div class={`reasoning ${props.message.role}`}>
@@ -157,6 +179,15 @@
 <style>
   .bubble { display: block; max-width: 100%; padding: 10px var(--bubble-pad-x); border-radius: 14px; border: none; white-space: normal; overflow-wrap: anywhere; word-break: break-word; line-height: 1.4; font-size: 0.98rem; box-shadow: 0 1px 0 rgba(0,0,0,0.04); }
   .bubble.editing { white-space: pre-wrap; }
+  .bubble.editing.editor-area {
+    resize: none;
+    outline: none;
+    overflow: hidden;
+    background: transparent;
+    font: inherit;
+    box-sizing: border-box;
+    min-height: 32px;
+  }
   /* Markdown content inside bubbles rendered via {@html} */
   .bubble :global(h1), .bubble :global(h2), .bubble :global(h3), .bubble :global(h4), .bubble :global(h5), .bubble :global(h6) { margin: 0.2em 0 0.4em; line-height: 1.25; }
   .bubble :global(h1) { font-size: 1.35rem; }
