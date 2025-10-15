@@ -119,19 +119,22 @@
 </script>
 
 {#if props.isEditing}
-  <textarea
-    class={`bubble ${props.message.role} editing editor-area`}
-    rows="1"
-    value={props.editingText ?? ''}
-    oninput={(e) => {
-      const target = e.currentTarget
-      props.onEditInput?.(target.value)
-      queueMicrotask(() => autoGrow(target, EDIT_GROW_OPTS))
-    }}
-    onkeydown={props.onEditKeydown}
-    onpaste={onPaste}
-    bind:this={el}
-  ></textarea>
+  <span class={`editor-container ${props.message.role}`}>
+    <span class="editor-sizer" aria-hidden="true">{props.editingText ?? ''}</span>
+    <textarea
+      class={`bubble ${props.message.role} editing editor-area`}
+      rows="1"
+      value={props.editingText ?? ''}
+      oninput={(e) => {
+        const target = e.currentTarget
+        props.onEditInput?.(target.value)
+        queueMicrotask(() => autoGrow(target, EDIT_GROW_OPTS))
+      }}
+      onkeydown={props.onEditKeydown}
+      onpaste={onPaste}
+      bind:this={el}
+    ></textarea>
+  </span>
 {:else}
   {#if showReasoning}
     <div class={`reasoning ${props.message.role}`}>
@@ -180,14 +183,47 @@
 <style>
   .bubble { display: block; max-width: 100%; padding: 10px var(--bubble-pad-x); border-radius: 14px; border: none; white-space: normal; overflow-wrap: anywhere; word-break: break-word; line-height: 1.4; font-size: 0.98rem; box-shadow: 0 1px 0 rgba(0,0,0,0.04); }
   .bubble.editing { white-space: pre-wrap; }
-  .bubble.editing.editor-area {
+  .editor-container {
+    display: inline-grid;
+    grid-template-columns: auto;
+    max-width: 100%;
+    vertical-align: top;
+  }
+  .editor-container.assistant {
+    justify-self: start;
+  }
+  .editor-container.user {
+    justify-self: end;
+  }
+  .editor-container.system {
+    justify-self: center;
+  }
+  .editor-sizer {
+    grid-area: 1 / 1;
     display: block;
+    visibility: hidden;
+    white-space: pre-wrap;
+    padding: 10px var(--bubble-pad-x);
+    border: none;
+    border-radius: 14px;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    line-height: 1.4;
+    font-size: inherit;
+    font-family: inherit;
+    pointer-events: none;
+    min-width: 32px;
+    box-sizing: border-box;
+  }
+  .bubble.editing.editor-area {
+    grid-area: 1 / 1;
     width: 100%;
     max-width: 100%;
     resize: none;
     outline: none;
     overflow: hidden;
-    font: inherit;
+    font-family: inherit;
+    font-size: inherit;
     box-sizing: border-box;
     min-height: 32px;
   }
