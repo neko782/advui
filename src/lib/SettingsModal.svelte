@@ -9,9 +9,35 @@
   const props = $props()
 
   let local = $state(loadSettings())
-  let modelCacheByConnection = $state(loadAllModelCaches())
+  let modelCacheByConnection = $state({})
+  let modelCacheLoaded = $state(false)
   let revealKey = $state(false)
   let refreshingConnectionId = $state('')
+  let connectionFormReady = $state(false)
+
+  // Lazy load model cache when connection tab is accessed
+  $effect(() => {
+    if (activeTab === 'connection' && !modelCacheLoaded) {
+      // Defer to next frame to avoid blocking tab switch
+      requestAnimationFrame(() => {
+        modelCacheByConnection = loadAllModelCaches()
+        modelCacheLoaded = true
+      })
+    }
+  })
+
+  // Defer rendering connection form to avoid Firefox password manager blocking
+  $effect(() => {
+    if (activeTab === 'connection') {
+      connectionFormReady = false
+      // Wait for tab render, then show form
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          connectionFormReady = true
+        })
+      })
+    }
+  })
   let refreshMessages = $state({})
   let activePresetId = $state('')
   let activeConnectionId = $state('')
@@ -172,11 +198,17 @@
     return Array.isArray(entry?.ids) ? entry.ids : []
   })())
 
+  let persistTimer = null
   function persistSettings() {
-    syncActiveConnection()
-    syncActivePreset()
-    saveSettings(local)
-    try { props.onSaved?.() } catch {}
+    // Debounce to avoid blocking on rapid state changes
+    if (persistTimer) clearTimeout(persistTimer)
+    persistTimer = setTimeout(() => {
+      persistTimer = null
+      syncActiveConnection()
+      syncActivePreset()
+      saveSettings(local)
+      try { props.onSaved?.() } catch {}
+    }, 0)
   }
 
   function selectPreset(id) {
@@ -317,13 +349,19 @@
   async function close() {
     // Reset local state to the persisted settings the next time we open
     local = loadSettings()
-    modelCacheByConnection = loadAllModelCaches()
+    modelCacheByConnection = {}
+    modelCacheLoaded = false
+    connectionFormReady = false
     activePresetId = local?.selectedPresetId || local?.presets?.[0]?.id || ''
     activeConnectionId = local?.selectedConnectionId || local?.connections?.[0]?.id || ''
     activeTab = 'general'
     revealKey = false
     refreshingConnectionId = ''
     refreshMessages = {}
+    if (persistTimer) {
+      clearTimeout(persistTimer)
+      persistTimer = null
+    }
     props.onClose?.()
   }
 
@@ -364,9 +402,12 @@
     }
   }
 
+  // Defer sync to avoid blocking during initialization
   $effect(() => {
-    syncActiveConnection()
-    syncActivePreset()
+    queueMicrotask(() => {
+      syncActiveConnection()
+      syncActivePreset()
+    })
   })
 </script>
 
@@ -497,7 +538,7 @@
                   </button>
                 {/each}
               </div>
-              {#if activeConnection}
+              {#if activeConnection && connectionFormReady}
                 <label class="field">
                   <span>Name</span>
                   <input
@@ -506,19 +547,26 @@
                     value={activeConnection.name || ''}
                     oninput={(event) => updateActiveConnection({ name: event.currentTarget.value })}
                     aria-label="Connection name"
+                    autocomplete="off"
+                    data-1p-ignore
+                    data-lpignore="true"
                   />
                 </label>
                 <label class="field">
                   <span>API Key</span>
                   <div class="row">
                     <input
-                      type={revealKey ? 'text' : 'password'}
+                      type="text"
                       placeholder="sk-..."
                       value={activeConnection.apiKey || ''}
                       autocomplete="off"
                       oninput={(event) => updateActiveConnection({ apiKey: event.currentTarget.value })}
-                      onblur={() => { if ((activeConnection.apiKey || '').trim()) refreshModelsNow(activeConnection.id) }}
                       aria-label="API key"
+                      data-1p-ignore
+                      data-lpignore="true"
+                      data-form-type="other"
+                      style={revealKey ? '' : '-webkit-text-security: disc; font-family: text-security-disc;'}
+                      inputmode="text"
                     />
                     <button class="icon-btn" title={revealKey ? 'Hide key' : 'Show key'} onclick={() => (revealKey = !revealKey)} aria-label={revealKey ? 'Hide key' : 'Show key'}>
                       {#if revealKey}
@@ -543,6 +591,8 @@
                     inputmode="url"
                     oninput={(event) => updateActiveConnection({ apiBaseUrl: event.currentTarget.value })}
                     aria-label="API base URL"
+                    data-1p-ignore
+                    data-lpignore="true"
                   />
                 </label>
                 <p class="hint">Leave blank to use the default OpenAI endpoint.</p>
