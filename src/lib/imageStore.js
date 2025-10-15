@@ -91,6 +91,23 @@ export async function deleteImage(id) {
   }
 }
 
+export async function getAllImages() {
+  try {
+    const db = await openDB()
+    const transaction = db.transaction([STORE_NAME], 'readonly')
+    const store = transaction.objectStore(STORE_NAME)
+
+    return await new Promise((resolve, reject) => {
+      const request = store.getAll()
+      request.onsuccess = () => resolve(request.result || [])
+      request.onerror = () => reject(request.error)
+    })
+  } catch (err) {
+    console.error('Failed to get all images:', err)
+    return []
+  }
+}
+
 export async function fileToBase64(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()

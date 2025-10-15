@@ -642,7 +642,6 @@
     nodes = commitEditReplace(nodes, editingId, editingText)
     editingId = null
     editingText = ''
-    queueMicrotask(() => scrollToBottom())
     persistNow()
   }
 
@@ -657,7 +656,6 @@
     persistNow()
     editingId = null
     editingText = ''
-    queueMicrotask(() => scrollToBottom())
   }
 
   async function applyEditSend() {

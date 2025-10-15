@@ -2,8 +2,9 @@
   import { loadSettings, saveSettings } from './settingsStore.js'
   import { setModelsCache, loadModelsCache, loadAllModelCaches } from './modelsStore.js'
   import { listModelsWithKey } from './openaiClient.js'
-  import { IconClose, IconAdd, IconVisibility, IconVisibilityOff, IconAutorenew, IconDelete } from './icons.js'
+  import { IconClose, IconAdd, IconVisibility, IconVisibilityOff, IconAutorenew, IconDelete, IconDownload, IconUpload } from './icons.js'
   import { getThemeState, setThemeMode, subscribeTheme } from './themeStore.js'
+  import { exportAllData, importAllData, importChat } from './utils/exportImport.js'
   import { onMount } from 'svelte'
 
   const props = $props()
@@ -49,6 +50,10 @@
   ]
   let activeTab = $state('general')
   let themeState = $state({ mode: 'system', theme: 'light' })
+
+  // Import/Export state
+  let importExportStatus = $state('')
+  let importExportWorking = $state(false)
 
   onMount(() => {
     themeState = getThemeState()
@@ -346,6 +351,103 @@
     persistSettings()
   }
 
+  async function handleExportAllData() {
+    if (importExportWorking) return
+    importExportWorking = true
+    importExportStatus = 'Exporting data...'
+    try {
+      await exportAllData()
+      importExportStatus = 'Export successful!'
+      setTimeout(() => {
+        importExportStatus = ''
+      }, 3000)
+    } catch (err) {
+      console.error('Export failed:', err)
+      importExportStatus = `Export failed: ${err.message}`
+      setTimeout(() => {
+        importExportStatus = ''
+      }, 5000)
+    } finally {
+      importExportWorking = false
+    }
+  }
+
+  async function handleImportAllData() {
+    if (importExportWorking) return
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = '.zip'
+    input.onchange = async (e) => {
+      const file = e.target.files?.[0]
+      if (!file) return
+
+      importExportWorking = true
+      importExportStatus = 'Importing data...'
+      try {
+        const results = await importAllData(file)
+        let msg = `Import complete: ${results.chatsImported} chats`
+        if (results.imagesImported > 0) {
+          msg += `, ${results.imagesImported} images`
+        }
+        if (results.settingsImported) {
+          msg += ', settings'
+        }
+        if (results.errors.length > 0) {
+          msg += ` (${results.errors.length} errors)`
+        }
+        importExportStatus = msg
+        setTimeout(() => {
+          importExportStatus = ''
+          // Refresh the page to reload all data
+          if (results.chatsImported > 0 || results.settingsImported) {
+            window.location.reload()
+          }
+        }, 3000)
+      } catch (err) {
+        console.error('Import failed:', err)
+        importExportStatus = `Import failed: ${err.message}`
+        setTimeout(() => {
+          importExportStatus = ''
+        }, 5000)
+      } finally {
+        importExportWorking = false
+      }
+    }
+    input.click()
+  }
+
+  async function handleImportChat() {
+    if (importExportWorking) return
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = '.json'
+    input.onchange = async (e) => {
+      const file = e.target.files?.[0]
+      if (!file) return
+
+      importExportWorking = true
+      importExportStatus = 'Importing chat...'
+      try {
+        const result = await importChat(file)
+        importExportStatus = 'Chat imported successfully!'
+        setTimeout(() => {
+          importExportStatus = ''
+          // Refresh the page to show the new chat
+          window.location.reload()
+        }, 2000)
+      } catch (err) {
+        console.error('Import failed:', err)
+        importExportStatus = `Import failed: ${err.message}`
+        setTimeout(() => {
+          importExportStatus = ''
+        }, 5000)
+      } finally {
+        importExportWorking = false
+      }
+    }
+    input.click()
+  }
+
   async function close() {
     // Reset local state to the persisted settings the next time we open
     local = loadSettings()
@@ -358,6 +460,8 @@
     revealKey = false
     refreshingConnectionId = ''
     refreshMessages = {}
+    importExportStatus = ''
+    importExportWorking = false
     if (persistTimer) {
       clearTimeout(persistTimer)
       persistTimer = null
@@ -518,6 +622,49 @@
                 <span class="switch-label">Anthropic thinking controls</span>
               </label>
               <p class="hint">Enable control of Anthropic-style thinking parameters in chat settings.</p>
+            </section>
+            <section class="group">
+              <div class="group-title">Data</div>
+              <div class="data-actions">
+                <button
+                  type="button"
+                  class="data-action-btn"
+                  onclick={handleImportChat}
+                  disabled={importExportWorking}
+                  title="Import a chat from JSON file"
+                  aria-label="Import chat"
+                >
+                  <IconUpload style="font-size: 20px;" />
+                  <span>Import chat</span>
+                </button>
+                <button
+                  type="button"
+                  class="data-action-btn"
+                  onclick={handleExportAllData}
+                  disabled={importExportWorking}
+                  title="Export all chats, settings, and images as ZIP"
+                  aria-label="Export all data"
+                >
+                  <IconDownload style="font-size: 20px;" />
+                  <span>Export all data</span>
+                </button>
+                <button
+                  type="button"
+                  class="data-action-btn"
+                  onclick={handleImportAllData}
+                  disabled={importExportWorking}
+                  title="Import all data from ZIP file"
+                  aria-label="Import all data"
+                >
+                  <IconUpload style="font-size: 20px;" />
+                  <span>Import all data</span>
+                </button>
+              </div>
+              {#if importExportStatus}
+                <p class="hint" aria-live="polite">{importExportStatus}</p>
+              {:else}
+                <p class="hint">Import and export your chats, settings, and images. Export all data creates a ZIP backup of everything.</p>
+              {/if}
             </section>
           {:else if activeTab === 'connection'}
             <section class="group">
@@ -943,6 +1090,32 @@
   .switch > input:checked + .switch-ui { background: color-mix(in srgb, var(--accent), #0000 70%); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent), #0000 60%); }
   .switch > input:checked + .switch-ui::after { transform: translateX(18px); }
   .switch-label { font-size: .95rem; }
+  .data-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .data-action-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--panel);
+    color: var(--text);
+    font: inherit;
+    cursor: pointer;
+    transition: background-color 150ms ease, border-color 150ms ease;
+  }
+  .data-action-btn:hover:not(:disabled) {
+    background: var(--bg);
+    border-color: color-mix(in srgb, var(--border), var(--accent) 30%);
+  }
+  .data-action-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
   @media (max-width: 640px) {
     .modal { padding: 12px; }
     .panel { width: 100%; height: 100%; }

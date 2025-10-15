@@ -1,8 +1,9 @@
 <script>
   import { tick, onMount, onDestroy } from 'svelte'
-  import { IconMenu, IconEditSquare, IconClose, IconCheck, IconEdit, IconDelete, IconSettings, IconSearch, IconDescription, IconMoreVert } from '../icons.js'
+  import { IconMenu, IconEditSquare, IconClose, IconCheck, IconEdit, IconDelete, IconSettings, IconSearch, IconDescription, IconMoreVert, IconDownload } from '../icons.js'
   import ConfirmModal from './ConfirmModal.svelte'
   import EditModal from './EditModal.svelte'
+  import { exportChat } from '../utils/exportImport.js'
   const props = $props()
 
   let confirmDeleteId = $state(null)
@@ -120,6 +121,17 @@
     closeChatMenu()
     deleteModalChatId = chatId
     deleteModalOpen = true
+  }
+
+  async function handleMenuExport(chatId, event) {
+    event?.stopPropagation()
+    closeChatMenu()
+    try {
+      await exportChat(chatId)
+    } catch (err) {
+      console.error('Failed to export chat:', err)
+      alert('Failed to export chat. Please try again.')
+    }
   }
 
   async function confirmEditModal(newTitle) {
@@ -481,6 +493,14 @@
                           >
                             <IconEdit style="font-size: 18px;" />
                             <span>Edit</span>
+                          </button>
+                          <button
+                            type="button"
+                            class="chat-menu-item"
+                            onclick={(e) => handleMenuExport(c.id, e)}
+                          >
+                            <IconDownload style="font-size: 18px;" />
+                            <span>Export</span>
                           </button>
                           <button
                             type="button"

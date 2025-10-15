@@ -27,3 +27,5 @@ export { default as IconVisibility } from '~icons/material-symbols/visibility-ro
 export { default as IconVisibilityOff } from '~icons/material-symbols/visibility-off-rounded'
 export { default as IconSearch } from '~icons/material-symbols/search-rounded'
 export { default as IconDescription } from '~icons/material-symbols/description-rounded'
+export { default as IconDownload } from '~icons/material-symbols/download-rounded'
+export { default as IconUpload } from '~icons/material-symbols/upload-rounded'
