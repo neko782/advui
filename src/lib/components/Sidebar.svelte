@@ -659,7 +659,7 @@
     display: grid;
     gap: 4px;
     box-shadow: 0 8px 18px rgba(0,0,0,0.18);
-    z-index: 20;
+    z-index: 200;
   }
   .sidebar.collapsed .preset-menu { left: 8px; right: auto; width: 220px; }
   .preset-menu-item {
@@ -776,7 +776,10 @@
     z-index: 1;
   }
   .chat-row.show-actions {
-    z-index: 50;
+    z-index: 150;
+  }
+  .chat-row:has(.chat-menu) {
+    z-index: 160;
   }
   .chat-row.active { background: var(--panel); }
   .chat-row:hover { background: var(--panel); }
