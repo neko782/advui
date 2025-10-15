@@ -686,7 +686,7 @@
     gap: 6px;
     flex: 0 0 auto;
     padding: 2px 4px;
-    padding-right: 60px;
+    padding-right: 36px;
     border-radius: 8px;
     overflow: visible;
     z-index: 1;
