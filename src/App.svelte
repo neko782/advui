@@ -201,7 +201,8 @@
       : {}
     const c = await createChat(initial)
     selectedId = c.id
-    await refresh()
+    // Optimized: instead of reloading all chats from storage, just add the new one
+    chats = [c.chat, ...chats].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
   }
   // Coalesce sidebar refresh triggered by child updates
   let refreshTimer = null

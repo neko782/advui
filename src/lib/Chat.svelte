@@ -1239,28 +1239,24 @@
     if (!cid) return
 
     loadChat(cid).then((result) => {
-      setTimeout(() => {
-        try {
-          settings = result.settings
-          const sanitizedNodes = sanitizeNodesImageData(result.nodes)
-          nodes = sanitizedNodes
-          nextId = result.nextId
-          nextNodeId = result.nextNodeId
-          chatSettings = result.chatSettings
-          try { modelIds = loadModelsCache(result.chatSettings?.connectionId).ids || [] } catch {}
-          rootId = result.rootId
-          editingId = null
-          editingText = ''
-          dismissedNotice = ''
-          persistSig = result.persistSig
-        } finally {
-          ready = true
-        }
-      }, 0)
-    }).catch(() => {
-      setTimeout(() => {
+      try {
+        settings = result.settings
+        const sanitizedNodes = sanitizeNodesImageData(result.nodes)
+        nodes = sanitizedNodes
+        nextId = result.nextId
+        nextNodeId = result.nextNodeId
+        chatSettings = result.chatSettings
+        try { modelIds = loadModelsCache(result.chatSettings?.connectionId).ids || [] } catch {}
+        rootId = result.rootId
+        editingId = null
+        editingText = ''
+        dismissedNotice = ''
+        persistSig = result.persistSig
+      } finally {
         ready = true
-      }, 0)
+      }
+    }).catch(() => {
+      ready = true
     })
   })
 
