@@ -14,7 +14,6 @@
 
   let isInputFocused = $state(false)
   let isMobileViewport = $state(false)
-  let isMounted = $state(false)
   const hideAuxControls = $derived(isInputFocused && isMobileViewport)
 
   onMount(() => {
@@ -22,9 +21,6 @@
     const mql = window.matchMedia('(max-width: 640px)')
     const update = () => { isMobileViewport = mql.matches }
     update()
-    // Run initial autogrow synchronously after mount to prevent layout shift
-    if (inputEl) autoGrow(inputEl)
-    isMounted = true
     if (typeof mql.addEventListener === 'function') {
       mql.addEventListener('change', update)
       return () => { mql.removeEventListener('change', update) }
@@ -286,6 +282,7 @@
     left: 0;
     right: 0;
     background: transparent;
+    contain: layout style paint;
   }
   .composer.dragging::before {
     content: '';
@@ -412,22 +409,20 @@
 
   @media (max-width: 640px) {
     .composer {
-      /* Ensure stable positioning on mobile */
-      will-change: auto;
+      /* Prevent layout shift on mobile by ensuring stable positioning */
+      transform: translateZ(0);
     }
-    .composer-inner {
-      /* Prevent layout shift during initial render */
-      min-height: 68px;
+    .composer-inner.mobile-input-focused {
+      grid-template-columns: 1fr auto;
+      gap: 10px;
     }
     .composer-inner.mobile-input-focused .chat-settings-slot,
-    .composer-inner.mobile-input-focused .attachment-btn,
+    .composer-inner.mobile-input-focused .attachment-btn {
+      display: none;
+    }
+    .composer-inner.mobile-input-focused .chat-settings-group,
     .composer-inner.mobile-input-focused .add-group {
-      visibility: hidden;
-      width: 0;
-      min-width: 0;
-      opacity: 0;
-      pointer-events: none;
-      overflow: hidden;
+      display: none;
     }
     .composer-input::placeholder {
       color: transparent;
