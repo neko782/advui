@@ -406,20 +406,15 @@
   .chat-settings-slot { display: grid; place-items: center; }
 
   @media (max-width: 640px) {
-    .composer-inner {
-      min-height: 68px;
-    }
-    .composer-inner.mobile-input-focused {
-      grid-template-columns: 1fr auto;
-      gap: 10px;
-    }
     .composer-inner.mobile-input-focused .chat-settings-slot,
-    .composer-inner.mobile-input-focused .attachment-btn {
-      display: none;
-    }
-    .composer-inner.mobile-input-focused .chat-settings-group,
+    .composer-inner.mobile-input-focused .attachment-btn,
     .composer-inner.mobile-input-focused .add-group {
-      display: none;
+      visibility: hidden;
+      width: 0;
+      min-width: 0;
+      opacity: 0;
+      pointer-events: none;
+      overflow: hidden;
     }
     .composer-input::placeholder {
       color: transparent;
