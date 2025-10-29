@@ -282,7 +282,6 @@
     left: 0;
     right: 0;
     background: transparent;
-    contain: layout style paint;
   }
   .composer.dragging::before {
     content: '';
@@ -408,10 +407,6 @@
   .chat-settings-slot { display: grid; place-items: center; }
 
   @media (max-width: 640px) {
-    .composer {
-      /* Prevent layout shift on mobile by ensuring stable positioning */
-      transform: translateZ(0);
-    }
     .composer-inner.mobile-input-focused {
       grid-template-columns: 1fr auto;
       gap: 10px;
