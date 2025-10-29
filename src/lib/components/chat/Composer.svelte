@@ -14,6 +14,7 @@
 
   let isInputFocused = $state(false)
   let isMobileViewport = $state(false)
+  let isMounted = $state(false)
   const hideAuxControls = $derived(isInputFocused && isMobileViewport)
 
   onMount(() => {
@@ -21,6 +22,9 @@
     const mql = window.matchMedia('(max-width: 640px)')
     const update = () => { isMobileViewport = mql.matches }
     update()
+    // Run initial autogrow synchronously after mount to prevent layout shift
+    if (inputEl) autoGrow(inputEl)
+    isMounted = true
     if (typeof mql.addEventListener === 'function') {
       mql.addEventListener('change', update)
       return () => { mql.removeEventListener('change', update) }
@@ -368,6 +372,7 @@
     height: 44px;
     max-height: 240px;
     overflow: hidden;
+    overflow-y: hidden;
     padding: 12px;
     border-radius: 12px;
     border: 1px solid var(--border);
@@ -406,6 +411,14 @@
   .chat-settings-slot { display: grid; place-items: center; }
 
   @media (max-width: 640px) {
+    .composer {
+      /* Ensure stable positioning on mobile */
+      will-change: auto;
+    }
+    .composer-inner {
+      /* Prevent layout shift during initial render */
+      min-height: 68px;
+    }
     .composer-inner.mobile-input-focused .chat-settings-slot,
     .composer-inner.mobile-input-focused .attachment-btn,
     .composer-inner.mobile-input-focused .add-group {
