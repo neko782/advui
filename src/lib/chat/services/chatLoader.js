@@ -1,5 +1,5 @@
 // Chat loading and initialization
-import { getChat as loadChatById } from '../../chatsStore.js'
+import { getChat as loadChatById, getCachedChat } from '../../chatsStore.js'
 import { loadSettings } from '../../settingsStore.js'
 import { makeSystemPrologue, pickPresetFromSettings, buildChatSettings, recomputeNextIds, computeInitialConnectionId, DEFAULT_SYSTEM_PROMPT } from './chatInit.js'
 import { migrateLegacyGraphToNodes } from './legacyMigration.js'
@@ -41,7 +41,9 @@ export async function loadChat(chatId) {
   }
 
   try {
-    const loaded = await loadChatById(chatId)
+    // Check in-memory cache first for instant loading of new chats
+    const cached = getCachedChat(chatId)
+    const loaded = cached || await loadChatById(chatId)
 
     if (loaded) {
       if (Array.isArray(loaded.nodes)) {

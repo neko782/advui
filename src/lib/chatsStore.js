@@ -13,6 +13,19 @@ export const SELECTED_KEY = 'openai.chats.selected.v1'
 
 const hasOwn = (obj, key) => Object.prototype.hasOwnProperty.call(obj || {}, key)
 
+// In-memory cache for newly created chats to avoid storage roundtrip delay
+const chatCache = new Map()
+
+function cacheChat(id, chat) {
+  chatCache.set(id, chat)
+  // Auto-clear cache after 1 second to prevent memory leaks
+  setTimeout(() => chatCache.delete(id), 1000)
+}
+
+export function getCachedChat(id) {
+  return chatCache.get(id)
+}
+
 function sanitizeVariantLockState(variant) {
   if (!variant || typeof variant !== 'object') return variant
   let mutated = false
@@ -383,8 +396,10 @@ export async function createChat(initial = {}) {
     presetId: (typeof initial?.presetId === 'string') ? initial.presetId : (preferredPreset?.id || null),
   }
   const persisted = await storePut(chat)
+  const finalChat = persisted || chat
+  cacheChat(id, finalChat)
   setSelected(id)
-  return { id, chat: persisted || chat }
+  return { id, chat: finalChat }
 }
 
 export async function debugSetChatLockState(id, shouldLock = true) {
