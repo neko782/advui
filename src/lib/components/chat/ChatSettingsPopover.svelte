@@ -216,6 +216,7 @@
           onchange={(e) => (!props.disabled && props.onInputReasoningSummary?.(e.currentTarget.value))}
           aria-label="Reasoning summary"
         >
+          <option value="none">none</option>
           <option value="auto">auto</option>
           <option value="concise">concise</option>
           <option value="detailed">detailed</option>

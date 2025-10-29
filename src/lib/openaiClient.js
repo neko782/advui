@@ -188,7 +188,7 @@ export async function respond({
   if (typeof reasoningEffort === 'string' && reasoningEffort && reasoningEffort !== 'none') {
     reasoningOptions.effort = reasoningEffort
   }
-  if (typeof reasoningSummary === 'string' && reasoningSummary) {
+  if (typeof reasoningSummary === 'string' && reasoningSummary && reasoningSummary !== 'none') {
     reasoningOptions.summary = reasoningSummary
   }
   if (Object.keys(reasoningOptions).length) {
