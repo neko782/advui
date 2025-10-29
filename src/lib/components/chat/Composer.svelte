@@ -406,6 +406,9 @@
   .chat-settings-slot { display: grid; place-items: center; }
 
   @media (max-width: 640px) {
+    .composer-inner {
+      min-height: 68px;
+    }
     .composer-inner.mobile-input-focused {
       grid-template-columns: 1fr auto;
       gap: 10px;
