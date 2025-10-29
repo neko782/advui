@@ -1,6 +1,16 @@
 import { defineConfig } from 'vite'
 import { svelte } from '@sveltejs/vite-plugin-svelte'
 import Icons from 'unplugin-icons/vite'
+import { execSync } from 'child_process'
+
+// Get git commit hash (first 4 characters)
+const getGitHash = () => {
+  try {
+    return execSync('git rev-parse --short=4 HEAD').toString().trim()
+  } catch {
+    return 'dev'
+  }
+}
 
 // https://vite.dev/config/
 export default defineConfig({
@@ -10,6 +20,9 @@ export default defineConfig({
       compiler: 'svelte',
     }),
   ],
+  define: {
+    __GIT_HASH__: JSON.stringify(getGitHash()),
+  },
   test: {
     environment: 'happy-dom',
     globals: true,

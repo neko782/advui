@@ -6,6 +6,9 @@
   import { exportChat } from '../utils/exportImport.js'
   const props = $props()
 
+  // Git hash injected at build time
+  const gitHash = __GIT_HASH__
+
   let confirmDeleteId = $state(null)
   let editingId = $state(null)
   let draftTitle = $state('')
@@ -331,6 +334,7 @@
         <div class="brand">
           <span class="brand-name">advui</span>
           <span class="brand-beta">beta</span>
+          <span class="brand-hash">{gitHash}</span>
         </div>
       {/if}
     </div>
@@ -605,6 +609,13 @@
     border: 1px solid var(--border);
     border-radius: 8px;
     background: var(--panel);
+  }
+  .brand-hash {
+    font-size: 0.7rem;
+    font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', 'Consolas', monospace;
+    font-weight: 500;
+    color: var(--muted);
+    opacity: 0.8;
   }
   .brand-beta {
     font-size: 0.7rem;
