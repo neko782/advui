@@ -249,17 +249,28 @@ export async function respond({
             full += deltaText
             try { onTextDelta?.(full) } catch {}
           }
+          // Check for top-level reasoning field in chunk
+          const topLevelReasoning = collectChatReasoningContent(chunk?.reasoning)
+          if (topLevelReasoning) {
+            const prev = summaryByIndex.get(0) || ''
+            const next = topLevelReasoning
+            if (next !== prev) {
+              summaryByIndex.set(0, next)
+              const summary = buildSummary()
+              try { onReasoningSummaryDelta?.(summary, topLevelReasoning, chunk) } catch {}
+            }
+          }
           const choices = Array.isArray(chunk?.choices) ? chunk.choices : []
           let finishReasonSeen = false
           for (const choice of choices) {
             const idx = Number.isFinite(Number(choice?.index)) ? Number(choice.index) : 0
             const prev = summaryByIndex.get(idx) || ''
             let next = prev
-            const deltaSummary = collectChatReasoningContent(choice?.delta?.reasoning_content)
+            const deltaSummary = collectChatReasoningContent(choice?.delta?.reasoning_content) || collectChatReasoningContent(choice?.delta?.reasoning)
             if (deltaSummary) {
               next += deltaSummary
             }
-            const messageSummary = collectChatReasoningContent(choice?.message?.reasoning_content)
+            const messageSummary = collectChatReasoningContent(choice?.message?.reasoning_content) || collectChatReasoningContent(choice?.message?.reasoning)
             if (messageSummary) {
               next = messageSummary
             }
@@ -593,13 +604,17 @@ function extractReasoningSummary(res) {
 
 function extractChatReasoningSummary(res) {
   try {
+    // Check for top-level reasoning field first
+    const topLevelReasoning = collectChatReasoningContent(res?.reasoning)
+    if (topLevelReasoning) return topLevelReasoning
+
     const choices = Array.isArray(res?.choices) ? res.choices : []
     if (!choices.length) return ''
     const summaryByIndex = new Map()
     for (const choice of choices) {
       const idx = Number.isFinite(Number(choice?.index)) ? Number(choice.index) : summaryByIndex.size
-      const messageSummary = collectChatReasoningContent(choice?.message?.reasoning_content)
-      const deltaSummary = collectChatReasoningContent(choice?.delta?.reasoning_content)
+      const messageSummary = collectChatReasoningContent(choice?.message?.reasoning_content) || collectChatReasoningContent(choice?.message?.reasoning)
+      const deltaSummary = collectChatReasoningContent(choice?.delta?.reasoning_content) || collectChatReasoningContent(choice?.delta?.reasoning)
       const combined = messageSummary || deltaSummary
       if (combined) summaryByIndex.set(idx, combined)
     }
