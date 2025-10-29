@@ -17,6 +17,31 @@ md.renderer.rules.link_open = function(tokens, idx, options, env, self) {
   return defaultRenderLink(tokens, idx, options, env, self)
 }
 
+// LRU cache for rendered markdown (max 200 entries to avoid memory bloat)
+const cache = new Map()
+const MAX_CACHE_SIZE = 200
+
 export function renderMarkdown(src) {
-  return md.render(String(src || ''))
+  const key = String(src || '')
+
+  // Return cached result if available
+  if (cache.has(key)) {
+    const cached = cache.get(key)
+    // Move to end (LRU)
+    cache.delete(key)
+    cache.set(key, cached)
+    return cached
+  }
+
+  // Render and cache
+  const result = md.render(key)
+  cache.set(key, result)
+
+  // Evict oldest entry if cache is full
+  if (cache.size > MAX_CACHE_SIZE) {
+    const firstKey = cache.keys().next().value
+    cache.delete(firstKey)
+  }
+
+  return result
 }

@@ -255,7 +255,7 @@
   .bubble.user { background: var(--user); color: var(--text); justify-self: end; }
   .bubble.system { justify-self: center; background: transparent; color: var(--muted); border: 1px dashed var(--border); }
   .dots { display: inline-flex; gap: 6px; align-items: center; }
-  .dots i { width: 6px; height: 6px; display: inline-block; background: currentColor; opacity: 0.5; border-radius: 999px; animation: pop 1.2s infinite ease-in-out; }
+  .dots i { width: 6px; height: 6px; display: inline-block; background: currentColor; opacity: 0.5; border-radius: 999px; animation: pop 1.2s infinite ease-in-out; will-change: transform, opacity; }
   .dots i:nth-child(2) { animation-delay: .15s; }
   .dots i:nth-child(3) { animation-delay: .30s; }
   @keyframes pop { 0%, 80%, 100% { transform: translateY(0); opacity: .45 } 40% { transform: translateY(-3px); opacity: .9 } }

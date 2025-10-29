@@ -57,7 +57,7 @@
 </div>
 
 <style>
-  .row { display: flex; max-width: var(--page-max); margin-inline: auto; width: 100%; padding-inline: 0; }
+  .row { display: flex; max-width: var(--page-max); margin-inline: auto; width: 100%; padding-inline: 0; contain: layout style; }
   .row.user { justify-content: flex-end; }
   .row.assistant { justify-content: flex-start; }
   .row.system { justify-content: center; }

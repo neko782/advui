@@ -3,7 +3,8 @@
   const props = $props()
   let listEl
   export function scrollToBottom() {
-    try { listEl?.scrollTo({ top: listEl.scrollHeight, behavior: 'smooth' }) } catch {}
+    // Instant scroll on mobile for better performance
+    try { listEl?.scrollTo({ top: listEl.scrollHeight, behavior: 'instant' }) } catch {}
   }
 </script>
 
@@ -50,7 +51,7 @@
 </div>
 
 <style>
-  .messages { overflow: auto; padding: 16px 0 8px; display: grid; align-content: start; gap: 8px; }
+  .messages { overflow: auto; padding: 16px 0 8px; display: grid; align-content: start; gap: 8px; contain: layout style; }
   .notice {
     font-size: 0.88rem; line-height: 1.3;
     padding: 6px 10px; border-radius: 10px;

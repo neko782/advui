@@ -263,15 +263,17 @@
   />
   <div class="chat-pane">
     {#each (chats || []) as c (c.id)}
-      <div class={`chat-wrapper ${selectedId === c.id ? 'active' : ''}`} aria-hidden={selectedId === c.id ? 'false' : 'true'}>
-        <Chat
-          chatId={c.id}
-          onNewChat={onNewChat}
-          onChatUpdated={onChatUpdated}
-          settingsVersion={settingsVersion}
-          onGeneratingChange={onChatGeneratingChange}
-        />
-      </div>
+      {#if selectedId === c.id}
+        <div class="chat-wrapper active">
+          <Chat
+            chatId={c.id}
+            onNewChat={onNewChat}
+            onChatUpdated={onChatUpdated}
+            settingsVersion={settingsVersion}
+            onGeneratingChange={onChatGeneratingChange}
+          />
+        </div>
+      {/if}
     {/each}
   </div>
   <div class="app-fade"></div>
@@ -300,9 +302,8 @@
   .chat-wrapper {
     position: absolute;
     inset: 0;
-    display: none;
     height: 100%;
+    contain: layout style paint;
   }
-  .chat-wrapper.active { display: block; }
   .app-fade { position: absolute; inset: 0; pointer-events: none; background: linear-gradient(180deg, transparent, transparent 35%, rgba(0,0,0,0.06) 100%); opacity: .18; mix-blend-mode: multiply; }
 </style>

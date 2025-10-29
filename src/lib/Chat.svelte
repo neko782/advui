@@ -460,33 +460,39 @@
     return mutated ? sanitizedNodes : nodesInput
   }
 
+  let imageLoadTimer = null
   $effect(() => {
     const visible = buildVisible()
-    const missing = []
-    const seen = new Set()
-    for (const vm of visible) {
-      const imgs = Array.isArray(vm?.m?.images) ? vm.m.images : []
-      for (const img of imgs) {
-        if (img == null) continue
-        if (typeof img === 'string') {
-          const id = img.trim()
+
+    // Debounce image loading to reduce frequent effect runs
+    if (imageLoadTimer) clearTimeout(imageLoadTimer)
+    imageLoadTimer = setTimeout(() => {
+      const missing = []
+      const seen = new Set()
+      for (const vm of visible) {
+        const imgs = Array.isArray(vm?.m?.images) ? vm.m.images : []
+        for (const img of imgs) {
+          if (img == null) continue
+          if (typeof img === 'string') {
+            const id = img.trim()
+            if (!id || imageCache[id]?.data || seen.has(id)) continue
+            seen.add(id)
+            missing.push({ id })
+            continue
+          }
+          if (typeof img !== 'object') continue
+          if (typeof img.data === 'string' && img.data) {
+            cacheImageData(img)
+            continue
+          }
+          const id = typeof img.id === 'string' && img.id.trim() ? img.id.trim() : null
           if (!id || imageCache[id]?.data || seen.has(id)) continue
           seen.add(id)
-          missing.push({ id })
-          continue
+          missing.push({ id, mimeType: img.mimeType, name: img.name })
         }
-        if (typeof img !== 'object') continue
-        if (typeof img.data === 'string' && img.data) {
-          cacheImageData(img)
-          continue
-        }
-        const id = typeof img.id === 'string' && img.id.trim() ? img.id.trim() : null
-        if (!id || imageCache[id]?.data || seen.has(id)) continue
-        seen.add(id)
-        missing.push({ id, mimeType: img.mimeType, name: img.name })
       }
-    }
-    if (missing.length) ensureImagesAvailable(missing)
+      if (missing.length) ensureImagesAvailable(missing)
+    }, 100) // Debounce for 100ms
   })
 
   const visibleMessages = $derived((() => {
