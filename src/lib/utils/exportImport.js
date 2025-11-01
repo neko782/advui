@@ -75,12 +75,46 @@ export async function exportAllData() {
 
     // Export all chats
     const chats = await getChats()
-    const chatsData = {
-      version: 1,
-      exportedAt: new Date().toISOString(),
-      chats
+    const exportedAt = new Date().toISOString()
+    const chatManifest = []
+    const usedChatPaths = new Set()
+
+    chats.forEach((chat, index) => {
+      if (!chat) return
+      const filename = buildChatArchivePath(chat, index, usedChatPaths)
+
+      const chatPayload = {
+        version: 1,
+        type: 'single_chat',
+        exportedAt,
+        chat
+      }
+
+      tar.append(filename, encodeText(JSON.stringify(chatPayload, null, 2)))
+
+      chatManifest.push({
+        id: chat.id,
+        title: chat.title,
+        path: filename
+      })
+    })
+
+    if (chatManifest.length > 0) {
+      tar.append(
+        'chats/manifest.json',
+        encodeText(
+          JSON.stringify(
+            {
+              version: 1,
+              exportedAt,
+              chats: chatManifest
+            },
+            null,
+            2
+          )
+        )
+      )
     }
-    tar.append('chats.json', encodeText(JSON.stringify(chatsData, null, 2)))
 
     // Export settings
     const settings = loadSettings()
@@ -199,27 +233,9 @@ export async function importAllData(file) {
 
     // Import chats
     try {
-      const chatsText = await archive.getText('chats.json')
-      if (chatsText) {
-        const chatsData = JSON.parse(chatsText)
-
-        if (chatsData.chats && Array.isArray(chatsData.chats)) {
-          for (const chat of chatsData.chats) {
-            try {
-              await createChat({
-                nodes: chat.nodes,
-                rootId: chat.rootId,
-                settings: chat.settings,
-                presetId: chat.presetId
-              })
-              results.chatsImported++
-            } catch (err) {
-              console.error(`Failed to import chat ${chat.id}:`, err)
-              results.errors.push(`Chat "${chat.title || 'untitled'}": ${err.message}`)
-            }
-          }
-        }
-      }
+      const imported = await importChatsFromArchive(archive)
+      results.chatsImported += imported.count
+      results.errors.push(...imported.errors)
     } catch (err) {
       console.error('Failed to import chats:', err)
       results.errors.push(`Chats: ${err.message}`)
@@ -230,6 +246,81 @@ export async function importAllData(file) {
     console.error('Failed to import all data:', err)
     throw err
   }
+}
+
+async function importChatsFromArchive(archive) {
+  const errors = []
+  let count = 0
+
+  const listFn = typeof archive.list === 'function' ? archive.list.bind(archive) : null
+  let chatFilePaths = []
+
+  if (listFn) {
+    chatFilePaths = listFn('chats/')
+      .filter((path) => path.toLowerCase().endsWith('.json'))
+      .filter((path) => normalizePath(path).toLowerCase() !== 'chats/manifest.json')
+  }
+
+  if (chatFilePaths.length > 0) {
+    chatFilePaths.sort()
+
+    for (const path of chatFilePaths) {
+      try {
+        const chatText = await archive.getText(path)
+        if (!chatText) {
+          throw new Error('Missing chat file contents')
+        }
+
+        const parsed = JSON.parse(chatText)
+        const chat = extractChatFromPayload(parsed)
+
+        await createChat({
+          nodes: chat.nodes,
+          rootId: chat.rootId,
+          settings: chat.settings,
+          presetId: chat.presetId
+        })
+        count++
+      } catch (err) {
+        console.error(`Failed to import chat from ${path}:`, err)
+        errors.push(`Chat file "${path}": ${err.message}`)
+      }
+    }
+
+    return { count, errors }
+  }
+
+  // Fallback to legacy chats.json
+  const chatsText = await archive.getText('chats.json')
+  if (!chatsText) {
+    return { count, errors }
+  }
+
+  try {
+    const chatsData = JSON.parse(chatsText)
+
+    if (Array.isArray(chatsData?.chats)) {
+      for (const chat of chatsData.chats) {
+        try {
+          await createChat({
+            nodes: chat.nodes,
+            rootId: chat.rootId,
+            settings: chat.settings,
+            presetId: chat.presetId
+          })
+          count++
+        } catch (err) {
+          console.error(`Failed to import chat ${chat.id}:`, err)
+          errors.push(`Chat "${chat.title || 'untitled'}": ${err.message}`)
+        }
+      }
+    }
+  } catch (err) {
+    console.error('Failed to parse legacy chats.json:', err)
+    errors.push(`Legacy chats.json: ${err.message}`)
+  }
+
+  return { count, errors }
 }
 
 /**
@@ -253,6 +344,48 @@ function sanitizeFilename(name) {
     .replace(/[^a-z0-9_\-]/gi, '_')
     .replace(/_+/g, '_')
     .substring(0, 50)
+}
+
+function buildChatArchivePath(chat, index, usedPaths) {
+  const safeTitle = sanitizeFilename(chat?.title || '')
+  const safeId = sanitizeFilename(chat?.id || '')
+
+  const baseParts = [safeTitle, safeId].filter(Boolean)
+  const fallback = `chat_${index + 1}`
+  const baseName = baseParts.length > 0 ? baseParts.join('_') : fallback
+
+  let candidate = `chats/${baseName || fallback}.json`
+  let suffix = 1
+
+  while (usedPaths.has(candidate)) {
+    candidate = `chats/${baseName || fallback}_${suffix}.json`
+    suffix++
+  }
+
+  usedPaths.add(candidate)
+  return candidate
+}
+
+function extractChatFromPayload(payload) {
+  if (!payload || typeof payload !== 'object') {
+    throw new Error('Invalid chat payload')
+  }
+
+  const chat = payload.chat && typeof payload.chat === 'object' ? payload.chat : payload
+
+  if (!chat || typeof chat !== 'object') {
+    throw new Error('Chat data missing')
+  }
+
+  if (chat.nodes == null) {
+    throw new Error('Chat data missing nodes')
+  }
+
+  if (chat.rootId == null) {
+    throw new Error('Chat data missing required fields')
+  }
+
+  return chat
 }
 
 /**
@@ -298,6 +431,24 @@ async function loadTarArchive(buffer) {
   }
 
   return {
+    list(prefix = '') {
+      const normalizedPrefix = prefix ? normalizePath(prefix) : ''
+      const needsSlash = normalizedPrefix && !normalizedPrefix.endsWith('/') && !normalizedPrefix.includes('.')
+      const matchPrefix = needsSlash ? `${normalizedPrefix}/` : normalizedPrefix
+      const entries = Array.from(entryMap.keys())
+
+      if (!matchPrefix) {
+        return entries.slice()
+      }
+
+      return entries.filter((name) => {
+        if (name === matchPrefix) return true
+        if (matchPrefix.endsWith('/')) {
+          return name.startsWith(matchPrefix)
+        }
+        return name === matchPrefix || name.startsWith(`${matchPrefix}/`)
+      })
+    },
     async getText(path) {
       const entry = entryMap.get(normalizePath(path))
       if (!entry) return null
