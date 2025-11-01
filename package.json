@@ -22,8 +22,10 @@
     "vitest": "^3.2.4"
   },
   "dependencies": {
+    "js-untar": "^2.0.0",
     "klona": "^2.0.6",
     "markdown-it": "^14.1.0",
-    "openai": "^5.21.0"
+    "openai": "^5.21.0",
+    "tar-js": "^0.3.0"
   }
 }

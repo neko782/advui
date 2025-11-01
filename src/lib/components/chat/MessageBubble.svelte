@@ -120,7 +120,7 @@
 
 {#if props.isEditing}
   <span class={`editor-container ${props.message.role}`}>
-    <span class="editor-sizer" aria-hidden="true">{props.editingText ?? ''}</span>
+    <span class={`editor-sizer bubble ${props.message.role} editing`} aria-hidden="true">{props.editingText ?? ''}</span>
     <textarea
       class={`bubble ${props.message.role} editing editor-area`}
       rows="1"
@@ -213,6 +213,10 @@
     font-family: inherit;
     pointer-events: none;
     min-width: 32px;
+    min-height: 32px;
+    width: 100%;
+    max-width: 100%;
+    overflow: hidden;
     box-sizing: border-box;
   }
   .bubble.editing.editor-area {

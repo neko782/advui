@@ -381,7 +381,7 @@
     if (importExportWorking) return
     const input = document.createElement('input')
     input.type = 'file'
-    input.accept = '.zip'
+    input.accept = '.tar'
     input.onchange = async (e) => {
       const file = e.target.files?.[0]
       if (!file) return

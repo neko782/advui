@@ -1,8 +1,10 @@
 // Utility functions for exporting and importing chat data
 
-import { getChats, getChat, createChat, saveChatContent } from '../chatsStore.js'
+import { getChats, getChat, createChat } from '../chatsStore.js'
 import { loadSettings, saveSettings } from '../settingsStore.js'
 import { getAllImages, storeImage } from '../imageStore.js'
+import Tar from 'tar-js'
+import untar from 'js-untar'
 
 /**
  * Export a single chat as JSON
@@ -65,17 +67,11 @@ export async function importChat(file) {
 }
 
 /**
- * Export all data (chats, settings, images) as a ZIP file
+ * Export all data (chats, settings, images) as a TAR archive
  */
 export async function exportAllData() {
   try {
-    // We'll use JSZip for creating the zip file
-    // First check if JSZip is available
-    if (typeof JSZip === 'undefined') {
-      throw new Error('JSZip library not loaded')
-    }
-
-    const zip = new JSZip()
+    const tar = new Tar()
 
     // Export all chats
     const chats = await getChats()
@@ -84,7 +80,7 @@ export async function exportAllData() {
       exportedAt: new Date().toISOString(),
       chats
     }
-    zip.file('chats.json', JSON.stringify(chatsData, null, 2))
+    tar.append('chats.json', encodeText(JSON.stringify(chatsData, null, 2)))
 
     // Export settings
     const settings = loadSettings()
@@ -93,21 +89,21 @@ export async function exportAllData() {
       exportedAt: new Date().toISOString(),
       settings
     }
-    zip.file('settings.json', JSON.stringify(settingsData, null, 2))
+    tar.append('settings.json', encodeText(JSON.stringify(settingsData, null, 2)))
 
     // Export images if indexedDB is available
     try {
       const images = await getAllImages()
       if (images && images.length > 0) {
-        const imagesFolder = zip.folder('images')
         const imagesManifest = []
 
         for (const image of images) {
           if (image.data && image.id) {
-            // Store base64 data in separate files to keep JSON readable
             const ext = getExtensionFromMimeType(image.mimeType) || 'dat'
             const filename = `${image.id}.${ext}`
-            imagesFolder.file(filename, image.data.split(',')[1] || image.data, { base64: true })
+            const base64Data = image.data.split(',')[1] || image.data
+
+            tar.append(`images/${filename}`, encodeText(base64Data))
 
             imagesManifest.push({
               id: image.id,
@@ -118,17 +114,17 @@ export async function exportAllData() {
           }
         }
 
-        zip.file('images/manifest.json', JSON.stringify({ version: 1, images: imagesManifest }, null, 2))
+        tar.append('images/manifest.json', encodeText(JSON.stringify({ version: 1, images: imagesManifest }, null, 2)))
       }
     } catch (err) {
       console.warn('Failed to export images:', err)
     }
 
-    // Generate the zip file
-    const blob = await zip.generateAsync({ type: 'blob' })
+    const tarData = tar.out
+    const blob = new Blob([tarData], { type: 'application/x-tar' })
     const url = URL.createObjectURL(blob)
 
-    const fileName = `advui_backup_${Date.now()}.zip`
+    const fileName = `advui_backup_${Date.now()}.tar`
     downloadFile(url, fileName)
 
     URL.revokeObjectURL(url)
@@ -139,16 +135,12 @@ export async function exportAllData() {
 }
 
 /**
- * Import all data from a ZIP file
+ * Import all data from an archive (TAR preferred, ZIP for legacy)
  */
 export async function importAllData(file) {
   try {
-    if (typeof JSZip === 'undefined') {
-      throw new Error('JSZip library not loaded')
-    }
-
-    const zip = new JSZip()
-    const contents = await zip.loadAsync(file)
+    const buffer = await file.arrayBuffer()
+    const archive = await loadTarArchive(buffer)
 
     const results = {
       chatsImported: 0,
@@ -159,16 +151,13 @@ export async function importAllData(file) {
 
     // Import settings first
     try {
-      const settingsFile = contents.file('settings.json')
-      if (settingsFile) {
-        const settingsText = await settingsFile.async('text')
+      const settingsText = await archive.getText('settings.json')
+      if (settingsText) {
         const settingsData = JSON.parse(settingsText)
         if (settingsData.settings) {
-          // Merge with existing settings cautiously
           const currentSettings = loadSettings()
           const merged = {
             ...settingsData.settings,
-            // Preserve current selected IDs
             selectedConnectionId: currentSettings.selectedConnectionId || settingsData.settings.selectedConnectionId,
             selectedPresetId: currentSettings.selectedPresetId || settingsData.settings.selectedPresetId
           }
@@ -183,17 +172,15 @@ export async function importAllData(file) {
 
     // Import images
     try {
-      const manifestFile = contents.file('images/manifest.json')
-      if (manifestFile) {
-        const manifestText = await manifestFile.async('text')
+      const manifestText = await archive.getText('images/manifest.json')
+      if (manifestText) {
         const manifestData = JSON.parse(manifestText)
 
         if (manifestData.images && Array.isArray(manifestData.images)) {
           for (const imageInfo of manifestData.images) {
             try {
-              const imageFile = contents.file(`images/${imageInfo.filename}`)
-              if (imageFile) {
-                const base64Data = await imageFile.async('base64')
+              const base64Data = await archive.getBase64(`images/${imageInfo.filename}`)
+              if (base64Data) {
                 const dataUrl = `data:${imageInfo.mimeType || 'image/png'};base64,${base64Data}`
                 await storeImage(imageInfo.id, dataUrl, imageInfo.mimeType, imageInfo.name)
                 results.imagesImported++
@@ -212,9 +199,8 @@ export async function importAllData(file) {
 
     // Import chats
     try {
-      const chatsFile = contents.file('chats.json')
-      if (chatsFile) {
-        const chatsText = await chatsFile.async('text')
+      const chatsText = await archive.getText('chats.json')
+      if (chatsText) {
         const chatsData = JSON.parse(chatsText)
 
         if (chatsData.chats && Array.isArray(chatsData.chats)) {
@@ -283,4 +269,44 @@ function getExtensionFromMimeType(mimeType) {
     'image/svg+xml': 'svg'
   }
   return map[mimeType.toLowerCase()] || 'dat'
+}
+
+const textEncoder = new TextEncoder()
+const textDecoder = new TextDecoder()
+
+function normalizePath(path) {
+  return path.replace(/^[./]+/, '')
+}
+
+function encodeText(text) {
+  return textEncoder.encode(String(text ?? ''))
+}
+
+function decodeText(bytes) {
+  if (!bytes) return ''
+  return textDecoder.decode(bytes)
+}
+
+async function loadTarArchive(buffer) {
+  const arrayBuffer = buffer instanceof ArrayBuffer ? buffer : buffer.buffer
+  const files = await untar(arrayBuffer)
+  const entryMap = new Map()
+
+  for (const file of files) {
+    const bytes = file.buffer instanceof ArrayBuffer ? new Uint8Array(file.buffer) : new Uint8Array(file.buffer?.buffer || file.buffer || [])
+    entryMap.set(normalizePath(file.name), bytes)
+  }
+
+  return {
+    async getText(path) {
+      const entry = entryMap.get(normalizePath(path))
+      if (!entry) return null
+      return decodeText(entry)
+    },
+    async getBase64(path) {
+      const entry = entryMap.get(normalizePath(path))
+      if (!entry) return null
+      return decodeText(entry)
+    }
+  }
 }
