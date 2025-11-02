@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite'
 import { svelte } from '@sveltejs/vite-plugin-svelte'
 import Icons from 'unplugin-icons/vite'
+import { viteSingleFile } from 'vite-plugin-singlefile'
 import { execSync } from 'child_process'
 
 // Get git commit hash (first 4 characters)
@@ -19,6 +20,7 @@ export default defineConfig({
     Icons({
       compiler: 'svelte',
     }),
+    viteSingleFile(),
   ],
   define: {
     __GIT_HASH__: JSON.stringify(getGitHash()),
