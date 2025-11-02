@@ -16,12 +16,6 @@ export function autoGrow(el, options = {}) {
   const max = options.maxHeight ?? 240
   const min = options.minHeight ?? 44
   try {
-    // If the textarea is empty, just set it to min height
-    if (!el.value || el.value.trim() === '') {
-      el.style.height = min + 'px'
-      el.style.overflowY = 'hidden'
-      return
-    }
     el.style.height = 'auto'
     const content = el.scrollHeight
     const next = Math.min(content, max)
