@@ -783,6 +783,19 @@
   // Send message
   async function sendWithRole(role = 'user') {
     if (locked || sending) return
+
+    const rawInput = (typeof input === 'string') ? input : ''
+    const trimmedInput = rawInput.trim()
+    const imageRefs = buildImageRefs(attachedImages)
+    const hasContent = trimmedInput.length > 0
+    const hasImages = imageRefs.length > 0
+
+    if (role !== 'user' && !hasContent && !hasImages) {
+      input = ''
+      attachedImages = []
+      return
+    }
+
     if (generationState.isGenerationActive()) {
       logGenerationEvent(debug, 'Blocked send: generation already active')
       return
@@ -792,57 +805,54 @@
     const genSeq = generationState.startGeneration()
     logGenerationEvent(debug, 'Starting send', { sequence: genSeq, role })
 
-    const rawInput = (typeof input === 'string') ? input : ''
-    const trimmedInput = rawInput.trim()
-    const hasContent = trimmedInput.length > 0
-
-    if (!hasContent && role !== 'user') {
-      input = ''
-      generationState.completeGeneration(genSeq)
-      return
-    }
-
     let connectionId = null
     let apiKey = ''
+    let typingVariantId = null
+    let newNodeId = null
+
     if (role === 'user') {
-      const resolved = resolveConnectionContext()
-      connectionId = resolved.connectionId
-      apiKey = resolved.apiKey
-      if (apiKey) {
-        clearMissingApiKeyNotice()
+      if (hasContent || hasImages) {
+        const prepared = prepareUserMessage(nodes, rootId, trimmedInput, nextId, nextNodeId, imageRefs)
+        if (!prepared) {
+          logGenerationEvent(debug, 'Failed to prepare user message')
+          generationState.completeGeneration(genSeq)
+          return
+        }
+        nodes = prepared.nodes
+        rootId = prepared.rootId
+        nextId = prepared.nextId
+        nextNodeId = prepared.nextNodeId
+        newNodeId = prepared.newNodeId
       }
     } else {
-      resolveConnectionContext()
-    }
-
-    // Add user message
-    let newNodeId = null
-    const imageRefs = buildImageRefs(attachedImages)
-    const hasImages = imageRefs.length > 0
-    if (hasContent || hasImages) {
-      const prepared = prepareUserMessage(nodes, rootId, trimmedInput, nextId, nextNodeId, imageRefs)
-      if (!prepared) {
-        logGenerationEvent(debug, 'Failed to prepare user message')
-        generationState.completeGeneration(genSeq)
-        return
-      }
-      nodes = prepared.nodes
-      rootId = prepared.rootId
-      nextId = prepared.nextId
-      nextNodeId = prepared.nextNodeId
-      newNodeId = prepared.newNodeId
+      newNodeId = appendMessage(role, rawInput, imageRefs, { persist: false })
     }
 
     input = ''
     attachedImages = []
 
-    // Add typing node
-    let typingVariantId = null
-    if (role === 'user' && apiKey) {
-      const parentNodeId = (hasContent && newNodeId != null) ? newNodeId : (buildVisible().at(-1)?.nodeId || null)
+    const resolved = resolveConnectionContext()
+    connectionId = resolved.connectionId
+    apiKey = resolved.apiKey
+    if (apiKey) {
+      clearMissingApiKeyNotice()
+    } else {
+      showMissingApiKeyNotice()
+    }
+
+    if (apiKey) {
+      const parentNodeId = (() => {
+        if (role === 'user') {
+          if (hasContent || hasImages) return newNodeId
+          const lastVm = buildVisible().at(-1)
+          return lastVm ? lastVm.nodeId : null
+        }
+        return newNodeId
+      })()
+
       const prepared = prepareTypingNode(nodes, rootId, parentNodeId, nextId, nextNodeId)
       if (!prepared) {
-        logGenerationEvent(debug, 'Failed to prepare typing node')
+        logGenerationEvent(debug, 'Failed to prepare typing node', { role, parentNodeId })
         persistNow()
         generationState.completeGeneration(genSeq)
         return
@@ -853,10 +863,8 @@
       nextId = prepared.nextId
       nextNodeId = prepared.nextNodeId
 
-      // Validate typing node is visible
       if (!validateTypingVariantVisible(nodes, rootId, typingVariantId)) {
-        logGenerationEvent(debug, 'Typing node not visible', { typingVariantId })
-        // Recovery: mark as not typing and continue
+        logGenerationEvent(debug, 'Typing node not visible', { typingVariantId, role })
         nodes = handleGenerationError(nodes, typingVariantId, new Error('Typing node not visible'))
         persistNow()
         generationState.completeGeneration(genSeq)
@@ -865,7 +873,7 @@
 
       sending = true
       generationState.setTypingVariantId(typingVariantId)
-      logGenerationEvent(debug, 'Typing node prepared', { typingVariantId })
+      logGenerationEvent(debug, 'Typing node prepared', { typingVariantId, role })
     }
 
     persistNow()
@@ -874,9 +882,9 @@
     try {
       let reply = null
       let summaryBuffer = ''
-      if (role === 'user' && apiKey) {
+      if (apiKey && typingVariantId != null) {
         const requestNodes = withImageData(nodes)
-        logGenerationEvent(debug, 'Starting API request', { typingVariantId })
+        logGenerationEvent(debug, 'Starting API request', { typingVariantId, role })
         reply = await generateResponse({
           nodes: requestNodes,
           rootId,
@@ -911,17 +919,15 @@
             }
           },
         })
-        logGenerationEvent(debug, 'API request completed', { typingVariantId })
-      } else if (role === 'user') {
-        showMissingApiKeyNotice()
+        logGenerationEvent(debug, 'API request completed', { typingVariantId, role })
       }
-      if (role === 'user' && typingVariantId != null && generationState.getGenerationSequence() === genSeq) {
+      if (typingVariantId != null && generationState.getGenerationSequence() === genSeq) {
         nodes = handleGenerationSuccess(nodes, typingVariantId, reply, summaryBuffer)
       }
       persistNow()
     } catch (err) {
-      logGenerationEvent(debug, 'Generation error', { error: err?.message, typingVariantId })
-      if (role === 'user' && typingVariantId != null && generationState.getGenerationSequence() === genSeq) {
+      logGenerationEvent(debug, 'Generation error', { error: err?.message, typingVariantId, role })
+      if (typingVariantId != null && generationState.getGenerationSequence() === genSeq) {
         nodes = handleGenerationError(nodes, typingVariantId, err)
       }
       persistNow()
@@ -953,21 +959,23 @@
     persistNow()
   }
 
-  function addToChat(role = 'user') {
-    if (locked) return
-    const text = (typeof input === 'string') ? input : ''
-    const imageRefs = buildImageRefs(attachedImages)
-    const hasImages = imageRefs.length > 0
+  function appendMessage(role, content, imageRefs, options = {}) {
+    const { persist = true } = options
+    const finalRole = (typeof role === 'string' && role.trim()) ? role.trim() : 'user'
+    const text = typeof content === 'string' ? content : ''
+    const normalizedImages = Array.isArray(imageRefs) ? imageRefs.filter(Boolean) : []
+
     const variant = {
       id: nextId++,
-      role,
+      role: finalRole,
       content: text,
       time: Date.now(),
       typing: false,
       error: undefined,
       next: null,
-      images: hasImages ? imageRefs : undefined
+      images: normalizedImages.length ? normalizedImages : undefined
     }
+
     const node = { id: nextNodeId++, variants: [variant], active: 0 }
     const visible = buildVisible()
     const lastVm = visible.at(-1)
@@ -975,13 +983,27 @@
     arr.push(node)
     if (lastVm) {
       arr = arr.map(n => (n.id === lastVm.nodeId
-        ? { ...n, variants: n.variants.map((v, i) => (i === (Number(n.active)||0) ? { ...v, next: node.id } : v)) }
+        ? {
+            ...n,
+            variants: n.variants.map((v, i) => (i === (Number(n.active) || 0) ? { ...v, next: node.id } : v))
+          }
         : n))
     } else {
       rootId = node.id
     }
     nodes = arr
-    persistNow()
+    if (persist) {
+      persistNow()
+    }
+    return node.id
+  }
+
+  function addToChat(role = 'user') {
+    if (locked) return
+    const text = (typeof input === 'string') ? input : ''
+    const imageRefs = buildImageRefs(attachedImages)
+    const hasImages = imageRefs.length > 0
+    appendMessage(role, text, hasImages ? imageRefs : [])
     input = ''
     attachedImages = []
     queueMicrotask(() => scrollToBottom())
