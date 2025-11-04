@@ -68,7 +68,7 @@
   })
 </script>
 
-<div class={`meta ${props.role}`}>
+<div class={`meta ${props.role}`} data-open={open}>
   <div
     class="send-group"
     aria-haspopup="menu"
@@ -120,7 +120,8 @@
 </div>
 
 <style>
-  .meta { font-size: .8rem; color: var(--muted); padding: 0 2px; margin-bottom: 6px; display: inline-flex; align-items: center; gap: 8px; }
+  .meta { font-size: .8rem; color: var(--muted); padding: 0 2px; margin-bottom: 6px; display: inline-flex; align-items: center; gap: 8px; position: relative; z-index: 1; }
+  .meta[data-open="true"] { z-index: 30; }
   .meta.assistant { padding-inline-start: 0; }
   .meta.user { justify-self: end; }
   .meta.assistant { justify-self: start; }
@@ -145,4 +146,5 @@
   .menu-item:disabled { opacity: .6; cursor: not-allowed; }
   .role-badge:disabled { opacity: .6; }
   .id-tag { opacity: .7; font-feature-settings: 'tnum' 1; }
+  :global(.row:has(.meta[data-open="true"])) { position: relative; z-index: 20; }
 </style>
