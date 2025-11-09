@@ -279,18 +279,52 @@
     try { listCmp?.scrollToBottom?.() } catch {}
   }
 
-  // Image handling
+  // Attachment handling
+  function isSupportedAttachment(file) {
+    if (!file) return false
+    const type = typeof file.type === 'string' ? file.type : ''
+    if (type.startsWith('image/')) return true
+    if (type === 'application/pdf') return true
+    if (!type && typeof file.name === 'string') {
+      const lower = file.name.toLowerCase()
+      if (lower.endsWith('.pdf')) return true
+      if (/\.(png|jpe?g|gif|webp)$/i.test(lower)) return true
+    }
+    if (type === 'application/octet-stream' && typeof file.name === 'string') {
+      return file.name.toLowerCase().endsWith('.pdf')
+    }
+    return false
+  }
+
+  function inferMimeType(file) {
+    if (!file) return ''
+    if (typeof file.type === 'string' && file.type) return file.type
+    if (typeof file.name === 'string' && file.name) {
+      const lower = file.name.toLowerCase()
+      if (lower.endsWith('.png')) return 'image/png'
+      if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg'
+      if (lower.endsWith('.gif')) return 'image/gif'
+      if (lower.endsWith('.webp')) return 'image/webp'
+      if (lower.endsWith('.pdf')) return 'application/pdf'
+    }
+    return ''
+  }
+
   async function handleFilesSelected(files) {
     try {
-      const imagePromises = files.map(async (file) => {
+      const incoming = Array.isArray(files) ? files : []
+      const accepted = incoming.filter(isSupportedAttachment)
+      if (!accepted.length) return
+      const imagePromises = accepted.map(async (file) => {
         const id = generateImageId()
         const base64 = await fileToBase64(file)
-        await storeImage(id, base64, file.type, file.name)
+        const mimeType = inferMimeType(file) || file.type || ''
+        await storeImage(id, base64, mimeType, file.name)
         const image = {
           id,
           data: base64,
-          mimeType: file.type,
-          name: file.name
+          mimeType: mimeType || undefined,
+          name: file?.name || undefined
         }
         cacheImageData(image)
         return image

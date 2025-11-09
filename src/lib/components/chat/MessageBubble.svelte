@@ -11,6 +11,54 @@
   let lastSyncedEditingId = $state(null)
   const EDIT_GROW_OPTS = { maxHeight: Number.POSITIVE_INFINITY, minHeight: 32 }
 
+function isImageAttachment(attachment) {
+  if (!attachment || typeof attachment !== 'object') return false
+  const mime = typeof attachment.mimeType === 'string' ? attachment.mimeType : ''
+  if (mime.startsWith('image/')) return true
+  if (!mime && typeof attachment.name === 'string') {
+    return /\.(png|jpe?g|gif|webp)$/i.test(attachment.name)
+  }
+  return false
+}
+
+function isPdfAttachment(attachment) {
+  if (!attachment || typeof attachment !== 'object') return false
+  const mime = (attachment.mimeType || '').toLowerCase()
+  if (mime === 'application/pdf') return true
+  if (!mime && typeof attachment.name === 'string') {
+    return attachment.name.toLowerCase().endsWith('.pdf')
+  }
+  return false
+}
+
+function attachmentDisplayName(attachment) {
+  if (!attachment || typeof attachment !== 'object') return 'attachment'
+  if (typeof attachment.name === 'string' && attachment.name.trim()) return attachment.name.trim()
+  if (typeof attachment.id === 'string' && attachment.id.trim()) return attachment.id.trim()
+  return 'attachment'
+}
+
+function attachmentDataUrl(attachment) {
+  if (!attachment || typeof attachment !== 'object') return ''
+  const data = typeof attachment.data === 'string' && attachment.data ? attachment.data : ''
+  if (!data) return ''
+  const mime = typeof attachment.mimeType === 'string' && attachment.mimeType
+    ? attachment.mimeType
+    : (isPdfAttachment(attachment)
+      ? 'application/pdf'
+      : (isImageAttachment(attachment) ? 'image/png' : 'application/octet-stream'))
+  return `data:${mime};base64,${data}`
+}
+
+function attachmentMimeLabel(attachment) {
+  if (isPdfAttachment(attachment)) return 'PDF'
+  const mime = typeof attachment?.mimeType === 'string' ? attachment.mimeType : ''
+  if (!mime) return 'FILE'
+  const parts = mime.split('/')
+  if (parts.length === 2 && parts[1]) return parts[1].toUpperCase()
+  return mime.toUpperCase()
+}
+
   function extractReasoningSummary(msg) {
     const raw = msg?.reasoningSummary
     if (typeof raw === 'string') return raw
@@ -165,9 +213,36 @@
   {:else if props.message.content || (props.message.images && props.message.images.length > 0)}
     {#if props.message.images && props.message.images.length > 0}
       <div class={`message-images ${props.message.role}`}>
-        {#each props.message.images as img (img.id)}
-          {#if img?.data}
-            <img src={`data:${img.mimeType || 'image/png'};base64,${img.data}`} alt={img.name || img.id || 'Image'} class="message-image" />
+        {#each props.message.images as attachment (attachment.id)}
+          {#if isImageAttachment(attachment)}
+            {#if attachment?.data}
+              <img
+                src={attachmentDataUrl(attachment)}
+                alt={attachmentDisplayName(attachment)}
+                class="message-image"
+              />
+            {:else}
+              <div class="message-file placeholder">
+                <span class="file-label">{attachmentDisplayName(attachment)}</span>
+              </div>
+            {/if}
+          {:else}
+            {#if attachment?.data}
+              <a
+                class="message-file"
+                href={attachmentDataUrl(attachment)}
+                target="_blank"
+                rel="noopener noreferrer"
+                download={attachmentDisplayName(attachment)}
+              >
+                <span class="file-label">{attachmentDisplayName(attachment)}</span>
+                <span class="file-meta">{attachmentMimeLabel(attachment)}</span>
+              </a>
+            {:else}
+              <div class="message-file placeholder">
+                <span class="file-label">{attachmentDisplayName(attachment)}</span>
+              </div>
+            {/if}
           {/if}
         {/each}
       </div>
@@ -325,5 +400,41 @@
     border-radius: 10px;
     object-fit: contain;
     border: 1px solid var(--border);
+  }
+  .message-file {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-width: 120px;
+    max-width: 200px;
+    padding: 10px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: color-mix(in srgb, var(--panel), transparent 20%);
+    color: var(--text);
+    text-decoration: none;
+    gap: 6px;
+    font-size: 0.85rem;
+    line-height: 1.2;
+    word-break: break-word;
+  }
+  .message-file:hover {
+    border-color: var(--accent);
+  }
+  .message-file.placeholder {
+    pointer-events: none;
+    border-style: dashed;
+    background: color-mix(in srgb, var(--panel), transparent 35%);
+  }
+  .message-file .file-label {
+    font-weight: 600;
+    text-align: center;
+  }
+  .message-file .file-meta {
+    font-size: 0.7rem;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
   }
 </style>

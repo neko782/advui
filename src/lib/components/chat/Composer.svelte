@@ -31,6 +31,37 @@
     }
   })
 
+  function isSupportedAttachment(file) {
+    if (!file) return false
+    const type = typeof file.type === 'string' ? file.type : ''
+    if (type.startsWith('image/')) return true
+    if (type === 'application/pdf') return true
+    if (!type && typeof file.name === 'string') {
+      return file.name.toLowerCase().endsWith('.pdf')
+    }
+    if (type === 'application/octet-stream' && typeof file.name === 'string') {
+      return file.name.toLowerCase().endsWith('.pdf')
+    }
+    return false
+  }
+
+  function isImageAttachment(attachment) {
+    if (!attachment || typeof attachment !== 'object') return false
+    const mime = typeof attachment.mimeType === 'string' ? attachment.mimeType : ''
+    if (mime.startsWith('image/')) return true
+    if (!mime && typeof attachment.name === 'string') {
+      return /\.(png|jpe?g|gif|webp)$/i.test(attachment.name)
+    }
+    return false
+  }
+
+  function getAttachmentDisplayName(attachment) {
+    if (!attachment || typeof attachment !== 'object') return ''
+    if (typeof attachment.name === 'string' && attachment.name.trim()) return attachment.name.trim()
+    if (typeof attachment.id === 'string' && attachment.id.trim()) return attachment.id.trim()
+    return 'attachment'
+  }
+
   function onKey(e) {
     if (isMobileViewport) return
     if (props.locked) return
@@ -64,7 +95,10 @@
   function handleFileSelect(e) {
     const files = e.target.files
     if (files && files.length > 0) {
-      props.onFilesSelected?.(Array.from(files))
+      const accepted = Array.from(files).filter(isSupportedAttachment)
+      if (accepted.length > 0) {
+        props.onFilesSelected?.(accepted)
+      }
     }
     if (fileInputEl) fileInputEl.value = ''
   }
@@ -88,9 +122,9 @@
 
     const files = e.dataTransfer?.files
     if (files && files.length > 0) {
-      const imageFiles = Array.from(files).filter(f => f.type.startsWith('image/'))
-      if (imageFiles.length > 0) {
-        props.onFilesSelected?.(imageFiles)
+      const acceptedFiles = Array.from(files).filter(isSupportedAttachment)
+      if (acceptedFiles.length > 0) {
+        props.onFilesSelected?.(acceptedFiles)
       }
     }
   }
@@ -149,7 +183,7 @@
 <footer class="composer" class:dragging={isDragging} ondragover={handleDragOver} ondragleave={handleDragLeave} ondrop={handleDrop}>
   <input
     type="file"
-    accept="image/png,image/jpeg,image/jpg,image/webp,image/gif"
+    accept="image/png,image/jpeg,image/jpg,image/webp,image/gif,application/pdf"
     multiple
     style="display: none"
     onchange={handleFileSelect}
@@ -199,9 +233,22 @@
       {#if props.attachedImages && props.attachedImages.length > 0}
         <div class="image-previews">
           {#each props.attachedImages as img (img.id)}
-            <div class="image-preview">
+            <div class={`attachment-preview ${isImageAttachment(img) ? 'image' : 'file'}`}>
               {#if img?.data}
-                <img src={`data:${img.mimeType || 'image/png'};base64,${img.data}`} alt={img.name || img.id || 'Attached image'} />
+                {#if isImageAttachment(img)}
+                  <img src={`data:${img.mimeType || 'image/png'};base64,${img.data}`} alt={img.name || img.id || 'Attached image'} />
+                {:else}
+                  <a
+                    class="file-chip"
+                    href={`data:${img.mimeType || 'application/pdf'};base64,${img.data}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    download={getAttachmentDisplayName(img)}
+                  >
+                    <span class="file-chip-icon">PDF</span>
+                    <span class="file-chip-name">{getAttachmentDisplayName(img)}</span>
+                  </a>
+                {/if}
               {/if}
               <button class="remove-image-btn" onclick={() => props.onRemoveImage?.(img.id)} aria-label="Remove image">
                 <IconClose style="font-size: 16px;" />
@@ -329,18 +376,64 @@
     gap: 8px;
     padding: 8px;
   }
-  .image-preview {
+  .attachment-preview {
     position: relative;
     width: 80px;
     height: 80px;
     border-radius: 8px;
     overflow: hidden;
     border: 1px solid var(--border);
+    background: var(--panel);
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
-  .image-preview img {
+  .attachment-preview.image img {
     width: 100%;
     height: 100%;
     object-fit: cover;
+  }
+  .attachment-preview.file {
+    padding: 8px;
+  }
+  .file-chip {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    text-decoration: none;
+    color: var(--text);
+    width: 100%;
+    height: 100%;
+    border-radius: 6px;
+    border: 1px dashed var(--border);
+    background: color-mix(in srgb, var(--panel), transparent 30%);
+    padding: 6px;
+    text-align: center;
+    font-size: 0.75rem;
+    line-height: 1.2;
+  }
+  .file-chip:hover {
+    border-color: var(--accent);
+  }
+  .file-chip-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    font-size: 0.75rem;
+    padding: 4px 6px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--accent), transparent 20%);
+    color: var(--accent);
+  }
+  .file-chip-name {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: normal;
+    word-break: break-word;
   }
   .remove-image-btn {
     position: absolute;

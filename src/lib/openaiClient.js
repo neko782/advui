@@ -33,6 +33,41 @@ function buildClientOptions({ apiKey, apiBaseUrl }) {
   return options
 }
 
+function normalizeMimeType(mimeType) {
+  if (typeof mimeType !== 'string') return ''
+  return mimeType.trim().toLowerCase()
+}
+
+function isImageMimeType(mimeType) {
+  const normalized = normalizeMimeType(mimeType)
+  return normalized.startsWith('image/')
+}
+
+function isPdfMimeType(mimeType) {
+  return normalizeMimeType(mimeType) === 'application/pdf'
+}
+
+function inferAttachmentFilename(attachment, fallbackBase = 'attachment') {
+  if (!attachment || typeof attachment !== 'object') return `${fallbackBase}`
+  if (typeof attachment.name === 'string' && attachment.name.trim()) return attachment.name.trim()
+  if (typeof attachment.id === 'string' && attachment.id.trim()) {
+    const id = attachment.id.trim()
+    if (isPdfMimeType(attachment.mimeType) && !id.toLowerCase().endsWith('.pdf')) {
+      return `${id}.pdf`
+    }
+    return id
+  }
+  if (isPdfMimeType(attachment?.mimeType)) return `${fallbackBase}.pdf`
+  return fallbackBase
+}
+
+function ensureDataUrl(data, mimeType) {
+  if (typeof data !== 'string' || !data) return ''
+  if (data.startsWith('data:')) return data
+  const mime = normalizeMimeType(mimeType) || 'application/octet-stream'
+  return `data:${mime};base64,${data}`
+}
+
 export async function getClient(options = {}) {
   const settings = options.settings || loadSettings()
   const connection = resolveConnection({
@@ -135,14 +170,36 @@ export async function respond({
           }
           for (const img of images) {
             if (img && typeof img.id === 'string' && typeof img.data === 'string') {
-              const mimeType = img.mimeType || 'image/jpeg'
-              contentArray.push({
-                type: 'input_image',
-                image_url: `data:${mimeType};base64,${img.data}`,
-              })
+              const mimeType = normalizeMimeType(img.mimeType) || ''
+              if (isImageMimeType(mimeType) || (!mimeType && typeof img.data === 'string')) {
+                const safeMime = mimeType || 'image/jpeg'
+                contentArray.push({
+                  type: 'input_image',
+                  image_url: `data:${safeMime};base64,${img.data}`,
+                })
+              } else if (isPdfMimeType(mimeType) || (!mimeType && typeof img.name === 'string' && img.name.toLowerCase().endsWith('.pdf'))) {
+                const dataUrl = ensureDataUrl(img.data, mimeType || 'application/pdf')
+                if (!dataUrl) continue
+                contentArray.push({
+                  type: 'input_file',
+                  file_data: dataUrl,
+                  filename: inferAttachmentFilename(img, 'document.pdf'),
+                })
+              } else {
+                const dataUrl = ensureDataUrl(img.data, mimeType || 'application/octet-stream')
+                if (!dataUrl) continue
+                // Default to file for any non-image attachments
+                contentArray.push({
+                  type: 'input_file',
+                  file_data: dataUrl,
+                  filename: inferAttachmentFilename(img, 'attachment.bin'),
+                })
+              }
             }
           }
-          return { role, content: contentArray }
+          if (contentArray.length > 0) {
+            return { role, content: contentArray }
+          }
         }
         return { role, content }
       })
@@ -165,9 +222,33 @@ export async function respond({
                 type: 'image_url',
                 image_url: { url: part.image_url }
               })
+            } else if (part.type === 'input_file') {
+              const rawData = typeof part.file_data === 'string' && part.file_data
+                ? part.file_data
+                : (typeof part.file === 'object' && part.file?.file_data ? part.file.file_data : null)
+              const filename = typeof part.filename === 'string' && part.filename
+                ? part.filename
+                : (typeof part.file === 'object' && part.file?.filename ? part.file.filename : 'attachment')
+              const normalizedMime = (() => {
+                if (typeof part.file === 'object' && typeof part.file?.mime_type === 'string') return part.file.mime_type
+                if (typeof filename === 'string' && filename.toLowerCase().endsWith('.pdf')) return 'application/pdf'
+                return undefined
+              })()
+              const dataUrl = rawData ? ensureDataUrl(rawData, normalizedMime) : ''
+              if (dataUrl) {
+                contentArray.push({
+                  type: 'file',
+                  file: {
+                    file_data: dataUrl,
+                    filename
+                  }
+                })
+              }
             }
           }
-          return { role: msg.role, content: contentArray }
+          if (contentArray.length > 0) {
+            return { role: msg.role, content: contentArray }
+          }
         }
         return msg
       })
