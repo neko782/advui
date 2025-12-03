@@ -1,7 +1,18 @@
-<script>
-  import { IconClose } from '../icons.js'
+<script lang="ts">
+  import { IconClose } from '../icons'
 
-  const props = $props()
+  interface Props {
+    open?: boolean
+    title?: string
+    message?: string
+    confirmText?: string
+    cancelText?: string
+    danger?: boolean
+    onConfirm?: () => void
+    onCancel?: () => void
+  }
+
+  const props: Props = $props()
 
   function handleConfirm() {
     props.onConfirm?.()

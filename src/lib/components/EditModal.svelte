@@ -1,10 +1,22 @@
-<script>
+<script lang="ts">
   import { tick } from 'svelte'
-  import { IconClose } from '../icons.js'
+  import { IconClose } from '../icons'
 
-  const props = $props()
+  interface Props {
+    open?: boolean
+    value?: string
+    title?: string
+    label?: string
+    placeholder?: string
+    confirmText?: string
+    cancelText?: string
+    onConfirm?: (value: string) => void
+    onCancel?: () => void
+  }
 
-  let inputEl = $state(null)
+  const props: Props = $props()
+
+  let inputEl = $state<HTMLInputElement | null>(null)
   let localValue = $state('')
 
   $effect(() => {

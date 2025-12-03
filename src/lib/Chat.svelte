@@ -1,28 +1,28 @@
-<script>
+<script lang="ts">
   // Core imports
   import { onMount, onDestroy } from 'svelte'
-  import { loadSettings, findConnection } from './settingsStore.js'
-  import { ensureModels, loadModelsCache } from './modelsStore.js'
-  import { saveChatContent, debugSetChatLockState } from './chatsStore.js'
-  import { copyText as copyToClipboard } from './utils/clipboard.js'
+  import { loadSettings, findConnection } from './settingsStore'
+  import { ensureModels, loadModelsCache } from './modelsStore'
+  import { saveChatContent, debugSetChatLockState } from './chatsStore'
+  import { copyText as copyToClipboard } from './utils/clipboard'
   import MessageList from './components/chat/MessageList.svelte'
   import Composer from './components/chat/Composer.svelte'
-  import { storeImage, generateImageId, fileToBase64, getImage } from './imageStore.js'
+  import { storeImage, generateImageId, fileToBase64, getImage } from './imageStore'
 
   // Chat module imports
-  import { loadChat } from './chat/services/chatLoader.js'
-  import { pickPresetFromSettings, presetSignature } from './chat/services/chatInit.js'
-  import { persistChatContent, computePersistSig } from './chat/services/chatPersistence.js'
-  import { computeValidationNotice, computeGenerationNotice, assembleNotice, computeFollowingMap } from './chat/services/noticeHelpers.js'
-  import { resolveConnectionContext as _resolveConnectionContext } from './chat/services/connectionResolver.js'
-  import { createPersistenceScheduler } from './chat/services/persistenceScheduler.js'
-  import { createNoticeManager } from './chat/services/noticeManager.js'
-  import { createGenerationStateManager } from './chat/services/generationStateManager.js'
+  import { loadChat } from './chat/services/chatLoader'
+  import { pickPresetFromSettings, presetSignature } from './chat/services/chatInit'
+  import { persistChatContent, computePersistSig } from './chat/services/chatPersistence'
+  import { computeValidationNotice, computeGenerationNotice, assembleNotice, computeFollowingMap } from './chat/services/noticeHelpers'
+  import { resolveConnectionContext as _resolveConnectionContext } from './chat/services/connectionResolver'
+  import { createPersistenceScheduler } from './chat/services/persistenceScheduler'
+  import { createNoticeManager } from './chat/services/noticeManager'
+  import { createGenerationStateManager } from './chat/services/generationStateManager'
 
   // Action imports
-  import { deleteMessage, setMessageRole, moveUp, moveDown } from './chat/actions/messageActions.js'
-  import { changeVariant, updateVariantById } from './chat/actions/variantActions.js'
-  import { commitEditReplace, applyEditBranch, prepareBranchAndSend } from './chat/actions/editActions.js'
+  import { deleteMessage, setMessageRole, moveUp, moveDown } from './chat/actions/messageActions'
+  import { changeVariant, updateVariantById } from './chat/actions/variantActions'
+  import { commitEditReplace, applyEditBranch, prepareBranchAndSend } from './chat/actions/editActions'
   import {
     prepareUserMessage,
     prepareTypingNode,
@@ -33,16 +33,25 @@
     prepareRefreshAfterUser,
     validateTypingVariantVisible,
     logGenerationEvent
-  } from './chat/actions/generationActions.js'
+  } from './chat/actions/generationActions'
 
   // Utilities
-  import { toIntOrNull, toClampedNumber } from './utils/numbers.js'
-  import { normalizeReasoning, normalizeVerbosity, normalizeReasoningSummary } from './utils/validation.js'
-  import { NO_API_KEY_NOTICE_TEXT } from './constants/index.js'
-  import { buildVisible as _buildVisible, buildVisibleUpTo as _buildVisibleUpTo } from './branching.js'
-  import { findNodeByMessageId } from './utils/treeUtils.js'
+  import { toIntOrNull, toClampedNumber } from './utils/numbers'
+  import { normalizeReasoning, normalizeVerbosity, normalizeReasoningSummary } from './utils/validation'
+  import { NO_API_KEY_NOTICE_TEXT } from './constants/index'
+  import { buildVisible as _buildVisible, buildVisibleUpTo as _buildVisibleUpTo } from './branching'
+  import { findNodeByMessageId } from './utils/treeUtils'
+  import type { Node, Message, ChatSettings, AppSettings, ImageRef, Image, MessageRole, VisibleMessage } from './types'
 
-  const props = $props()
+  interface Props {
+    chatId: string
+    onNewChat?: (options?: { presetId?: string }) => void
+    onChatUpdated?: () => void
+    settingsVersion?: number
+    onGeneratingChange?: (chatId: string, isGenerating: boolean) => void
+  }
+
+  const props: Props = $props()
 
   // Managers
   const persistenceScheduler = createPersistenceScheduler()
@@ -50,11 +59,11 @@
   const generationState = createGenerationStateManager()
 
   // State
-  let nodes = $state([])
-  let rootId = $state(1)
+  let nodes = $state<Node[]>([])
+  let rootId = $state<number | null>(1)
   let input = $state('')
-  let attachedImages = $state([])
-  let imageCache = $state({})
+  let attachedImages = $state<Image[]>([])
+  let imageCache = $state<Record<string, { data: string; mimeType?: string; name?: string }>>({})
   let sending = $state(false)
   let forcedLock = $state(false)
   let locked = $state(false)
@@ -62,13 +71,13 @@
   let nextNodeId = $state(1)
   let ready = false
   let mounted = false
-  let lastChatId = null
-  let lastReportedChatId = null
-  let lastReportedSending = null
+  let lastChatId: string | null = null
+  let lastReportedChatId: string | null = null
+  let lastReportedSending: boolean | null = null
 
   // Settings & chat configuration
   const initialSettings = loadSettings()
-  let settings = $state(initialSettings)
+  let settings = $state<AppSettings>(initialSettings)
   let debug = $state(!!initialSettings?.debug)
   const initialPreset = pickPresetFromSettings(initialSettings)
   const initialConnectionId = (() => {
@@ -82,7 +91,7 @@
     return settingsConn
   })()
 
-  let chatSettings = $state({
+  let chatSettings = $state<ChatSettings>({
     model: initialPreset.model,
     streaming: initialPreset.streaming,
     presetId: initialPreset.id,
@@ -98,11 +107,11 @@
   })
 
   let chatSettingsOpen = $state(false)
-  let modelIds = $state(loadModelsCache(initialConnectionId).ids || [])
+  let modelIds = $state<string[]>(loadModelsCache(initialConnectionId).ids || [])
   let persistSig = ''
 
   // Editing state
-  let editingId = $state(null)
+  let editingId = $state<number | null>(null)
   let editingText = $state('')
 
   // Notices
@@ -274,8 +283,8 @@
   }
 
   // Scroll helper
-  let listCmp
-  function scrollToBottom() {
+  let listCmp: { scrollToBottom?: () => void } | undefined
+  function scrollToBottom(): void {
     try { listCmp?.scrollToBottom?.() } catch {}
   }
 
@@ -494,7 +503,7 @@
     return mutated ? sanitizedNodes : nodesInput
   }
 
-  let imageLoadTimer = null
+  let imageLoadTimer: ReturnType<typeof setTimeout> | null = null
   $effect(() => {
     const visible = buildVisible()
 

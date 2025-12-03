@@ -1,34 +1,50 @@
-<script>
+<script lang="ts">
   import { tick, onMount, onDestroy } from 'svelte'
-  import { IconMenu, IconEditSquare, IconClose, IconCheck, IconEdit, IconDelete, IconSettings, IconSearch, IconDescription, IconMoreVert, IconDownload } from '../icons.js'
+  import { IconMenu, IconEditSquare, IconClose, IconCheck, IconEdit, IconDelete, IconSettings, IconSearch, IconDescription, IconMoreVert, IconDownload } from '../icons'
   import ConfirmModal from './ConfirmModal.svelte'
   import EditModal from './EditModal.svelte'
-  import { exportChat } from '../utils/exportImport.js'
-  const props = $props()
+  import { exportChat } from '../utils/exportImport'
+  import type { Chat, Preset } from '../types'
+
+  interface Props {
+    open?: boolean
+    chats?: Chat[]
+    selectedId?: string | null
+    presets?: Preset[]
+    generatingMap?: Record<string, boolean>
+    onSelect?: (id: string) => void
+    onNewChat?: (options?: { presetId?: string }) => void
+    onDeleteChat?: (id: string) => Promise<void>
+    onRenameChat?: (id: string, title: string) => Promise<void>
+    onToggle?: () => void
+    onOpenSettings?: () => void
+  }
+
+  const props: Props = $props()
 
   // Git hash injected at build time
   const gitHash = __GIT_HASH__
 
-  let confirmDeleteId = $state(null)
-  let editingId = $state(null)
+  let confirmDeleteId = $state<string | null>(null)
+  let editingId = $state<string | null>(null)
   let draftTitle = $state('')
-  let editingInput = $state(null)
+  let editingInput = $state<HTMLInputElement | null>(null)
   let suppressBlur = $state(false)
   let presetMenuOpen = $state(false)
-  let presetMenuEl = $state(null)
+  let presetMenuEl = $state<HTMLDivElement | null>(null)
   let lastSidebarOpen = $state(props.open ?? true)
-  let chatMenuOpen = $state(null) // Track which chat's menu is open
+  let chatMenuOpen = $state<string | null>(null) // Track which chat's menu is open
 
   // Modal state
   let deleteModalOpen = $state(false)
-  let deleteModalChatId = $state(null)
+  let deleteModalChatId = $state<string | null>(null)
   let editModalOpen = $state(false)
-  let editModalChat = $state(null)
+  let editModalChat = $state<Chat | null>(null)
 
   // Search state
   let searchQuery = $state('')
-  let searchMode = $state('title') // 'title' or 'content'
-  let searchDebounceTimer = null
+  let searchMode = $state<'title' | 'content'>('title')
+  let searchDebounceTimer: ReturnType<typeof setTimeout> | null = null
 
   // Cache for extracted content to avoid re-processing
   let contentCache = new Map()

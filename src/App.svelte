@@ -1,19 +1,20 @@
-<script>
+<script lang="ts">
   import Chat from './lib/Chat.svelte'
   import Sidebar from './lib/components/Sidebar.svelte'
   import SettingsModal from './lib/SettingsModal.svelte'
-  import { loadAll, getChats, createChat, setSelected, getChat, deleteChat, renameChat, unlockAllChats } from './lib/chatsStore.js'
-  import { loadSettings } from './lib/settingsStore.js'
-  import { ensureModels } from './lib/modelsStore.js'
-  import { initTheme } from './lib/themeStore.js'
+  import { loadAll, getChats, createChat, setSelected, getChat, deleteChat, renameChat, unlockAllChats } from './lib/chatsStore'
+  import { loadSettings } from './lib/settingsStore'
+  import { ensureModels } from './lib/modelsStore'
+  import { initTheme } from './lib/themeStore'
+  import type { Chat as ChatType, Preset } from './lib/types'
 
-  let chats = $state([])
-  let selectedId = $state(null)
+  let chats = $state<ChatType[]>([])
+  let selectedId = $state<string | null>(null)
   let sidebarOpen = $state(true)
   let showSettings = $state(false)
   let settingsVersion = $state(0)
-  let presets = $state([])
-  let generatingMap = $state({})
+  let presets = $state<Preset[]>([])
+  let generatingMap = $state<Record<string, boolean>>({})
 
   const SIDEBAR_KEY = 'ui.sidebar.open.v1'
   const SIDEBAR_BASE_WIDTH = 280 // matches `.sidebar` width in Sidebar.svelte
@@ -142,7 +143,7 @@
   }
 
   import { onMount } from 'svelte'
-  import { migrateChatsToIndexedDB } from './lib/utils/storageMigration.js'
+  import { migrateChatsToIndexedDB } from './lib/utils/storageMigration'
 
   async function ensureStartupModels() {
     try {
@@ -205,7 +206,7 @@
     chats = [c.chat, ...chats].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
   }
   // Coalesce sidebar refresh triggered by child updates
-  let refreshTimer = null
+  let refreshTimer: ReturnType<typeof setTimeout> | null = null
   function scheduleRefresh() {
     if (refreshTimer) return
     refreshTimer = setTimeout(() => {

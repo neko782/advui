@@ -1,9 +1,43 @@
-<script>
-  import { formatRole } from '../../utils/format.js'
+<script lang="ts">
+  import { formatRole } from '../../utils/format'
   import MessageMeta from './MessageMeta.svelte'
   import MessageBubble from './MessageBubble.svelte'
   import MessageActions from './MessageActions.svelte'
-  const props = $props()
+  import type { VisibleMessage, MessageRole } from '../../types'
+
+  interface Props {
+    vm: VisibleMessage
+    total?: number
+    visibleCount?: number
+    locked?: boolean
+    debug?: boolean
+    editingId?: number | null
+    editingText?: string
+    hasFollowingAssistant?: boolean
+    nextAssistantId?: number
+    nextAssistantTyping?: boolean
+    parentId?: number | null
+    branchIndex?: number
+    branchesLength?: number
+    onSetRole?: (id: number, role: MessageRole) => void
+    onEditInput?: (text: string) => void
+    onEditKeydown?: (e: KeyboardEvent) => void
+    onApplyEditSend?: () => void
+    onApplyEditBranch?: () => void
+    onApplyEditReplace?: () => void
+    onCancelEdit?: () => void
+    onChangeVariant?: (id: number, delta: number) => void
+    onRefreshAssistant?: (id: number) => void
+    onRefreshAfterUserIndex?: (index: number) => void
+    onCopy?: (text: string) => void
+    onDelete?: (id: number) => void
+    onEdit?: (id: number) => void
+    onMoveDown?: (id: number) => void
+    onMoveUp?: (id: number) => void
+    onDebugFuckBranch?: (id: number) => void
+  }
+
+  const props: Props = $props()
   // Keep these derived from props so they update when parent data changes
   const vm = $derived(props.vm)
   const m = $derived(vm.m)

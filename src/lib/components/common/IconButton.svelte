@@ -1,6 +1,16 @@
-<script>
+<script lang="ts">
   import Icon from '../../Icon.svelte'
-  const props = $props()
+
+  interface Props {
+    title?: string
+    ariaLabel?: string
+    disabled?: boolean
+    onclick?: () => void
+    name?: string
+    size?: number
+  }
+
+  const props: Props = $props()
 </script>
 
 <button class="icon-btn" title={props.title || ''} aria-label={props.ariaLabel || props.title} disabled={props.disabled} onclick={props.onclick}>

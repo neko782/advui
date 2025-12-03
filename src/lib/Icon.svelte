@@ -1,10 +1,14 @@
-<script>
-  export let name = ''
-  export let size = 22 // px
-  export let weight = 400 // 100..700
-  export let filled = false // outline vs filled
-  export let grade = 0 // -50..200
-  export let opticalSize = 24 // 20..48
+<script lang="ts">
+  interface Props {
+    name?: string
+    size?: number
+    weight?: number
+    filled?: boolean
+    grade?: number
+    opticalSize?: number
+  }
+
+  let { name = '', size = 22, weight = 400, filled = false, grade = 0, opticalSize = 24 }: Props = $props()
 </script>
 
 <span

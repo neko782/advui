@@ -1,7 +1,16 @@
-<script>
+<script lang="ts">
   // Generic hover/focus popover menu container
   // Usage: wrap a trigger in this component and place menu content in the default slot named "menu".
-  const props = $props()
+  import type { Snippet } from 'svelte'
+
+  interface Props {
+    className?: string
+    side?: 'top' | 'bottom' | 'left' | 'right'
+    children?: Snippet
+    menu?: Snippet
+  }
+
+  const props: Props = $props()
 </script>
 
 <div class={`send-group ${props.className || ''}`} aria-haspopup="menu" data-side={props.side || 'top'}>

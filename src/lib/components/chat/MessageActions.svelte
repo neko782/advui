@@ -1,6 +1,36 @@
-<script>
-  import { IconSend, IconCallSplit, IconPublishedWithChanges, IconClose, IconChevronLeft, IconChevronRight, IconAutorenew, IconContentCopy, IconDelete, IconEdit, IconArrowDownward, IconArrowUpward, IconDangerous } from '../../icons.js'
-  const props = $props()
+<script lang="ts">
+  import { IconSend, IconCallSplit, IconPublishedWithChanges, IconClose, IconChevronLeft, IconChevronRight, IconAutorenew, IconContentCopy, IconDelete, IconEdit, IconArrowDownward, IconArrowUpward, IconDangerous } from '../../icons'
+  import type { Message } from '../../types'
+
+  interface Props {
+    message: Message
+    index?: number
+    total?: number
+    visibleCount?: number
+    locked?: boolean
+    debug?: boolean
+    isEditing?: boolean
+    branchesLength?: number
+    branchIndex?: number
+    hasFollowingAssistant?: boolean
+    nextAssistantId?: number
+    nextAssistantTyping?: boolean
+    onApplyEditSend?: () => void
+    onApplyEditBranch?: () => void
+    onApplyEditReplace?: () => void
+    onCancelEdit?: () => void
+    onChangeVariant?: (delta: number) => void
+    onRefreshAssistant?: (id: number) => void
+    onRefreshAfterUserIndex?: (index: number) => void
+    onCopy?: (text: string) => void
+    onDelete?: (id: number) => void
+    onEdit?: (id: number) => void
+    onMoveDown?: (id: number) => void
+    onMoveUp?: (id: number) => void
+    onDebugFuckBranch?: (id: number) => void
+  }
+
+  const props: Props = $props()
   // Ensure message reference stays reactive with Svelte 5 runes
   const m = $derived(props.message)
 </script>

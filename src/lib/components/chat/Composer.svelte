@@ -1,11 +1,57 @@
-<script>
-  import { IconAdd, IconClose, IconAddComment, IconPerson, IconSmartToy, IconTune, IconStop, IconSend } from '../../icons.js'
-  import { autoGrow } from '../../utils/dom.js'
+<script lang="ts">
+  import { IconAdd, IconClose, IconAddComment, IconPerson, IconSmartToy, IconTune, IconStop, IconSend } from '../../icons'
+  import { autoGrow } from '../../utils/dom'
   import ChatSettingsPopover from './ChatSettingsPopover.svelte'
   import { onMount } from 'svelte'
-  const props = $props()
-  let inputEl
-  let fileInputEl
+  import type { Image, Preset, Connection, Keybinds, ReasoningEffort, TextVerbosity, ReasoningSummary, MessageRole } from '../../types'
+
+  interface Props {
+    input?: string
+    sending?: boolean
+    locked?: boolean
+    chatSettingsOpen?: boolean
+    chatModel?: string
+    chatStreaming?: boolean
+    chatMaxOutputTokens?: number | null
+    chatTopP?: number | null
+    chatTemperature?: number | null
+    chatReasoningEffort?: ReasoningEffort
+    chatReasoningSummary?: ReasoningSummary
+    chatTextVerbosity?: TextVerbosity
+    chatThinkingEnabled?: boolean
+    chatThinkingBudgetTokens?: number | null
+    modelIds?: string[]
+    connections?: { id: string; name: string }[]
+    chatConnectionId?: string | null
+    attachedImages?: Image[]
+    keybinds?: Keybinds
+    showThinkingControls?: boolean
+    presets?: Preset[]
+    onToggleChatSettings?: () => void
+    onCloseChatSettings?: () => void
+    onChangeConnection?: (val: string) => void
+    onChangeModel?: (val: string) => void
+    onChangeStreaming?: (val: boolean) => void
+    onChangeMaxOutputTokens?: (val: string) => void
+    onChangeTopP?: (val: string) => void
+    onChangeTemperature?: (val: string) => void
+    onChangeReasoningEffort?: (val: string) => void
+    onChangeReasoningSummary?: (val: string) => void
+    onChangeTextVerbosity?: (val: string) => void
+    onChangeThinkingEnabled?: (val: boolean) => void
+    onChangeThinkingBudgetTokens?: (val: string) => void
+    onSelectPreset?: (preset: Preset) => void
+    onInput?: (val: string) => void
+    onAdd?: (role: MessageRole) => void
+    onStop?: () => void
+    onSend?: (role: MessageRole) => void
+    onFilesSelected?: (files: File[]) => void
+    onRemoveImage?: (id: string) => void
+  }
+
+  const props: Props = $props()
+  let inputEl: HTMLTextAreaElement | undefined
+  let fileInputEl: HTMLInputElement | undefined
   let isDragging = $state(false)
   // Auto-grow on mount
   $effect(() => { queueMicrotask(() => autoGrow(inputEl)) })

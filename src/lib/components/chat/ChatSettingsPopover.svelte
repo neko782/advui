@@ -1,13 +1,49 @@
-<script>
-  import { IconTune, IconLayers } from '../../icons.js'
-  const props = $props()
-  let root
-  let menu
+<script lang="ts">
+  import { IconTune, IconLayers } from '../../icons'
+  import type { Preset, ReasoningEffort, TextVerbosity, ReasoningSummary } from '../../types'
+
+  interface Props {
+    open?: boolean
+    disabled?: boolean
+    model?: string
+    streaming?: boolean
+    maxOutputTokens?: number | null
+    topP?: number | null
+    temperature?: number | null
+    reasoningEffort?: ReasoningEffort
+    reasoningSummary?: ReasoningSummary
+    textVerbosity?: TextVerbosity
+    thinkingEnabled?: boolean
+    thinkingBudgetTokens?: number | null
+    modelIds?: string[]
+    connections?: { id: string; name: string }[]
+    connectionId?: string | null
+    showThinkingControls?: boolean
+    presets?: Preset[]
+    onToggle?: () => void
+    onClose?: () => void
+    onChangeConnection?: (val: string) => void
+    onInputModel?: (val: string) => void
+    onInputStreaming?: (val: boolean) => void
+    onInputMaxOutputTokens?: (val: string) => void
+    onInputTopP?: (val: string) => void
+    onInputTemperature?: (val: string) => void
+    onInputReasoningEffort?: (val: string) => void
+    onInputReasoningSummary?: (val: string) => void
+    onInputTextVerbosity?: (val: string) => void
+    onInputThinkingEnabled?: (val: boolean) => void
+    onInputThinkingBudgetTokens?: (val: string) => void
+    onSelectPreset?: (preset: Preset) => void
+  }
+
+  const props: Props = $props()
+  let root: HTMLDivElement | undefined
+  let menu: HTMLDivElement | undefined
   let wasOpen = false
-  let expandedGroups = $state({ general: false, sampling: false, reasoning: false })
+  let expandedGroups = $state<{ general: boolean; sampling: boolean; reasoning: boolean }>({ general: false, sampling: false, reasoning: false })
   let presetMenuOpen = $state(false)
-  let presetMenuEl = $state(null)
-  let presetButtonEl = $state(null)
+  let presetMenuEl = $state<HTMLDivElement | null>(null)
+  let presetButtonEl = $state<HTMLButtonElement | null>(null)
   let presetMenuPosition = $state({ bottom: 0, left: 0 })
 
   function toggleGroup(group) {

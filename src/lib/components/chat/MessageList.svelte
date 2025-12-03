@@ -1,8 +1,39 @@
-<script>
+<script lang="ts">
   import MessageItem from './MessageItem.svelte'
-  const props = $props()
-  let listEl
-  export function scrollToBottom() {
+  import type { VisibleMessage, MessageRole } from '../../types'
+
+  interface Props {
+    items?: VisibleMessage[]
+    chatId?: string
+    notice?: string
+    total?: number
+    locked?: boolean
+    debug?: boolean
+    editingId?: number | null
+    editingText?: string
+    followingMap?: Record<number, { has: boolean; id?: number; typing?: boolean }>
+    onDismissNotice?: () => void
+    onSetRole?: (id: number, role: MessageRole) => void
+    onEditInput?: (text: string) => void
+    onEditKeydown?: (e: KeyboardEvent) => void
+    onApplyEditSend?: () => void
+    onApplyEditBranch?: () => void
+    onApplyEditReplace?: () => void
+    onCancelEdit?: () => void
+    onChangeVariant?: (id: number, delta: number) => void
+    onRefreshAssistant?: (id: number) => void
+    onRefreshAfterUserIndex?: (index: number) => void
+    onCopy?: (text: string) => void
+    onDelete?: (id: number) => void
+    onEdit?: (id: number) => void
+    onMoveDown?: (id: number) => void
+    onMoveUp?: (id: number) => void
+    onDebugFuckBranch?: (id: number) => void
+  }
+
+  const props: Props = $props()
+  let listEl: HTMLDivElement | undefined
+  export function scrollToBottom(): void {
     // Instant scroll on mobile for better performance
     try { listEl?.scrollTo({ top: listEl.scrollHeight, behavior: 'instant' }) } catch {}
   }

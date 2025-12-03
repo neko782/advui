@@ -1,16 +1,23 @@
-<script>
-  import { loadSettings, saveSettings } from './settingsStore.js'
-  import { setModelsCache, loadModelsCache, loadAllModelCaches } from './modelsStore.js'
-  import { listModelsWithKey } from './openaiClient.js'
-  import { IconClose, IconAdd, IconVisibility, IconVisibilityOff, IconAutorenew, IconDelete, IconDownload, IconUpload } from './icons.js'
-  import { getThemeState, setThemeMode, subscribeTheme } from './themeStore.js'
-  import { exportAllData, importAllData, importChat } from './utils/exportImport.js'
+<script lang="ts">
+  import { loadSettings, saveSettings } from './settingsStore'
+  import { setModelsCache, loadModelsCache, loadAllModelCaches } from './modelsStore'
+  import { listModelsWithKey } from './openaiClient'
+  import { IconClose, IconAdd, IconVisibility, IconVisibilityOff, IconAutorenew, IconDelete, IconDownload, IconUpload } from './icons'
+  import { getThemeState, setThemeMode, subscribeTheme } from './themeStore'
+  import { exportAllData, importAllData, importChat } from './utils/exportImport'
   import { onMount } from 'svelte'
+  import type { AppSettings, Preset, Connection, ThemeState, ThemeMode, ReasoningEffort, TextVerbosity, ReasoningSummary } from './types'
 
-  const props = $props()
+  interface Props {
+    open?: boolean
+    onClose?: () => void
+    onSaved?: () => void
+  }
 
-  let local = $state(loadSettings())
-  let modelCacheByConnection = $state({})
+  const props: Props = $props()
+
+  let local = $state<AppSettings>(loadSettings())
+  let modelCacheByConnection = $state<Record<string, { ids: string[], fetchedAt: number }>>({})
   let modelCacheLoaded = $state(false)
   let revealKey = $state(false)
   let refreshingConnectionId = $state('')
@@ -39,18 +46,18 @@
       })
     }
   })
-  let refreshMessages = $state({})
+  let refreshMessages = $state<Record<string, string>>({})
   let activePresetId = $state('')
   let activeConnectionId = $state('')
-  let expandedPresetGroups = $state({ general: false, sampling: false, reasoning: false })
+  let expandedPresetGroups = $state<{ general: boolean, sampling: boolean, reasoning: boolean }>({ general: false, sampling: false, reasoning: false })
   const TABS = [
     { id: 'general', label: 'General' },
     { id: 'connection', label: 'Connections' },
     { id: 'presets', label: 'Presets' },
     { id: 'developer', label: 'Developer' },
   ]
-  let activeTab = $state('general')
-  let themeState = $state({ mode: 'system', theme: 'light' })
+  let activeTab = $state<'general' | 'connection' | 'presets' | 'developer'>('general')
+  let themeState = $state<ThemeState>({ mode: 'system', theme: 'light' })
 
   function togglePresetGroup(group) {
     expandedPresetGroups = { ...expandedPresetGroups, [group]: !expandedPresetGroups[group] }
@@ -208,8 +215,8 @@
     return Array.isArray(entry?.ids) ? entry.ids : []
   })())
 
-  let persistTimer = null
-  function persistSettings() {
+  let persistTimer: ReturnType<typeof setTimeout> | null = null
+  function persistSettings(): void {
     // Debounce to avoid blocking on rapid state changes
     if (persistTimer) clearTimeout(persistTimer)
     persistTimer = setTimeout(() => {

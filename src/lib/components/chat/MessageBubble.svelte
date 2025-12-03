@@ -1,14 +1,24 @@
-<script>
-  import { autoGrow } from '../../utils/dom.js'
-  import { renderMarkdown } from '../../utils/markdown.js'
-  const props = $props()
-  let el = $state(null)
+<script lang="ts">
+  import { autoGrow } from '../../utils/dom'
+  import { renderMarkdown } from '../../utils/markdown'
+  import type { Message, Image } from '../../types'
+
+  interface Props {
+    message: Message
+    isEditing?: boolean
+    editingText?: string
+    onEditInput?: (text: string) => void
+    onEditKeydown?: (e: KeyboardEvent) => void
+  }
+
+  const props: Props = $props()
+  let el = $state<HTMLTextAreaElement | null>(null)
   let reasoningOpen = $state(false)
-  let lastReasoningId = $state(null)
+  let lastReasoningId = $state<number | null>(null)
   let autoOpened = $state(false)
   let reasoningSummaryText = $state('')
   let showReasoning = $state(false)
-  let lastSyncedEditingId = $state(null)
+  let lastSyncedEditingId = $state<number | null>(null)
   const EDIT_GROW_OPTS = { maxHeight: Number.POSITIVE_INFINITY, minHeight: 32 }
 
 function isImageAttachment(attachment) {

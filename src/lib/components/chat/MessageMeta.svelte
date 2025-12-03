@@ -1,9 +1,20 @@
-<script>
-  import { IconPerson, IconSmartToy, IconTune } from '../../icons.js'
-  const props = $props()
+<script lang="ts">
+  import { IconPerson, IconSmartToy, IconTune } from '../../icons'
+  import type { MessageRole } from '../../types'
+
+  interface Props {
+    role: MessageRole
+    label?: string
+    locked?: boolean
+    debug?: boolean
+    messageId?: number
+    onSetRole?: (role: MessageRole) => void
+  }
+
+  const props: Props = $props()
   let open = $state(false)
-  let groupEl = $state(null)
-  let triggerEl = $state(null)
+  let groupEl = $state<HTMLDivElement | null>(null)
+  let triggerEl = $state<HTMLButtonElement | null>(null)
   const menuId = `role-menu-${props.messageId ?? 'unknown'}`
 
   function toggleMenu() {

@@ -1,0 +1,300 @@
+import {
+  normalizeReasoning,
+  normalizeVerbosity,
+  normalizeReasoningSummary,
+  parseMaxTokens,
+  parseTopP,
+  parseTemperature,
+  parseThinkingBudgetTokens
+} from './validation.js';
+import type {
+  Preset,
+  PresetFields,
+  Settings,
+  ChatSettings,
+  ReasoningEffort,
+  TextVerbosity,
+  ReasoningSummary
+} from '../types/index.js';
+import { isPlainObject } from '../types/index.js';
+
+export const DEFAULT_SYSTEM_PROMPT = 'You are a helpful assistant.';
+
+export const DEFAULT_PRESET_FIELDS: PresetFields = {
+  model: 'gpt-5',
+  streaming: true,
+  maxOutputTokens: null,
+  topP: null,
+  temperature: null,
+  reasoningEffort: 'none',
+  textVerbosity: 'medium',
+  reasoningSummary: 'auto',
+  thinkingEnabled: false,
+  thinkingBudgetTokens: null,
+  connectionId: null,
+  systemPrompt: DEFAULT_SYSTEM_PROMPT,
+};
+
+export function generatePresetId(): string {
+  return `preset_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function sanitizeName(name: unknown, index: number): string {
+  if (typeof name === 'string' && name.trim()) return name.trim();
+  return `Preset ${index + 1}`;
+}
+
+function resolveConnectionId(
+  candidate: unknown,
+  allowedConnectionIds: string[] = [],
+  fallbackConnectionId: string | null = null
+): string | null {
+  const trimmed = typeof candidate === 'string' && candidate.trim() ? candidate.trim() : null;
+  if (!allowedConnectionIds || !allowedConnectionIds.length) {
+    return trimmed ?? fallbackConnectionId ?? null;
+  }
+  if (trimmed && allowedConnectionIds.includes(trimmed)) {
+    return trimmed;
+  }
+  return allowedConnectionIds.includes(fallbackConnectionId ?? '') 
+    ? fallbackConnectionId 
+    : (allowedConnectionIds[0] || null);
+}
+
+export interface NormalizePresetOptions {
+  generateId?: boolean;
+  allowedConnectionIds?: string[];
+  fallbackConnectionId?: string | null;
+  defaultSystemPrompt?: string;
+}
+
+export function normalizePreset(
+  raw: unknown,
+  index: number = 0,
+  options: NormalizePresetOptions = {}
+): Preset {
+  const {
+    generateId = false,
+    allowedConnectionIds = [],
+    fallbackConnectionId = null,
+    defaultSystemPrompt = DEFAULT_SYSTEM_PROMPT,
+  } = options;
+  
+  const base = raw && typeof raw === 'object' ? { ...(raw as Record<string, unknown>) } : {};
+  const idCandidate = (typeof base.id === 'string' && (base.id as string).trim()) ? (base.id as string).trim() : null;
+  const id = generateId
+    ? (idCandidate ?? generatePresetId())
+    : (idCandidate ?? null);
+  // Only include name if it was provided or if generateId is true (default behavior for list)
+  const hasName = typeof base.name === 'string' && (base.name as string).trim();
+  const name = hasName ? (base.name as string).trim() : (generateId ? sanitizeName(base.name, index) : undefined);
+  const model = (typeof base.model === 'string' && (base.model as string).trim()) 
+    ? (base.model as string).trim() 
+    : DEFAULT_PRESET_FIELDS.model;
+  const streaming = typeof base.streaming === 'boolean' ? base.streaming : DEFAULT_PRESET_FIELDS.streaming;
+  const maxOutputTokens = parseMaxTokens(base.maxOutputTokens);
+  const topP = parseTopP(base.topP);
+  const temperature = parseTemperature(base.temperature);
+  const reasoningEffort = normalizeReasoning(base.reasoningEffort);
+  const textVerbosity = normalizeVerbosity(base.textVerbosity);
+  const reasoningSummary = normalizeReasoningSummary(base.reasoningSummary);
+  const thinkingEnabled = !!base.thinkingEnabled;
+  const thinkingBudgetTokens = parseThinkingBudgetTokens(base.thinkingBudgetTokens);
+  const connectionId = resolveConnectionId(base.connectionId, allowedConnectionIds, fallbackConnectionId);
+  const systemPrompt = typeof base.systemPrompt === 'string' ? base.systemPrompt : defaultSystemPrompt;
+  
+  const result: Preset = {
+    id,
+    model,
+    streaming,
+    maxOutputTokens: maxOutputTokens ?? null,
+    topP: topP ?? null,
+    temperature: temperature ?? null,
+    reasoningEffort,
+    textVerbosity,
+    reasoningSummary,
+    thinkingEnabled,
+    thinkingBudgetTokens,
+    connectionId,
+    systemPrompt,
+  };
+  
+  // Only include name if it was explicitly provided or if generating for a list
+  if (name !== undefined) {
+    result.name = name;
+  } else if (generateId) {
+    result.name = sanitizeName(base.name, index);
+  }
+  
+  return result;
+}
+
+export function makeDefaultPreset(connectionId: string | null = null): Preset {
+  return {
+    id: 'preset-default',
+    name: 'Default',
+    ...DEFAULT_PRESET_FIELDS,
+    connectionId,
+  };
+}
+
+export interface EnsurePresetListOptions {
+  allowedConnectionIds?: string[];
+  fallbackConnectionId?: string | null;
+}
+
+export function ensurePresetList(
+  list: unknown,
+  options: EnsurePresetListOptions = {}
+): Preset[] {
+  const { allowedConnectionIds = [], fallbackConnectionId = null } = options;
+  const arr = Array.isArray(list) ? list : [];
+  const normalized = arr
+    .map((item, index) => normalizePreset(item, index, {
+      generateId: true,
+      allowedConnectionIds,
+      fallbackConnectionId,
+    }))
+    .filter(Boolean);
+
+  if (!normalized.length) {
+    return [makeDefaultPreset(fallbackConnectionId)];
+  }
+
+  const seen = new Set<string>();
+  return normalized.map((preset) => {
+    let id = preset.id;
+    while (seen.has(id)) {
+      id = generatePresetId();
+    }
+    seen.add(id);
+    return { ...preset, id };
+  });
+}
+
+export interface DeriveDefaultPresetOptions {
+  fallbackConnectionId?: string | null;
+  allowedConnectionIds?: string[];
+}
+
+export function deriveDefaultPreset(
+  parsed: Record<string, unknown> | null,
+  options: DeriveDefaultPresetOptions = {}
+): Preset {
+  const fallbackConnectionId = options?.fallbackConnectionId || null;
+  const allowedConnectionIds = Array.isArray(options?.allowedConnectionIds) ? options.allowedConnectionIds : [];
+  
+  const defaultChat = (parsed?.defaultChat && typeof parsed.defaultChat === 'object') 
+    ? parsed.defaultChat as Record<string, unknown> 
+    : {};
+    
+  const candidate = {
+    id: 'preset-default',
+    name: 'Default',
+    model: (defaultChat?.model as string) || (parsed?.model as string) || DEFAULT_PRESET_FIELDS.model,
+    streaming: typeof defaultChat?.streaming === 'boolean'
+      ? defaultChat.streaming
+      : DEFAULT_PRESET_FIELDS.streaming,
+    maxOutputTokens: (defaultChat?.maxOutputTokens as number | null) ?? null,
+    topP: (defaultChat?.topP as number | null) ?? null,
+    temperature: (defaultChat?.temperature as number | null) ?? null,
+    reasoningEffort: (defaultChat?.reasoningEffort as string) || DEFAULT_PRESET_FIELDS.reasoningEffort,
+    textVerbosity: (defaultChat?.textVerbosity as string) || DEFAULT_PRESET_FIELDS.textVerbosity,
+    reasoningSummary: (defaultChat?.reasoningSummary as string) || DEFAULT_PRESET_FIELDS.reasoningSummary,
+    thinkingEnabled: !!defaultChat?.thinkingEnabled,
+    thinkingBudgetTokens: (defaultChat?.thinkingBudgetTokens as number | null) ?? null,
+    connectionId: (defaultChat?.connectionId as string)
+      || (parsed?.connectionId as string)
+      || fallbackConnectionId,
+    systemPrompt: typeof defaultChat?.systemPrompt === 'string'
+      ? defaultChat.systemPrompt
+      : DEFAULT_SYSTEM_PROMPT,
+  };
+  
+  return normalizePreset(candidate, 0, {
+    generateId: true,
+    allowedConnectionIds,
+    fallbackConnectionId,
+  });
+}
+
+export interface ResolvePresetPreferences {
+  presetId?: string;
+  preset?: Preset | Record<string, unknown>;
+}
+
+export function resolvePreset(
+  settings: Partial<Settings> | null,
+  preferences: ResolvePresetPreferences = {}
+): Preset {
+  const list = Array.isArray(settings?.presets) ? settings.presets : [];
+  const byId = new Map(list.map((preset) => [preset?.id, preset]));
+
+  const allowedConnectionIds = Array.isArray(settings?.connections)
+    ? settings.connections.map((c) => c?.id).filter((id): id is string => typeof id === 'string')
+    : [];
+  const fallbackConnectionId = typeof settings?.selectedConnectionId === 'string'
+    ? settings.selectedConnectionId
+    : null;
+
+  const pickById = (id: unknown): Preset | undefined => 
+    (typeof id === 'string' ? byId.get(id) : undefined);
+
+  let chosen = pickById(preferences?.presetId);
+  if (!chosen && preferences?.preset && typeof preferences.preset === 'object') {
+    const presetObj = preferences.preset as Record<string, unknown>;
+    chosen = pickById(presetObj.id) || (preferences.preset as Preset);
+  }
+  if (!chosen) {
+    chosen = pickById(settings?.selectedPresetId);
+  }
+  if (!chosen) {
+    chosen = list[0];
+  }
+
+  if (!chosen) {
+    return makeDefaultPreset(fallbackConnectionId);
+  }
+
+  return normalizePreset(chosen, 0, {
+    allowedConnectionIds,
+    fallbackConnectionId,
+  });
+}
+
+export interface ComputeConnectionIdOptions {
+  preset?: Partial<Preset> | null;
+  settings?: Partial<Settings> | null;
+  fallbackConnectionId?: string | null;
+}
+
+export function computeConnectionId(options: ComputeConnectionIdOptions = {}): string | null {
+  const { preset, settings, fallbackConnectionId = null } = options;
+  const presetConn = typeof preset?.connectionId === 'string' && preset.connectionId.trim()
+    ? preset.connectionId.trim()
+    : null;
+  if (presetConn) return presetConn;
+  const settingsConn = typeof settings?.selectedConnectionId === 'string' && settings.selectedConnectionId.trim()
+    ? settings.selectedConnectionId.trim()
+    : null;
+  if (settingsConn) return settingsConn;
+  return fallbackConnectionId;
+}
+
+export function buildChatSettings(preset: Preset, settings: Partial<Settings> | null): ChatSettings {
+  return {
+    model: preset.model,
+    streaming: preset.streaming,
+    presetId: preset.id,
+    maxOutputTokens: preset.maxOutputTokens,
+    topP: preset.topP,
+    temperature: preset.temperature,
+    reasoningEffort: preset.reasoningEffort,
+    textVerbosity: preset.textVerbosity,
+    reasoningSummary: preset.reasoningSummary,
+    thinkingEnabled: !!preset.thinkingEnabled,
+    thinkingBudgetTokens: parseThinkingBudgetTokens(preset.thinkingBudgetTokens),
+    connectionId: computeConnectionId({ preset, settings }),
+  };
+}
+
