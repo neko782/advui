@@ -30,4 +30,5 @@ export { default as IconDescription } from '~icons/material-symbols/description-
 export { default as IconDownload } from '~icons/material-symbols/download-rounded'
 export { default as IconUpload } from '~icons/material-symbols/upload-rounded'
 export { default as IconLayers } from '~icons/material-symbols/layers-rounded'
+export { default as IconDragHandle } from '~icons/material-symbols/drag-indicator'
 

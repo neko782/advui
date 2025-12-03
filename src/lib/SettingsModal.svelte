@@ -2,7 +2,7 @@
   import { loadSettings, saveSettings } from './settingsStore'
   import { setModelsCache, loadModelsCache, loadAllModelCaches } from './modelsStore'
   import { listModelsWithKey } from './openaiClient'
-  import { IconClose, IconAdd, IconVisibility, IconVisibilityOff, IconAutorenew, IconDelete, IconDownload, IconUpload } from './icons'
+  import { IconClose, IconAdd, IconVisibility, IconVisibilityOff, IconAutorenew, IconDelete, IconDownload, IconUpload, IconDragHandle } from './icons'
   import { getThemeState, setThemeMode, subscribeTheme } from './themeStore'
   import { exportAllData, importAllData, importChat } from './utils/exportImport'
   import { onMount } from 'svelte'
@@ -50,6 +50,13 @@
   let activePresetId = $state('')
   let activeConnectionId = $state('')
   let expandedPresetGroups = $state<{ general: boolean, sampling: boolean, reasoning: boolean }>({ general: false, sampling: false, reasoning: false })
+  
+  // Drag and drop state
+  let draggedConnectionId = $state<string | null>(null)
+  let draggedPresetId = $state<string | null>(null)
+  let dragOverConnectionId = $state<string | null>(null)
+  let dragOverPresetId = $state<string | null>(null)
+  
   const TABS = [
     { id: 'general', label: 'General' },
     { id: 'connection', label: 'Connections' },
@@ -361,6 +368,90 @@
     refreshMessages = msgs
     if (refreshingConnectionId === id) refreshingConnectionId = ''
     persistSettings()
+  }
+
+  function reorderConnections(fromId: string, toId: string) {
+    if (fromId === toId) return
+    const list = Array.isArray(local?.connections) ? local.connections.slice() : []
+    const fromIndex = list.findIndex(c => c.id === fromId)
+    const toIndex = list.findIndex(c => c.id === toId)
+    if (fromIndex < 0 || toIndex < 0) return
+    const [moved] = list.splice(fromIndex, 1)
+    list.splice(toIndex, 0, moved)
+    local.connections = list
+    persistSettings()
+  }
+
+  function reorderPresets(fromId: string, toId: string) {
+    if (fromId === toId) return
+    const list = Array.isArray(local?.presets) ? local.presets.slice() : []
+    const fromIndex = list.findIndex(p => p.id === fromId)
+    const toIndex = list.findIndex(p => p.id === toId)
+    if (fromIndex < 0 || toIndex < 0) return
+    const [moved] = list.splice(fromIndex, 1)
+    list.splice(toIndex, 0, moved)
+    local.presets = list
+    persistSettings()
+  }
+
+  function handleConnectionDragStart(e: DragEvent, id: string) {
+    draggedConnectionId = id
+    e.dataTransfer!.effectAllowed = 'move'
+    e.dataTransfer!.setData('text/plain', id)
+  }
+
+  function handleConnectionDragOver(e: DragEvent, id: string) {
+    e.preventDefault()
+    e.dataTransfer!.dropEffect = 'move'
+    dragOverConnectionId = id
+  }
+
+  function handleConnectionDragLeave() {
+    dragOverConnectionId = null
+  }
+
+  function handleConnectionDrop(e: DragEvent, toId: string) {
+    e.preventDefault()
+    if (draggedConnectionId && draggedConnectionId !== toId) {
+      reorderConnections(draggedConnectionId, toId)
+    }
+    draggedConnectionId = null
+    dragOverConnectionId = null
+  }
+
+  function handleConnectionDragEnd() {
+    draggedConnectionId = null
+    dragOverConnectionId = null
+  }
+
+  function handlePresetDragStart(e: DragEvent, id: string) {
+    draggedPresetId = id
+    e.dataTransfer!.effectAllowed = 'move'
+    e.dataTransfer!.setData('text/plain', id)
+  }
+
+  function handlePresetDragOver(e: DragEvent, id: string) {
+    e.preventDefault()
+    e.dataTransfer!.dropEffect = 'move'
+    dragOverPresetId = id
+  }
+
+  function handlePresetDragLeave() {
+    dragOverPresetId = null
+  }
+
+  function handlePresetDrop(e: DragEvent, toId: string) {
+    e.preventDefault()
+    if (draggedPresetId && draggedPresetId !== toId) {
+      reorderPresets(draggedPresetId, toId)
+    }
+    draggedPresetId = null
+    dragOverPresetId = null
+  }
+
+  function handlePresetDragEnd() {
+    draggedPresetId = null
+    dragOverPresetId = null
   }
 
   async function handleExportAllData() {
@@ -682,169 +773,215 @@
             <section class="group">
               <div class="group-head">
                 <div class="group-title">Connections</div>
-                <button type="button" class="icon-btn" title="Add connection" aria-label="Add connection" onclick={addConnection}>
+                <button type="button" class="icon-btn add-btn" title="Add connection" aria-label="Add connection" onclick={addConnection}>
                   <IconAdd style="font-size: 20px;" />
                 </button>
               </div>
-              <div class="preset-strip connection-strip">
+              <p class="hint section-hint">Manage your API connections. Drag to reorder.</p>
+              <div class="item-list">
                 {#each (local?.connections || []) as connection (connection.id)}
-                  <button
-                    type="button"
-                    class={`preset-pill ${connection.id === activeConnectionId ? 'active' : ''}`}
-                    onclick={() => selectConnection(connection.id)}
+                  <div
+                    class="list-item {connection.id === activeConnectionId ? 'active' : ''} {draggedConnectionId === connection.id ? 'dragging' : ''} {dragOverConnectionId === connection.id && draggedConnectionId !== connection.id ? 'drag-over' : ''}"
+                    draggable="true"
+                    ondragstart={(e) => handleConnectionDragStart(e, connection.id)}
+                    ondragover={(e) => handleConnectionDragOver(e, connection.id)}
+                    ondragleave={handleConnectionDragLeave}
+                    ondrop={(e) => handleConnectionDrop(e, connection.id)}
+                    ondragend={handleConnectionDragEnd}
+                    role="listitem"
                   >
-                    <span class="preset-pill-name">{connection?.name || connection?.id || 'Connection'}</span>
-                  </button>
+                    <button class="drag-handle" aria-label="Drag to reorder">
+                      <IconDragHandle style="font-size: 20px;" />
+                    </button>
+                    <button
+                      type="button"
+                      class="item-content"
+                      onclick={() => selectConnection(connection.id)}
+                    >
+                      <span class="item-name">{connection?.name || connection?.id || 'Connection'}</span>
+                      <span class="item-meta">{connection?.apiBaseUrl || 'Default endpoint'}</span>
+                    </button>
+                    {#if (local?.connections?.length || 0) > 1}
+                      <button
+                        type="button"
+                        class="item-delete"
+                        onclick={() => removeConnection(connection.id)}
+                        title="Delete connection"
+                        aria-label="Delete connection"
+                      >
+                        <IconDelete style="font-size: 18px;" />
+                      </button>
+                    {/if}
+                  </div>
                 {/each}
               </div>
               {#if activeConnection && connectionFormReady}
-                <label class="field">
-                  <span>Name</span>
-                  <input
-                    type="text"
-                    placeholder="Connection name"
-                    value={activeConnection.name || ''}
-                    oninput={(event) => updateActiveConnection({ name: event.currentTarget.value })}
-                    aria-label="Connection name"
-                    autocomplete="off"
-                    data-1p-ignore
-                    data-lpignore="true"
-                  />
-                </label>
-                <label class="field">
-                  <span>API Key</span>
-                  <div class="row">
+                <div class="form-section">
+                  <div class="form-section-title">Edit: {activeConnection.name || 'Connection'}</div>
+                  <label class="field">
+                    <span>Name</span>
                     <input
                       type="text"
-                      placeholder="sk-..."
-                      value={activeConnection.apiKey || ''}
+                      placeholder="Connection name"
+                      value={activeConnection.name || ''}
+                      oninput={(event) => updateActiveConnection({ name: event.currentTarget.value })}
+                      aria-label="Connection name"
                       autocomplete="off"
-                      oninput={(event) => updateActiveConnection({ apiKey: event.currentTarget.value })}
-                      aria-label="API key"
                       data-1p-ignore
                       data-lpignore="true"
-                      data-form-type="other"
-                      style={revealKey ? '' : '-webkit-text-security: disc; font-family: text-security-disc;'}
-                      inputmode="text"
                     />
-                    <button class="icon-btn" title={revealKey ? 'Hide key' : 'Show key'} onclick={() => (revealKey = !revealKey)} aria-label={revealKey ? 'Hide key' : 'Show key'}>
-                      {#if revealKey}
-                        <IconVisibilityOff style="font-size: 20px;" />
-                      {:else}
-                        <IconVisibility style="font-size: 20px;" />
-                      {/if}
-                    </button>
-                    <button class="icon-btn" title="Refresh models" onclick={() => refreshModelsNow(activeConnection.id)} aria-label="Refresh models" disabled={activeConnectionRefreshing}>
-                      <IconAutorenew style="font-size: 20px;" />
-                    </button>
-                  </div>
-                </label>
-                <p class="hint">Your key is stored locally in this browser.</p>
-                <label class="field">
-                  <span>API base URL</span>
-                  <input
-                    type="text"
-                    placeholder={DEFAULT_API_BASE_URL}
-                    value={activeConnection.apiBaseUrl || ''}
-                    autocomplete="off"
-                    inputmode="url"
-                    oninput={(event) => updateActiveConnection({ apiBaseUrl: event.currentTarget.value })}
-                    aria-label="API base URL"
-                    data-1p-ignore
-                    data-lpignore="true"
-                  />
-                </label>
-                <p class="hint">Leave blank to use the default OpenAI endpoint.</p>
-                <label class="field">
-                  <span>API</span>
-                  <select
-                    value={activeConnection.apiMode || 'responses'}
-                    onchange={(event) => updateActiveConnection({ apiMode: event.currentTarget.value })}
-                    aria-label="API mode"
-                  >
-                    <option value="responses">Responses API</option>
-                    <option value="chat_completions">Chat Completions API</option>
-                  </select>
-                </label>
-                {#if (local?.connections?.length || 0) > 1}
-                  <div class="connection-actions">
-                    <button
-                      type="button"
-                      class="preset-delete"
-                      onclick={() => removeConnection(activeConnection.id)}
-                      title="Delete connection"
-                      aria-label="Delete connection"
+                  </label>
+                  <label class="field">
+                    <span>API Key</span>
+                    <div class="row">
+                      <input
+                        type="text"
+                        placeholder="sk-..."
+                        value={activeConnection.apiKey || ''}
+                        autocomplete="off"
+                        oninput={(event) => updateActiveConnection({ apiKey: event.currentTarget.value })}
+                        aria-label="API key"
+                        data-1p-ignore
+                        data-lpignore="true"
+                        data-form-type="other"
+                        style={revealKey ? '' : '-webkit-text-security: disc; font-family: text-security-disc;'}
+                        inputmode="text"
+                      />
+                      <button class="icon-btn" title={revealKey ? 'Hide key' : 'Show key'} onclick={() => (revealKey = !revealKey)} aria-label={revealKey ? 'Hide key' : 'Show key'}>
+                        {#if revealKey}
+                          <IconVisibilityOff style="font-size: 20px;" />
+                        {:else}
+                          <IconVisibility style="font-size: 20px;" />
+                        {/if}
+                      </button>
+                      <button class="icon-btn" title="Test connection & fetch models" onclick={() => refreshModelsNow(activeConnection.id)} aria-label="Refresh models" disabled={activeConnectionRefreshing}>
+                        <IconAutorenew style="font-size: 20px;" />
+                      </button>
+                    </div>
+                  </label>
+                  <p class="hint">Your key is stored locally in this browser.</p>
+                  <label class="field">
+                    <span>API base URL</span>
+                    <input
+                      type="text"
+                      placeholder={DEFAULT_API_BASE_URL}
+                      value={activeConnection.apiBaseUrl || ''}
+                      autocomplete="off"
+                      inputmode="url"
+                      oninput={(event) => updateActiveConnection({ apiBaseUrl: event.currentTarget.value })}
+                      aria-label="API base URL"
+                      data-1p-ignore
+                      data-lpignore="true"
+                    />
+                  </label>
+                  <p class="hint">Leave blank to use the default OpenAI endpoint.</p>
+                  <label class="field">
+                    <span>API</span>
+                    <select
+                      value={activeConnection.apiMode || 'responses'}
+                      onchange={(event) => updateActiveConnection({ apiMode: event.currentTarget.value })}
+                      aria-label="API mode"
                     >
-                      <IconDelete style="font-size: 18px;" />
-                      <span>Delete connection</span>
-                    </button>
-                  </div>
-                {/if}
-                {#if activeRefreshMsg}
-                  <p class="hint" aria-live="polite">{activeRefreshMsg}</p>
-                {/if}
+                      <option value="responses">Responses API</option>
+                      <option value="chat_completions">Chat Completions API</option>
+                    </select>
+                  </label>
+                  {#if activeRefreshMsg}
+                    <p class="hint status-msg" aria-live="polite">{activeRefreshMsg}</p>
+                  {/if}
+                </div>
               {/if}
             </section>
           {:else if activeTab === 'presets'}
             <section class="group presets">
               <div class="group-head">
                 <div class="group-title">Presets</div>
-                <button type="button" class="icon-btn" title="Add preset" aria-label="Add preset" onclick={addPreset}>
+                <button type="button" class="icon-btn add-btn" title="Add preset" aria-label="Add preset" onclick={addPreset}>
                   <IconAdd style="font-size: 20px;" />
                 </button>
               </div>
-              <div class="preset-strip">
+              <p class="hint section-hint">Configure model presets for different use cases. Drag to reorder.</p>
+              <div class="item-list">
                 {#each (local.presets || []) as preset (preset.id)}
-                  <button
-                    type="button"
-                    class={`preset-pill ${preset.id === activePresetId ? 'active' : ''}`}
-                    onclick={() => selectPreset(preset.id)}
+                  {@const presetConnection = (local?.connections || []).find(c => c.id === preset.connectionId)}
+                  <div
+                    class="list-item {preset.id === activePresetId ? 'active' : ''} {draggedPresetId === preset.id ? 'dragging' : ''} {dragOverPresetId === preset.id && draggedPresetId !== preset.id ? 'drag-over' : ''}"
+                    draggable="true"
+                    ondragstart={(e) => handlePresetDragStart(e, preset.id)}
+                    ondragover={(e) => handlePresetDragOver(e, preset.id)}
+                    ondragleave={handlePresetDragLeave}
+                    ondrop={(e) => handlePresetDrop(e, preset.id)}
+                    ondragend={handlePresetDragEnd}
+                    role="listitem"
                   >
-                    <span class="preset-pill-name">{preset.name || 'Untitled'}</span>
-                  </button>
+                    <button class="drag-handle" aria-label="Drag to reorder">
+                      <IconDragHandle style="font-size: 20px;" />
+                    </button>
+                    <button
+                      type="button"
+                      class="item-content"
+                      onclick={() => selectPreset(preset.id)}
+                    >
+                      <span class="item-name">{preset.name || 'Untitled'}</span>
+                      <span class="item-meta">{preset.model || 'No model'} · {presetConnection?.name || 'No connection'}</span>
+                    </button>
+                    {#if (local?.presets?.length || 0) > 1}
+                      <button
+                        type="button"
+                        class="item-delete"
+                        onclick={() => removePreset(preset.id)}
+                        title="Delete preset"
+                        aria-label="Delete preset"
+                      >
+                        <IconDelete style="font-size: 18px;" />
+                      </button>
+                    {/if}
+                  </div>
                 {/each}
               </div>
               {#if activePreset}
-                <label class="field">
-                  <span>Name</span>
-                  <input
-                    type="text"
-                    placeholder="Preset name"
-                    value={activePreset.name || ''}
-                    oninput={(event) => updateActivePreset({ name: event.currentTarget.value })}
-                    aria-label="Preset name"
-                  />
-                </label>
-                <label class="field">
-                  <span>System prompt</span>
-                  <textarea
-                    rows="3"
-                    placeholder={DEFAULT_SYSTEM_PROMPT}
-                    value={typeof activePreset.systemPrompt === 'string' ? activePreset.systemPrompt : ''}
-                    oninput={(event) => updateActivePreset({ systemPrompt: event.currentTarget.value })}
-                    aria-label="System prompt"
-                  ></textarea>
-                </label>
-                <label class="field">
-                  <span>Model</span>
-                  <input
-                    type="text"
-                    placeholder="gpt-5"
-                    value={activePreset.model || ''}
-                    oninput={(event) => updateActivePreset({ model: event.currentTarget.value })}
-                    list="preset-model-suggestions"
-                    aria-label="Model"
-                  />
-                  {#if activePresetModels?.length}
-                    <datalist id="preset-model-suggestions">
-                      {#each activePresetModels as mid}
-                        <option value={mid}>{mid}</option>
-                      {/each}
-                    </datalist>
-                  {/if}
-                </label>
+                <div class="form-section">
+                  <div class="form-section-title">Edit: {activePreset.name || 'Preset'}</div>
+                  <label class="field">
+                    <span>Name</span>
+                    <input
+                      type="text"
+                      placeholder="Preset name"
+                      value={activePreset.name || ''}
+                      oninput={(event) => updateActivePreset({ name: event.currentTarget.value })}
+                      aria-label="Preset name"
+                    />
+                  </label>
+                  <label class="field">
+                    <span>System prompt</span>
+                    <textarea
+                      rows="3"
+                      placeholder={DEFAULT_SYSTEM_PROMPT}
+                      value={typeof activePreset.systemPrompt === 'string' ? activePreset.systemPrompt : ''}
+                      oninput={(event) => updateActivePreset({ systemPrompt: event.currentTarget.value })}
+                      aria-label="System prompt"
+                    ></textarea>
+                  </label>
+                  <label class="field">
+                    <span>Model</span>
+                    <input
+                      type="text"
+                      placeholder="gpt-5"
+                      value={activePreset.model || ''}
+                      oninput={(event) => updateActivePreset({ model: event.currentTarget.value })}
+                      list="preset-model-suggestions"
+                      aria-label="Model"
+                    />
+                    {#if activePresetModels?.length}
+                      <datalist id="preset-model-suggestions">
+                        {#each activePresetModels as mid}
+                          <option value={mid}>{mid}</option>
+                        {/each}
+                      </datalist>
+                    {/if}
+                  </label>
 
-                <div class="preset-group-divider"></div>
+                  <div class="preset-group-divider"></div>
                 <button class="preset-group-header" onclick={() => togglePresetGroup('general')}>
                   <span>General</span>
                   <svg class={`chevron ${expandedPresetGroups.general ? 'expanded' : ''}`} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -987,19 +1124,7 @@
                     </label>
                   {/if}
                 {/if}
-
-                {#if (local?.presets?.length || 0) > 1}
-                  <button
-                    type="button"
-                    class="preset-delete"
-                    onclick={() => activePreset?.id && removePreset(activePreset.id)}
-                    title="Delete preset"
-                    aria-label="Delete preset"
-                  >
-                    <IconDelete style="font-size: 18px;" />
-                    <span>Delete preset</span>
-                  </button>
-                {/if}
+                </div>
               {/if}
             </section>
           {:else if activeTab === 'developer'}
@@ -1131,6 +1256,154 @@
   .chevron.expanded {
     transform: rotate(180deg);
   }
+  /* Item list for connections and presets */
+  .section-hint { margin: 0 0 4px; }
+  .item-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-bottom: 16px;
+  }
+  .list-item {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px;
+    border-radius: 10px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    transition: all 0.15s ease;
+  }
+  .list-item:hover {
+    border-color: color-mix(in srgb, var(--border) 70%, var(--accent) 30%);
+  }
+  .list-item.active {
+    border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 8%, var(--bg) 92%);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 20%, transparent 80%);
+  }
+  .list-item.dragging {
+    opacity: 0.5;
+    border-style: dashed;
+  }
+  .list-item.drag-over {
+    border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 15%, var(--bg) 85%);
+    transform: scale(1.01);
+  }
+  .drag-handle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 36px;
+    color: var(--muted);
+    cursor: grab;
+    border: none;
+    background: transparent;
+    border-radius: 6px;
+    flex-shrink: 0;
+    transition: color 0.15s ease, background 0.15s ease;
+  }
+  .drag-handle:hover {
+    color: var(--text);
+    background: color-mix(in srgb, var(--border) 50%, transparent);
+  }
+  .drag-handle:active {
+    cursor: grabbing;
+    color: var(--accent);
+  }
+  .item-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+    padding: 6px 8px;
+    text-align: left;
+    border: none;
+    background: transparent;
+    border-radius: 6px;
+    min-width: 0;
+    cursor: pointer;
+    transition: background 0.15s ease;
+  }
+  .item-content:hover {
+    background: color-mix(in srgb, var(--border) 30%, transparent);
+  }
+  .item-name {
+    font-weight: 500;
+    font-size: 0.95rem;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+  }
+  .item-meta {
+    font-size: 0.8rem;
+    color: var(--muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+  }
+  .item-delete {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    color: var(--muted);
+    border: none;
+    background: transparent;
+    border-radius: 6px;
+    flex-shrink: 0;
+    cursor: pointer;
+    transition: color 0.15s ease, background 0.15s ease;
+  }
+  .item-delete:hover {
+    color: #d64545;
+    background: rgba(214, 69, 69, 0.1);
+  }
+  
+  /* Form section styling */
+  .form-section {
+    display: grid;
+    gap: 8px;
+    padding: 16px;
+    background: color-mix(in srgb, var(--panel) 50%, var(--bg) 50%);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+  }
+  .form-section-title {
+    font-weight: 600;
+    font-size: 0.9rem;
+    color: var(--text);
+    margin-bottom: 4px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .status-msg {
+    padding: 8px 12px;
+    background: color-mix(in srgb, var(--accent) 10%, transparent);
+    border-radius: 8px;
+    border: 1px solid color-mix(in srgb, var(--accent) 20%, transparent);
+  }
+  
+  /* Add button styling */
+  .add-btn {
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
+    border-color: color-mix(in srgb, var(--accent) 30%, transparent);
+    color: var(--accent);
+  }
+  .add-btn:hover {
+    background: color-mix(in srgb, var(--accent) 20%, transparent);
+    border-color: var(--accent);
+  }
+  
+  /* Legacy styles kept for backward compatibility */
   .preset-strip { display: flex; flex-wrap: wrap; gap: 6px; }
   .preset-pill { border: 1px solid var(--border); border-radius: 999px; padding: 4px 10px; background: var(--bg); color: var(--text); cursor: pointer; display: inline-flex; align-items: center; gap: 4px; font-size: .85rem; transition: background-color .15s ease, color .15s ease, border-color .15s ease; }
   .preset-pill:hover { border-color: color-mix(in srgb, var(--border) 55%, var(--accent) 45%); }
