@@ -28,6 +28,7 @@
     onEdit?: (id: number) => void
     onMoveDown?: (id: number) => void
     onMoveUp?: (id: number) => void
+    onFork?: (id: number) => void
     onDebugFuckBranch?: (id: number) => void
   }
 
@@ -70,6 +71,7 @@
       onEdit={props.onEdit}
       onMoveDown={props.onMoveDown}
       onMoveUp={props.onMoveUp}
+      onFork={props.onFork}
       onDebugFuckBranch={props.onDebugFuckBranch}
     />
   {/each}

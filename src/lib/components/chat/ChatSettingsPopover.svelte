@@ -132,12 +132,6 @@
   </button>
   <div class="send-menu chat-settings-menu" role="menu" aria-label="Chat settings" bind:this={menu}>
     <!-- General group -->
-    <button class="group-header" onclick={() => toggleGroup('general')}>
-      <span>General</span>
-      <svg class={`chevron ${expandedGroups.general ? 'expanded' : ''}`} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <polyline points="6 9 12 15 18 9"></polyline>
-      </svg>
-    </button>
     {#if expandedGroups.general}
       <div class="menu-section">
         <label class="switch" title="Stream">
@@ -179,16 +173,16 @@
         </select>
       </div>
     {/if}
+    <button class="group-header" onclick={() => toggleGroup('general')}>
+      <span>General</span>
+      <svg class={`chevron ${expandedGroups.general ? 'expanded' : ''}`} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <polyline points="6 9 12 15 18 9"></polyline>
+      </svg>
+    </button>
 
     <div class="group-divider"></div>
 
     <!-- Sampling group -->
-    <button class="group-header" onclick={() => toggleGroup('sampling')}>
-      <span>Sampling</span>
-      <svg class={`chevron ${expandedGroups.sampling ? 'expanded' : ''}`} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <polyline points="6 9 12 15 18 9"></polyline>
-      </svg>
-    </button>
     {#if expandedGroups.sampling}
       <div class="menu-section">
         <div class="menu-label">Top P</div>
@@ -219,16 +213,16 @@
         />
       </div>
     {/if}
+    <button class="group-header" onclick={() => toggleGroup('sampling')}>
+      <span>Sampling</span>
+      <svg class={`chevron ${expandedGroups.sampling ? 'expanded' : ''}`} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <polyline points="6 9 12 15 18 9"></polyline>
+      </svg>
+    </button>
 
     <div class="group-divider"></div>
 
     <!-- Reasoning group -->
-    <button class="group-header" onclick={() => toggleGroup('reasoning')}>
-      <span>Reasoning</span>
-      <svg class={`chevron ${expandedGroups.reasoning ? 'expanded' : ''}`} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <polyline points="6 9 12 15 18 9"></polyline>
-      </svg>
-    </button>
     {#if expandedGroups.reasoning}
       <div class="menu-section">
         <div class="menu-label">Reasoning effort</div>
@@ -285,6 +279,12 @@
         </div>
       {/if}
     {/if}
+    <button class="group-header" onclick={() => toggleGroup('reasoning')}>
+      <span>Reasoning</span>
+      <svg class={`chevron ${expandedGroups.reasoning ? 'expanded' : ''}`} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <polyline points="6 9 12 15 18 9"></polyline>
+      </svg>
+    </button>
 
     <div class="group-divider"></div>
 

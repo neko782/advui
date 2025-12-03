@@ -823,6 +823,17 @@
     editingText = ''
   }
 
+  function forkMessage(id) {
+    if (locked) return
+    const loc = findNodeByMessageId(nodes, id)
+    const msg = loc?.node?.variants?.[loc.index]
+    if (!msg || msg.typing) return
+    const result = applyEditBranch(nodes, id, msg.content || '', nextId)
+    nodes = result.nodes
+    nextId = result.nextId
+    persistNow()
+  }
+
   // Send message
   async function sendWithRole(role = 'user') {
     if (locked || sending) return
@@ -1491,6 +1502,7 @@
     onEdit={(id) => editMessage(id)}
     onMoveDown={(id) => handleMoveDown(id)}
     onMoveUp={(id) => handleMoveUp(id)}
+    onFork={(id) => forkMessage(id)}
     onDebugFuckBranch={(id) => debugFuckUpBranch(id)}
   />
 

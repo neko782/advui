@@ -27,6 +27,7 @@
     onEdit?: (id: number) => void
     onMoveDown?: (id: number) => void
     onMoveUp?: (id: number) => void
+    onFork?: (id: number) => void
     onDebugFuckBranch?: (id: number) => void
   }
 
@@ -85,6 +86,11 @@
     <button class="action-btn" onclick={() => props.onEdit?.(m.id)} aria-label="Edit message" title="Edit" disabled={props.locked || m.typing}>
       <IconEdit style="font-size: 20px;" />
     </button>
+    {#if m.role !== 'assistant'}
+      <button class="action-btn" onclick={() => props.onFork?.(m.id)} aria-label="Fork message" title="Fork" disabled={props.locked || m.typing}>
+        <IconCallSplit style="font-size: 20px;" />
+      </button>
+    {/if}
     <button class="action-btn" onclick={() => props.onMoveDown?.(m.id)} aria-label="Move down" title="Down" disabled={props.locked || m.typing || props.index === ((props.visibleCount || props.total || 1) - 1)}>
       <IconArrowDownward style="font-size: 20px;" />
     </button>
