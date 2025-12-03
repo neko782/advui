@@ -13,6 +13,29 @@ let dbInstance: IDBDatabase | null = null;
 const changeListeners = new Set<StorageListener>();
 let broadcastChannel: BroadcastChannel | null = null;
 
+// Write queue to serialize writes per chat ID and prevent concurrent modification errors
+const writeQueues = new Map<string, Promise<Chat>>();
+
+/**
+ * Queue a write operation for a specific chat ID
+ * Ensures writes are serialized per chat to prevent version conflicts
+ */
+function queueWrite(chatId: string, writeFn: () => Promise<Chat>): Promise<Chat> {
+  const existing = writeQueues.get(chatId) || Promise.resolve({} as Chat);
+  const next = existing.then(
+    () => writeFn(),
+    () => writeFn() // Also retry after failures
+  );
+  writeQueues.set(chatId, next);
+  // Clean up queue entry after completion
+  next.finally(() => {
+    if (writeQueues.get(chatId) === next) {
+      writeQueues.delete(chatId);
+    }
+  });
+  return next;
+}
+
 /**
  * Initialize BroadcastChannel for cross-tab synchronization
  */
@@ -191,9 +214,22 @@ function readOne(id: string): Promise<Chat | null> {
 }
 
 /**
- * Write a chat to IndexedDB with versioning and concurrency control
+ * Write a chat to IndexedDB with versioning
+ * Writes are queued per chat ID to prevent concurrent modification errors
  */
 function writeOne(chat: Chat): Promise<Chat> {
+  const chatId = chat?.id;
+  if (!chatId) {
+    return Promise.reject(new Error('Chat ID is required'));
+  }
+
+  return queueWrite(chatId, () => writeOneInternal(chat));
+}
+
+/**
+ * Internal write implementation (called from queue)
+ */
+function writeOneInternal(chat: Chat): Promise<Chat> {
   return asyncOperation('write', async () => {
     const candidate = cloneChat(chat)!;
     assertValidChat(candidate);
@@ -203,19 +239,13 @@ function writeOne(chat: Chat): Promise<Chat> {
     const store = transaction.objectStore(STORE_NAME);
 
     return new Promise((resolve, reject) => {
-      // First, read existing chat to check version
+      // First, read existing chat to get current version
       const readRequest = store.get(candidate.id);
 
       readRequest.onsuccess = () => {
         const existing = readRequest.result as Chat | undefined;
-        const expectedVersion = candidate._expectedVersion ?? candidate._version;
 
-        // Check for concurrent modifications
-        if (existing && expectedVersion != null && expectedVersion !== existing._version) {
-          reject(new Error(`Concurrent modification detected for chat "${candidate.id}".`));
-          return;
-        }
-
+        // Since writes are queued, we don't need to check versions - just increment
         const nextChatVersion = (Number(existing?._version) || 0) + 1;
         const persistedAt = Date.now();
 

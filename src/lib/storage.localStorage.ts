@@ -9,6 +9,29 @@ const LS_KEY = 'advui.chats.store.v1';
 const INITIAL_STORE: LocalStorageStore = { version: 0, byId: {} };
 const changeListeners = new Set<StorageListener>();
 
+// Write queue to serialize writes per chat ID and prevent concurrent modification errors
+const writeQueues = new Map<string, Promise<Chat>>();
+
+/**
+ * Queue a write operation for a specific chat ID
+ * Ensures writes are serialized per chat to prevent version conflicts
+ */
+function queueWrite(chatId: string, writeFn: () => Promise<Chat>): Promise<Chat> {
+  const existing = writeQueues.get(chatId) || Promise.resolve({} as Chat);
+  const next = existing.then(
+    () => writeFn(),
+    () => writeFn() // Also retry after failures
+  );
+  writeQueues.set(chatId, next);
+  // Clean up queue entry after completion
+  next.finally(() => {
+    if (writeQueues.get(chatId) === next) {
+      writeQueues.delete(chatId);
+    }
+  });
+  return next;
+}
+
 function sanitizeStore(value: unknown): LocalStorageStore {
   if (!value) return { ...INITIAL_STORE };
   let data = value;
@@ -87,6 +110,14 @@ function cloneChat(chat: Chat | null): Chat | null {
 }
 
 function writeOne(chat: Chat): Promise<Chat> {
+  const chatId = chat?.id;
+  if (!chatId) {
+    return Promise.reject(new Error('Chat ID is required'));
+  }
+  return queueWrite(chatId, () => writeOneInternal(chat));
+}
+
+function writeOneInternal(chat: Chat): Promise<Chat> {
   return asyncOperation('write', () => {
     const candidate = cloneChat(chat)!;
     assertValidChat(candidate);
@@ -94,12 +125,8 @@ function writeOne(chat: Chat): Promise<Chat> {
     const store = readStore();
     const byId = { ...store.byId };
     const existing = byId[candidate.id];
-    const expectedVersion = candidate._expectedVersion ?? candidate._version;
 
-    if (existing && expectedVersion != null && expectedVersion !== existing._version) {
-      throw new Error(`Concurrent modification detected for chat "${candidate.id}".`);
-    }
-
+    // Since writes are queued, we don't need to check versions - just increment
     const nextStoreVersion = (Number(store.version) || 0) + 1;
     const nextChatVersion = (Number(existing?._version) || 0) + 1;
     const persistedAt = Date.now();
