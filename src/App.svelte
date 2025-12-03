@@ -264,17 +264,15 @@
   />
   <div class="chat-pane">
     {#each (chats || []) as c (c.id)}
-      {#if selectedId === c.id}
-        <div class="chat-wrapper active">
-          <Chat
-            chatId={c.id}
-            onNewChat={onNewChat}
-            onChatUpdated={onChatUpdated}
-            settingsVersion={settingsVersion}
-            onGeneratingChange={onChatGeneratingChange}
-          />
-        </div>
-      {/if}
+      <div class="chat-wrapper {selectedId === c.id ? 'active' : 'hidden'}">
+        <Chat
+          chatId={c.id}
+          onNewChat={onNewChat}
+          onChatUpdated={onChatUpdated}
+          settingsVersion={settingsVersion}
+          onGeneratingChange={onChatGeneratingChange}
+        />
+      </div>
     {/each}
   </div>
   <div class="app-fade"></div>
@@ -305,6 +303,10 @@
     inset: 0;
     height: 100%;
     contain: layout style paint;
+  }
+  .chat-wrapper.hidden {
+    visibility: hidden;
+    pointer-events: none;
   }
   .app-fade { position: absolute; inset: 0; pointer-events: none; background: linear-gradient(180deg, transparent, transparent 35%, rgba(0,0,0,0.06) 100%); opacity: .18; mix-blend-mode: multiply; }
 </style>
