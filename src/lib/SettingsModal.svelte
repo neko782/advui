@@ -620,6 +620,7 @@
 </script>
 
 {#if props.open}
+  <svelte:window onkeydown={(e) => { if (e.key === 'Escape') close() }} />
   <button type="button" class="backdrop" aria-label="Close settings overlay" onclick={close}></button>
   <div
     class="modal"
@@ -628,7 +629,6 @@
     aria-label="Settings"
     tabindex="-1"
     onpointerdown={(event) => { if (event.target === event.currentTarget) close() }}
-    onkeydown={(event) => { if (event.key === 'Escape' && event.target === event.currentTarget) close() }}
   >
     <div class="panel">
       <header class="modal-head">
