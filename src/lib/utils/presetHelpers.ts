@@ -21,12 +21,12 @@ import { isPlainObject } from '../types/index.js';
 export const DEFAULT_SYSTEM_PROMPT = 'You are a helpful assistant.';
 
 export const DEFAULT_PRESET_FIELDS: PresetFields = {
-  model: 'gpt-5',
+  model: 'gpt-5.1',
   streaming: true,
   maxOutputTokens: null,
   topP: null,
   temperature: null,
-  reasoningEffort: 'none',
+  reasoningEffort: 'medium',
   textVerbosity: 'medium',
   reasoningSummary: 'auto',
   thinkingEnabled: false,
