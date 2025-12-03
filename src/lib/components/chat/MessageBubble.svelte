@@ -104,12 +104,16 @@ function attachmentMimeLabel(attachment) {
       try {
         const next = props.editingText ?? ''
         el.value = next
-        queueMicrotask(() => autoGrow(el, EDIT_GROW_OPTS))
-        el.focus()
-        const len = next.length
-        if (typeof el.setSelectionRange === 'function') {
-          el.setSelectionRange(len, len)
-        }
+        // Defer all DOM operations to ensure the element is fully ready
+        queueMicrotask(() => {
+          if (!el) return
+          autoGrow(el, EDIT_GROW_OPTS)
+          el.focus()
+          const len = (el.value ?? '').length
+          if (typeof el.setSelectionRange === 'function') {
+            el.setSelectionRange(len, len)
+          }
+        })
       } catch {}
     }
   })

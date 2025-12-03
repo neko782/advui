@@ -1,5 +1,6 @@
 <script lang="ts">
   import MessageItem from './MessageItem.svelte'
+  import { IconAdd } from '../../icons'
   import type { VisibleMessage, MessageRole } from '../../types'
 
   interface Props {
@@ -46,7 +47,7 @@
     {#if idx > 0}
       <div class="insert-zone" class:disabled={props.locked} role="button" tabindex={props.locked ? -1 : 0} aria-label="Insert message here" aria-disabled={props.locked} onclick={() => !props.locked && props.onInsertBetween?.(idx - 1)} onkeydown={(e) => !props.locked && (e.key === 'Enter' || e.key === ' ') && props.onInsertBetween?.(idx - 1)}>
         <div class="insert-line"></div>
-        <button class="insert-btn" type="button" tabindex="-1">+</button>
+        <span class="insert-btn" aria-hidden="true"><IconAdd style="font-size: 18px;" /></span>
         <div class="insert-line"></div>
       </div>
     {/if}
@@ -132,25 +133,13 @@
     opacity: 0.6;
   }
   .insert-btn {
-    appearance: none;
-    border: 1px solid var(--border);
-    background: var(--panel);
     color: var(--muted);
-    font-size: 14px;
-    font-weight: 500;
-    line-height: 1;
-    width: 22px;
-    height: 22px;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    transition: background 0.1s ease, color 0.1s ease, border-color 0.1s ease;
+    line-height: 0;
+    display: grid;
+    place-items: center;
+    transition: color 0.15s ease;
   }
   .insert-zone:hover .insert-btn, .insert-zone:focus-visible .insert-btn {
-    background: var(--accent);
-    color: #fff;
-    border-color: var(--accent);
+    color: var(--text);
   }
 </style>
