@@ -30,6 +30,7 @@
     onMoveUp?: (id: number) => void
     onFork?: (id: number) => void
     onDebugFuckBranch?: (id: number) => void
+    onInsertBetween?: (afterIndex: number) => void
   }
 
   const props: Props = $props()
@@ -41,7 +42,14 @@
 </script>
 
 <div class="messages" bind:this={listEl}>
-  {#each props.items as vm (`${props.chatId ?? ''}:${vm.m.id}`)}
+  {#each props.items as vm, idx (`${props.chatId ?? ''}:${vm.m.id}`)}
+    {#if idx > 0}
+      <div class="insert-zone" class:disabled={props.locked} role="button" tabindex={props.locked ? -1 : 0} aria-label="Insert message here" aria-disabled={props.locked} onclick={() => !props.locked && props.onInsertBetween?.(idx - 1)} onkeydown={(e) => !props.locked && (e.key === 'Enter' || e.key === ' ') && props.onInsertBetween?.(idx - 1)}>
+        <div class="insert-line"></div>
+        <button class="insert-btn" type="button" tabindex="-1">+</button>
+        <div class="insert-line"></div>
+      </div>
+    {/if}
     <MessageItem
       vm={vm}
       total={props.total}
@@ -99,4 +107,55 @@
     font-size: 16px; line-height: 1; padding: 2px 6px; cursor: pointer; border-radius: 6px;
   }
   .notice-close:hover { background: color-mix(in srgb, currentColor 10%, transparent); }
+
+  .insert-zone {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 4px 0;
+    margin: -2px 0;
+    cursor: pointer;
+    max-width: var(--page-max);
+    width: min(720px, 92%);
+    justify-self: center;
+  }
+  .insert-zone .insert-line,
+  .insert-zone .insert-btn { opacity: 0; transition: opacity 0.15s ease; }
+  .insert-zone:hover .insert-line,
+  .insert-zone:hover .insert-btn,
+  .insert-zone:focus-visible .insert-line,
+  .insert-zone:focus-visible .insert-btn { opacity: 1; }
+  .insert-zone:focus-visible { outline: none; }
+  .insert-zone.disabled { pointer-events: none; }
+  .insert-line {
+    flex: 1;
+    height: 1px;
+    background: var(--muted);
+    opacity: 0;
+  }
+  .insert-btn {
+    appearance: none;
+    border: 1px solid var(--muted);
+    background: transparent;
+    color: var(--muted);
+    font-size: 14px;
+    font-weight: 500;
+    line-height: 1;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background 0.1s ease, color 0.1s ease, border-color 0.1s ease, opacity 0.15s ease;
+    opacity: 0;
+  }
+  .insert-zone:hover .insert-btn, .insert-zone:focus-visible .insert-btn {
+    background: var(--accent);
+    color: #fff;
+    border-color: var(--accent);
+    opacity: 1;
+  }
 </style>

@@ -321,7 +321,7 @@ export async function respond(options: RespondOptions): Promise<GenerationRespon
   if (reasoningOptions?.effort) {
     chatRequest.reasoning_effort = reasoningOptions.effort;
   }
-  if (typeof textVerbosity === 'string' && textVerbosity) {
+  if (typeof textVerbosity === 'string' && textVerbosity && textVerbosity !== 'none') {
     request.text = { verbosity: textVerbosity };
   }
   const thinkingBudget = toIntOrNull(thinkingBudgetTokens);

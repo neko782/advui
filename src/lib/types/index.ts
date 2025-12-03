@@ -7,7 +7,7 @@ export type MessageRole = 'system' | 'user' | 'assistant' | 'tool';
 
 // Reasoning options
 export type ReasoningEffort = 'none' | 'minimal' | 'low' | 'medium' | 'high';
-export type TextVerbosity = 'low' | 'medium' | 'high';
+export type TextVerbosity = 'none' | 'low' | 'medium' | 'high';
 export type ReasoningSummary = 'none' | 'auto' | 'concise' | 'detailed';
 
 // API modes
@@ -372,6 +372,14 @@ export interface BranchAndSendResult {
   nextNodeId: number;
   typingVariantId?: number;
   history?: HistoryMessage[];
+}
+
+export interface InsertBetweenResult {
+  nodes: ChatNode[];
+  nextId: number;
+  nextNodeId: number;
+  insertedNodeId: number;
+  insertedMessageId: number;
 }
 
 // ============================================================================

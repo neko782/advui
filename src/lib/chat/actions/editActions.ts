@@ -1,7 +1,7 @@
-// Edit actions: commit, replace, branch
+// Edit actions: commit, replace, branch, insert
 import { buildVisible as _buildVisible, buildVisibleUpTo as _buildVisibleUpTo } from '../../branching.js';
 import { findNodeByMessageId } from '../../utils/treeUtils.js';
-import type { ChatNode, MessageVariant, BranchResult, BranchAndSendResult, HistoryMessage } from '../../types/index.js';
+import type { ChatNode, MessageVariant, BranchResult, BranchAndSendResult, HistoryMessage, InsertBetweenResult } from '../../types/index.js';
 
 export function commitEditReplace(nodes: ChatNode[], editingId: number | null, editingText: string): ChatNode[] {
   if (editingId == null) return nodes;
@@ -144,6 +144,91 @@ export function prepareBranchAndSend(
     nextNodeId: nextNodeId + 1,
     typingVariantId: typingMsg.id,
     history
+  };
+}
+
+/**
+ * Insert an empty user message after the message at the given index.
+ * This inserts seamlessly into the current branch by:
+ * 1. Updating the parent's active variant's `next` to point to the new node
+ * 2. Setting the new node's `next` to point to what was previously the child
+ *
+ * @param nodes - Current chat nodes
+ * @param rootId - Root node ID
+ * @param afterIndex - Index in the visible path after which to insert
+ * @param nextId - Next available message variant ID
+ * @param nextNodeId - Next available node ID
+ * @returns InsertBetweenResult with updated nodes and IDs, or null if invalid
+ */
+export function insertMessageBetween(
+  nodes: ChatNode[],
+  rootId: number | null,
+  afterIndex: number,
+  nextId: number,
+  nextNodeId: number
+): InsertBetweenResult | null {
+  const buildVisible = () => _buildVisible(nodes, rootId);
+  const path = buildVisible();
+
+  // Validate the index
+  if (afterIndex < 0 || afterIndex >= path.length) {
+    return null;
+  }
+
+  const parentVm = path[afterIndex];
+  if (!parentVm) return null;
+
+  const parentNodeId = parentVm.nodeId;
+  const parentNode = nodes.find(n => n.id === parentNodeId);
+  if (!parentNode) return null;
+
+  // Get the current active variant from the parent
+  const activeIndex = Math.max(0, Math.min((parentNode.variants?.length || 1) - 1, Number(parentNode.active) || 0));
+  const activeVariant = parentNode.variants[activeIndex];
+  if (!activeVariant) return null;
+
+  // Get the existing next node ID (what the parent currently points to)
+  const existingNextNodeId = activeVariant.next;
+
+  // Create the new empty user message that points to the existing child
+  const newMsg: MessageVariant = {
+    id: nextId,
+    role: 'user',
+    content: '',
+    time: Date.now(),
+    typing: false,
+    error: undefined,
+    next: existingNextNodeId,  // Point to what was the child
+  };
+
+  // Create the new node
+  const newNode: ChatNode = {
+    id: nextNodeId,
+    variants: [newMsg],
+    active: 0,
+  };
+
+  // Update the parent's active variant to point to the new node
+  let updatedNodes = nodes.map(n => (
+    n.id === parentNodeId
+      ? {
+          ...n,
+          variants: n.variants.map((v, i) =>
+            i === activeIndex ? { ...v, next: newNode.id } : v
+          )
+        }
+      : n
+  ));
+
+  // Add the new node
+  updatedNodes = [...updatedNodes, newNode];
+
+  return {
+    nodes: updatedNodes,
+    nextId: nextId + 1,
+    nextNodeId: nextNodeId + 1,
+    insertedNodeId: newNode.id,
+    insertedMessageId: newMsg.id,
   };
 }
 

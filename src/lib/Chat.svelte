@@ -22,7 +22,7 @@
   // Action imports
   import { deleteMessage, setMessageRole, moveUp, moveDown } from './chat/actions/messageActions'
   import { changeVariant, updateVariantById } from './chat/actions/variantActions'
-  import { commitEditReplace, applyEditBranch, prepareBranchAndSend } from './chat/actions/editActions'
+  import { commitEditReplace, applyEditBranch, prepareBranchAndSend, insertMessageBetween } from './chat/actions/editActions'
   import {
     prepareUserMessage,
     prepareTypingNode,
@@ -834,6 +834,19 @@
     persistNow()
   }
 
+  function handleInsertBetween(afterIndex) {
+    if (locked) return
+    const result = insertMessageBetween(nodes, rootId, afterIndex, nextId, nextNodeId)
+    if (!result) return
+    nodes = result.nodes
+    nextId = result.nextId
+    nextNodeId = result.nextNodeId
+    // Start editing the new empty message
+    editingId = result.insertedMessageId
+    editingText = ''
+    persistNow()
+  }
+
   // Send message
   async function sendWithRole(role = 'user') {
     if (locked || sending) return
@@ -1504,6 +1517,7 @@
     onMoveUp={(id) => handleMoveUp(id)}
     onFork={(id) => forkMessage(id)}
     onDebugFuckBranch={(id) => debugFuckUpBranch(id)}
+    onInsertBetween={(afterIndex) => handleInsertBetween(afterIndex)}
   />
 
   <Composer
