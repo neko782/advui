@@ -1,6 +1,6 @@
 <script lang="ts">
   // Core imports
-  import { onMount, onDestroy } from 'svelte'
+  import { onMount, onDestroy, untrack } from 'svelte'
   import { loadSettings, findConnection } from './settingsStore'
   import { ensureModels, loadModelsCache } from './modelsStore'
   import { saveChatContent, debugSetChatLockState } from './chatsStore'
@@ -1321,20 +1321,34 @@
   }
 
   // Lifecycle effects
+  let loadedChatId: string | null = null
   $effect(() => {
     const cid = props.chatId
     if (lastChatId && lastChatId !== cid && mounted) {
-      try { saveChatContent(lastChatId, { nodes, settings: chatSettings, rootId }) } catch {}
+      // Use untrack to prevent this effect from re-running when nodes/settings change
+      untrack(() => {
+        try { saveChatContent(lastChatId, { nodes, settings: chatSettings, rootId }) } catch {}
+      })
     }
     lastChatId = cid
+
+    // Skip if we've already loaded this chat
+    if (loadedChatId === cid) return
+
     ready = false
     forcedLock = false
     persistSig = ''
     chatSettingsOpen = false
-    
+
     if (!cid) return
 
     loadChat(cid).then((result) => {
+      // Skip if we switched to a different chat while loading, or user started editing
+      if (props.chatId !== cid || editingId !== null) {
+        ready = true
+        loadedChatId = cid
+        return
+      }
       try {
         settings = result.settings
         const sanitizedNodes = sanitizeNodesImageData(result.nodes)
@@ -1348,6 +1362,7 @@
         editingText = ''
         dismissedNotice = ''
         persistSig = result.persistSig
+        loadedChatId = cid
       } finally {
         ready = true
       }
