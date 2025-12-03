@@ -67,13 +67,20 @@
   let sending = $state(false)
   let forcedLock = $state(false)
   let locked = $state(false)
+
+  // Synchronously notify parent when sending changes to avoid race conditions with unmounting
+  function setSending(value: boolean) {
+    sending = value
+    const chatId = props.chatId
+    if (chatId) {
+      try { props.onGeneratingChange?.(chatId, value) } catch {}
+    }
+  }
   let nextId = $state(1)
   let nextNodeId = $state(1)
   let ready = false
   let mounted = false
   let lastChatId: string | null = null
-  let lastReportedChatId: string | null = null
-  let lastReportedSending: boolean | null = null
 
   // Settings & chat configuration
   const initialSettings = loadSettings()
@@ -173,7 +180,7 @@
   }
 
   function finishGeneration() {
-    sending = false
+    setSending(false)
     resetGenerationState()
   }
 
@@ -756,7 +763,7 @@
     }
     clearMissingApiKeyNotice()
 
-    sending = true
+    setSending(true)
     generationState.setTypingVariantId(typingVariantId)
     persistNow()
 
@@ -938,7 +945,7 @@
         return
       }
 
-      sending = true
+      setSending(true)
       generationState.setTypingVariantId(typingVariantId)
       logGenerationEvent(debug, 'Typing node prepared', { typingVariantId, role })
     }
@@ -1022,7 +1029,7 @@
         content: (prev.content === 'typing' ? '' : prev.content),
       }))
     }
-    sending = false
+    setSending(false)
     persistNow()
   }
 
@@ -1116,7 +1123,7 @@
 
     nodes = prepared.nodes
     nextId = prepared.nextId
-    sending = true
+    setSending(true)
     generationState.setTypingVariantId(typingVariantId)
     persistNow()
 
@@ -1219,7 +1226,7 @@
     nodes = prepared.nodes
     nextId = prepared.nextId
     nextNodeId = prepared.nextNodeId
-    sending = true
+    setSending(true)
     generationState.setTypingVariantId(typingVariantId)
     persistNow()
 
@@ -1402,19 +1409,6 @@
     if (fallback && fallback !== current) {
       chatSettings = { ...chatSettings, connectionId: fallback }
     }
-  })
-
-  $effect(() => {
-    const chatId = props.chatId
-    if (!chatId) return
-    if (chatId !== lastReportedChatId) {
-      lastReportedChatId = chatId
-      lastReportedSending = null
-    }
-    const current = !!sending
-    if (current === lastReportedSending) return
-    lastReportedSending = current
-    try { props.onGeneratingChange?.(chatId, current) } catch {}
   })
 
   let lastSettingsVersion = 0
