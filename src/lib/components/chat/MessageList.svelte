@@ -116,28 +116,25 @@
     padding: 4px 0;
     margin: -2px 0;
     cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.15s ease;
     max-width: var(--page-max);
     width: min(720px, 92%);
     justify-self: center;
   }
-  .insert-zone .insert-line,
-  .insert-zone .insert-btn { opacity: 0; transition: opacity 0.15s ease; }
-  .insert-zone:hover .insert-line,
-  .insert-zone:hover .insert-btn,
-  .insert-zone:focus-visible .insert-line,
-  .insert-zone:focus-visible .insert-btn { opacity: 1; }
+  .insert-zone:hover, .insert-zone:focus-visible { opacity: 1; }
   .insert-zone:focus-visible { outline: none; }
   .insert-zone.disabled { pointer-events: none; }
   .insert-line {
     flex: 1;
     height: 1px;
-    background: var(--muted);
-    opacity: 0;
+    background: var(--border);
+    opacity: 0.6;
   }
   .insert-btn {
     appearance: none;
-    border: 1px solid var(--muted);
-    background: transparent;
+    border: 1px solid var(--border);
+    background: var(--panel);
     color: var(--muted);
     font-size: 14px;
     font-weight: 500;
@@ -149,13 +146,11 @@
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    transition: background 0.1s ease, color 0.1s ease, border-color 0.1s ease, opacity 0.15s ease;
-    opacity: 0;
+    transition: background 0.1s ease, color 0.1s ease, border-color 0.1s ease;
   }
   .insert-zone:hover .insert-btn, .insert-zone:focus-visible .insert-btn {
     background: var(--accent);
     color: #fff;
     border-color: var(--accent);
-    opacity: 1;
   }
 </style>
