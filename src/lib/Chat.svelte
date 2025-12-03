@@ -505,6 +505,7 @@
 
   let imageLoadTimer: ReturnType<typeof setTimeout> | null = null
   let typingPollTimer: ReturnType<typeof setInterval> | null = null
+  let isPollingOrphanedGeneration = false // true when polling for a generation started by another component instance
   $effect(() => {
     const visible = buildVisible()
 
@@ -991,11 +992,8 @@
     generationState.requestAbort()
     
     // Stop polling if active (detached generation case)
-    const wasPolling = !!typingPollTimer
-    if (typingPollTimer) {
-      clearInterval(typingPollTimer)
-      typingPollTimer = null
-    }
+    const wasPolling = isPollingOrphanedGeneration
+    stopTypingPoll()
     
     const typingId = generationState.getTypingVariantId()
     if (typingId != null) {
@@ -1030,7 +1028,7 @@
     }
     sending = false
     
-    // Report generating stopped if we were in polling mode
+    // Report generating stopped if we were polling for orphaned generation
     if (wasPolling) {
       try { props.onGeneratingChange?.(props.chatId, false) } catch {}
     }
@@ -1339,21 +1337,33 @@
     )
   }
 
-  // Start polling for typing completion (when background generation finishes)
-  function startTypingPoll(chatId: string) {
-    // Clear any existing poll
+  // Stop polling for orphaned generation
+  function stopTypingPoll() {
     if (typingPollTimer) {
       clearInterval(typingPollTimer)
       typingPollTimer = null
     }
+    isPollingOrphanedGeneration = false
+  }
+
+  // Start polling for typing completion (when background generation finishes)
+  function startTypingPoll(chatId: string) {
+    // Clear any existing poll
+    stopTypingPoll()
+    
+    isPollingOrphanedGeneration = true
     
     typingPollTimer = setInterval(async () => {
       if (props.chatId !== chatId) {
         // Chat changed, stop polling
-        if (typingPollTimer) {
-          clearInterval(typingPollTimer)
-          typingPollTimer = null
-        }
+        stopTypingPoll()
+        return
+      }
+      
+      // If we have an active generation in THIS component, stop polling
+      // (the generation callbacks are updating state directly)
+      if (generationState.isGenerationActive()) {
+        stopTypingPoll()
         return
       }
       
@@ -1363,10 +1373,7 @@
         
         if (!stillTyping) {
           // Generation completed, update state
-          if (typingPollTimer) {
-            clearInterval(typingPollTimer)
-            typingPollTimer = null
-          }
+          stopTypingPoll()
           
           settings = fresh.settings
           const sanitizedNodes = sanitizeNodesImageData(fresh.nodes)
@@ -1403,10 +1410,7 @@
     chatSettingsOpen = false
     
     // Clear polling when switching chats
-    if (typingPollTimer) {
-      clearInterval(typingPollTimer)
-      typingPollTimer = null
-    }
+    stopTypingPoll()
     
     if (!cid) return
 
@@ -1425,9 +1429,11 @@
         dismissedNotice = ''
         persistSig = result.persistSig
         
-        // Check if this chat has a typing variant (generation in progress)
+        // Check if this chat has a typing variant (orphaned generation in progress)
+        // Only start polling if we don't have an active generation ourselves
         const isTyping = hasTypingVariant(sanitizedNodes)
-        if (isTyping) {
+        if (isTyping && !generationState.isGenerationActive()) {
+          // This is an orphaned generation from a previous component instance
           // Set sending=true to show stop button and maintain loading state
           sending = true
           // Start polling for completion
@@ -1567,17 +1573,12 @@
   onDestroy(() => {
     const chatId = props.chatId
     // Clear polling timer if active
-    if (typingPollTimer) {
-      clearInterval(typingPollTimer)
-      typingPollTimer = null
-    }
+    stopTypingPoll()
     if (!chatId) return
     // Only report generating=false if there's no active typing variant
     // (background generation continues even after component unmount)
-    const hasTypingVariant = Array.isArray(nodes) && nodes.some(n => 
-      (n?.variants || []).some(v => v?.typing)
-    )
-    if (!hasTypingVariant) {
+    const hasTyping = hasTypingVariant(nodes)
+    if (!hasTyping) {
       try { props.onGeneratingChange?.(chatId, false) } catch {}
     }
     persistenceScheduler.cancel()
