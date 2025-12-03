@@ -306,6 +306,7 @@
 
   function addConnection() {
     const list = Array.isArray(local?.connections) ? local.connections.slice() : []
+    const base = activeConnection || list[list.length - 1] || null
     const count = list.length + 1
     let name = `Connection ${count}`
     const names = new Set(list.map(c => c?.name).filter(Boolean))
@@ -317,8 +318,8 @@
       id,
       name,
       apiKey: '',
-      apiBaseUrl: DEFAULT_API_BASE_URL,
-      apiMode: 'responses',
+      apiBaseUrl: base?.apiBaseUrl || DEFAULT_API_BASE_URL,
+      apiMode: base?.apiMode || 'responses',
     }
     local.connections = [...list, connection]
     modelCacheByConnection = { ...modelCacheByConnection, [id]: { ids: [], fetchedAt: 0 } }
