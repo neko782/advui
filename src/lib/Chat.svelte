@@ -809,13 +809,13 @@
       if (generationState.getGenerationSequence() === genSeq) {
         nodes = handleGenerationSuccess(nodes, typingVariantId, reply, summaryBuffer)
       }
-      persistNow()
+      await persistNow()
     } catch (err) {
       logGenerationEvent(debug, 'Generation error', { error: err?.message, typingVariantId })
       if (generationState.getGenerationSequence() === genSeq) {
         nodes = handleGenerationError(nodes, typingVariantId, err)
       }
-      persistNow()
+      await persistNow()
     } finally {
       if (generationState.getGenerationSequence() === genSeq) {
         generationState.completeGeneration(genSeq)
@@ -998,13 +998,13 @@
       if (typingVariantId != null && generationState.getGenerationSequence() === genSeq) {
         nodes = handleGenerationSuccess(nodes, typingVariantId, reply, summaryBuffer)
       }
-      persistNow()
+      await persistNow()
     } catch (err) {
       logGenerationEvent(debug, 'Generation error', { error: err?.message, typingVariantId, role })
       if (typingVariantId != null && generationState.getGenerationSequence() === genSeq) {
         nodes = handleGenerationError(nodes, typingVariantId, err)
       }
-      persistNow()
+      await persistNow()
     } finally {
       if (generationState.getGenerationSequence() === genSeq) {
         generationState.completeGeneration(genSeq)
@@ -1169,13 +1169,13 @@
       if (generationState.getGenerationSequence() === genSeq) {
         nodes = handleGenerationSuccess(nodes, typingVariantId, reply, summaryBuffer)
       }
-      persistNow()
+      await persistNow()
     } catch (err) {
       logGenerationEvent(debug, 'Generation error', { error: err?.message, typingVariantId })
       if (generationState.getGenerationSequence() === genSeq) {
         nodes = handleGenerationError(nodes, typingVariantId, err)
       }
-      persistNow()
+      await persistNow()
     } finally {
       if (generationState.getGenerationSequence() === genSeq) {
         generationState.completeGeneration(genSeq)
@@ -1272,13 +1272,13 @@
       if (generationState.getGenerationSequence() === genSeq) {
         nodes = handleGenerationSuccess(nodes, typingVariantId, reply, summaryBuffer)
       }
-      persistNow()
+      await persistNow()
     } catch (err) {
       logGenerationEvent(debug, 'Generation error', { error: err?.message, typingVariantId })
       if (generationState.getGenerationSequence() === genSeq) {
         nodes = handleGenerationError(nodes, typingVariantId, err)
       }
-      persistNow()
+      await persistNow()
     } finally {
       if (generationState.getGenerationSequence() === genSeq) {
         generationState.completeGeneration(genSeq)
