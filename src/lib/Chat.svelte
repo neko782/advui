@@ -504,6 +504,7 @@
   }
 
   let imageLoadTimer: ReturnType<typeof setTimeout> | null = null
+  let typingPollTimer: ReturnType<typeof setInterval> | null = null
   $effect(() => {
     const visible = buildVisible()
 
@@ -988,6 +989,14 @@
   function stopGeneration() {
     if (!sending) return
     generationState.requestAbort()
+    
+    // Stop polling if active (detached generation case)
+    const wasPolling = !!typingPollTimer
+    if (typingPollTimer) {
+      clearInterval(typingPollTimer)
+      typingPollTimer = null
+    }
+    
     const typingId = generationState.getTypingVariantId()
     if (typingId != null) {
       updateVariant(typingId, (prev) => ({
@@ -997,8 +1006,35 @@
         reasoningSummaryLoading: false,
         content: (prev.content === 'typing' ? '' : prev.content),
       }))
+    } else {
+      // Handle detached generation - find and clear all typing variants
+      // This happens when we switched away and back during generation
+      nodes = nodes.map(node => {
+        if (!node?.variants?.length) return node
+        let variantsChanged = false
+        const newVariants = node.variants.map(v => {
+          if (v?.typing) {
+            variantsChanged = true
+            return {
+              ...v,
+              typing: false,
+              error: undefined,
+              reasoningSummaryLoading: false,
+              content: (v.content === 'typing' ? '' : v.content),
+            }
+          }
+          return v
+        })
+        return variantsChanged ? { ...node, variants: newVariants } : node
+      })
     }
     sending = false
+    
+    // Report generating stopped if we were in polling mode
+    if (wasPolling) {
+      try { props.onGeneratingChange?.(props.chatId, false) } catch {}
+    }
+    
     persistNow()
   }
 
@@ -1296,6 +1332,64 @@
     persistNow()
   }
 
+  // Helper to check if nodes contain typing variants
+  function hasTypingVariant(nodeList: Node[]): boolean {
+    return Array.isArray(nodeList) && nodeList.some(n => 
+      (n?.variants || []).some(v => v?.typing)
+    )
+  }
+
+  // Start polling for typing completion (when background generation finishes)
+  function startTypingPoll(chatId: string) {
+    // Clear any existing poll
+    if (typingPollTimer) {
+      clearInterval(typingPollTimer)
+      typingPollTimer = null
+    }
+    
+    typingPollTimer = setInterval(async () => {
+      if (props.chatId !== chatId) {
+        // Chat changed, stop polling
+        if (typingPollTimer) {
+          clearInterval(typingPollTimer)
+          typingPollTimer = null
+        }
+        return
+      }
+      
+      try {
+        const fresh = await loadChat(chatId)
+        const stillTyping = hasTypingVariant(fresh.nodes)
+        
+        if (!stillTyping) {
+          // Generation completed, update state
+          if (typingPollTimer) {
+            clearInterval(typingPollTimer)
+            typingPollTimer = null
+          }
+          
+          settings = fresh.settings
+          const sanitizedNodes = sanitizeNodesImageData(fresh.nodes)
+          nodes = sanitizedNodes
+          nextId = fresh.nextId
+          nextNodeId = fresh.nextNodeId
+          chatSettings = fresh.chatSettings
+          rootId = fresh.rootId
+          persistSig = fresh.persistSig
+          sending = false
+          try { props.onGeneratingChange?.(chatId, false) } catch {}
+        } else {
+          // Still typing - update content to show streaming progress
+          const sanitizedNodes = sanitizeNodesImageData(fresh.nodes)
+          nodes = sanitizedNodes
+          persistSig = fresh.persistSig
+        }
+      } catch {
+        // Ignore errors during polling
+      }
+    }, 500) // Poll every 500ms
+  }
+
   // Lifecycle effects
   $effect(() => {
     const cid = props.chatId
@@ -1307,6 +1401,13 @@
     forcedLock = false
     persistSig = ''
     chatSettingsOpen = false
+    
+    // Clear polling when switching chats
+    if (typingPollTimer) {
+      clearInterval(typingPollTimer)
+      typingPollTimer = null
+    }
+    
     if (!cid) return
 
     loadChat(cid).then((result) => {
@@ -1323,6 +1424,15 @@
         editingText = ''
         dismissedNotice = ''
         persistSig = result.persistSig
+        
+        // Check if this chat has a typing variant (generation in progress)
+        const isTyping = hasTypingVariant(sanitizedNodes)
+        if (isTyping) {
+          // Set sending=true to show stop button and maintain loading state
+          sending = true
+          // Start polling for completion
+          startTypingPoll(cid)
+        }
       } finally {
         ready = true
       }
@@ -1456,8 +1566,20 @@
 
   onDestroy(() => {
     const chatId = props.chatId
+    // Clear polling timer if active
+    if (typingPollTimer) {
+      clearInterval(typingPollTimer)
+      typingPollTimer = null
+    }
     if (!chatId) return
-    try { props.onGeneratingChange?.(chatId, false) } catch {}
+    // Only report generating=false if there's no active typing variant
+    // (background generation continues even after component unmount)
+    const hasTypingVariant = Array.isArray(nodes) && nodes.some(n => 
+      (n?.variants || []).some(v => v?.typing)
+    )
+    if (!hasTypingVariant) {
+      try { props.onGeneratingChange?.(chatId, false) } catch {}
+    }
     persistenceScheduler.cancel()
   })
 </script>
