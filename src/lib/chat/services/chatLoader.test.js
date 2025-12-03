@@ -5,6 +5,7 @@ import * as settingsStore from '../../settingsStore.js'
 
 vi.mock('../../chatsStore.js', () => ({
   getChat: vi.fn(),
+  getCachedChat: vi.fn(() => undefined),
 }))
 
 vi.mock('../../settingsStore.js', () => ({

@@ -6,6 +6,21 @@ import {
   resetMigrationFlag,
 } from './storageMigration.js'
 
+// Mock localStorage for Node.js test environment
+const localStorageMock = (() => {
+  let store = {}
+  return {
+    getItem: (key) => store[key] ?? null,
+    setItem: (key, value) => { store[key] = String(value) },
+    removeItem: (key) => { delete store[key] },
+    clear: () => { store = {} },
+    get length() { return Object.keys(store).length },
+    key: (i) => Object.keys(store)[i] ?? null,
+  }
+})()
+
+Object.defineProperty(globalThis, 'localStorage', { value: localStorageMock, writable: true })
+
 describe('Storage Migration', () => {
   beforeEach(() => {
     // Clean up localStorage before each test
@@ -126,11 +141,11 @@ describe('Storage Migration - Data Validation', () => {
   }
 
   beforeEach(() => {
-    localStorage.clear()
+    localStorageMock.clear()
   })
 
   afterEach(() => {
-    localStorage.clear()
+    localStorageMock.clear()
   })
 
   it('should detect chats that need migration', () => {
