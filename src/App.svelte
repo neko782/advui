@@ -27,9 +27,10 @@
   })
 
   const SIDEBAR_KEY = 'ui.sidebar.open.v1'
-  const SIDEBAR_BASE_WIDTH = 280 // matches `.sidebar` width in Sidebar.svelte
-  const CHAT_AREA_FALLBACK_WIDTH = 980 // matches `--page-max` in Chat.svelte
-  const COLLAPSE_LEEWAY = 80
+  // Threshold below which sidebar auto-collapses on outside clicks
+  // Matches the CSS media query breakpoint in Sidebar.svelte
+  const COLLAPSE_THRESHOLD = 1260
+
   function loadSidebarPref() {
     try {
       const raw = localStorage.getItem(SIDEBAR_KEY)
@@ -41,35 +42,15 @@
     try { localStorage.setItem(SIDEBAR_KEY, val ? '1' : '0') } catch {}
   }
 
-  function measureChatWidth() {
-    if (typeof document === 'undefined') return CHAT_AREA_FALLBACK_WIDTH
-    const candidates = ['.chat-pane .composer-inner', '.chat-pane .stack', '.chat-pane']
-    for (const selector of candidates) {
-      const el = document.querySelector(selector)
-      if (!el) continue
-      const rect = el.getBoundingClientRect?.()
-      if (rect?.width) return rect.width
-    }
-    return CHAT_AREA_FALLBACK_WIDTH
-  }
-
-  function measureSidebarWidth() {
-    if (typeof document === 'undefined') return SIDEBAR_BASE_WIDTH
-    const el = document.querySelector('.sidebar')
-    const rect = el?.getBoundingClientRect?.()
-    const width = rect?.width || SIDEBAR_BASE_WIDTH
-    return (width > 0) ? width : SIDEBAR_BASE_WIDTH
-  }
-
   function shouldCollapseForViewport() {
     if (!sidebarOpen) return false
     if (typeof window === 'undefined') return false
     const viewportWidth = window.innerWidth || 0
     if (!viewportWidth) return false
-    const chatWidth = measureChatWidth()
-    const sidebarWidth = measureSidebarWidth()
-    const requiredWidth = chatWidth + (sidebarWidth * 2)
-    return (viewportWidth + COLLAPSE_LEEWAY) < requiredWidth
+    // Use a fixed threshold that matches the CSS media query
+    // The sidebar overlays the chat content, so we only need to check
+    // if the viewport is narrow enough that the overlay becomes problematic
+    return viewportWidth < COLLAPSE_THRESHOLD
   }
 
   function handleGlobalPointerDown(event) {
