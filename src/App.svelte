@@ -16,14 +16,14 @@
   let presets = $state<Preset[]>([])
   let generatingMap = $state<Record<string, boolean>>({})
 
-  // Track which chats have been mounted (activated) - once mounted, stays mounted
-  let mountedChatIds = $state<Set<string>>(new Set())
-
-  // Ensure selected chat is always in the mounted set
-  $effect(() => {
-    if (selectedId && !mountedChatIds.has(selectedId)) {
-      mountedChatIds = new Set([...mountedChatIds, selectedId])
+  // Derive which chats should be mounted: selected OR generating
+  let mountedChatIds = $derived.by(() => {
+    const ids = new Set<string>()
+    if (selectedId) ids.add(selectedId)
+    for (const id of Object.keys(generatingMap)) {
+      if (generatingMap[id]) ids.add(id)
     }
+    return ids
   })
 
   const SIDEBAR_KEY = 'ui.sidebar.open.v1'
@@ -119,14 +119,7 @@
       // Show most recent chats first
       const list = (await getChats()).slice().sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
       chats = list
-      const activeIds = list.map(item => item.id).filter(Boolean)
-      pruneGenerating(activeIds)
-      // Prune mounted set to only include existing chats
-      const activeSet = new Set(activeIds)
-      const prunedMounted = new Set([...mountedChatIds].filter(id => activeSet.has(id)))
-      if (prunedMounted.size !== mountedChatIds.size) {
-        mountedChatIds = prunedMounted
-      }
+      pruneGenerating(list.map(item => item.id).filter(Boolean))
       const saved = loadAll().selectedId
       if (saved && await getChat(saved)) {
         if (selectedId !== saved) selectedId = saved
@@ -248,12 +241,6 @@
     if (!id) return
     await deleteChat(id)
     setGenerating(id, false)
-    // Remove from mounted set
-    if (mountedChatIds.has(id)) {
-      const next = new Set(mountedChatIds)
-      next.delete(id)
-      mountedChatIds = next
-    }
     const wasSelected = selectedId === id
     if (wasSelected) selectedId = null
     const remaining = await getChats()
