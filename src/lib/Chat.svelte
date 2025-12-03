@@ -817,10 +817,13 @@
       }
       await persistNow()
     } finally {
-      if (generationState.getGenerationSequence() === genSeq) {
+      const isCurrentGen = generationState.getGenerationSequence() === genSeq
+      if (isCurrentGen) {
         generationState.completeGeneration(genSeq)
+      }
+      if (isCurrentGen || !generationState.isGenerationActive()) {
         finishGeneration()
-        logGenerationEvent(debug, 'Generation finished', { sequence: genSeq })
+        logGenerationEvent(debug, 'Generation finished', { sequence: genSeq, wasCurrentGen: isCurrentGen })
       }
     }
   }
@@ -1006,10 +1009,15 @@
       }
       await persistNow()
     } finally {
-      if (generationState.getGenerationSequence() === genSeq) {
+      const isCurrentGen = generationState.getGenerationSequence() === genSeq
+      if (isCurrentGen) {
         generationState.completeGeneration(genSeq)
+      }
+      // Always clean up if we're the current gen, or if no generation is active
+      // (handles case where a newer generation already started and finished)
+      if (isCurrentGen || !generationState.isGenerationActive()) {
         finishGeneration()
-        logGenerationEvent(debug, 'Generation finished', { sequence: genSeq })
+        logGenerationEvent(debug, 'Generation finished', { sequence: genSeq, wasCurrentGen: isCurrentGen })
       }
     }
   }
@@ -1177,10 +1185,13 @@
       }
       await persistNow()
     } finally {
-      if (generationState.getGenerationSequence() === genSeq) {
+      const isCurrentGen = generationState.getGenerationSequence() === genSeq
+      if (isCurrentGen) {
         generationState.completeGeneration(genSeq)
+      }
+      if (isCurrentGen || !generationState.isGenerationActive()) {
         finishGeneration()
-        logGenerationEvent(debug, 'Generation finished', { sequence: genSeq })
+        logGenerationEvent(debug, 'Generation finished', { sequence: genSeq, wasCurrentGen: isCurrentGen })
       }
     }
   }
@@ -1280,10 +1291,13 @@
       }
       await persistNow()
     } finally {
-      if (generationState.getGenerationSequence() === genSeq) {
+      const isCurrentGen = generationState.getGenerationSequence() === genSeq
+      if (isCurrentGen) {
         generationState.completeGeneration(genSeq)
+      }
+      if (isCurrentGen || !generationState.isGenerationActive()) {
         finishGeneration()
-        logGenerationEvent(debug, 'Generation finished', { sequence: genSeq })
+        logGenerationEvent(debug, 'Generation finished', { sequence: genSeq, wasCurrentGen: isCurrentGen })
       }
     }
   }
