@@ -16,6 +16,16 @@
   let presets = $state<Preset[]>([])
   let generatingMap = $state<Record<string, boolean>>({})
 
+  // Track which chats have been mounted (activated) - once mounted, stays mounted
+  let mountedChatIds = $state<Set<string>>(new Set())
+
+  // Ensure selected chat is always in the mounted set
+  $effect(() => {
+    if (selectedId && !mountedChatIds.has(selectedId)) {
+      mountedChatIds = new Set([...mountedChatIds, selectedId])
+    }
+  })
+
   const SIDEBAR_KEY = 'ui.sidebar.open.v1'
   const SIDEBAR_BASE_WIDTH = 280 // matches `.sidebar` width in Sidebar.svelte
   const CHAT_AREA_FALLBACK_WIDTH = 980 // matches `--page-max` in Chat.svelte
@@ -109,7 +119,14 @@
       // Show most recent chats first
       const list = (await getChats()).slice().sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
       chats = list
-      pruneGenerating(list.map(item => item.id).filter(Boolean))
+      const activeIds = list.map(item => item.id).filter(Boolean)
+      pruneGenerating(activeIds)
+      // Prune mounted set to only include existing chats
+      const activeSet = new Set(activeIds)
+      const prunedMounted = new Set([...mountedChatIds].filter(id => activeSet.has(id)))
+      if (prunedMounted.size !== mountedChatIds.size) {
+        mountedChatIds = prunedMounted
+      }
       const saved = loadAll().selectedId
       if (saved && await getChat(saved)) {
         if (selectedId !== saved) selectedId = saved
@@ -231,6 +248,12 @@
     if (!id) return
     await deleteChat(id)
     setGenerating(id, false)
+    // Remove from mounted set
+    if (mountedChatIds.has(id)) {
+      const next = new Set(mountedChatIds)
+      next.delete(id)
+      mountedChatIds = next
+    }
     const wasSelected = selectedId === id
     if (wasSelected) selectedId = null
     const remaining = await getChats()
@@ -263,7 +286,7 @@
     onOpenSettings={onOpenSettings}
   />
   <div class="chat-pane">
-    {#each (chats || []) as c (c.id)}
+    {#each (chats || []).filter(c => mountedChatIds.has(c.id)) as c (c.id)}
       <div class="chat-wrapper {selectedId === c.id ? 'active' : 'hidden'}">
         <Chat
           chatId={c.id}
