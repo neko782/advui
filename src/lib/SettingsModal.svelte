@@ -619,8 +619,9 @@
   })
 </script>
 
+<svelte:window onkeydown={(e) => { if (props.open && e.key === 'Escape') close() }} />
+
 {#if props.open}
-  <svelte:window onkeydown={(e) => { if (e.key === 'Escape') close() }} />
   <button type="button" class="backdrop" aria-label="Close settings overlay" onclick={close}></button>
   <div
     class="modal"
