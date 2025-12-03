@@ -2,7 +2,7 @@
 // We keep selectedId in localStorage for quick access.
 
 import { loadSettings } from './settingsStore.js';
-import { enforceUniqueParents } from './branching.js';
+import { enforceUniqueParents, normalizeNodesActive, validateRootId } from './branching.js';
 import {
   getAllChats as storeGetAll,
   getChat as storeGetOne,
@@ -272,19 +272,29 @@ export async function saveChatContent(
   };
   const nextNodesCandidate = Array.isArray(nodes) ? nodes : (existing?.nodes || []);
   const hasNodes = nextNodesCandidate.length > 0;
-  let nextRootId: number | null;
+  
+  // Normalize active indices to ensure they're within bounds
+  const normalizedNodes = normalizeNodesActive(nextNodesCandidate);
+  
+  // Determine and validate rootId
+  let candidateRootId: number | null;
   if (rootId != null) {
-    nextRootId = rootId;
+    candidateRootId = rootId;
   } else if (!hasNodes) {
-    nextRootId = null;
-  } else if (existing?.rootId != null && nextNodesCandidate.some(n => n?.id === existing.rootId)) {
-    nextRootId = existing.rootId;
+    candidateRootId = null;
+  } else if (existing?.rootId != null && normalizedNodes.some(n => n?.id === existing.rootId)) {
+    candidateRootId = existing.rootId;
   } else {
-    nextRootId = nextNodesCandidate[0]?.id ?? null;
+    candidateRootId = normalizedNodes[0]?.id ?? null;
   }
+  
+  // Validate rootId points to a valid root (no incoming edges)
+  const rootValidation = validateRootId(normalizedNodes, candidateRootId);
+  const nextRootId = rootValidation.rootId;
+  
   // Enforce single-parent invariant before persisting (skip in debug mode)
   const dbg = !!defaults?.debug;
-  const nextNodes = dbg ? nextNodesCandidate : enforceUniqueParents(nextNodesCandidate, nextRootId);
+  const nextNodes = dbg ? normalizedNodes : enforceUniqueParents(normalizedNodes, nextRootId);
   const presetId = (typeof settings?.presetId === 'string')
     ? settings.presetId
     : (typeof existing?.presetId === 'string' ? existing.presetId : (basePreset?.id || null));

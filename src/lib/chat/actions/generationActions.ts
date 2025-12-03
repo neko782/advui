@@ -36,6 +36,148 @@ export function validateTypingVariantVisible(
 }
 
 /**
+ * Extended validation result with details about the visibility state
+ */
+export interface TypingVisibilityResult {
+  visible: boolean;
+  exists: boolean;
+  isTyping: boolean;
+  isActive: boolean;
+  nodeId: number | null;
+  reason: string;
+}
+
+/**
+ * Detailed validation of typing variant visibility.
+ * Provides specific reasons for visibility failures.
+ */
+export function validateTypingVariantDetailed(
+  nodes: ChatNode[],
+  rootId: number | null,
+  typingVariantId: number | null
+): TypingVisibilityResult {
+  if (typingVariantId == null) {
+    return {
+      visible: false,
+      exists: false,
+      isTyping: false,
+      isActive: false,
+      nodeId: null,
+      reason: 'No typing variant ID provided',
+    };
+  }
+
+  // Find the variant in nodes
+  let foundNode: ChatNode | null = null;
+  let foundVariantIndex = -1;
+  let foundVariant: MessageVariant | null = null;
+
+  for (const node of nodes) {
+    const idx = (node?.variants || []).findIndex(v => v?.id === typingVariantId);
+    if (idx >= 0) {
+      foundNode = node;
+      foundVariantIndex = idx;
+      foundVariant = node.variants[idx];
+      break;
+    }
+  }
+
+  if (!foundNode || !foundVariant) {
+    return {
+      visible: false,
+      exists: false,
+      isTyping: false,
+      isActive: false,
+      nodeId: null,
+      reason: 'Variant not found in nodes',
+    };
+  }
+
+  const isTyping = foundVariant.typing === true;
+  const activeIndex = Math.max(0, Math.min((foundNode.variants?.length || 1) - 1, Number(foundNode.active) || 0));
+  const isActive = foundVariantIndex === activeIndex;
+
+  // Check if it's in the visible path
+  try {
+    const visible = _buildVisible(nodes, rootId);
+    const inPath = visible.some(vm => vm?.m?.id === typingVariantId);
+
+    if (!inPath) {
+      return {
+        visible: false,
+        exists: true,
+        isTyping,
+        isActive,
+        nodeId: foundNode.id,
+        reason: isActive
+          ? 'Node not in visible path from root'
+          : 'Variant exists but is not the active variant',
+      };
+    }
+
+    if (!isTyping) {
+      return {
+        visible: false,
+        exists: true,
+        isTyping: false,
+        isActive,
+        nodeId: foundNode.id,
+        reason: 'Variant is in path but typing flag is false',
+      };
+    }
+
+    return {
+      visible: true,
+      exists: true,
+      isTyping: true,
+      isActive: true,
+      nodeId: foundNode.id,
+      reason: 'Variant is visible and typing',
+    };
+  } catch (err) {
+    return {
+      visible: false,
+      exists: true,
+      isTyping,
+      isActive,
+      nodeId: foundNode.id,
+      reason: `Path traversal error: ${(err as Error)?.message || 'unknown'}`,
+    };
+  }
+}
+
+/**
+ * Creates a guard function for safe streaming updates.
+ * Returns a function that validates state before each update.
+ */
+export function createStreamingGuard(
+  getNodes: () => ChatNode[],
+  getRootId: () => number | null,
+  typingVariantId: number,
+  onInvalidate?: (reason: string) => void
+): (update: () => void) => boolean {
+  let invalidated = false;
+  let lastReason = '';
+
+  return (update: () => void): boolean => {
+    if (invalidated) {
+      return false;
+    }
+
+    const result = validateTypingVariantDetailed(getNodes(), getRootId(), typingVariantId);
+    if (!result.visible) {
+      invalidated = true;
+      lastReason = result.reason;
+      onInvalidate?.(result.reason);
+      return false;
+    }
+
+    update();
+    return true;
+  };
+}
+
+/**
  * Creates a generation context with all necessary state
  * This ensures atomic updates and proper error handling
  */

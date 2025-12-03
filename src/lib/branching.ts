@@ -21,6 +21,82 @@ export function indexNodesById(nodes: ChatNode[]): Map<number, ChatNode> {
   return map;
 }
 
+/**
+ * Ensures the active index is within bounds for a node's variants.
+ * Returns the clamped index.
+ */
+export function clampActiveIndex(node: ChatNode): number {
+  const variants = Array.isArray(node?.variants) ? node.variants : [];
+  const len = variants.length;
+  if (len === 0) return 0;
+  const raw = Number(node?.active) || 0;
+  return Math.max(0, Math.min(len - 1, raw));
+}
+
+/**
+ * Normalizes a node to ensure active is within bounds.
+ * Returns the same node if no changes needed, or a new node object.
+ */
+export function normalizeNodeActive(node: ChatNode): ChatNode {
+  const clamped = clampActiveIndex(node);
+  const current = Number(node?.active) || 0;
+  if (clamped === current) return node;
+  return { ...node, active: clamped };
+}
+
+/**
+ * Normalizes all nodes in an array to ensure active indices are valid.
+ */
+export function normalizeNodesActive(nodes: ChatNode[]): ChatNode[] {
+  if (!Array.isArray(nodes)) return [];
+  let mutated = false;
+  const result = nodes.map(n => {
+    const normalized = normalizeNodeActive(n);
+    if (normalized !== n) mutated = true;
+    return normalized;
+  });
+  return mutated ? result : nodes;
+}
+
+/**
+ * Validates that a rootId points to a node with no incoming edges.
+ * Returns the validated rootId or a corrected one.
+ */
+export function validateRootId(nodes: ChatNode[], rootId: number | null): { rootId: number | null; corrected: boolean } {
+  if (!Array.isArray(nodes) || nodes.length === 0) {
+    return { rootId: null, corrected: rootId !== null };
+  }
+
+  const byId = indexNodesById(nodes);
+  const allNodeIds = new Set(byId.keys());
+
+  // Build incoming edges map
+  const hasIncoming = new Set<number>();
+  for (const n of nodes) {
+    for (const v of n?.variants || []) {
+      const tgt = v?.next;
+      if (tgt != null && allNodeIds.has(Number(tgt))) {
+        hasIncoming.add(Number(tgt));
+      }
+    }
+  }
+
+  // If rootId is valid and has no incoming edges, it's good
+  if (rootId != null && allNodeIds.has(Number(rootId)) && !hasIncoming.has(Number(rootId))) {
+    return { rootId, corrected: false };
+  }
+
+  // Find a valid root (node with no incoming edges)
+  for (const n of nodes) {
+    if (!hasIncoming.has(n.id)) {
+      return { rootId: n.id, corrected: true };
+    }
+  }
+
+  // Fallback to first node (shouldn't happen in valid trees)
+  return { rootId: nodes[0]?.id ?? null, corrected: true };
+}
+
 export function buildVisible(nodes: ChatNode[], rootId: number | null): VisibleMessage[] {
   const byId = indexNodesById(nodes);
   const out: VisibleMessage[] = [];
@@ -32,7 +108,7 @@ export function buildVisible(nodes: ChatNode[], rootId: number | null): VisibleM
     if (!node || guard.has(curId)) break;
     guard.add(curId);
     const variants = Array.isArray(node.variants) ? node.variants : [];
-    const vi = Math.max(0, Math.min(variants.length - 1, Number(node.active) || 0));
+    const vi = clampActiveIndex(node);
     const m = variants[vi];
     if (!m) break;
     out.push({ m, i: pathIndex, nodeId: node.id, variantIndex: vi, variantsLength: variants.length });
@@ -179,19 +255,30 @@ export function validateTree(nodes: ChatNode[], rootId: number | null): TreeVali
   return { ok: problems.length === 0, problems, details };
 }
 
+/**
+ * Result of enforcing unique parents, including mutation details
+ */
+export interface EnforceUniqueParentsResult {
+  nodes: ChatNode[];
+  mutated: boolean;
+  clearedEdges: Array<{ fromNodeId: number; variantIndex: number; toNodeId: number }>;
+}
+
 // Enforce the invariant: each node has at most one parent (incoming edge).
 // If multiple variants point to the same target node, keep one and null out the rest.
 // Preference order for which incoming edge to keep:
 //   1) The edge that lies on the visible path from root (active variants)
 //   2) Otherwise, the first encountered incoming edge
-export function enforceUniqueParents(nodes: ChatNode[], rootId: number | null): ChatNode[] {
+// Returns detailed info about what was changed.
+export function enforceUniqueParentsWithInfo(nodes: ChatNode[], rootId: number | null): EnforceUniqueParentsResult {
   const list = Array.isArray(nodes)
     ? deepClone(nodes)
     : [];
-  if (!list.length) return list;
+  if (!list.length) return { nodes: list, mutated: false, clearedEdges: [] };
 
   const byId = new Map(list.map(n => [Number(n?.id), n]));
   const allNodeIds = new Set(byId.keys());
+  const clearedEdges: Array<{ fromNodeId: number; variantIndex: number; toNodeId: number }> = [];
 
   // Build incoming edges: tgt -> [{ nodeId, variantIndex }]
   const incoming = new Map<number, Array<{ nodeId: number; variantIndex: number }>>();
@@ -217,8 +304,8 @@ export function enforceUniqueParents(nodes: ChatNode[], rootId: number | null): 
       guard.add(cur);
       const node = byId.get(cur);
       if (!node) break;
+      const vi = clampActiveIndex(node);
       const variants = Array.isArray(node.variants) ? node.variants : [];
-      const vi = Math.max(0, Math.min(variants.length - 1, Number(node.active) || 0));
       const m = variants[vi];
       if (!m) break;
       const nxt = (m && m.next != null) ? Number(m.next) : null;
@@ -243,9 +330,22 @@ export function enforceUniqueParents(nodes: ChatNode[], rootId: number | null): 
       const v = (n.variants || [])[r.variantIndex];
       if (!v) continue;
       n.variants[r.variantIndex] = { ...v, next: null };
+      clearedEdges.push({ fromNodeId: r.nodeId, variantIndex: r.variantIndex, toNodeId: tgt });
     }
   }
 
-  return [...byId.values()];
+  return {
+    nodes: [...byId.values()],
+    mutated: clearedEdges.length > 0,
+    clearedEdges,
+  };
 }
+
+/**
+ * Legacy wrapper that returns just the nodes array for backwards compatibility
+ */
+export function enforceUniqueParents(nodes: ChatNode[], rootId: number | null): ChatNode[] {
+  return enforceUniqueParentsWithInfo(nodes, rootId).nodes;
+}
+
 

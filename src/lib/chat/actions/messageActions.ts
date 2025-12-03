@@ -1,8 +1,37 @@
 // Message manipulation actions: delete, role change, move up/down
 import { VALID_MESSAGE_ROLES } from '../../constants/index.js';
-import { buildVisible as _buildVisible } from '../../branching.js';
+import { buildVisible as _buildVisible, clampActiveIndex } from '../../branching.js';
 import { findNodeByMessageId } from '../../utils/treeUtils.js';
 import type { ChatNode, MessageRole } from '../../types/index.js';
+
+/**
+ * Context for guarded operations - allows core functions to check lock state
+ */
+export interface OperationContext {
+  locked?: boolean;
+}
+
+/**
+ * Result that includes whether the operation was blocked
+ */
+export interface GuardedResult<T> {
+  blocked: boolean;
+  result: T;
+}
+
+/**
+ * Wraps an operation result with lock checking
+ */
+function guardOperation<T>(
+  context: OperationContext | undefined,
+  defaultResult: T,
+  operation: () => T
+): GuardedResult<T> {
+  if (context?.locked) {
+    return { blocked: true, result: defaultResult };
+  }
+  return { blocked: false, result: operation() };
+}
 
 export interface DeleteMessageResult {
   nodes: ChatNode[];
@@ -193,5 +222,57 @@ export function moveUp(nodes: ChatNode[], rootId: number | null, messageId: numb
 
 export function moveDown(nodes: ChatNode[], rootId: number | null, messageId: number): MoveResult {
   return moveMessage(nodes, rootId, messageId, 'down');
+}
+
+// ============================================================================
+// Guarded versions that respect lock state
+// ============================================================================
+
+/**
+ * Guarded delete - respects lock state
+ */
+export function deleteMessageGuarded(
+  nodes: ChatNode[],
+  rootId: number | null,
+  messageId: number,
+  context?: OperationContext
+): GuardedResult<DeleteMessageResult> {
+  return guardOperation(context, { nodes, rootId }, () => deleteMessage(nodes, rootId, messageId));
+}
+
+/**
+ * Guarded role change - respects lock state
+ */
+export function setMessageRoleGuarded(
+  nodes: ChatNode[],
+  id: number,
+  role: MessageRole,
+  context?: OperationContext
+): GuardedResult<ChatNode[]> {
+  return guardOperation(context, nodes, () => setMessageRole(nodes, id, role));
+}
+
+/**
+ * Guarded move up - respects lock state
+ */
+export function moveUpGuarded(
+  nodes: ChatNode[],
+  rootId: number | null,
+  messageId: number,
+  context?: OperationContext
+): GuardedResult<MoveResult> {
+  return guardOperation(context, { nodes, rootId }, () => moveUp(nodes, rootId, messageId));
+}
+
+/**
+ * Guarded move down - respects lock state
+ */
+export function moveDownGuarded(
+  nodes: ChatNode[],
+  rootId: number | null,
+  messageId: number,
+  context?: OperationContext
+): GuardedResult<MoveResult> {
+  return guardOperation(context, { nodes, rootId }, () => moveDown(nodes, rootId, messageId));
 }
 

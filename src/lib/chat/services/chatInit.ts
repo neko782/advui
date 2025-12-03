@@ -88,6 +88,89 @@ export interface NextIdsResult {
   nextNodeId: number;
 }
 
+/**
+ * ID collision detection result
+ */
+export interface IdCollisionResult {
+  hasCollisions: boolean;
+  duplicateNodeIds: number[];
+  duplicateVariantIds: number[];
+}
+
+/**
+ * Detects ID collisions in nodes and variants
+ */
+export function detectIdCollisions(nodes: ChatNode[] | null): IdCollisionResult {
+  const nodeIdCounts = new Map<number, number>();
+  const variantIdCounts = new Map<number, number>();
+  
+  for (const n of nodes || []) {
+    const nodeId = Number(n?.id);
+    if (Number.isFinite(nodeId)) {
+      nodeIdCounts.set(nodeId, (nodeIdCounts.get(nodeId) || 0) + 1);
+    }
+    for (const v of n?.variants || []) {
+      const variantId = Number(v?.id);
+      if (Number.isFinite(variantId)) {
+        variantIdCounts.set(variantId, (variantIdCounts.get(variantId) || 0) + 1);
+      }
+    }
+  }
+
+  const duplicateNodeIds: number[] = [];
+  const duplicateVariantIds: number[] = [];
+
+  for (const [id, count] of nodeIdCounts.entries()) {
+    if (count > 1) duplicateNodeIds.push(id);
+  }
+  for (const [id, count] of variantIdCounts.entries()) {
+    if (count > 1) duplicateVariantIds.push(id);
+  }
+
+  return {
+    hasCollisions: duplicateNodeIds.length > 0 || duplicateVariantIds.length > 0,
+    duplicateNodeIds,
+    duplicateVariantIds,
+  };
+}
+
+/**
+ * Validates that proposed new IDs don't collide with existing ones.
+ * Returns safe IDs that are guaranteed to be unique.
+ */
+export function ensureUniqueIds(
+  nodes: ChatNode[] | null,
+  proposedNextId: number,
+  proposedNextNodeId: number
+): NextIdsResult {
+  const existingNodeIds = new Set<number>();
+  const existingVariantIds = new Set<number>();
+
+  for (const n of nodes || []) {
+    const nodeId = Number(n?.id);
+    if (Number.isFinite(nodeId)) existingNodeIds.add(nodeId);
+    for (const v of n?.variants || []) {
+      const variantId = Number(v?.id);
+      if (Number.isFinite(variantId)) existingVariantIds.add(variantId);
+    }
+  }
+
+  let safeNextId = proposedNextId;
+  let safeNextNodeId = proposedNextNodeId;
+
+  // Ensure nextId doesn't collide
+  while (existingVariantIds.has(safeNextId)) {
+    safeNextId++;
+  }
+
+  // Ensure nextNodeId doesn't collide
+  while (existingNodeIds.has(safeNextNodeId)) {
+    safeNextNodeId++;
+  }
+
+  return { nextId: safeNextId, nextNodeId: safeNextNodeId };
+}
+
 export function recomputeNextIds(nodes: ChatNode[] | null): NextIdsResult {
   try {
     const maxMsgId = (nodes || []).reduce((mx, n) => {
@@ -95,7 +178,10 @@ export function recomputeNextIds(nodes: ChatNode[] | null): NextIdsResult {
       return Math.max(mx, vMax);
     }, 0);
     const maxNodeId = (nodes || []).reduce((mx, n) => Math.max(mx, Number(n?.id) || 0), 0);
-    return { nextId: maxMsgId + 1, nextNodeId: maxNodeId + 1 };
+    
+    // Validate no collisions and return safe IDs
+    const proposed = { nextId: maxMsgId + 1, nextNodeId: maxNodeId + 1 };
+    return ensureUniqueIds(nodes, proposed.nextId, proposed.nextNodeId);
   } catch {
     return { nextId: 1, nextNodeId: 1 };
   }

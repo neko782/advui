@@ -132,3 +132,160 @@ export function generateImageId(): string {
   return `img_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`;
 }
 
+/**
+ * Result of image reference validation
+ */
+export interface ImageValidationResult {
+  valid: boolean;
+  existingIds: Set<string>;
+  missingIds: string[];
+  orphanedIds: string[];
+}
+
+/**
+ * Validates that image references in nodes point to existing images.
+ * Also identifies orphaned images that aren't referenced.
+ */
+export async function validateImageReferences(
+  referencedIds: string[]
+): Promise<ImageValidationResult> {
+  try {
+    const allImages = await getAllImages();
+    const existingIds = new Set(allImages.map(img => img.id));
+    const referencedSet = new Set(referencedIds);
+
+    const missingIds: string[] = [];
+    const orphanedIds: string[] = [];
+
+    // Find referenced IDs that don't exist
+    for (const id of referencedIds) {
+      if (!existingIds.has(id)) {
+        missingIds.push(id);
+      }
+    }
+
+    // Find stored images that aren't referenced
+    for (const id of existingIds) {
+      if (!referencedSet.has(id)) {
+        orphanedIds.push(id);
+      }
+    }
+
+    return {
+      valid: missingIds.length === 0,
+      existingIds,
+      missingIds,
+      orphanedIds,
+    };
+  } catch {
+    return {
+      valid: false,
+      existingIds: new Set(),
+      missingIds: referencedIds,
+      orphanedIds: [],
+    };
+  }
+}
+
+/**
+ * Checks if a specific image ID exists in the store
+ */
+export async function imageExists(id: string): Promise<boolean> {
+  try {
+    const image = await getImage(id);
+    return image !== null;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Collects all image IDs referenced in a nodes array
+ */
+export function collectImageReferences(nodes: Array<{ variants?: Array<{ images?: Array<{ id?: string } | string> }> }>): string[] {
+  const ids: string[] = [];
+  const seen = new Set<string>();
+
+  for (const node of nodes || []) {
+    for (const variant of node?.variants || []) {
+      for (const img of variant?.images || []) {
+        let id: string | null = null;
+        if (typeof img === 'string') {
+          id = img.trim();
+        } else if (img && typeof img === 'object' && typeof img.id === 'string') {
+          id = img.id.trim();
+        }
+        if (id && !seen.has(id)) {
+          seen.add(id);
+          ids.push(id);
+        }
+      }
+    }
+  }
+
+  return ids;
+}
+
+/**
+ * Removes invalid image references from nodes.
+ * Returns the cleaned nodes and list of removed references.
+ */
+export async function cleanInvalidImageReferences(
+  nodes: Array<{ variants?: Array<{ images?: unknown[] }> }>
+): Promise<{ nodes: typeof nodes; removedIds: string[] }> {
+  const referencedIds = collectImageReferences(nodes);
+  const validation = await validateImageReferences(referencedIds);
+
+  if (validation.valid) {
+    return { nodes, removedIds: [] };
+  }
+
+  const missingSet = new Set(validation.missingIds);
+  const removedIds: string[] = [];
+  let mutated = false;
+
+  const cleanedNodes = nodes.map(node => {
+    if (!node?.variants) return node;
+    
+    let variantsMutated = false;
+    const cleanedVariants = node.variants.map(variant => {
+      if (!Array.isArray(variant?.images)) return variant;
+      
+      const cleanedImages = variant.images.filter(img => {
+        let id: string | null = null;
+        if (typeof img === 'string') {
+          id = img.trim();
+        } else if (img && typeof img === 'object' && typeof (img as { id?: string }).id === 'string') {
+          id = ((img as { id: string }).id).trim();
+        }
+        if (id && missingSet.has(id)) {
+          removedIds.push(id);
+          return false;
+        }
+        return true;
+      });
+
+      if (cleanedImages.length !== variant.images.length) {
+        variantsMutated = true;
+        if (cleanedImages.length === 0) {
+          const { images: _, ...rest } = variant as { images?: unknown[] };
+          return rest;
+        }
+        return { ...variant, images: cleanedImages };
+      }
+      return variant;
+    });
+
+    if (variantsMutated) {
+      mutated = true;
+      return { ...node, variants: cleanedVariants };
+    }
+    return node;
+  });
+
+  return {
+    nodes: mutated ? cleanedNodes : nodes,
+    removedIds: [...new Set(removedIds)],
+  };
+}
+

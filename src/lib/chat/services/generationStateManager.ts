@@ -1,7 +1,17 @@
 import type { GenerationStateManager } from '../../types/index.js';
 
 /**
+ * Atomic state snapshot for guarded updates
+ */
+export interface GenerationStateSnapshot {
+  sequence: number;
+  typingVariantId: number | null;
+  abortRequested: boolean;
+}
+
+/**
  * Creates a generation state manager for handling abort handlers and generation lifecycle
+ * Provides atomic state checking to prevent race conditions
  */
 export function createGenerationStateManager(): GenerationStateManager {
   let inFlightAbort: (() => void) | null = null;
@@ -10,6 +20,8 @@ export function createGenerationStateManager(): GenerationStateManager {
   let abortExecuted = false;
   let generationActive = false;
   let generationSequence = 0;
+  // Track expected nodes state version to detect mutations
+  let stateVersion = 0;
 
   /**
    * Resets all generation state
@@ -28,6 +40,7 @@ export function createGenerationStateManager(): GenerationStateManager {
   function startGeneration(): number {
     generationActive = true;
     generationSequence++;
+    stateVersion++;
     abortRequested = false;
     abortExecuted = false;
     return generationSequence;
@@ -59,6 +72,48 @@ export function createGenerationStateManager(): GenerationStateManager {
   }
 
   /**
+   * Gets an atomic snapshot of current state for guarded operations.
+   * Use this to capture state before async operations and validate
+   * the snapshot hasn't changed before applying updates.
+   */
+  function getStateSnapshot(): GenerationStateSnapshot {
+    return {
+      sequence: generationSequence,
+      typingVariantId: inFlightTypingVariantId,
+      abortRequested,
+    };
+  }
+
+  /**
+   * Atomically validates a snapshot and executes an update if valid.
+   * Returns true if the update was applied, false if state changed.
+   */
+  function guardedUpdate<T>(
+    snapshot: GenerationStateSnapshot,
+    update: () => T
+  ): { applied: boolean; result: T | null } {
+    // Validate snapshot still matches current state
+    if (
+      snapshot.sequence !== generationSequence ||
+      snapshot.typingVariantId !== inFlightTypingVariantId ||
+      abortRequested !== snapshot.abortRequested
+    ) {
+      return { applied: false, result: null };
+    }
+    // State matches, execute update
+    const result = update();
+    return { applied: true, result };
+  }
+
+  /**
+   * Validates that a given sequence is still the active generation.
+   * More explicit than comparing sequences manually.
+   */
+  function isSequenceValid(sequence: number): boolean {
+    return generationActive && sequence === generationSequence && !abortRequested;
+  }
+
+  /**
    * Registers an abort handler function
    */
   function registerAbortHandler(fn: (() => void) | null): boolean {
@@ -83,6 +138,7 @@ export function createGenerationStateManager(): GenerationStateManager {
    */
   function requestAbort(): boolean {
     abortRequested = true;
+    stateVersion++;
 
     // Only execute the abort handler once
     if (abortExecuted) {
@@ -123,17 +179,36 @@ export function createGenerationStateManager(): GenerationStateManager {
     return abortRequested;
   }
 
+  /**
+   * Gets the current state version for change detection
+   */
+  function getStateVersion(): number {
+    return stateVersion;
+  }
+
+  /**
+   * Increments state version when external mutations occur
+   */
+  function incrementStateVersion(): void {
+    stateVersion++;
+  }
+
   return {
     reset,
     startGeneration,
     completeGeneration,
     isGenerationActive,
     getGenerationSequence,
+    getStateSnapshot,
+    guardedUpdate,
+    isSequenceValid,
     registerAbortHandler,
     requestAbort,
     setTypingVariantId,
     getTypingVariantId,
     isAbortRequested,
+    getStateVersion,
+    incrementStateVersion,
   };
 }
 

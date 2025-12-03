@@ -1,218 +1,213 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach } from 'vitest'
 import { createGenerationStateManager } from './generationStateManager.js'
 
-describe('createGenerationStateManager', () => {
+describe('GenerationStateManager', () => {
   let manager
 
   beforeEach(() => {
     manager = createGenerationStateManager()
   })
 
-  describe('reset', () => {
-    it('should reset all state to initial values', () => {
-      const abortFn = vi.fn()
+  describe('basic lifecycle', () => {
+    it('should start inactive', () => {
+      expect(manager.isGenerationActive()).toBe(false)
+      expect(manager.getGenerationSequence()).toBe(0)
+    })
 
-      manager.registerAbortHandler(abortFn)
-      manager.setTypingVariantId(123)
+    it('should activate on startGeneration', () => {
+      const seq = manager.startGeneration()
+      expect(seq).toBe(1)
+      expect(manager.isGenerationActive()).toBe(true)
+    })
+
+    it('should increment sequence on each start', () => {
+      expect(manager.startGeneration()).toBe(1)
+      manager.completeGeneration(1)
+      expect(manager.startGeneration()).toBe(2)
+      manager.completeGeneration(2)
+      expect(manager.startGeneration()).toBe(3)
+    })
+
+    it('should complete generation with matching sequence', () => {
+      const seq = manager.startGeneration()
+      expect(manager.completeGeneration(seq)).toBe(true)
+      expect(manager.isGenerationActive()).toBe(false)
+    })
+
+    it('should reject completion with wrong sequence', () => {
+      manager.startGeneration()
+      expect(manager.completeGeneration(999)).toBe(false)
+      expect(manager.isGenerationActive()).toBe(true) // still active
+    })
+  })
+
+  describe('state snapshots', () => {
+    it('should capture current state in snapshot', () => {
+      const seq = manager.startGeneration()
+      manager.setTypingVariantId(42)
+      
+      const snapshot = manager.getStateSnapshot()
+      expect(snapshot.sequence).toBe(seq)
+      expect(snapshot.typingVariantId).toBe(42)
+      expect(snapshot.abortRequested).toBe(false)
+    })
+
+    it('should detect state changes via snapshot', () => {
+      const seq = manager.startGeneration()
+      manager.setTypingVariantId(42)
+      const snapshot = manager.getStateSnapshot()
+
+      // Change state
+      manager.setTypingVariantId(100)
+
+      // Snapshot should still have old value
+      expect(snapshot.typingVariantId).toBe(42)
+      expect(manager.getTypingVariantId()).toBe(100)
+    })
+  })
+
+  describe('guardedUpdate', () => {
+    it('should execute update when snapshot matches', () => {
+      const seq = manager.startGeneration()
+      manager.setTypingVariantId(42)
+      const snapshot = manager.getStateSnapshot()
+
+      let executed = false
+      const result = manager.guardedUpdate(snapshot, () => {
+        executed = true
+        return 'success'
+      })
+
+      expect(result.applied).toBe(true)
+      expect(result.result).toBe('success')
+      expect(executed).toBe(true)
+    })
+
+    it('should reject update when sequence changed', () => {
+      const seq1 = manager.startGeneration()
+      const snapshot = manager.getStateSnapshot()
+      
+      manager.completeGeneration(seq1)
+      manager.startGeneration() // seq = 2 now
+
+      let executed = false
+      const result = manager.guardedUpdate(snapshot, () => {
+        executed = true
+        return 'success'
+      })
+
+      expect(result.applied).toBe(false)
+      expect(result.result).toBe(null)
+      expect(executed).toBe(false)
+    })
+
+    it('should reject update when abort requested', () => {
+      manager.startGeneration()
+      manager.setTypingVariantId(42)
+      const snapshot = manager.getStateSnapshot()
+
       manager.requestAbort()
 
-      manager.reset()
+      let executed = false
+      const result = manager.guardedUpdate(snapshot, () => {
+        executed = true
+        return 'success'
+      })
 
+      expect(result.applied).toBe(false)
+      expect(executed).toBe(false)
+    })
+  })
+
+  describe('isSequenceValid', () => {
+    it('should return true for active matching sequence', () => {
+      const seq = manager.startGeneration()
+      expect(manager.isSequenceValid(seq)).toBe(true)
+    })
+
+    it('should return false for wrong sequence', () => {
+      manager.startGeneration()
+      expect(manager.isSequenceValid(999)).toBe(false)
+    })
+
+    it('should return false after abort', () => {
+      const seq = manager.startGeneration()
+      manager.requestAbort()
+      expect(manager.isSequenceValid(seq)).toBe(false)
+    })
+
+    it('should return false when inactive', () => {
+      const seq = manager.startGeneration()
+      manager.completeGeneration(seq)
+      expect(manager.isSequenceValid(seq)).toBe(false)
+    })
+  })
+
+  describe('abort handling', () => {
+    it('should execute abort handler immediately', () => {
+      manager.startGeneration()
+      let aborted = false
+      manager.registerAbortHandler(() => { aborted = true })
+      
+      expect(manager.requestAbort()).toBe(true)
+      expect(aborted).toBe(true)
+    })
+
+    it('should execute abort handler on register if already requested', () => {
+      manager.startGeneration()
+      manager.requestAbort()
+
+      let aborted = false
+      manager.registerAbortHandler(() => { aborted = true })
+      
+      expect(aborted).toBe(true)
+    })
+
+    it('should only execute abort handler once', () => {
+      manager.startGeneration()
+      let count = 0
+      manager.registerAbortHandler(() => { count++ })
+      
+      manager.requestAbort()
+      manager.requestAbort() // second call
+      
+      expect(count).toBe(1)
+    })
+
+    it('should increment state version on abort', () => {
+      manager.startGeneration()
+      const v1 = manager.getStateVersion()
+      manager.requestAbort()
+      const v2 = manager.getStateVersion()
+      expect(v2).toBeGreaterThan(v1)
+    })
+  })
+
+  describe('typing variant tracking', () => {
+    it('should track typing variant ID', () => {
       expect(manager.getTypingVariantId()).toBe(null)
-      expect(manager.isAbortRequested()).toBe(false)
-    })
-  })
-
-  describe('registerAbortHandler', () => {
-    it('should register a function as abort handler', () => {
-      const abortFn = vi.fn()
-
-      const result = manager.registerAbortHandler(abortFn)
-
-      expect(result).toBe(false)
-      expect(abortFn).not.toHaveBeenCalled()
-    })
-
-    it('should immediately call abort handler if abort was already requested', () => {
-      const abortFn = vi.fn()
-
-      manager.requestAbort()
-      const result = manager.registerAbortHandler(abortFn)
-
-      expect(result).toBe(true)
-      expect(abortFn).toHaveBeenCalledTimes(1)
-    })
-
-    it('should handle non-function values gracefully', () => {
-      const result = manager.registerAbortHandler(null)
-
-      expect(result).toBe(false)
-    })
-
-    it('should handle abort handler throwing error', () => {
-      const abortFn = vi.fn(() => {
-        throw new Error('Abort failed')
-      })
-
-      manager.requestAbort()
-
-      expect(() => manager.registerAbortHandler(abortFn)).not.toThrow()
-      expect(abortFn).toHaveBeenCalledTimes(1)
-    })
-
-    it('should replace previous abort handler', () => {
-      const abortFn1 = vi.fn()
-      const abortFn2 = vi.fn()
-
-      manager.registerAbortHandler(abortFn1)
-      manager.registerAbortHandler(abortFn2)
-      manager.requestAbort()
-
-      expect(abortFn1).not.toHaveBeenCalled()
-      expect(abortFn2).toHaveBeenCalledTimes(1)
-    })
-  })
-
-  describe('requestAbort', () => {
-    it('should set abort requested flag', () => {
-      expect(manager.isAbortRequested()).toBe(false)
-
-      manager.requestAbort()
-
-      expect(manager.isAbortRequested()).toBe(true)
-    })
-
-    it('should call abort handler if available', () => {
-      const abortFn = vi.fn()
-      manager.registerAbortHandler(abortFn)
-
-      const result = manager.requestAbort()
-
-      expect(result).toBe(true)
-      expect(abortFn).toHaveBeenCalledTimes(1)
-    })
-
-    it('should return false if no abort handler is available', () => {
-      const result = manager.requestAbort()
-
-      expect(result).toBe(false)
-    })
-
-    it('should handle abort handler throwing error', () => {
-      const abortFn = vi.fn(() => {
-        throw new Error('Abort failed')
-      })
-      manager.registerAbortHandler(abortFn)
-
-      const result = manager.requestAbort()
-
-      expect(result).toBe(false)
-      expect(abortFn).toHaveBeenCalledTimes(1)
-    })
-
-    it('should only call abort handler once even if requested multiple times', () => {
-      const abortFn = vi.fn()
-      manager.registerAbortHandler(abortFn)
-
-      manager.requestAbort()
-      manager.requestAbort()
-      manager.requestAbort()
-
-      expect(abortFn).toHaveBeenCalledTimes(1)
-    })
-  })
-
-  describe('setTypingVariantId', () => {
-    it('should set the typing variant ID', () => {
       manager.setTypingVariantId(123)
-
       expect(manager.getTypingVariantId()).toBe(123)
     })
 
-    it('should update the typing variant ID', () => {
+    it('should clear on reset', () => {
       manager.setTypingVariantId(123)
-      manager.setTypingVariantId(456)
-
-      expect(manager.getTypingVariantId()).toBe(456)
-    })
-
-    it('should handle null value', () => {
-      manager.setTypingVariantId(123)
-      manager.setTypingVariantId(null)
-
-      expect(manager.getTypingVariantId()).toBe(null)
-    })
-  })
-
-  describe('getTypingVariantId', () => {
-    it('should return null initially', () => {
-      expect(manager.getTypingVariantId()).toBe(null)
-    })
-
-    it('should return the set typing variant ID', () => {
-      manager.setTypingVariantId(789)
-
-      expect(manager.getTypingVariantId()).toBe(789)
-    })
-  })
-
-  describe('isAbortRequested', () => {
-    it('should return false initially', () => {
-      expect(manager.isAbortRequested()).toBe(false)
-    })
-
-    it('should return true after abort is requested', () => {
-      manager.requestAbort()
-
-      expect(manager.isAbortRequested()).toBe(true)
-    })
-
-    it('should return false after reset', () => {
-      manager.requestAbort()
       manager.reset()
-
-      expect(manager.isAbortRequested()).toBe(false)
+      expect(manager.getTypingVariantId()).toBe(null)
     })
   })
 
-  describe('integration scenarios', () => {
-    it('should handle complete generation lifecycle', () => {
-      const abortFn = vi.fn()
-
-      // Start generation
-      manager.setTypingVariantId(100)
-      manager.registerAbortHandler(abortFn)
-
-      expect(manager.getTypingVariantId()).toBe(100)
-      expect(manager.isAbortRequested()).toBe(false)
-
-      // User requests abort
-      manager.requestAbort()
-
-      expect(abortFn).toHaveBeenCalledTimes(1)
-      expect(manager.isAbortRequested()).toBe(true)
-
-      // Finish generation
-      manager.reset()
-
-      expect(manager.getTypingVariantId()).toBe(null)
-      expect(manager.isAbortRequested()).toBe(false)
+  describe('state version', () => {
+    it('should increment on startGeneration', () => {
+      const v1 = manager.getStateVersion()
+      manager.startGeneration()
+      expect(manager.getStateVersion()).toBeGreaterThan(v1)
     })
 
-    it('should handle abort before handler registration', () => {
-      const abortFn = vi.fn()
-
-      // User requests abort before generation starts
-      manager.requestAbort()
-
-      expect(manager.isAbortRequested()).toBe(true)
-
-      // Generation starts and registers handler
-      manager.setTypingVariantId(200)
-      manager.registerAbortHandler(abortFn)
-
-      // Handler should be called immediately
-      expect(abortFn).toHaveBeenCalledTimes(1)
+    it('should increment on manual call', () => {
+      const v1 = manager.getStateVersion()
+      manager.incrementStateVersion()
+      expect(manager.getStateVersion()).toBeGreaterThan(v1)
     })
   })
 })

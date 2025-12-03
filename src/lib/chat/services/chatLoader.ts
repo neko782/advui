@@ -6,6 +6,8 @@ import {
   pickPresetFromSettings,
   buildChatSettings,
   recomputeNextIds,
+  ensureUniqueIds,
+  detectIdCollisions,
   computeInitialConnectionId,
   DEFAULT_SYSTEM_PROMPT
 } from './chatInit.js';
@@ -120,9 +122,20 @@ export async function loadChat(chatId: string | null): Promise<LoadedChat> {
           nextRootId = 1;
         }
       } else {
+        // Check for ID collisions and log if found (indicates data corruption)
+        const collisions = detectIdCollisions(nextNodes);
+        if (collisions.hasCollisions) {
+          console.warn('ID collisions detected in chat data:', {
+            duplicateNodeIds: collisions.duplicateNodeIds,
+            duplicateVariantIds: collisions.duplicateVariantIds,
+          });
+        }
+        
+        // Compute next IDs with collision prevention
         const ids = recomputeNextIds(nextNodes);
-        nextNextId = ids.nextId;
-        nextNextNodeId = ids.nextNodeId;
+        const safeIds = ensureUniqueIds(nextNodes, ids.nextId, ids.nextNodeId);
+        nextNextId = safeIds.nextId;
+        nextNextNodeId = safeIds.nextNodeId;
       }
     } else {
       const prompt = resolveSystemPrompt(nextChatSettings?.presetId);

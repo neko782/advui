@@ -488,17 +488,28 @@ export interface NoticeState {
 // Generation State Manager Types
 // ============================================================================
 
+export interface GenerationStateSnapshot {
+  sequence: number;
+  typingVariantId: number | null;
+  abortRequested: boolean;
+}
+
 export interface GenerationStateManager {
   reset(): void;
   startGeneration(): number;
   completeGeneration(sequence: number): boolean;
   isGenerationActive(): boolean;
   getGenerationSequence(): number;
+  getStateSnapshot(): GenerationStateSnapshot;
+  guardedUpdate<T>(snapshot: GenerationStateSnapshot, update: () => T): { applied: boolean; result: T | null };
+  isSequenceValid(sequence: number): boolean;
   registerAbortHandler(fn: (() => void) | null): boolean;
   requestAbort(): boolean;
   setTypingVariantId(variantId: number | null): void;
   getTypingVariantId(): number | null;
   isAbortRequested(): boolean;
+  getStateVersion(): number;
+  incrementStateVersion(): void;
 }
 
 // ============================================================================

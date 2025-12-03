@@ -1,6 +1,7 @@
 // Chat persistence with signature tracking
 import { saveChatContent } from '../../chatsStore.js';
-import { sanitizeGraphIfNeeded } from './graphValidation.js';
+import { sanitizeGraphComprehensive } from './graphValidation.js';
+import { ensureUniqueIds } from './chatInit.js';
 import type { ChatNode, ChatSettings, Chat, PersistenceResult, ImageReference } from '../../types/index.js';
 
 function sanitizeImages(images: unknown, stripData: boolean = false): ImageReference[] {
@@ -114,11 +115,32 @@ function stripImageDataFromNodes(nodes: ChatNode[]): ChatNode[] {
   return mutated ? sanitizedNodes : nodes;
 }
 
+/**
+ * Simple hash function for strings (djb2 algorithm)
+ * Provides fast, deterministic hashing for content comparison
+ */
+function hashString(str: string): number {
+  let hash = 5381;
+  for (let i = 0; i < str.length; i++) {
+    hash = ((hash << 5) + hash) ^ str.charCodeAt(i);
+  }
+  return hash >>> 0; // Convert to unsigned 32-bit integer
+}
+
+/**
+ * Computes a content-aware signature for persistence change detection.
+ * Uses actual content hashes instead of just lengths to detect same-length edits.
+ */
 export function computePersistSig(nodes: ChatNode[], chatSettings: ChatSettings, rootId: number | null): string {
   try {
     const mini = (nodes || []).map(n => {
-      const v = (n?.variants || [])[Number(n?.active) || 0];
-      return `${n.id}|${v?.role || ''}|${v?.content?.length || 0}|${(v?.next != null ? 1 : 0)}`;
+      const variants = Array.isArray(n?.variants) ? n.variants : [];
+      const activeIdx = Math.max(0, Math.min(variants.length - 1, Number(n?.active) || 0));
+      const v = variants[activeIdx];
+      // Include content hash instead of just length
+      const contentHash = typeof v?.content === 'string' ? hashString(v.content) : 0;
+      // Include variant count and active index for branch changes
+      return `${n.id}|${v?.role || ''}|${contentHash}|${v?.next ?? 'null'}|${variants.length}|${activeIdx}`;
     });
     return JSON.stringify({
       m: mini,
@@ -154,15 +176,22 @@ export async function persistChatContent(
   try {
     if (!chatId || !mounted) return { updated: null, notice: '' };
 
-    // Enforce invariant before persisting
-    const { nodes: sanitized, notice } = sanitizeGraphIfNeeded(nodes, rootId, debug);
+    // Comprehensive sanitization: fix active indices, rootId, and multiple parents
+    const sanitizeResult = sanitizeGraphComprehensive(nodes, rootId, debug);
+    const { nodes: sanitized, notice, mutations } = sanitizeResult;
+    
+    // Use the corrected rootId if it was fixed
+    const finalRootId = mutations.rootIdCorrected ? 
+      (sanitized.length > 0 ? sanitized[0]?.id ?? null : null) : 
+      rootId;
+    
     const cleanedNodes = stripImageDataFromNodes(sanitized);
 
     // Persist full graph
     const updated = await saveChatContent(chatId, {
       nodes: cleanedNodes,
       settings: chatSettings,
-      rootId
+      rootId: finalRootId
     });
 
     return { updated, notice, nodes: cleanedNodes };
