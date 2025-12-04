@@ -1037,7 +1037,7 @@
         content: (prev.content === 'typing' ? '' : prev.content),
       }))
     }
-    setSending(false)
+    finishGeneration()
     persistNow()
   }
 
