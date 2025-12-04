@@ -21,6 +21,24 @@
   let lastSyncedEditingId = $state<number | null>(null)
   const EDIT_GROW_OPTS = { maxHeight: Number.POSITIVE_INFINITY, minHeight: 32 }
 
+  function handleBubbleClick(e: MouseEvent) {
+    const target = e.target as HTMLElement
+    if (target.classList.contains('code-copy-btn')) {
+      const wrapper = target.closest('.code-block-wrapper')
+      const codeEl = wrapper?.querySelector('pre code')
+      if (codeEl) {
+        const code = codeEl.textContent || ''
+        navigator.clipboard.writeText(code).then(() => {
+          target.textContent = 'Copied!'
+          setTimeout(() => { target.textContent = 'Copy' }, 1500)
+        }).catch(() => {
+          target.textContent = 'Failed'
+          setTimeout(() => { target.textContent = 'Copy' }, 1500)
+        })
+      }
+    }
+  }
+
 function isImageAttachment(attachment) {
   if (!attachment || typeof attachment !== 'object') return false
   const mime = typeof attachment.mimeType === 'string' ? attachment.mimeType : ''
@@ -217,7 +235,8 @@ function attachmentMimeLabel(attachment) {
     </div>
   {/if}
   {#if props.message.typing}
-    <div class={`bubble ${props.message.role}`} data-typing={true}>
+    <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions a11y_no_noninteractive_element_interactions -->
+    <div class={`bubble ${props.message.role}`} data-typing={true} onclick={handleBubbleClick}>
       {#if props.message.content && props.message.content !== 'typing'}
           {@html renderMarkdown(props.message.content)}
       {:else}
@@ -262,7 +281,8 @@ function attachmentMimeLabel(attachment) {
       </div>
     {/if}
     {#if props.message.content}
-      <div class={`bubble ${props.message.role}`}>
+      <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions a11y_no_noninteractive_element_interactions -->
+      <div class={`bubble ${props.message.role}`} onclick={handleBubbleClick}>
         {@html renderMarkdown(props.message.content)}
       </div>
     {/if}
@@ -335,10 +355,69 @@ function attachmentMimeLabel(attachment) {
   .bubble :global(ul > li:last-child), .bubble :global(ol > li:last-child) { margin-bottom: 0; }
   .bubble :global(a) { color: var(--accent); text-decoration: underline; }
   .bubble :global(code) { background: color-mix(in srgb, var(--panel), #ffffff 8%); padding: 0 3px; border-radius: 4px; }
-  .bubble :global(pre) { background: color-mix(in srgb, var(--panel), #ffffff 6%); padding: 10px; border-radius: 10px; overflow: auto; }
+  .bubble :global(.code-block-wrapper) {
+    border-radius: 10px;
+    overflow: hidden;
+    background: color-mix(in srgb, var(--panel), #000000 4%);
+    margin: 0.5em 0;
+  }
+  .bubble :global(.code-block-header) {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px 12px;
+    background: color-mix(in srgb, var(--panel), #000000 10%);
+    font-size: 0.75rem;
+  }
+  .bubble :global(.code-lang) {
+    color: var(--muted);
+    text-transform: lowercase;
+    font-family: inherit;
+  }
+  .bubble :global(.code-copy-btn) {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    padding: 2px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.7rem;
+    transition: all 0.15s ease;
+  }
+  .bubble :global(.code-copy-btn:hover) {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+  }
+  .bubble :global(pre) { background: transparent; padding: 12px; margin: 0; border-radius: 0; overflow: auto; }
   .bubble :global(pre code) { background: transparent; padding: 0; }
-  .bubble :global(p:first-child), .bubble :global(ul:first-child), .bubble :global(ol:first-child), .bubble :global(pre:first-child), .bubble :global(h1:first-child), .bubble :global(h2:first-child), .bubble :global(h3:first-child), .bubble :global(h4:first-child), .bubble :global(h5:first-child), .bubble :global(h6:first-child) { margin-top: 0; }
-  .bubble :global(p:last-child), .bubble :global(ul:last-child), .bubble :global(ol:last-child), .bubble :global(pre:last-child), .bubble :global(h1:last-child), .bubble :global(h2:last-child), .bubble :global(h3:last-child), .bubble :global(h4:last-child), .bubble :global(h5:last-child), .bubble :global(h6:last-child) { margin-bottom: 0; }
+  /* highlight.js theme - adapted for light/dark mode */
+  .bubble :global(.hljs) { color: var(--text); }
+  .bubble :global(.hljs-comment), .bubble :global(.hljs-quote) { color: var(--muted); font-style: italic; }
+  .bubble :global(.hljs-keyword), .bubble :global(.hljs-selector-tag), .bubble :global(.hljs-addition) { color: #d73a49; }
+  .bubble :global(.hljs-string), .bubble :global(.hljs-meta .hljs-string), .bubble :global(.hljs-regexp), .bubble :global(.hljs-selector-attr), .bubble :global(.hljs-selector-pseudo) { color: #032f62; }
+  .bubble :global(.hljs-number), .bubble :global(.hljs-literal), .bubble :global(.hljs-type), .bubble :global(.hljs-template-variable), .bubble :global(.hljs-variable), .bubble :global(.hljs-symbol), .bubble :global(.hljs-bullet), .bubble :global(.hljs-built_in) { color: #005cc5; }
+  .bubble :global(.hljs-title), .bubble :global(.hljs-section), .bubble :global(.hljs-attribute), .bubble :global(.hljs-name) { color: #6f42c1; }
+  .bubble :global(.hljs-function), .bubble :global(.hljs-title.function_) { color: #6f42c1; }
+  .bubble :global(.hljs-params) { color: var(--text); }
+  .bubble :global(.hljs-meta), .bubble :global(.hljs-tag) { color: #22863a; }
+  .bubble :global(.hljs-attr) { color: #005cc5; }
+  :global([data-theme='dark']) .bubble :global(.hljs-keyword), :global([data-theme='dark']) .bubble :global(.hljs-selector-tag), :global([data-theme='dark']) .bubble :global(.hljs-addition) { color: #ff7b72; }
+  :global([data-theme='dark']) .bubble :global(.hljs-string), :global([data-theme='dark']) .bubble :global(.hljs-meta .hljs-string), :global([data-theme='dark']) .bubble :global(.hljs-regexp) { color: #a5d6ff; }
+  :global([data-theme='dark']) .bubble :global(.hljs-number), :global([data-theme='dark']) .bubble :global(.hljs-literal), :global([data-theme='dark']) .bubble :global(.hljs-type), :global([data-theme='dark']) .bubble :global(.hljs-built_in) { color: #79c0ff; }
+  :global([data-theme='dark']) .bubble :global(.hljs-title), :global([data-theme='dark']) .bubble :global(.hljs-section), :global([data-theme='dark']) .bubble :global(.hljs-attribute), :global([data-theme='dark']) .bubble :global(.hljs-name) { color: #d2a8ff; }
+  :global([data-theme='dark']) .bubble :global(.hljs-meta), :global([data-theme='dark']) .bubble :global(.hljs-tag) { color: #7ee787; }
+  :global([data-theme='dark']) .bubble :global(.hljs-attr) { color: #79c0ff; }
+  @media (prefers-color-scheme: dark) {
+    :global(:root:not([data-theme='light'])) .bubble :global(.hljs-keyword), :global(:root:not([data-theme='light'])) .bubble :global(.hljs-selector-tag), :global(:root:not([data-theme='light'])) .bubble :global(.hljs-addition) { color: #ff7b72; }
+    :global(:root:not([data-theme='light'])) .bubble :global(.hljs-string), :global(:root:not([data-theme='light'])) .bubble :global(.hljs-meta .hljs-string), :global(:root:not([data-theme='light'])) .bubble :global(.hljs-regexp) { color: #a5d6ff; }
+    :global(:root:not([data-theme='light'])) .bubble :global(.hljs-number), :global(:root:not([data-theme='light'])) .bubble :global(.hljs-literal), :global(:root:not([data-theme='light'])) .bubble :global(.hljs-type), :global(:root:not([data-theme='light'])) .bubble :global(.hljs-built_in) { color: #79c0ff; }
+    :global(:root:not([data-theme='light'])) .bubble :global(.hljs-title), :global(:root:not([data-theme='light'])) .bubble :global(.hljs-section), :global(:root:not([data-theme='light'])) .bubble :global(.hljs-attribute), :global(:root:not([data-theme='light'])) .bubble :global(.hljs-name) { color: #d2a8ff; }
+    :global(:root:not([data-theme='light'])) .bubble :global(.hljs-meta), :global(:root:not([data-theme='light'])) .bubble :global(.hljs-tag) { color: #7ee787; }
+    :global(:root:not([data-theme='light'])) .bubble :global(.hljs-attr) { color: #79c0ff; }
+  }
+  .bubble :global(p:first-child), .bubble :global(ul:first-child), .bubble :global(ol:first-child), .bubble :global(pre:first-child), .bubble :global(h1:first-child), .bubble :global(h2:first-child), .bubble :global(h3:first-child), .bubble :global(h4:first-child), .bubble :global(h5:first-child), .bubble :global(h6:first-child), .bubble :global(.code-block-wrapper:first-child) { margin-top: 0; }
+  .bubble :global(p:last-child), .bubble :global(ul:last-child), .bubble :global(ol:last-child), .bubble :global(pre:last-child), .bubble :global(h1:last-child), .bubble :global(h2:last-child), .bubble :global(h3:last-child), .bubble :global(h4:last-child), .bubble :global(h5:last-child), .bubble :global(h6:last-child), .bubble :global(.code-block-wrapper:last-child) { margin-bottom: 0; }
   .bubble.assistant {
     background: transparent;
     justify-self: start;

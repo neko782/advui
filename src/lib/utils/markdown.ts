@@ -2,10 +2,74 @@ import MarkdownIt from 'markdown-it';
 import type Token from 'markdown-it/lib/token.mjs';
 import type Renderer from 'markdown-it/lib/renderer.mjs';
 import type StateCore from 'markdown-it/lib/rules_core/state_core.mjs';
+import hljs from 'highlight.js';
 
 // markdown-it instance configured for our chat bubbles
-const md = new MarkdownIt({ html: false, linkify: true, typographer: false, breaks: true });
+const md = new MarkdownIt({
+  html: false,
+  linkify: true,
+  typographer: false,
+  breaks: true,
+  highlight: (str: string, lang: string): string => {
+    if (lang && hljs.getLanguage(lang)) {
+      try {
+        return hljs.highlight(str, { language: lang, ignoreIllegals: true }).value;
+      } catch { /* ignore */ }
+    }
+    // Auto-detect language if not specified
+    try {
+      return hljs.highlightAuto(str).value;
+    } catch { /* ignore */ }
+    return ''; // use external default escaping
+  }
+});
 md.disable('code'); // disallow indented code blocks; require fenced blocks
+
+// Custom fence renderer to add copy button
+const defaultFence = md.renderer.rules.fence || function(
+  tokens: Token[],
+  idx: number,
+  options: MarkdownIt.Options,
+  _env: unknown,
+  self: Renderer
+): string {
+  return self.renderToken(tokens, idx, options);
+};
+
+md.renderer.rules.fence = function(
+  tokens: Token[],
+  idx: number,
+  options: MarkdownIt.Options,
+  env: unknown,
+  self: Renderer
+): string {
+  const token = tokens[idx]!;
+  const info = token.info ? token.info.trim() : '';
+  const langName = info.split(/\s+/g)[0] || '';
+  const langLabel = langName || 'text';
+
+  // Get the highlighted content
+  let code = token.content;
+  if (options.highlight) {
+    const highlighted = options.highlight(code, langName, '');
+    if (highlighted !== '') {
+      code = highlighted;
+    } else {
+      code = md.utils.escapeHtml(code);
+    }
+  } else {
+    code = md.utils.escapeHtml(code);
+  }
+
+  // Build the code block with header containing language label and copy button
+  return `<div class="code-block-wrapper">
+<div class="code-block-header">
+<span class="code-lang">${md.utils.escapeHtml(langLabel)}</span>
+<button type="button" class="code-copy-btn" aria-label="Copy code">Copy</button>
+</div>
+<pre><code class="hljs${langName ? ` language-${md.utils.escapeHtml(langName)}` : ''}">${code}</code></pre>
+</div>`;
+};
 
 const defaultRenderLink = md.renderer.rules.link_open || function(
   tokens: Token[],
