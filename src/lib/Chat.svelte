@@ -15,7 +15,7 @@
   import { persistChatContent, computePersistSig } from './chat/services/chatPersistence'
   import { computeValidationNotice, computeGenerationNotice, assembleNotice, computeFollowingMap } from './chat/services/noticeHelpers'
   import { resolveConnectionContext as _resolveConnectionContext } from './chat/services/connectionResolver'
-  import { createPersistenceScheduler } from './chat/services/persistenceScheduler'
+  import { createPersistenceScheduler, queueGlobalPersist } from './chat/services/persistenceScheduler'
   import { createNoticeManager } from './chat/services/noticeManager'
   import { createGenerationStateManager } from './chat/services/generationStateManager'
 
@@ -49,6 +49,7 @@
     onChatUpdated?: () => void
     settingsVersion?: number
     onGeneratingChange?: (chatId: string, isGenerating: boolean) => void
+    appSettings?: AppSettings | null
   }
 
   const props: Props = $props()
@@ -68,13 +69,27 @@
   let forcedLock = $state(false)
   let locked = $state(false)
 
+  // Track the chatId that started the current generation to avoid race conditions
+  let generationChatId: string | null = null
+
   // Synchronously notify parent when sending changes to avoid race conditions with unmounting
-  function setSending(value: boolean) {
+  function setSending(value: boolean, forChatId?: string) {
     sending = value
-    const chatId = props.chatId
+    // Use the provided chatId, or fall back to the generation chatId, or current props
+    const chatId = forChatId ?? generationChatId ?? props.chatId
     if (chatId) {
       try { props.onGeneratingChange?.(chatId, value) } catch {}
     }
+    // Clear generation chatId when stopping
+    if (!value) {
+      generationChatId = null
+    }
+  }
+
+  // Start tracking a generation for a specific chatId
+  function startSending() {
+    generationChatId = props.chatId
+    setSending(true, generationChatId)
   }
   let nextId = $state(1)
   let nextNodeId = $state(1)
@@ -83,9 +98,18 @@
   let lastChatId: string | null = null
 
   // Settings & chat configuration
-  const initialSettings = loadSettings()
+  // Prefer settings from prop (shared across all chats) over loading independently
+  const initialSettings = props.appSettings ?? loadSettings()
   let settings = $state<AppSettings>(initialSettings)
   let debug = $state(!!initialSettings?.debug)
+
+  // Sync settings from prop when it changes (single source of truth from parent)
+  $effect(() => {
+    if (props.appSettings) {
+      settings = props.appSettings
+      debug = !!props.appSettings.debug
+    }
+  })
   const initialPreset = pickPresetFromSettings(initialSettings)
   const initialConnectionId = (() => {
     const presetConn = typeof initialPreset?.connectionId === 'string' && initialPreset.connectionId.trim()
@@ -763,7 +787,7 @@
     }
     clearMissingApiKeyNotice()
 
-    setSending(true)
+    startSending()
     generationState.setTypingVariantId(typingVariantId)
     persistNow()
 
@@ -948,7 +972,7 @@
         return
       }
 
-      setSending(true)
+      startSending()
       generationState.setTypingVariantId(typingVariantId)
       logGenerationEvent(debug, 'Typing node prepared', { typingVariantId, role })
     }
@@ -1131,7 +1155,7 @@
 
     nodes = prepared.nodes
     nextId = prepared.nextId
-    setSending(true)
+    startSending()
     generationState.setTypingVariantId(typingVariantId)
     persistNow()
 
@@ -1237,7 +1261,7 @@
     nodes = prepared.nodes
     nextId = prepared.nextId
     nextNodeId = prepared.nextNodeId
-    setSending(true)
+    startSending()
     generationState.setTypingVariantId(typingVariantId)
     persistNow()
 
@@ -1425,26 +1449,18 @@
     }
   })
 
+  // Fallback: reload settings from storage when settingsVersion changes (only if appSettings prop not provided)
   let lastSettingsVersion = 0
   $effect(() => {
     const v = Number(props.settingsVersion) || 0
     if (v === lastSettingsVersion) return
     lastSettingsVersion = v
+    // Skip if settings are provided via prop (handled by prop sync effect)
+    if (props.appSettings) return
     try {
       const next = loadSettings()
-      const changed = (
-        settings?.apiKey !== next.apiKey ||
-        presetSignature(settings) !== presetSignature(next) ||
-        settings?.selectedPresetId !== next?.selectedPresetId ||
-        settings?.selectedConnectionId !== next?.selectedConnectionId ||
-        !!settings?.debug !== !!next?.debug ||
-        JSON.stringify(settings?.keybinds) !== JSON.stringify(next?.keybinds) ||
-        !!settings?.showThinkingSettings !== !!next?.showThinkingSettings
-      )
-      if (changed) {
-        settings = next
-        debug = !!next?.debug
-      }
+      settings = next
+      debug = !!next?.debug
     } catch {}
   })
 
@@ -1469,8 +1485,13 @@
       const sig = computePersistSig(nodes, chatSettings, rootId)
       if (sig === persistSig) return
       persistSig = sig
-      const p = saveChatContent(cid, { nodes, settings: chatSettings, rootId })
-      p.then(updated => scheduleParentRefresh(updated)).catch(() => {})
+      // Use global throttle to prevent storage write storms across multiple chats
+      queueGlobalPersist(cid, async () => {
+        try {
+          const updated = await saveChatContent(cid, { nodes, settings: chatSettings, rootId })
+          scheduleParentRefresh(updated)
+        } catch {}
+      })
     } catch {}
   })
 
@@ -1504,6 +1525,10 @@
 
   onDestroy(() => {
     const chatId = props.chatId
+    // Abort any in-flight generation to prevent orphaned HTTP requests
+    if (generationState.isGenerationActive()) {
+      generationState.requestAbort()
+    }
     if (!chatId) return
     try { props.onGeneratingChange?.(chatId, false) } catch {}
     persistenceScheduler.cancel()

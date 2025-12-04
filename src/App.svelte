@@ -6,7 +6,7 @@
   import { loadSettings } from './lib/settingsStore'
   import { ensureModels } from './lib/modelsStore'
   import { initTheme } from './lib/themeStore'
-  import type { Chat as ChatType, Preset } from './lib/types'
+  import type { Chat as ChatType, Preset, AppSettings } from './lib/types'
 
   let chats = $state<ChatType[]>([])
   let selectedId = $state<string | null>(null)
@@ -15,11 +15,17 @@
   let settingsVersion = $state(0)
   let presets = $state<Preset[]>([])
   let generatingMap = $state<Record<string, boolean>>({})
+  let appSettings = $state<AppSettings | null>(null)
 
-  // Derive which chats should be mounted: selected OR generating
+  // Track previous selected chat to keep it mounted until user switches away
+  let previousSelectedId = $state<string | null>(null)
+
+  // Derive which chats should be mounted: selected + previous + generating
   let mountedChatIds = $derived.by(() => {
     const ids = new Set<string>()
     if (selectedId) ids.add(selectedId)
+    // Keep previous chat mounted until user navigates away from current
+    if (previousSelectedId && previousSelectedId !== selectedId) ids.add(previousSelectedId)
     for (const id of Object.keys(generatingMap)) {
       if (generatingMap[id]) ids.add(id)
     }
@@ -116,11 +122,13 @@
     }
   }
 
-  function syncPresets() {
+  function syncSettings() {
     try {
       const settings = loadSettings()
+      appSettings = settings
       presets = Array.isArray(settings?.presets) ? settings.presets : []
     } catch {
+      appSettings = null
       presets = []
     }
   }
@@ -153,7 +161,7 @@
     // Defer initial population to avoid mutating state during mount flush
     setTimeout(async () => {
       sidebarOpen = loadSidebarPref()
-      syncPresets()
+      syncSettings()
 
       // Migrate chats from localStorage to IndexedDB if needed
       try {
@@ -179,6 +187,10 @@
   })
 
   function onSelectChat(id) {
+    // Track previous selection before changing (for keeping chat mounted)
+    if (selectedId && selectedId !== id) {
+      previousSelectedId = selectedId
+    }
     setSelected(id)
     selectedId = id
   }
@@ -192,6 +204,10 @@
       ? { presetId: preset.id, preset }
       : {}
     const c = await createChat(initial)
+    // Track previous selection before changing
+    if (selectedId) {
+      previousSelectedId = selectedId
+    }
     selectedId = c.id
     // Optimized: instead of reloading all chats from storage, just add the new one
     chats = [c.chat, ...chats].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
@@ -222,6 +238,10 @@
     if (!id) return
     await deleteChat(id)
     setGenerating(id, false)
+    // Clear previous if the deleted chat was the previous one
+    if (previousSelectedId === id) {
+      previousSelectedId = null
+    }
     const wasSelected = selectedId === id
     if (wasSelected) selectedId = null
     const remaining = await getChats()
@@ -262,6 +282,7 @@
           onChatUpdated={onChatUpdated}
           settingsVersion={settingsVersion}
           onGeneratingChange={onChatGeneratingChange}
+          appSettings={appSettings}
         />
       </div>
     {/each}
@@ -272,7 +293,7 @@
     onClose={() => (showSettings = false)}
     onSaved={() => {
       settingsVersion = Date.now()
-      syncPresets()
+      syncSettings()
     }}
   />
 </div>
