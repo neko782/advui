@@ -393,8 +393,7 @@ function attachmentMimeLabel(attachment) {
   }
   .bubble :global(pre) { background: transparent; padding: 12px; margin: 0; border-radius: 0; overflow: auto; }
   .bubble :global(pre code) { background: transparent; padding: 0; }
-  /* highlight.js theme - adapted for light/dark mode */
-  .bubble :global(.hljs) { color: var(--text); }
+  /* highlight.js theme - GitHub-inspired light/dark */
   .bubble :global(.hljs-comment), .bubble :global(.hljs-quote) { color: var(--muted); font-style: italic; }
   .bubble :global(.hljs-keyword), .bubble :global(.hljs-selector-tag), .bubble :global(.hljs-addition) { color: #d73a49; }
   .bubble :global(.hljs-string), .bubble :global(.hljs-meta .hljs-string), .bubble :global(.hljs-regexp), .bubble :global(.hljs-selector-attr), .bubble :global(.hljs-selector-pseudo) { color: #032f62; }
@@ -404,12 +403,14 @@ function attachmentMimeLabel(attachment) {
   .bubble :global(.hljs-params) { color: var(--text); }
   .bubble :global(.hljs-meta), .bubble :global(.hljs-tag) { color: #22863a; }
   .bubble :global(.hljs-attr) { color: #005cc5; }
+  .bubble :global(.hljs-deletion) { color: #b31d28; }
   :global([data-theme='dark']) .bubble :global(.hljs-keyword), :global([data-theme='dark']) .bubble :global(.hljs-selector-tag), :global([data-theme='dark']) .bubble :global(.hljs-addition) { color: #ff7b72; }
   :global([data-theme='dark']) .bubble :global(.hljs-string), :global([data-theme='dark']) .bubble :global(.hljs-meta .hljs-string), :global([data-theme='dark']) .bubble :global(.hljs-regexp) { color: #a5d6ff; }
   :global([data-theme='dark']) .bubble :global(.hljs-number), :global([data-theme='dark']) .bubble :global(.hljs-literal), :global([data-theme='dark']) .bubble :global(.hljs-type), :global([data-theme='dark']) .bubble :global(.hljs-built_in) { color: #79c0ff; }
   :global([data-theme='dark']) .bubble :global(.hljs-title), :global([data-theme='dark']) .bubble :global(.hljs-section), :global([data-theme='dark']) .bubble :global(.hljs-attribute), :global([data-theme='dark']) .bubble :global(.hljs-name) { color: #d2a8ff; }
   :global([data-theme='dark']) .bubble :global(.hljs-meta), :global([data-theme='dark']) .bubble :global(.hljs-tag) { color: #7ee787; }
   :global([data-theme='dark']) .bubble :global(.hljs-attr) { color: #79c0ff; }
+  :global([data-theme='dark']) .bubble :global(.hljs-deletion) { color: #ffa198; }
   @media (prefers-color-scheme: dark) {
     :global(:root:not([data-theme='light'])) .bubble :global(.hljs-keyword), :global(:root:not([data-theme='light'])) .bubble :global(.hljs-selector-tag), :global(:root:not([data-theme='light'])) .bubble :global(.hljs-addition) { color: #ff7b72; }
     :global(:root:not([data-theme='light'])) .bubble :global(.hljs-string), :global(:root:not([data-theme='light'])) .bubble :global(.hljs-meta .hljs-string), :global(:root:not([data-theme='light'])) .bubble :global(.hljs-regexp) { color: #a5d6ff; }
@@ -417,6 +418,7 @@ function attachmentMimeLabel(attachment) {
     :global(:root:not([data-theme='light'])) .bubble :global(.hljs-title), :global(:root:not([data-theme='light'])) .bubble :global(.hljs-section), :global(:root:not([data-theme='light'])) .bubble :global(.hljs-attribute), :global(:root:not([data-theme='light'])) .bubble :global(.hljs-name) { color: #d2a8ff; }
     :global(:root:not([data-theme='light'])) .bubble :global(.hljs-meta), :global(:root:not([data-theme='light'])) .bubble :global(.hljs-tag) { color: #7ee787; }
     :global(:root:not([data-theme='light'])) .bubble :global(.hljs-attr) { color: #79c0ff; }
+    :global(:root:not([data-theme='light'])) .bubble :global(.hljs-deletion) { color: #ffa198; }
   }
   .bubble :global(p:first-child), .bubble :global(ul:first-child), .bubble :global(ol:first-child), .bubble :global(pre:first-child), .bubble :global(h1:first-child), .bubble :global(h2:first-child), .bubble :global(h3:first-child), .bubble :global(h4:first-child), .bubble :global(h5:first-child), .bubble :global(h6:first-child), .bubble :global(.code-block-wrapper:first-child) { margin-top: 0; }
   .bubble :global(p:last-child), .bubble :global(ul:last-child), .bubble :global(ol:last-child), .bubble :global(pre:last-child), .bubble :global(h1:last-child), .bubble :global(h2:last-child), .bubble :global(h3:last-child), .bubble :global(h4:last-child), .bubble :global(h5:last-child), .bubble :global(h6:last-child), .bubble :global(.code-block-wrapper:last-child) { margin-bottom: 0; }

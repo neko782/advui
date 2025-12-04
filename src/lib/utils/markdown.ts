@@ -3,31 +3,84 @@ import type Token from 'markdown-it/lib/token.mjs';
 import type Renderer from 'markdown-it/lib/renderer.mjs';
 import type StateCore from 'markdown-it/lib/rules_core/state_core.mjs';
 import hljs from 'highlight.js/lib/core';
+// Load languages
 import javascript from 'highlight.js/lib/languages/javascript';
 import typescript from 'highlight.js/lib/languages/typescript';
 import python from 'highlight.js/lib/languages/python';
 import bash from 'highlight.js/lib/languages/bash';
+import shell from 'highlight.js/lib/languages/shell';
 import json from 'highlight.js/lib/languages/json';
-import css from 'highlight.js/lib/languages/css';
+import yaml from 'highlight.js/lib/languages/yaml';
 import xml from 'highlight.js/lib/languages/xml';
+import css from 'highlight.js/lib/languages/css';
+import markdown from 'highlight.js/lib/languages/markdown';
+import sql from 'highlight.js/lib/languages/sql';
+import rust from 'highlight.js/lib/languages/rust';
+import go from 'highlight.js/lib/languages/go';
+import c from 'highlight.js/lib/languages/c';
+import cpp from 'highlight.js/lib/languages/cpp';
+import csharp from 'highlight.js/lib/languages/csharp';
+import java from 'highlight.js/lib/languages/java';
+import kotlin from 'highlight.js/lib/languages/kotlin';
+import swift from 'highlight.js/lib/languages/swift';
+import ruby from 'highlight.js/lib/languages/ruby';
+import php from 'highlight.js/lib/languages/php';
+import lua from 'highlight.js/lib/languages/lua';
+import diff from 'highlight.js/lib/languages/diff';
+import ini from 'highlight.js/lib/languages/ini';
+import dockerfile from 'highlight.js/lib/languages/dockerfile';
+import nginx from 'highlight.js/lib/languages/nginx';
+import graphql from 'highlight.js/lib/languages/graphql';
+import plaintext from 'highlight.js/lib/languages/plaintext';
 
+// Register languages
 hljs.registerLanguage('javascript', javascript);
-hljs.registerLanguage('js', javascript);
-hljs.registerLanguage('jsx', javascript);
 hljs.registerLanguage('typescript', typescript);
-hljs.registerLanguage('ts', typescript);
-hljs.registerLanguage('tsx', typescript);
 hljs.registerLanguage('python', python);
-hljs.registerLanguage('py', python);
 hljs.registerLanguage('bash', bash);
-hljs.registerLanguage('sh', bash);
-hljs.registerLanguage('shell', bash);
-hljs.registerLanguage('zsh', bash);
+hljs.registerLanguage('shell', shell);
 hljs.registerLanguage('json', json);
-hljs.registerLanguage('css', css);
+hljs.registerLanguage('yaml', yaml);
 hljs.registerLanguage('xml', xml);
+hljs.registerLanguage('css', css);
+hljs.registerLanguage('markdown', markdown);
+hljs.registerLanguage('sql', sql);
+hljs.registerLanguage('rust', rust);
+hljs.registerLanguage('go', go);
+hljs.registerLanguage('c', c);
+hljs.registerLanguage('cpp', cpp);
+hljs.registerLanguage('csharp', csharp);
+hljs.registerLanguage('java', java);
+hljs.registerLanguage('kotlin', kotlin);
+hljs.registerLanguage('swift', swift);
+hljs.registerLanguage('ruby', ruby);
+hljs.registerLanguage('php', php);
+hljs.registerLanguage('lua', lua);
+hljs.registerLanguage('diff', diff);
+hljs.registerLanguage('ini', ini);
+hljs.registerLanguage('dockerfile', dockerfile);
+hljs.registerLanguage('nginx', nginx);
+hljs.registerLanguage('graphql', graphql);
+hljs.registerLanguage('plaintext', plaintext);
+
+// Aliases
+hljs.registerLanguage('js', javascript);
+hljs.registerLanguage('ts', typescript);
+hljs.registerLanguage('py', python);
+hljs.registerLanguage('rb', ruby);
+hljs.registerLanguage('rs', rust);
+hljs.registerLanguage('sh', bash);
+hljs.registerLanguage('zsh', bash);
+hljs.registerLanguage('yml', yaml);
 hljs.registerLanguage('html', xml);
 hljs.registerLanguage('svg', xml);
+hljs.registerLanguage('cs', csharp);
+hljs.registerLanguage('toml', ini);
+hljs.registerLanguage('docker', dockerfile);
+hljs.registerLanguage('md', markdown);
+hljs.registerLanguage('jsx', javascript);
+hljs.registerLanguage('tsx', typescript);
+hljs.registerLanguage('text', plaintext);
 
 // markdown-it instance configured for our chat bubbles
 const md = new MarkdownIt({
@@ -36,12 +89,19 @@ const md = new MarkdownIt({
   typographer: false,
   breaks: true,
   highlight: (str: string, lang: string): string => {
+    // If language specified and we have it, use it
     if (lang && hljs.getLanguage(lang)) {
       try {
         return hljs.highlight(str, { language: lang, ignoreIllegals: true }).value;
       } catch { /* ignore */ }
     }
-    return ''; // use external default escaping for unknown languages
+    // Auto-detect if no language specified
+    if (!lang) {
+      try {
+        return hljs.highlightAuto(str).value;
+      } catch { /* ignore */ }
+    }
+    return ''; // fallback to plain text
   }
 });
 md.disable('code'); // disallow indented code blocks; require fenced blocks
@@ -88,7 +148,7 @@ md.renderer.rules.fence = function(
 <span class="code-lang">${md.utils.escapeHtml(langLabel)}</span>
 <button type="button" class="code-copy-btn" aria-label="Copy code">Copy</button>
 </div>
-<pre><code class="hljs${langName ? ` language-${md.utils.escapeHtml(langName)}` : ''}">${code}</code></pre>
+<pre><code class="hljs language-${md.utils.escapeHtml(langLabel)}">${code}</code></pre>
 </div>`;
 };
 
