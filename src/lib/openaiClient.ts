@@ -647,7 +647,7 @@ function collectChatDeltaText(chunk: unknown): string {
 function collectChatReasoningContent(reasoningContent: unknown): string {
   if (reasoningContent == null) return '';
   if (typeof reasoningContent === 'string' || typeof reasoningContent === 'number') {
-    return String(reasoningContent);
+    return normalizeReasoningText(String(reasoningContent));
   }
   const pieces: string[] = [];
   const items = Array.isArray(reasoningContent) ? reasoningContent : [reasoningContent];
@@ -688,7 +688,17 @@ function collectChatReasoningContent(reasoningContent: unknown): string {
   // Join with newlines like Responses API does for proper formatting
   if (!pieces.length) return '';
   const joined = pieces.join('\n\n\n');
-  return joined.replace(/\n{4,}/g, '\n\n\n');
+  return normalizeReasoningText(joined);
+}
+
+// Normalize reasoning text by ensuring proper newlines before bold headers
+function normalizeReasoningText(text: string): string {
+  if (!text) return '';
+  // Add newlines before bold headers that don't have them (e.g., "...text.**Header**" -> "...text.\n\n**Header**")
+  let normalized = text.replace(/([^\n])(\*\*[A-Z][^*]+\*\*)/g, '$1\n\n$2');
+  // Normalize excessive newlines
+  normalized = normalized.replace(/\n{4,}/g, '\n\n\n');
+  return normalized;
 }
 
 function extractOutputText(res: unknown): string {
