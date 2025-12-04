@@ -809,13 +809,11 @@
       if (generationState.getGenerationSequence() === genSeq) {
         nodes = handleGenerationSuccess(nodes, typingVariantId, reply, summaryBuffer)
       }
-      await persistNow()
     } catch (err) {
       logGenerationEvent(debug, 'Generation error', { error: err?.message, typingVariantId })
       if (generationState.getGenerationSequence() === genSeq) {
         nodes = handleGenerationError(nodes, typingVariantId, err)
       }
-      await persistNow()
     } finally {
       const isCurrentGen = generationState.getGenerationSequence() === genSeq
       if (isCurrentGen) {
@@ -826,6 +824,7 @@
         logGenerationEvent(debug, 'Generation finished', { sequence: genSeq, wasCurrentGen: isCurrentGen })
       }
     }
+    await persistNow()
   }
 
   function cancelEdit() {
@@ -1001,13 +1000,11 @@
       if (typingVariantId != null && generationState.getGenerationSequence() === genSeq) {
         nodes = handleGenerationSuccess(nodes, typingVariantId, reply, summaryBuffer)
       }
-      await persistNow()
     } catch (err) {
       logGenerationEvent(debug, 'Generation error', { error: err?.message, typingVariantId, role })
       if (typingVariantId != null && generationState.getGenerationSequence() === genSeq) {
         nodes = handleGenerationError(nodes, typingVariantId, err)
       }
-      await persistNow()
     } finally {
       const isCurrentGen = generationState.getGenerationSequence() === genSeq
       if (isCurrentGen) {
@@ -1020,6 +1017,7 @@
         logGenerationEvent(debug, 'Generation finished', { sequence: genSeq, wasCurrentGen: isCurrentGen })
       }
     }
+    await persistNow()
   }
 
   function send() { return sendWithRole('user') }
@@ -1177,13 +1175,11 @@
       if (generationState.getGenerationSequence() === genSeq) {
         nodes = handleGenerationSuccess(nodes, typingVariantId, reply, summaryBuffer)
       }
-      await persistNow()
     } catch (err) {
       logGenerationEvent(debug, 'Generation error', { error: err?.message, typingVariantId })
       if (generationState.getGenerationSequence() === genSeq) {
         nodes = handleGenerationError(nodes, typingVariantId, err)
       }
-      await persistNow()
     } finally {
       const isCurrentGen = generationState.getGenerationSequence() === genSeq
       if (isCurrentGen) {
@@ -1194,6 +1190,7 @@
         logGenerationEvent(debug, 'Generation finished', { sequence: genSeq, wasCurrentGen: isCurrentGen })
       }
     }
+    await persistNow()
   }
 
   async function refreshAfterUserIndex(i) {
@@ -1283,13 +1280,11 @@
       if (generationState.getGenerationSequence() === genSeq) {
         nodes = handleGenerationSuccess(nodes, typingVariantId, reply, summaryBuffer)
       }
-      await persistNow()
     } catch (err) {
       logGenerationEvent(debug, 'Generation error', { error: err?.message, typingVariantId })
       if (generationState.getGenerationSequence() === genSeq) {
         nodes = handleGenerationError(nodes, typingVariantId, err)
       }
-      await persistNow()
     } finally {
       const isCurrentGen = generationState.getGenerationSequence() === genSeq
       if (isCurrentGen) {
@@ -1300,6 +1295,7 @@
         logGenerationEvent(debug, 'Generation finished', { sequence: genSeq, wasCurrentGen: isCurrentGen })
       }
     }
+    await persistNow()
   }
 
   // Debug function - intentionally named to indicate it deliberately breaks branching logic
