@@ -88,21 +88,6 @@ const md = new MarkdownIt({
   linkify: true,
   typographer: false,
   breaks: true,
-  highlight: (str: string, lang: string): string => {
-    // If language specified and we have it, use it
-    if (lang && hljs.getLanguage(lang)) {
-      try {
-        return hljs.highlight(str, { language: lang, ignoreIllegals: true }).value;
-      } catch { /* ignore */ }
-    }
-    // Auto-detect if no language specified
-    if (!lang) {
-      try {
-        return hljs.highlightAuto(str).value;
-      } catch { /* ignore */ }
-    }
-    return ''; // fallback to plain text
-  }
 });
 md.disable('code'); // disallow indented code blocks; require fenced blocks
 
@@ -126,20 +111,33 @@ md.renderer.rules.fence = function(
 ): string {
   const token = tokens[idx]!;
   const info = token.info ? token.info.trim() : '';
-  const langName = info.split(/\s+/g)[0] || '';
-  const langLabel = langName || 'text';
+  const specifiedLang = info.split(/\s+/g)[0] || '';
 
-  // Get the highlighted content
+  // Get the highlighted content and detect language if not specified
   let code = token.content;
-  if (options.highlight) {
-    const highlighted = options.highlight(code, langName, '');
-    if (highlighted !== '') {
-      code = highlighted;
-    } else {
+  let langLabel = specifiedLang;
+
+  if (specifiedLang && hljs.getLanguage(specifiedLang)) {
+    // Language specified, use it
+    try {
+      code = hljs.highlight(code, { language: specifiedLang, ignoreIllegals: true }).value;
+    } catch {
       code = md.utils.escapeHtml(code);
     }
+  } else if (!specifiedLang) {
+    // No language specified, auto-detect
+    try {
+      const result = hljs.highlightAuto(code);
+      code = result.value;
+      langLabel = result.language || 'text';
+    } catch {
+      code = md.utils.escapeHtml(code);
+      langLabel = 'text';
+    }
   } else {
+    // Unknown language, just escape
     code = md.utils.escapeHtml(code);
+    langLabel = specifiedLang;
   }
 
   // Build the code block with header containing language label and copy button
