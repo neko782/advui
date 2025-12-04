@@ -2,7 +2,32 @@ import MarkdownIt from 'markdown-it';
 import type Token from 'markdown-it/lib/token.mjs';
 import type Renderer from 'markdown-it/lib/renderer.mjs';
 import type StateCore from 'markdown-it/lib/rules_core/state_core.mjs';
-import hljs from 'highlight.js';
+import hljs from 'highlight.js/lib/core';
+import javascript from 'highlight.js/lib/languages/javascript';
+import typescript from 'highlight.js/lib/languages/typescript';
+import python from 'highlight.js/lib/languages/python';
+import bash from 'highlight.js/lib/languages/bash';
+import json from 'highlight.js/lib/languages/json';
+import css from 'highlight.js/lib/languages/css';
+import xml from 'highlight.js/lib/languages/xml';
+
+hljs.registerLanguage('javascript', javascript);
+hljs.registerLanguage('js', javascript);
+hljs.registerLanguage('jsx', javascript);
+hljs.registerLanguage('typescript', typescript);
+hljs.registerLanguage('ts', typescript);
+hljs.registerLanguage('tsx', typescript);
+hljs.registerLanguage('python', python);
+hljs.registerLanguage('py', python);
+hljs.registerLanguage('bash', bash);
+hljs.registerLanguage('sh', bash);
+hljs.registerLanguage('shell', bash);
+hljs.registerLanguage('zsh', bash);
+hljs.registerLanguage('json', json);
+hljs.registerLanguage('css', css);
+hljs.registerLanguage('xml', xml);
+hljs.registerLanguage('html', xml);
+hljs.registerLanguage('svg', xml);
 
 // markdown-it instance configured for our chat bubbles
 const md = new MarkdownIt({
@@ -16,11 +41,7 @@ const md = new MarkdownIt({
         return hljs.highlight(str, { language: lang, ignoreIllegals: true }).value;
       } catch { /* ignore */ }
     }
-    // Auto-detect language if not specified
-    try {
-      return hljs.highlightAuto(str).value;
-    } catch { /* ignore */ }
-    return ''; // use external default escaping
+    return ''; // use external default escaping for unknown languages
   }
 });
 md.disable('code'); // disallow indented code blocks; require fenced blocks
