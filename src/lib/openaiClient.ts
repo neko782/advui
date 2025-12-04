@@ -414,6 +414,9 @@ export async function respond(options: RespondOptions): Promise<GenerationRespon
               summaryDelivered = true;
             } catch { /* ignore */ }
           }
+          if (finishReasonSeen) {
+            break;
+          }
         }
       } catch (err) {
         throw err;

@@ -809,14 +809,12 @@
       if (generationState.getGenerationSequence() === genSeq) {
         nodes = handleGenerationSuccess(nodes, typingVariantId, reply, summaryBuffer)
       }
-      setSending(false)
       await persistNow()
     } catch (err) {
       logGenerationEvent(debug, 'Generation error', { error: err?.message, typingVariantId })
       if (generationState.getGenerationSequence() === genSeq) {
         nodes = handleGenerationError(nodes, typingVariantId, err)
       }
-      setSending(false)
       await persistNow()
     } finally {
       const isCurrentGen = generationState.getGenerationSequence() === genSeq
@@ -1003,14 +1001,12 @@
       if (typingVariantId != null && generationState.getGenerationSequence() === genSeq) {
         nodes = handleGenerationSuccess(nodes, typingVariantId, reply, summaryBuffer)
       }
-      setSending(false)
       await persistNow()
     } catch (err) {
       logGenerationEvent(debug, 'Generation error', { error: err?.message, typingVariantId, role })
       if (typingVariantId != null && generationState.getGenerationSequence() === genSeq) {
         nodes = handleGenerationError(nodes, typingVariantId, err)
       }
-      setSending(false)
       await persistNow()
     } finally {
       const isCurrentGen = generationState.getGenerationSequence() === genSeq
@@ -1041,7 +1037,7 @@
         content: (prev.content === 'typing' ? '' : prev.content),
       }))
     }
-    finishGeneration()
+    setSending(false)
     persistNow()
   }
 
@@ -1181,14 +1177,12 @@
       if (generationState.getGenerationSequence() === genSeq) {
         nodes = handleGenerationSuccess(nodes, typingVariantId, reply, summaryBuffer)
       }
-      setSending(false)
       await persistNow()
     } catch (err) {
       logGenerationEvent(debug, 'Generation error', { error: err?.message, typingVariantId })
       if (generationState.getGenerationSequence() === genSeq) {
         nodes = handleGenerationError(nodes, typingVariantId, err)
       }
-      setSending(false)
       await persistNow()
     } finally {
       const isCurrentGen = generationState.getGenerationSequence() === genSeq
@@ -1289,14 +1283,12 @@
       if (generationState.getGenerationSequence() === genSeq) {
         nodes = handleGenerationSuccess(nodes, typingVariantId, reply, summaryBuffer)
       }
-      setSending(false)
       await persistNow()
     } catch (err) {
       logGenerationEvent(debug, 'Generation error', { error: err?.message, typingVariantId })
       if (generationState.getGenerationSequence() === genSeq) {
         nodes = handleGenerationError(nodes, typingVariantId, err)
       }
-      setSending(false)
       await persistNow()
     } finally {
       const isCurrentGen = generationState.getGenerationSequence() === genSeq
