@@ -658,6 +658,12 @@ function collectChatReasoningContent(reasoningContent: unknown): string {
       continue;
     }
     const itemObj = item as Record<string, unknown>;
+    // Handle Anthropic extended thinking format: { type: "thinking", thinking: "..." }
+    if (typeof itemObj.thinking === 'string') {
+      if (itemObj.thinking) pieces.push(itemObj.thinking);
+      continue;
+    }
+    // Handle summary format: { type: "summary_text", text: "..." }
     if (typeof itemObj.text === 'string') {
       if (itemObj.text) pieces.push(itemObj.text);
       continue;
@@ -679,7 +685,10 @@ function collectChatReasoningContent(reasoningContent: unknown): string {
     const fallback = collectContentText(item);
     if (fallback) pieces.push(fallback);
   }
-  return pieces.join('');
+  // Join with newlines like Responses API does for proper formatting
+  if (!pieces.length) return '';
+  const joined = pieces.join('\n\n\n');
+  return joined.replace(/\n{4,}/g, '\n\n\n');
 }
 
 function extractOutputText(res: unknown): string {
