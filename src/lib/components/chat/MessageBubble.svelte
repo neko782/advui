@@ -369,14 +369,37 @@ function attachmentMimeLabel(attachment) {
     padding: 8px 12px;
     text-align: left;
     white-space: nowrap;
-    border-bottom: 1px solid var(--border);
+    border: 1px solid var(--border);
+    border-top: none;
+    border-left: none;
   }
   .bubble :global(th) {
     font-weight: 600;
-    color: var(--muted);
+    background: color-mix(in srgb, var(--panel), #000000 6%);
   }
-  .bubble :global(tr:last-child td) {
-    border-bottom: none;
+  .bubble :global(tr:nth-child(even)) {
+    background: color-mix(in srgb, var(--panel), #000000 2%);
+  }
+  /* First column left border */
+  .bubble :global(th:first-child), .bubble :global(td:first-child) {
+    border-left: 1px solid var(--border);
+  }
+  /* First row top border */
+  .bubble :global(thead tr:first-child th), .bubble :global(tbody:first-child tr:first-child td) {
+    border-top: 1px solid var(--border);
+  }
+  /* Rounded corners */
+  .bubble :global(thead tr:first-child th:first-child), .bubble :global(tbody:first-child tr:first-child td:first-child) {
+    border-top-left-radius: 8px;
+  }
+  .bubble :global(thead tr:first-child th:last-child), .bubble :global(tbody:first-child tr:first-child td:last-child) {
+    border-top-right-radius: 8px;
+  }
+  .bubble :global(tbody tr:last-child td:first-child) {
+    border-bottom-left-radius: 8px;
+  }
+  .bubble :global(tbody tr:last-child td:last-child) {
+    border-bottom-right-radius: 8px;
   }
   .bubble :global(table:first-child) { margin-top: 0; }
   .bubble :global(table:last-child) { margin-bottom: 0; }
