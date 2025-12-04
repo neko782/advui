@@ -363,7 +363,7 @@ export async function respond(options: RespondOptions): Promise<GenerationRespon
           .filter(Boolean);
         if (!ordered.length) return '';
         const combined = ordered.join('\n\n\n');
-        return combined.replace(/\n{4,}/g, '\n\n\n');
+        return normalizeReasoningText(combined);
       };
       try {
         for await (const chunk of streamIt) {
@@ -647,7 +647,7 @@ function collectChatDeltaText(chunk: unknown): string {
 function collectChatReasoningContent(reasoningContent: unknown): string {
   if (reasoningContent == null) return '';
   if (typeof reasoningContent === 'string' || typeof reasoningContent === 'number') {
-    return normalizeReasoningText(String(reasoningContent));
+    return String(reasoningContent);
   }
   const pieces: string[] = [];
   const items = Array.isArray(reasoningContent) ? reasoningContent : [reasoningContent];
@@ -685,10 +685,7 @@ function collectChatReasoningContent(reasoningContent: unknown): string {
     const fallback = collectContentText(item);
     if (fallback) pieces.push(fallback);
   }
-  // Join with newlines like Responses API does for proper formatting
-  if (!pieces.length) return '';
-  const joined = pieces.join('\n\n\n');
-  return normalizeReasoningText(joined);
+  return pieces.join('');
 }
 
 // Normalize reasoning text by ensuring proper newlines before bold headers
@@ -764,7 +761,7 @@ function extractChatReasoningSummary(res: unknown): string {
     const resObj = res as Record<string, unknown>;
     // Check for top-level reasoning field first
     const topLevelReasoning = collectChatReasoningContent(resObj?.reasoning);
-    if (topLevelReasoning) return topLevelReasoning;
+    if (topLevelReasoning) return normalizeReasoningText(topLevelReasoning);
 
     const choices = Array.isArray(resObj?.choices) ? resObj.choices : [];
     if (!choices.length) return '';
@@ -783,7 +780,7 @@ function extractChatReasoningSummary(res: unknown): string {
       .filter(Boolean);
     if (!ordered.length) return '';
     const joined = ordered.join('\n\n\n');
-    return joined.replace(/\n{4,}/g, '\n\n\n');
+    return normalizeReasoningText(joined);
   } catch { /* ignore */ }
   return '';
 }
