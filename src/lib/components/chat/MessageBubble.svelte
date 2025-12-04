@@ -360,27 +360,23 @@ function attachmentMimeLabel(attachment) {
     width: max-content;
     max-width: 100%;
     overflow-x: auto;
-    border-collapse: collapse;
+    border-collapse: separate;
+    border-spacing: 0;
     margin: 0.5em 0;
     font-size: 0.9rem;
-    border: 1px solid var(--border);
-    border-radius: 8px;
-  }
-  .bubble :global(thead) {
-    background: color-mix(in srgb, var(--panel), #000000 6%);
   }
   .bubble :global(th), .bubble :global(td) {
     padding: 8px 12px;
-    border: 1px solid var(--border);
     text-align: left;
     white-space: nowrap;
+    border-bottom: 1px solid var(--border);
   }
   .bubble :global(th) {
     font-weight: 600;
-    background: color-mix(in srgb, var(--panel), #000000 6%);
+    color: var(--muted);
   }
-  .bubble :global(tr:nth-child(even)) {
-    background: color-mix(in srgb, var(--panel), #000000 2%);
+  .bubble :global(tr:last-child td) {
+    border-bottom: none;
   }
   .bubble :global(table:first-child) { margin-top: 0; }
   .bubble :global(table:last-child) { margin-bottom: 0; }
