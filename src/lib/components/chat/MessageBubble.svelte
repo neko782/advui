@@ -360,14 +360,16 @@ function attachmentMimeLabel(attachment) {
     overflow: hidden;
     background: color-mix(in srgb, var(--panel), #000000 4%);
     margin: 0.5em 0;
+    border: 1px solid var(--border);
   }
   .bubble :global(.code-block-header) {
     display: flex;
     justify-content: space-between;
     align-items: center;
     padding: 6px 12px;
-    background: color-mix(in srgb, var(--panel), #000000 10%);
+    background: color-mix(in srgb, var(--border), transparent 50%);
     font-size: 0.75rem;
+    border-bottom: 1px solid var(--border);
   }
   .bubble :global(.code-lang) {
     color: var(--muted);
