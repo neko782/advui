@@ -458,7 +458,7 @@ export async function respond(options: RespondOptions): Promise<GenerationRespon
         .filter(Boolean);
       if (!ordered.length) return '';
       const combined = ordered.join('\n\n\n');
-      return combined.replace(/\n{4,}/g, '\n\n\n');
+      return normalizeReasoningText(combined);
     };
     let completed = false;
     try {
@@ -742,7 +742,7 @@ function extractReasoningSummary(res: unknown): string {
     }
     if (!order.length) return '';
     const joined = order.join('\n\n\n');
-    return joined.replace(/\n{4,}/g, '\n\n\n');
+    return normalizeReasoningText(joined);
   };
   const resObj = res as Record<string, unknown>;
   try {
