@@ -357,12 +357,19 @@ function attachmentMimeLabel(attachment) {
   /* Table styles */
   .bubble :global(table) {
     display: block;
-    width: max-content;
+    max-width: 100%;
     overflow-x: auto;
     border-collapse: separate;
     border-spacing: 0;
     margin: 0.5em 0;
     font-size: 0.9rem;
+  }
+  .bubble :global(thead), .bubble :global(tbody) {
+    display: table;
+    width: max-content;
+    min-width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
   }
   .bubble :global(th), .bubble :global(td) {
     padding: 8px 12px;
