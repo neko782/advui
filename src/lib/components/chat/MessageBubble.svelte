@@ -369,8 +369,9 @@ function attachmentMimeLabel(attachment) {
     padding: 8px 12px;
     text-align: left;
     max-width: 300px;
-    overflow-wrap: break-word;
-    word-break: break-word;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
     border: 1px solid var(--border);
     border-top: none;
     border-left: none;
