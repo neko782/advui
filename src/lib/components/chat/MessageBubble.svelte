@@ -368,7 +368,9 @@ function attachmentMimeLabel(attachment) {
   .bubble :global(th), .bubble :global(td) {
     padding: 8px 12px;
     text-align: left;
-    white-space: nowrap;
+    max-width: 300px;
+    overflow-wrap: break-word;
+    word-break: break-word;
     border: 1px solid var(--border);
     border-top: none;
     border-left: none;
