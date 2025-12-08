@@ -1126,6 +1126,18 @@
                     </label>
                   {/if}
                 {/if}
+
+                <div class="preset-group-divider"></div>
+                <label class="switch" title="Enable web search">
+                  <input
+                    type="checkbox"
+                    checked={!!activePreset.webSearchEnabled}
+                    onchange={(event) => updateActivePreset({ webSearchEnabled: !!event.currentTarget.checked })}
+                    aria-label="Enable web search"
+                  />
+                  <span class="switch-ui" aria-hidden="true"></span>
+                  <span class="switch-label">Web search</span>
+                </label>
                 </div>
               {/if}
             </section>

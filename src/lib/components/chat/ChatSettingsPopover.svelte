@@ -15,6 +15,7 @@
     textVerbosity?: TextVerbosity
     thinkingEnabled?: boolean
     thinkingBudgetTokens?: number | null
+    webSearchEnabled?: boolean
     modelIds?: string[]
     connections?: { id: string; name: string }[]
     connectionId?: string | null
@@ -33,6 +34,7 @@
     onInputTextVerbosity?: (val: string) => void
     onInputThinkingEnabled?: (val: boolean) => void
     onInputThinkingBudgetTokens?: (val: string) => void
+    onInputWebSearchEnabled?: (val: boolean) => void
     onSelectPreset?: (preset: Preset) => void
   }
 
@@ -141,6 +143,19 @@
             />
             <span class="switch-ui" aria-hidden="true"></span>
             <span class="switch-label">Stream</span>
+          </label>
+        </div>
+        <div class="menu-section">
+          <label class="switch" title="Web search">
+            <input
+              type="checkbox"
+              checked={!!props.webSearchEnabled}
+              disabled={props.disabled}
+              onchange={(e) => (!props.disabled && props.onInputWebSearchEnabled?.(e.currentTarget.checked))}
+              aria-label="Web search"
+            />
+            <span class="switch-ui" aria-hidden="true"></span>
+            <span class="switch-label">Web search</span>
           </label>
         </div>
         <div class="menu-section">

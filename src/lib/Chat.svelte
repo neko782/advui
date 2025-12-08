@@ -1361,6 +1361,14 @@
       thinkingBudgetTokens: preset.thinkingBudgetTokens ?? chatSettings.thinkingBudgetTokens,
       connectionId: preset.connectionId || chatSettings.connectionId,
       presetId: preset.id || chatSettings.presetId,
+      // Web Search settings
+      webSearchEnabled: typeof preset.webSearchEnabled === 'boolean' ? preset.webSearchEnabled : chatSettings.webSearchEnabled,
+      webSearchDomains: preset.webSearchDomains ?? chatSettings.webSearchDomains,
+      webSearchCountry: preset.webSearchCountry ?? chatSettings.webSearchCountry,
+      webSearchCity: preset.webSearchCity ?? chatSettings.webSearchCity,
+      webSearchRegion: preset.webSearchRegion ?? chatSettings.webSearchRegion,
+      webSearchTimezone: preset.webSearchTimezone ?? chatSettings.webSearchTimezone,
+      webSearchCacheOnly: typeof preset.webSearchCacheOnly === 'boolean' ? preset.webSearchCacheOnly : chatSettings.webSearchCacheOnly,
     }
     persistNow()
   }
@@ -1583,6 +1591,7 @@
     chatTextVerbosity={chatSettings.textVerbosity}
     chatThinkingEnabled={chatSettings.thinkingEnabled}
     chatThinkingBudgetTokens={chatSettings.thinkingBudgetTokens}
+    chatWebSearchEnabled={chatSettings.webSearchEnabled}
     modelIds={modelIds}
     connections={connectionOptions}
     chatConnectionId={chatSettings.connectionId}
@@ -1603,6 +1612,7 @@
     onChangeTextVerbosity={(val) => (chatSettings = { ...chatSettings, textVerbosity: normalizeVerbosity(val) })}
     onChangeThinkingEnabled={(val) => (chatSettings = { ...chatSettings, thinkingEnabled: !!val })}
     onChangeThinkingBudgetTokens={(val) => (chatSettings = { ...chatSettings, thinkingBudgetTokens: toIntOrNull(val) })}
+    onChangeWebSearchEnabled={(val) => (chatSettings = { ...chatSettings, webSearchEnabled: !!val })}
     onSelectPreset={handleSelectPreset}
     onInput={(val) => (input = val)}
     onAdd={(role) => addToChat(role)}

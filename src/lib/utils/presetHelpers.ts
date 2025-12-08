@@ -33,6 +33,14 @@ export const DEFAULT_PRESET_FIELDS: PresetFields = {
   thinkingBudgetTokens: null,
   connectionId: null,
   systemPrompt: DEFAULT_SYSTEM_PROMPT,
+  // Web Search defaults
+  webSearchEnabled: false,
+  webSearchDomains: undefined,
+  webSearchCountry: undefined,
+  webSearchCity: undefined,
+  webSearchRegion: undefined,
+  webSearchTimezone: undefined,
+  webSearchCacheOnly: false,
 };
 
 export function generatePresetId(): string {
@@ -103,6 +111,15 @@ export function normalizePreset(
   const connectionId = resolveConnectionId(base.connectionId, allowedConnectionIds, fallbackConnectionId);
   const systemPrompt = typeof base.systemPrompt === 'string' ? base.systemPrompt : defaultSystemPrompt;
   
+  // Web Search settings
+  const webSearchEnabled = typeof base.webSearchEnabled === 'boolean' ? base.webSearchEnabled : false;
+  const webSearchDomains = typeof base.webSearchDomains === 'string' ? base.webSearchDomains : undefined;
+  const webSearchCountry = typeof base.webSearchCountry === 'string' ? base.webSearchCountry : undefined;
+  const webSearchCity = typeof base.webSearchCity === 'string' ? base.webSearchCity : undefined;
+  const webSearchRegion = typeof base.webSearchRegion === 'string' ? base.webSearchRegion : undefined;
+  const webSearchTimezone = typeof base.webSearchTimezone === 'string' ? base.webSearchTimezone : undefined;
+  const webSearchCacheOnly = typeof base.webSearchCacheOnly === 'boolean' ? base.webSearchCacheOnly : false;
+
   const result: Preset = {
     id,
     model,
@@ -117,15 +134,23 @@ export function normalizePreset(
     thinkingBudgetTokens,
     connectionId,
     systemPrompt,
+    // Web Search settings
+    webSearchEnabled,
+    webSearchDomains,
+    webSearchCountry,
+    webSearchCity,
+    webSearchRegion,
+    webSearchTimezone,
+    webSearchCacheOnly,
   };
-  
+
   // Only include name if it was explicitly provided or if generating for a list
   if (name !== undefined) {
     result.name = name;
   } else if (generateId) {
     result.name = sanitizeName(base.name, index);
   }
-  
+
   return result;
 }
 
@@ -295,6 +320,14 @@ export function buildChatSettings(preset: Preset, settings: Partial<Settings> | 
     thinkingEnabled: !!preset.thinkingEnabled,
     thinkingBudgetTokens: parseThinkingBudgetTokens(preset.thinkingBudgetTokens),
     connectionId: computeConnectionId({ preset, settings }),
+    // Web Search settings
+    webSearchEnabled: !!preset.webSearchEnabled,
+    webSearchDomains: preset.webSearchDomains,
+    webSearchCountry: preset.webSearchCountry,
+    webSearchCity: preset.webSearchCity,
+    webSearchRegion: preset.webSearchRegion,
+    webSearchTimezone: preset.webSearchTimezone,
+    webSearchCacheOnly: !!preset.webSearchCacheOnly,
   };
 }
 

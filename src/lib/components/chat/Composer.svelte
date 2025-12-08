@@ -20,6 +20,7 @@
     chatTextVerbosity?: TextVerbosity
     chatThinkingEnabled?: boolean
     chatThinkingBudgetTokens?: number | null
+    chatWebSearchEnabled?: boolean
     modelIds?: string[]
     connections?: { id: string; name: string }[]
     chatConnectionId?: string | null
@@ -40,6 +41,7 @@
     onChangeTextVerbosity?: (val: string) => void
     onChangeThinkingEnabled?: (val: boolean) => void
     onChangeThinkingBudgetTokens?: (val: string) => void
+    onChangeWebSearchEnabled?: (val: boolean) => void
     onSelectPreset?: (preset: Preset) => void
     onInput?: (val: string) => void
     onAdd?: (role: MessageRole) => void
@@ -249,6 +251,7 @@
         textVerbosity={props.chatTextVerbosity}
         thinkingEnabled={props.chatThinkingEnabled}
         thinkingBudgetTokens={props.chatThinkingBudgetTokens}
+        webSearchEnabled={props.chatWebSearchEnabled}
         modelIds={props.modelIds}
         connections={props.connections}
         connectionId={props.chatConnectionId}
@@ -267,6 +270,7 @@
         onInputTextVerbosity={props.onChangeTextVerbosity}
         onInputThinkingEnabled={props.onChangeThinkingEnabled}
         onInputThinkingBudgetTokens={props.onChangeThinkingBudgetTokens}
+        onInputWebSearchEnabled={props.onChangeWebSearchEnabled}
         onSelectPreset={props.onSelectPreset}
       />
     </div>

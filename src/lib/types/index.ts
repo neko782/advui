@@ -100,6 +100,14 @@ export interface ChatSettings {
   thinkingEnabled: boolean;
   thinkingBudgetTokens: number | null;
   connectionId: string | null;
+  // Web Search settings (Responses API only)
+  webSearchEnabled?: boolean;
+  webSearchDomains?: string;
+  webSearchCountry?: string;
+  webSearchCity?: string;
+  webSearchRegion?: string;
+  webSearchTimezone?: string;
+  webSearchCacheOnly?: boolean;
 }
 
 export interface Chat {
@@ -162,6 +170,14 @@ export interface Preset {
   thinkingBudgetTokens: number | null;
   connectionId: string | null;
   systemPrompt: string;
+  // Web Search settings (Responses API only)
+  webSearchEnabled?: boolean;
+  webSearchDomains?: string;  // Comma-separated list of allowed domains
+  webSearchCountry?: string;  // Two-letter ISO country code
+  webSearchCity?: string;
+  webSearchRegion?: string;
+  webSearchTimezone?: string; // IANA timezone
+  webSearchCacheOnly?: boolean;  // external_web_access = false
 }
 
 export interface PresetFields {
@@ -177,6 +193,14 @@ export interface PresetFields {
   thinkingBudgetTokens: number | null;
   connectionId: string | null;
   systemPrompt: string;
+  // Web Search settings (Responses API only)
+  webSearchEnabled?: boolean;
+  webSearchDomains?: string;
+  webSearchCountry?: string;
+  webSearchCity?: string;
+  webSearchRegion?: string;
+  webSearchTimezone?: string;
+  webSearchCacheOnly?: boolean;
 }
 
 // ============================================================================
@@ -310,6 +334,7 @@ export interface GenerationContext {
 export interface GenerationResponse {
   text: string;
   reasoningSummary?: string;
+  webSearchResult?: WebSearchResult;
 }
 
 export interface GenerationOptions {
@@ -444,6 +469,52 @@ export interface OpenAIClientOptions {
   dangerouslyAllowBrowser?: boolean;
 }
 
+// Web Search Types for Responses API
+export interface WebSearchUserLocation {
+  type: 'approximate';
+  country?: string;  // Two-letter ISO country code (e.g., "US", "GB")
+  city?: string;     // Free text string (e.g., "London")
+  region?: string;   // Free text string (e.g., "California")
+  timezone?: string; // IANA timezone (e.g., "America/Chicago")
+}
+
+export interface WebSearchFilters {
+  allowed_domains?: string[];  // Up to 100 URLs, without http/https prefix
+}
+
+export interface WebSearchOptions {
+  enabled?: boolean;
+  filters?: WebSearchFilters;
+  user_location?: WebSearchUserLocation;
+  external_web_access?: boolean;  // Default true, set false for cache-only mode
+}
+
+export interface WebSearchCitation {
+  type: 'url_citation';
+  start_index: number;
+  end_index: number;
+  url: string;
+  title: string;
+}
+
+export interface WebSearchSource {
+  url: string;
+  title?: string;
+  type?: string;  // Can be 'oai-sports', 'oai-weather', 'oai-finance' for real-time feeds
+}
+
+export interface WebSearchCallAction {
+  type: 'search' | 'open_page' | 'find_in_page';
+  query?: string;
+  domains?: string[];
+  sources?: WebSearchSource[];
+}
+
+export interface WebSearchResult {
+  citations: WebSearchCitation[];
+  sources: WebSearchSource[];
+}
+
 export interface RespondOptions {
   prompt?: string;
   messages?: HistoryMessage[];
@@ -463,6 +534,9 @@ export interface RespondOptions {
   onReasoningSummaryDelta?: (fullSummary: string, delta: string, event?: unknown) => void;
   onReasoningSummaryDone?: (fullSummary: string, event?: unknown) => void;
   onAbort?: (abortFn: () => void) => void;
+  // Web Search options (Responses API only)
+  webSearch?: WebSearchOptions;
+  onWebSearchResult?: (result: WebSearchResult) => void;
 }
 
 export interface ResolvedConnection {

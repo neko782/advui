@@ -15,7 +15,8 @@ import type {
   PreparedRefresh,
   HistoryMessage,
   ImageReference,
-  ImageData
+  ImageData,
+  WebSearchOptions
 } from '../../types/index.js';
 
 /**
@@ -422,6 +423,26 @@ export async function generateResponse(options: GenerateResponseOptions): Promis
       return msg;
     });
 
+  // Build web search options if enabled
+  const webSearch: WebSearchOptions | undefined = chatSettings.webSearchEnabled
+    ? {
+        enabled: true,
+        filters: chatSettings.webSearchDomains
+          ? { allowed_domains: chatSettings.webSearchDomains.split(',').map(d => d.trim()).filter(Boolean) }
+          : undefined,
+        user_location: (chatSettings.webSearchCountry || chatSettings.webSearchCity || chatSettings.webSearchRegion || chatSettings.webSearchTimezone)
+          ? {
+              type: 'approximate' as const,
+              country: chatSettings.webSearchCountry || undefined,
+              city: chatSettings.webSearchCity || undefined,
+              region: chatSettings.webSearchRegion || undefined,
+              timezone: chatSettings.webSearchTimezone || undefined,
+            }
+          : undefined,
+        external_web_access: chatSettings.webSearchCacheOnly ? false : undefined,
+      }
+    : undefined;
+
   const responseOptions = {
     messages: history,
     model: chatSettings.model,
@@ -434,6 +455,7 @@ export async function generateResponse(options: GenerateResponseOptions): Promis
     thinkingEnabled: chatSettings.thinkingEnabled,
     thinkingBudgetTokens: chatSettings.thinkingBudgetTokens,
     connectionId,
+    webSearch,
   };
 
   if (streaming && typingVariantId != null) {

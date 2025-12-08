@@ -12,7 +12,11 @@ import type {
   GenerationResponse,
   RespondOptions,
   HistoryMessage,
-  ImageData
+  ImageData,
+  WebSearchOptions,
+  WebSearchResult,
+  WebSearchCitation,
+  WebSearchSource
 } from './types/index.js';
 
 function resolveConnection(options: {
@@ -149,6 +153,8 @@ export async function respond(options: RespondOptions): Promise<GenerationRespon
     onReasoningSummaryDelta,
     onReasoningSummaryDone,
     onAbort,
+    webSearch,
+    onWebSearchResult,
   } = options;
 
   const settings = loadSettings();
@@ -338,6 +344,33 @@ export async function respond(options: RespondOptions): Promise<GenerationRespon
     chatRequest.extra_body = { ...(chatRequest.extra_body as object || {}), thinking: thinkingConfig };
   }
 
+  // Web Search tool (Responses API only)
+  if (webSearch?.enabled && !useChatCompletions) {
+    const webSearchTool: Record<string, unknown> = { type: 'web_search' };
+
+    // Add domain filtering if specified
+    if (webSearch.filters?.allowed_domains?.length) {
+      webSearchTool.filters = { allowed_domains: webSearch.filters.allowed_domains };
+    }
+
+    // Add user location if specified
+    if (webSearch.user_location) {
+      const loc: Record<string, string> = { type: 'approximate' };
+      if (webSearch.user_location.country) loc.country = webSearch.user_location.country;
+      if (webSearch.user_location.city) loc.city = webSearch.user_location.city;
+      if (webSearch.user_location.region) loc.region = webSearch.user_location.region;
+      if (webSearch.user_location.timezone) loc.timezone = webSearch.user_location.timezone;
+      webSearchTool.user_location = loc;
+    }
+
+    // Add external_web_access if explicitly set to false
+    if (webSearch.external_web_access === false) {
+      webSearchTool.external_web_access = false;
+    }
+
+    request.tools = [webSearchTool];
+  }
+
   if (stream) {
     if (useChatCompletions) {
       const abortController = (typeof AbortController === 'function') ? new AbortController() : null;
@@ -461,6 +494,10 @@ export async function respond(options: RespondOptions): Promise<GenerationRespon
       return normalizeReasoningText(combined);
     };
     let completed = false;
+    // Web search tracking
+    const webSearchCitations: WebSearchCitation[] = [];
+    const webSearchSources: WebSearchSource[] = [];
+    let webSearchResultDelivered = false;
     try {
       for await (const event of streamIt as AsyncIterable<Record<string, unknown>>) {
         try { onEvent?.(event); } catch { /* ignore */ }
@@ -490,8 +527,75 @@ export async function respond(options: RespondOptions): Promise<GenerationRespon
             onReasoningSummaryDone?.(summary, event);
             summaryDelivered = true;
           } catch { /* ignore */ }
+        } else if (t === 'response.web_search_call.completed' || t === 'web_search_call') {
+          // Handle web search call completion - extract sources from action if available
+          const action = event?.action as Record<string, unknown> | undefined;
+          if (action?.sources && Array.isArray(action.sources)) {
+            for (const src of action.sources as Array<Record<string, unknown>>) {
+              if (src?.url && typeof src.url === 'string') {
+                webSearchSources.push({
+                  url: src.url,
+                  title: typeof src.title === 'string' ? src.title : undefined,
+                  type: typeof src.type === 'string' ? src.type : undefined,
+                });
+              }
+            }
+          }
         } else if (t === 'response.completed' || t === 'response.text.done' || t === 'response.done') {
           completed = true;
+          // Extract citations and sources from completed response
+          const response = event?.response as Record<string, unknown> | undefined;
+          const output = response?.output as Array<Record<string, unknown>> | undefined;
+          if (Array.isArray(output)) {
+            for (const item of output) {
+              // Extract citations from message content annotations
+              if (item?.type === 'message' && item?.content) {
+                const content = item.content as Array<Record<string, unknown>>;
+                if (Array.isArray(content)) {
+                  for (const part of content) {
+                    if (part?.annotations && Array.isArray(part.annotations)) {
+                      for (const ann of part.annotations as Array<Record<string, unknown>>) {
+                        if (ann?.type === 'url_citation' && typeof ann.url === 'string') {
+                          webSearchCitations.push({
+                            type: 'url_citation',
+                            start_index: typeof ann.start_index === 'number' ? ann.start_index : 0,
+                            end_index: typeof ann.end_index === 'number' ? ann.end_index : 0,
+                            url: ann.url,
+                            title: typeof ann.title === 'string' ? ann.title : '',
+                          });
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+              // Extract sources from web_search_call action
+              if (item?.type === 'web_search_call' && item?.action) {
+                const action = item.action as Record<string, unknown>;
+                if (action?.sources && Array.isArray(action.sources)) {
+                  for (const src of action.sources as Array<Record<string, unknown>>) {
+                    if (src?.url && typeof src.url === 'string') {
+                      const exists = webSearchSources.some(s => s.url === src.url);
+                      if (!exists) {
+                        webSearchSources.push({
+                          url: src.url,
+                          title: typeof src.title === 'string' ? src.title : undefined,
+                          type: typeof src.type === 'string' ? src.type : undefined,
+                        });
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+          // Deliver web search result if we have citations or sources
+          if ((webSearchCitations.length > 0 || webSearchSources.length > 0) && !webSearchResultDelivered) {
+            try {
+              onWebSearchResult?.({ citations: webSearchCitations, sources: webSearchSources });
+              webSearchResultDelivered = true;
+            } catch { /* ignore */ }
+          }
           if (!summaryDelivered) {
             const summary = buildSummary();
             if (summary) {
@@ -522,9 +626,18 @@ export async function respond(options: RespondOptions): Promise<GenerationRespon
         summaryDelivered = true;
       } catch { /* ignore */ }
     }
+    // Final delivery of web search results if not already done
+    if ((webSearchCitations.length > 0 || webSearchSources.length > 0) && !webSearchResultDelivered) {
+      try {
+        onWebSearchResult?.({ citations: webSearchCitations, sources: webSearchSources });
+      } catch { /* ignore */ }
+    }
     return {
       text: full,
       reasoningSummary: finalSummary,
+      webSearchResult: (webSearchCitations.length > 0 || webSearchSources.length > 0)
+        ? { citations: webSearchCitations, sources: webSearchSources }
+        : undefined,
     };
   } else {
     if (useChatCompletions) {
@@ -560,10 +673,14 @@ export async function respond(options: RespondOptions): Promise<GenerationRespon
     const res = await responsesApi.create(request, abortController ? { signal: abortController.signal } : undefined);
     const text = extractOutputText(res);
     const summary = extractReasoningSummary(res);
+    const webSearchResult = extractWebSearchResult(res);
     if (summary) {
       try { onReasoningSummaryDone?.(summary, null); } catch { /* ignore */ }
     }
-    return { text, reasoningSummary: summary };
+    if (webSearchResult && (webSearchResult.citations.length > 0 || webSearchResult.sources.length > 0)) {
+      try { onWebSearchResult?.(webSearchResult); } catch { /* ignore */ }
+    }
+    return { text, reasoningSummary: summary, webSearchResult };
   }
 }
 
@@ -754,6 +871,67 @@ function extractReasoningSummary(res: unknown): string {
     if (nested) return nested;
   } catch { /* ignore */ }
   return '';
+}
+
+function extractWebSearchResult(res: unknown): WebSearchResult | undefined {
+  const citations: WebSearchCitation[] = [];
+  const sources: WebSearchSource[] = [];
+
+  const processOutput = (output: unknown): void => {
+    if (!Array.isArray(output)) return;
+    for (const item of output as Array<Record<string, unknown>>) {
+      // Extract citations from message content annotations
+      if (item?.type === 'message' && item?.content) {
+        const content = item.content as Array<Record<string, unknown>>;
+        if (Array.isArray(content)) {
+          for (const part of content) {
+            if (part?.annotations && Array.isArray(part.annotations)) {
+              for (const ann of part.annotations as Array<Record<string, unknown>>) {
+                if (ann?.type === 'url_citation' && typeof ann.url === 'string') {
+                  citations.push({
+                    type: 'url_citation',
+                    start_index: typeof ann.start_index === 'number' ? ann.start_index : 0,
+                    end_index: typeof ann.end_index === 'number' ? ann.end_index : 0,
+                    url: ann.url,
+                    title: typeof ann.title === 'string' ? ann.title : '',
+                  });
+                }
+              }
+            }
+          }
+        }
+      }
+      // Extract sources from web_search_call action
+      if (item?.type === 'web_search_call' && item?.action) {
+        const action = item.action as Record<string, unknown>;
+        if (action?.sources && Array.isArray(action.sources)) {
+          for (const src of action.sources as Array<Record<string, unknown>>) {
+            if (src?.url && typeof src.url === 'string') {
+              const exists = sources.some(s => s.url === src.url);
+              if (!exists) {
+                sources.push({
+                  url: src.url,
+                  title: typeof src.title === 'string' ? src.title : undefined,
+                  type: typeof src.type === 'string' ? src.type : undefined,
+                });
+              }
+            }
+          }
+        }
+      }
+    }
+  };
+
+  const resObj = res as Record<string, unknown>;
+  try {
+    processOutput(resObj?.output);
+  } catch { /* ignore */ }
+  try {
+    processOutput((resObj?.response as Record<string, unknown>)?.output);
+  } catch { /* ignore */ }
+
+  if (citations.length === 0 && sources.length === 0) return undefined;
+  return { citations, sources };
 }
 
 function extractChatReasoningSummary(res: unknown): string {
