@@ -290,7 +290,7 @@ function attachmentMimeLabel(attachment) {
 {/if}
 
 <style>
-  .bubble { display: block; max-width: 100%; padding: 10px var(--bubble-pad-x); border-radius: 14px; border: none; white-space: normal; overflow-wrap: anywhere; word-break: break-word; line-height: 1.4; font-size: 0.98rem; box-shadow: 0 1px 0 rgba(0,0,0,0.04); }
+  .bubble { display: block; max-width: 100%; padding: 10px var(--bubble-pad-x); border-radius: 14px; border: none; white-space: normal; overflow-wrap: anywhere; word-break: break-word; line-height: 1.4; font-size: 0.98rem; box-shadow: 0 1px 0 rgba(0,0,0,0.04); overflow-x: auto; }
   .bubble.editing { white-space: pre-wrap; }
   .editor-container {
     display: inline-grid;
@@ -356,20 +356,11 @@ function attachmentMimeLabel(attachment) {
   .bubble :global(a) { color: var(--accent); text-decoration: underline; }
   /* Table styles */
   .bubble :global(table) {
-    display: block;
-    max-width: 100%;
-    overflow-x: auto;
+    width: max-content;
     border-collapse: separate;
     border-spacing: 0;
     margin: 0.5em 0;
     font-size: 0.9rem;
-  }
-  .bubble :global(thead), .bubble :global(tbody) {
-    display: table;
-    width: max-content;
-    min-width: 100%;
-    border-collapse: separate;
-    border-spacing: 0;
   }
   .bubble :global(th), .bubble :global(td) {
     padding: 8px 12px;
