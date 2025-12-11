@@ -6,7 +6,7 @@
 export type MessageRole = 'system' | 'user' | 'assistant' | 'tool';
 
 // Reasoning options
-export type ReasoningEffort = 'none' | 'minimal' | 'low' | 'medium' | 'high';
+export type ReasoningEffort = 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
 export type TextVerbosity = 'none' | 'low' | 'medium' | 'high';
 export type ReasoningSummary = 'none' | 'auto' | 'concise' | 'detailed';
 
@@ -665,4 +665,3 @@ export function isPlainObject(value: unknown): value is Record<string, unknown> 
 export function hasOwn<T extends object>(obj: T | null | undefined, key: PropertyKey): boolean {
   return Object.prototype.hasOwnProperty.call(obj ?? {}, key);
 }
-

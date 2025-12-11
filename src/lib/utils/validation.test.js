@@ -11,6 +11,7 @@ import {
 describe('normalizeReasoning', () => {
   it('should validate reasoning options', () => {
     expect(normalizeReasoning('high')).toBe('high')
+    expect(normalizeReasoning('xhigh')).toBe('xhigh')
     expect(normalizeReasoning('invalid')).toBe('none')
   })
 })

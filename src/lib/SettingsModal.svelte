@@ -84,7 +84,7 @@
     }
   })
 
-  const REASONING_OPTIONS = ['none', 'minimal', 'low', 'medium', 'high']
+  const REASONING_OPTIONS = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh']
   const TEXT_VERBOSITY_OPTIONS = ['low', 'medium', 'high']
   const REASONING_SUMMARY_OPTIONS = ['auto', 'concise', 'detailed']
   const DEFAULT_SYSTEM_PROMPT = 'You are a helpful assistant.'
@@ -1086,6 +1086,7 @@
                       <option value="low">low</option>
                       <option value="medium">medium</option>
                       <option value="high">high</option>
+                      <option value="xhigh">xhigh</option>
                     </select>
                   </label>
                   <label class="field">

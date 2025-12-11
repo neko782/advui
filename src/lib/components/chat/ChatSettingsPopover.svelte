@@ -228,6 +228,7 @@
             <option value="low">low</option>
             <option value="medium">medium</option>
             <option value="high">high</option>
+            <option value="xhigh">xhigh</option>
           </select>
         </div>
         <div class="menu-section">
