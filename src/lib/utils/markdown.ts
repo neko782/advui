@@ -113,6 +113,10 @@ const md = new MarkdownIt({
 });
 md.disable('code'); // disallow indented code blocks; require fenced blocks
 
+// Guardrail to avoid creating thousands of DOM nodes when code blocks are huge
+const MAX_HIGHLIGHT_CHARS = 20000;
+const MAX_HIGHLIGHT_LINES = 400;
+
 // Custom fence renderer to add copy button
 const defaultFence = md.renderer.rules.fence || function(
   tokens: Token[],
@@ -132,34 +136,46 @@ md.renderer.rules.fence = function(
   self: Renderer
 ): string {
   const token = tokens[idx]!;
+  const rawCode = token.content;
   const info = token.info ? token.info.trim() : '';
   const specifiedLang = info.split(/\s+/g)[0] || '';
+  const skipHighlight = (
+    rawCode.length > MAX_HIGHLIGHT_CHARS ||
+    rawCode.split(/\r?\n/).length > MAX_HIGHLIGHT_LINES
+  );
 
   // Get the highlighted content and detect language if not specified
-  let code = token.content;
+  let code = rawCode;
   let langLabel = specifiedLang;
 
-  if (specifiedLang && hljs.getLanguage(specifiedLang)) {
-    // Language specified, use it
-    try {
-      code = hljs.highlight(code, { language: specifiedLang, ignoreIllegals: true }).value;
-    } catch {
-      code = md.utils.escapeHtml(code);
-    }
-  } else if (!specifiedLang) {
-    // No language specified, auto-detect
-    try {
-      const result = hljs.highlightAuto(code);
-      code = result.value;
-      langLabel = result.language || 'text';
-    } catch {
-      code = md.utils.escapeHtml(code);
-      langLabel = 'text';
+  if (!skipHighlight) {
+    if (specifiedLang && hljs.getLanguage(specifiedLang)) {
+      // Language specified, use it
+      try {
+        code = hljs.highlight(rawCode, { language: specifiedLang, ignoreIllegals: true }).value;
+      } catch {
+        code = md.utils.escapeHtml(rawCode);
+      }
+    } else if (!specifiedLang) {
+      // No language specified, auto-detect
+      try {
+        const result = hljs.highlightAuto(rawCode);
+        code = result.value;
+        langLabel = result.language || 'text';
+      } catch {
+        code = md.utils.escapeHtml(rawCode);
+        langLabel = 'text';
+      }
+    } else {
+      // Unknown language, just escape
+      code = md.utils.escapeHtml(rawCode);
+      langLabel = specifiedLang;
     }
   } else {
-    // Unknown language, just escape
-    code = md.utils.escapeHtml(code);
-    langLabel = specifiedLang;
+    code = md.utils.escapeHtml(rawCode);
+    if (!langLabel) {
+      langLabel = 'text';
+    }
   }
 
   // Build the code block with header containing language label and copy button
@@ -237,4 +253,3 @@ export function renderMarkdown(src: string): string {
 
   return result;
 }
-
