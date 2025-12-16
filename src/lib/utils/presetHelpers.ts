@@ -41,6 +41,9 @@ export const DEFAULT_PRESET_FIELDS: PresetFields = {
   webSearchRegion: undefined,
   webSearchTimezone: undefined,
   webSearchCacheOnly: false,
+  // Image Generation defaults
+  imageGenerationEnabled: false,
+  imageGenerationModel: undefined,
 };
 
 export function generatePresetId(): string {
@@ -120,6 +123,10 @@ export function normalizePreset(
   const webSearchTimezone = typeof base.webSearchTimezone === 'string' ? base.webSearchTimezone : undefined;
   const webSearchCacheOnly = typeof base.webSearchCacheOnly === 'boolean' ? base.webSearchCacheOnly : false;
 
+  // Image Generation settings
+  const imageGenerationEnabled = typeof base.imageGenerationEnabled === 'boolean' ? base.imageGenerationEnabled : false;
+  const imageGenerationModel = typeof base.imageGenerationModel === 'string' ? base.imageGenerationModel : undefined;
+
   const result: Preset = {
     id,
     model,
@@ -142,6 +149,9 @@ export function normalizePreset(
     webSearchRegion,
     webSearchTimezone,
     webSearchCacheOnly,
+    // Image Generation settings
+    imageGenerationEnabled,
+    imageGenerationModel,
   };
 
   // Only include name if it was explicitly provided or if generating for a list
@@ -328,6 +338,9 @@ export function buildChatSettings(preset: Preset, settings: Partial<Settings> | 
     webSearchRegion: preset.webSearchRegion,
     webSearchTimezone: preset.webSearchTimezone,
     webSearchCacheOnly: !!preset.webSearchCacheOnly,
+    // Image Generation settings
+    imageGenerationEnabled: !!preset.imageGenerationEnabled,
+    imageGenerationModel: preset.imageGenerationModel,
   };
 }
 

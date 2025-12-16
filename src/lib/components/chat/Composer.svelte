@@ -21,6 +21,8 @@
     chatThinkingEnabled?: boolean
     chatThinkingBudgetTokens?: number | null
     chatWebSearchEnabled?: boolean
+    chatImageGenerationEnabled?: boolean
+    chatImageGenerationModel?: string
     modelIds?: string[]
     connections?: { id: string; name: string }[]
     chatConnectionId?: string | null
@@ -42,6 +44,8 @@
     onChangeThinkingEnabled?: (val: boolean) => void
     onChangeThinkingBudgetTokens?: (val: string) => void
     onChangeWebSearchEnabled?: (val: boolean) => void
+    onChangeImageGenerationEnabled?: (val: boolean) => void
+    onChangeImageGenerationModel?: (val: string) => void
     onSelectPreset?: (preset: Preset) => void
     onInput?: (val: string) => void
     onAdd?: (role: MessageRole) => void
@@ -252,6 +256,8 @@
         thinkingEnabled={props.chatThinkingEnabled}
         thinkingBudgetTokens={props.chatThinkingBudgetTokens}
         webSearchEnabled={props.chatWebSearchEnabled}
+        imageGenerationEnabled={props.chatImageGenerationEnabled}
+        imageGenerationModel={props.chatImageGenerationModel}
         modelIds={props.modelIds}
         connections={props.connections}
         connectionId={props.chatConnectionId}
@@ -271,6 +277,8 @@
         onInputThinkingEnabled={props.onChangeThinkingEnabled}
         onInputThinkingBudgetTokens={props.onChangeThinkingBudgetTokens}
         onInputWebSearchEnabled={props.onChangeWebSearchEnabled}
+        onInputImageGenerationEnabled={props.onChangeImageGenerationEnabled}
+        onInputImageGenerationModel={props.onChangeImageGenerationModel}
         onSelectPreset={props.onSelectPreset}
       />
     </div>

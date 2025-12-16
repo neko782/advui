@@ -1592,6 +1592,8 @@
     chatThinkingEnabled={chatSettings.thinkingEnabled}
     chatThinkingBudgetTokens={chatSettings.thinkingBudgetTokens}
     chatWebSearchEnabled={chatSettings.webSearchEnabled}
+    chatImageGenerationEnabled={chatSettings.imageGenerationEnabled}
+    chatImageGenerationModel={chatSettings.imageGenerationModel}
     modelIds={modelIds}
     connections={connectionOptions}
     chatConnectionId={chatSettings.connectionId}
@@ -1613,6 +1615,8 @@
     onChangeThinkingEnabled={(val) => (chatSettings = { ...chatSettings, thinkingEnabled: !!val })}
     onChangeThinkingBudgetTokens={(val) => (chatSettings = { ...chatSettings, thinkingBudgetTokens: toIntOrNull(val) })}
     onChangeWebSearchEnabled={(val) => (chatSettings = { ...chatSettings, webSearchEnabled: !!val })}
+    onChangeImageGenerationEnabled={(val) => (chatSettings = { ...chatSettings, imageGenerationEnabled: !!val })}
+    onChangeImageGenerationModel={(val) => (chatSettings = { ...chatSettings, imageGenerationModel: val || undefined })}
     onSelectPreset={handleSelectPreset}
     onInput={(val) => (input = val)}
     onAdd={(role) => addToChat(role)}

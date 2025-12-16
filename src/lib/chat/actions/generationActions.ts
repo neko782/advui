@@ -16,7 +16,8 @@ import type {
   HistoryMessage,
   ImageReference,
   ImageData,
-  WebSearchOptions
+  WebSearchOptions,
+  ImageGenerationOptions
 } from '../../types/index.js';
 
 /**
@@ -443,6 +444,14 @@ export async function generateResponse(options: GenerateResponseOptions): Promis
       }
     : undefined;
 
+  // Build image generation options if enabled
+  const imageGeneration: ImageGenerationOptions | undefined = chatSettings.imageGenerationEnabled
+    ? {
+        enabled: true,
+        model: chatSettings.imageGenerationModel || undefined,
+      }
+    : undefined;
+
   const responseOptions = {
     messages: history,
     model: chatSettings.model,
@@ -456,6 +465,7 @@ export async function generateResponse(options: GenerateResponseOptions): Promis
     thinkingBudgetTokens: chatSettings.thinkingBudgetTokens,
     connectionId,
     webSearch,
+    imageGeneration,
   };
 
   if (streaming && typingVariantId != null) {
@@ -492,6 +502,9 @@ export function handleGenerationSuccess(
     }
     return summaryBuffer;
   })();
+  const replyImages = (reply && typeof reply === 'object' && Array.isArray(reply.generatedImages))
+    ? reply.generatedImages
+    : undefined;
 
   return updateVariantById(nodes, typingVariantId, (prev) => ({
     ...prev,
@@ -500,6 +513,7 @@ export function handleGenerationSuccess(
     error: undefined,
     reasoningSummary: replySummary || '',
     reasoningSummaryLoading: false,
+    generatedImages: replyImages,
   }));
 }
 

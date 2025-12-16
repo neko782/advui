@@ -16,7 +16,9 @@ import type {
   WebSearchOptions,
   WebSearchResult,
   WebSearchCitation,
-  WebSearchSource
+  WebSearchSource,
+  ImageGenerationOptions,
+  GeneratedImage
 } from './types/index.js';
 
 function resolveConnection(options: {
@@ -155,6 +157,8 @@ export async function respond(options: RespondOptions): Promise<GenerationRespon
     onAbort,
     webSearch,
     onWebSearchResult,
+    imageGeneration,
+    onImageGenerated,
   } = options;
 
   const settings = loadSettings();
@@ -344,6 +348,9 @@ export async function respond(options: RespondOptions): Promise<GenerationRespon
     chatRequest.extra_body = { ...(chatRequest.extra_body as object || {}), thinking: thinkingConfig };
   }
 
+  // Build tools array for Responses API
+  const tools: Record<string, unknown>[] = [];
+
   // Web Search tool (Responses API only)
   if (webSearch?.enabled && !useChatCompletions) {
     const webSearchTool: Record<string, unknown> = { type: 'web_search' };
@@ -368,7 +375,24 @@ export async function respond(options: RespondOptions): Promise<GenerationRespon
       webSearchTool.external_web_access = false;
     }
 
-    request.tools = [webSearchTool];
+    tools.push(webSearchTool);
+  }
+
+  // Image Generation tool (Responses API only)
+  if (imageGeneration?.enabled && !useChatCompletions) {
+    const imageGenTool: Record<string, unknown> = { type: 'image_generation' };
+
+    // Add model if specified (e.g., gpt-image-1, gpt-image-1-mini)
+    if (imageGeneration.model) {
+      imageGenTool.model = imageGeneration.model;
+    }
+
+    tools.push(imageGenTool);
+  }
+
+  // Add tools to request if any are enabled
+  if (tools.length > 0) {
+    request.tools = tools;
   }
 
   if (stream) {
@@ -498,6 +522,9 @@ export async function respond(options: RespondOptions): Promise<GenerationRespon
     const webSearchCitations: WebSearchCitation[] = [];
     const webSearchSources: WebSearchSource[] = [];
     let webSearchResultDelivered = false;
+    // Image generation tracking
+    const generatedImages: GeneratedImage[] = [];
+    let imageGenerationDelivered = false;
     try {
       for await (const event of streamIt as AsyncIterable<Record<string, unknown>>) {
         try { onEvent?.(event); } catch { /* ignore */ }
@@ -540,6 +567,18 @@ export async function respond(options: RespondOptions): Promise<GenerationRespon
                 });
               }
             }
+          }
+        } else if (t === 'response.image_generation_call.completed' || t === 'image_generation_call') {
+          // Handle image generation call completion - extract image data
+          const result = event?.result as string | undefined;
+          const id = event?.id as string | undefined;
+          const revisedPrompt = event?.revised_prompt as string | undefined;
+          if (result && typeof result === 'string') {
+            generatedImages.push({
+              id: id || `img_${Date.now()}_${generatedImages.length}`,
+              data: result,
+              revisedPrompt: revisedPrompt,
+            });
           }
         } else if (t === 'response.completed' || t === 'response.text.done' || t === 'response.done') {
           completed = true;
@@ -587,6 +626,22 @@ export async function respond(options: RespondOptions): Promise<GenerationRespon
                   }
                 }
               }
+              // Extract generated images from image_generation_call
+              if (item?.type === 'image_generation_call') {
+                const result = item.result as string | undefined;
+                const id = item.id as string | undefined;
+                const revisedPrompt = item.revised_prompt as string | undefined;
+                if (result && typeof result === 'string') {
+                  const exists = generatedImages.some(img => img.id === id);
+                  if (!exists) {
+                    generatedImages.push({
+                      id: id || `img_${Date.now()}_${generatedImages.length}`,
+                      data: result,
+                      revisedPrompt: revisedPrompt,
+                    });
+                  }
+                }
+              }
             }
           }
           // Deliver web search result if we have citations or sources
@@ -594,6 +649,13 @@ export async function respond(options: RespondOptions): Promise<GenerationRespon
             try {
               onWebSearchResult?.({ citations: webSearchCitations, sources: webSearchSources });
               webSearchResultDelivered = true;
+            } catch { /* ignore */ }
+          }
+          // Deliver generated images if we have any
+          if (generatedImages.length > 0 && !imageGenerationDelivered) {
+            try {
+              onImageGenerated?.(generatedImages);
+              imageGenerationDelivered = true;
             } catch { /* ignore */ }
           }
           if (!summaryDelivered) {
@@ -632,12 +694,19 @@ export async function respond(options: RespondOptions): Promise<GenerationRespon
         onWebSearchResult?.({ citations: webSearchCitations, sources: webSearchSources });
       } catch { /* ignore */ }
     }
+    // Final delivery of generated images if not already done
+    if (generatedImages.length > 0 && !imageGenerationDelivered) {
+      try {
+        onImageGenerated?.(generatedImages);
+      } catch { /* ignore */ }
+    }
     return {
       text: full,
       reasoningSummary: finalSummary,
       webSearchResult: (webSearchCitations.length > 0 || webSearchSources.length > 0)
         ? { citations: webSearchCitations, sources: webSearchSources }
         : undefined,
+      generatedImages: generatedImages.length > 0 ? generatedImages : undefined,
     };
   } else {
     if (useChatCompletions) {
@@ -674,13 +743,17 @@ export async function respond(options: RespondOptions): Promise<GenerationRespon
     const text = extractOutputText(res);
     const summary = extractReasoningSummary(res);
     const webSearchResult = extractWebSearchResult(res);
+    const generatedImages = extractGeneratedImages(res);
     if (summary) {
       try { onReasoningSummaryDone?.(summary, null); } catch { /* ignore */ }
     }
     if (webSearchResult && (webSearchResult.citations.length > 0 || webSearchResult.sources.length > 0)) {
       try { onWebSearchResult?.(webSearchResult); } catch { /* ignore */ }
     }
-    return { text, reasoningSummary: summary, webSearchResult };
+    if (generatedImages && generatedImages.length > 0) {
+      try { onImageGenerated?.(generatedImages); } catch { /* ignore */ }
+    }
+    return { text, reasoningSummary: summary, webSearchResult, generatedImages };
   }
 }
 
@@ -932,6 +1005,43 @@ function extractWebSearchResult(res: unknown): WebSearchResult | undefined {
 
   if (citations.length === 0 && sources.length === 0) return undefined;
   return { citations, sources };
+}
+
+function extractGeneratedImages(res: unknown): GeneratedImage[] | undefined {
+  const images: GeneratedImage[] = [];
+
+  const processOutput = (output: unknown): void => {
+    if (!Array.isArray(output)) return;
+    for (const item of output as Array<Record<string, unknown>>) {
+      // Extract generated images from image_generation_call
+      if (item?.type === 'image_generation_call') {
+        const result = item.result as string | undefined;
+        const id = item.id as string | undefined;
+        const revisedPrompt = item.revised_prompt as string | undefined;
+        if (result && typeof result === 'string') {
+          const exists = images.some(img => img.id === id);
+          if (!exists) {
+            images.push({
+              id: id || `img_${Date.now()}_${images.length}`,
+              data: result,
+              revisedPrompt: revisedPrompt,
+            });
+          }
+        }
+      }
+    }
+  };
+
+  const resObj = res as Record<string, unknown>;
+  try {
+    processOutput(resObj?.output);
+  } catch { /* ignore */ }
+  try {
+    processOutput((resObj?.response as Record<string, unknown>)?.output);
+  } catch { /* ignore */ }
+
+  if (images.length === 0) return undefined;
+  return images;
 }
 
 function extractChatReasoningSummary(res: unknown): string {

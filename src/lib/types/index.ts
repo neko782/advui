@@ -58,6 +58,7 @@ export interface MessageVariant {
   error?: string;
   next: number | null;
   images?: ImageReference[];
+  generatedImages?: GeneratedImage[];
   reasoningSummary?: string;
   reasoningSummaryLoading?: boolean;
   locked?: boolean;
@@ -108,6 +109,9 @@ export interface ChatSettings {
   webSearchRegion?: string;
   webSearchTimezone?: string;
   webSearchCacheOnly?: boolean;
+  // Image Generation settings (Responses API only)
+  imageGenerationEnabled?: boolean;
+  imageGenerationModel?: string;
 }
 
 export interface Chat {
@@ -178,6 +182,9 @@ export interface Preset {
   webSearchRegion?: string;
   webSearchTimezone?: string; // IANA timezone
   webSearchCacheOnly?: boolean;  // external_web_access = false
+  // Image Generation settings (Responses API only)
+  imageGenerationEnabled?: boolean;
+  imageGenerationModel?: string;  // Model for image generation tool (e.g., gpt-image-1)
 }
 
 export interface PresetFields {
@@ -201,6 +208,9 @@ export interface PresetFields {
   webSearchRegion?: string;
   webSearchTimezone?: string;
   webSearchCacheOnly?: boolean;
+  // Image Generation settings (Responses API only)
+  imageGenerationEnabled?: boolean;
+  imageGenerationModel?: string;
 }
 
 // ============================================================================
@@ -335,6 +345,7 @@ export interface GenerationResponse {
   text: string;
   reasoningSummary?: string;
   webSearchResult?: WebSearchResult;
+  generatedImages?: GeneratedImage[];
 }
 
 export interface GenerationOptions {
@@ -515,6 +526,18 @@ export interface WebSearchResult {
   sources: WebSearchSource[];
 }
 
+// Image Generation Types for Responses API
+export interface ImageGenerationOptions {
+  enabled?: boolean;
+  model?: string;  // Image generation model (e.g., gpt-image-1, gpt-image-1-mini)
+}
+
+export interface GeneratedImage {
+  id: string;
+  data: string;  // Base64 encoded image data
+  revisedPrompt?: string;
+}
+
 export interface RespondOptions {
   prompt?: string;
   messages?: HistoryMessage[];
@@ -537,6 +560,9 @@ export interface RespondOptions {
   // Web Search options (Responses API only)
   webSearch?: WebSearchOptions;
   onWebSearchResult?: (result: WebSearchResult) => void;
+  // Image Generation options (Responses API only)
+  imageGeneration?: ImageGenerationOptions;
+  onImageGenerated?: (images: GeneratedImage[]) => void;
 }
 
 export interface ResolvedConnection {

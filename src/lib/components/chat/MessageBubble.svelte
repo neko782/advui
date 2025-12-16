@@ -1,7 +1,7 @@
 <script lang="ts">
   import { autoGrow } from '../../utils/dom'
   import { renderMarkdown } from '../../utils/markdown'
-  import type { Message, Image } from '../../types'
+  import type { Message, Image, GeneratedImage } from '../../types'
 
   interface Props {
     message: Message
@@ -284,6 +284,24 @@ function attachmentMimeLabel(attachment) {
       <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions a11y_no_noninteractive_element_interactions -->
       <div class={`bubble ${props.message.role}`} onclick={handleBubbleClick}>
         {@html renderMarkdown(props.message.content)}
+      </div>
+    {/if}
+    {#if props.message.generatedImages && props.message.generatedImages.length > 0}
+      <div class={`generated-images ${props.message.role}`}>
+        {#each props.message.generatedImages as genImg (genImg.id)}
+          <div class="generated-image-container">
+            <img
+              src={`data:image/png;base64,${genImg.data}`}
+              alt={genImg.revisedPrompt || 'Generated image'}
+              class="generated-image"
+            />
+            {#if genImg.revisedPrompt}
+              <div class="generated-image-prompt" title={genImg.revisedPrompt}>
+                {genImg.revisedPrompt}
+              </div>
+            {/if}
+          </div>
+        {/each}
       </div>
     {/if}
   {/if}
@@ -580,5 +598,46 @@ function attachmentMimeLabel(attachment) {
     color: var(--muted);
     text-transform: uppercase;
     letter-spacing: 0.05em;
+  }
+  /* Generated images */
+  .generated-images {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-top: 8px;
+  }
+  .generated-images.assistant {
+    justify-content: flex-start;
+  }
+  .generated-images.user {
+    justify-content: flex-end;
+  }
+  .generated-images.system {
+    justify-content: center;
+  }
+  .generated-image-container {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-width: 512px;
+  }
+  .generated-image {
+    max-width: 100%;
+    max-height: 512px;
+    border-radius: 12px;
+    object-fit: contain;
+    border: 1px solid var(--border);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  }
+  .generated-image-prompt {
+    font-size: 0.8rem;
+    color: var(--muted);
+    line-height: 1.3;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
   }
 </style>

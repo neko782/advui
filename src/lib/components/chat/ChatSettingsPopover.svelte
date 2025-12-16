@@ -16,6 +16,8 @@
     thinkingEnabled?: boolean
     thinkingBudgetTokens?: number | null
     webSearchEnabled?: boolean
+    imageGenerationEnabled?: boolean
+    imageGenerationModel?: string
     modelIds?: string[]
     connections?: { id: string; name: string }[]
     connectionId?: string | null
@@ -35,6 +37,8 @@
     onInputThinkingEnabled?: (val: boolean) => void
     onInputThinkingBudgetTokens?: (val: string) => void
     onInputWebSearchEnabled?: (val: boolean) => void
+    onInputImageGenerationEnabled?: (val: boolean) => void
+    onInputImageGenerationModel?: (val: string) => void
     onSelectPreset?: (preset: Preset) => void
   }
 
@@ -44,6 +48,7 @@
   let wasOpen = false
   let activeTab = $state<'general' | 'sampling' | 'reasoning'>('general')
   let presetMenuOpen = $state(false)
+  let imageGenModelExpanded = $state(false)
   let presetMenuEl = $state<HTMLDivElement | null>(null)
   let presetButtonEl = $state<HTMLButtonElement | null>(null)
   let presetMenuPosition = $state({ bottom: 0, left: 0 })
@@ -157,6 +162,46 @@
             <span class="switch-ui" aria-hidden="true"></span>
             <span class="switch-label">Web search</span>
           </label>
+        </div>
+        <div class="menu-section">
+          <div class="image-gen-row">
+            <label class="switch" title="Image generation">
+              <input
+                type="checkbox"
+                checked={!!props.imageGenerationEnabled}
+                disabled={props.disabled}
+                onchange={(e) => (!props.disabled && props.onInputImageGenerationEnabled?.(e.currentTarget.checked))}
+                aria-label="Image generation"
+              />
+              <span class="switch-ui" aria-hidden="true"></span>
+              <span class="switch-label">Image generation</span>
+            </label>
+            {#if props.imageGenerationEnabled}
+              <button
+                type="button"
+                class="image-gen-model-btn"
+                onclick={() => imageGenModelExpanded = !imageGenModelExpanded}
+                disabled={props.disabled}
+                title={imageGenModelExpanded ? 'Hide model setting' : 'Set model'}
+                aria-label={imageGenModelExpanded ? 'Hide model setting' : 'Set model'}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points={imageGenModelExpanded ? "18 15 12 9 6 15" : "6 9 12 15 18 9"}></polyline>
+                </svg>
+              </button>
+            {/if}
+          </div>
+          {#if props.imageGenerationEnabled && imageGenModelExpanded}
+            <input
+              type="text"
+              placeholder="gpt-image-1"
+              value={props.imageGenerationModel || ''}
+              disabled={props.disabled}
+              oninput={(e) => (!props.disabled && props.onInputImageGenerationModel?.(e.currentTarget.value))}
+              aria-label="Image generation model"
+              class="image-gen-model-input"
+            />
+          {/if}
         </div>
         <div class="menu-section">
           <div class="menu-label">Text verbosity</div>
@@ -534,5 +579,37 @@
   :global(:root[data-theme='dark']) .preset-menu-item:hover,
   :global(:root[data-theme='dark']) .preset-menu-item:focus-visible {
     background: color-mix(in oklab, var(--bg), var(--text) 8%);
+  }
+  /* Image generation row */
+  .image-gen-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .image-gen-model-btn {
+    width: 28px;
+    height: 28px;
+    display: grid;
+    place-items: center;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--bg);
+    color: var(--muted);
+    cursor: pointer;
+    transition: background-color .15s ease, border-color .15s ease, color .15s ease;
+    flex-shrink: 0;
+  }
+  .image-gen-model-btn:hover {
+    background: var(--panel);
+    border-color: var(--accent);
+    color: var(--text);
+  }
+  .image-gen-model-btn:disabled {
+    opacity: .6;
+    cursor: not-allowed;
+  }
+  .image-gen-model-input {
+    margin-top: 8px;
   }
 </style>

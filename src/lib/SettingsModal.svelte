@@ -1139,6 +1139,29 @@
                   <span class="switch-ui" aria-hidden="true"></span>
                   <span class="switch-label">Web search</span>
                 </label>
+                <div class="preset-group-divider"></div>
+                <label class="switch" title="Enable image generation">
+                  <input
+                    type="checkbox"
+                    checked={!!activePreset.imageGenerationEnabled}
+                    onchange={(event) => updateActivePreset({ imageGenerationEnabled: !!event.currentTarget.checked })}
+                    aria-label="Enable image generation"
+                  />
+                  <span class="switch-ui" aria-hidden="true"></span>
+                  <span class="switch-label">Image generation</span>
+                </label>
+                {#if activePreset.imageGenerationEnabled}
+                  <label class="field">
+                    <span>Image generation model</span>
+                    <input
+                      type="text"
+                      placeholder="gpt-image-1"
+                      value={activePreset.imageGenerationModel || ''}
+                      oninput={(event) => updateActivePreset({ imageGenerationModel: event.currentTarget.value })}
+                      aria-label="Image generation model"
+                    />
+                  </label>
+                {/if}
                 </div>
               {/if}
             </section>
