@@ -243,7 +243,7 @@ function attachmentMimeLabel(attachment) {
         <span class="dots"><i></i><i></i><i></i></span>
       {/if}
     </div>
-  {:else if props.message.content || (props.message.images && props.message.images.length > 0)}
+  {:else if props.message.content || (props.message.images && props.message.images.length > 0) || (props.message.generatedImages && props.message.generatedImages.length > 0)}
     {#if props.message.images && props.message.images.length > 0}
       <div class={`message-images ${props.message.role}`}>
         {#each props.message.images as attachment (attachment.id)}
