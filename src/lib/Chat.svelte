@@ -1369,6 +1369,9 @@
       webSearchRegion: preset.webSearchRegion ?? chatSettings.webSearchRegion,
       webSearchTimezone: preset.webSearchTimezone ?? chatSettings.webSearchTimezone,
       webSearchCacheOnly: typeof preset.webSearchCacheOnly === 'boolean' ? preset.webSearchCacheOnly : chatSettings.webSearchCacheOnly,
+      // Image Generation settings
+      imageGenerationEnabled: typeof preset.imageGenerationEnabled === 'boolean' ? preset.imageGenerationEnabled : chatSettings.imageGenerationEnabled,
+      imageGenerationModel: preset.imageGenerationModel ?? chatSettings.imageGenerationModel,
     }
     persistNow()
   }

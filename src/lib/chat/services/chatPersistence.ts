@@ -157,6 +157,17 @@ export function computePersistSig(nodes: ChatNode[], chatSettings: ChatSettings,
         thinkingEnabled: !!chatSettings?.thinkingEnabled,
         thinkingBudgetTokens: chatSettings?.thinkingBudgetTokens ?? null,
         connectionId: chatSettings?.connectionId || '',
+        // Web Search settings
+        webSearchEnabled: !!chatSettings?.webSearchEnabled,
+        webSearchDomains: chatSettings?.webSearchDomains || '',
+        webSearchCountry: chatSettings?.webSearchCountry || '',
+        webSearchCity: chatSettings?.webSearchCity || '',
+        webSearchRegion: chatSettings?.webSearchRegion || '',
+        webSearchTimezone: chatSettings?.webSearchTimezone || '',
+        webSearchCacheOnly: !!chatSettings?.webSearchCacheOnly,
+        // Image Generation settings
+        imageGenerationEnabled: !!chatSettings?.imageGenerationEnabled,
+        imageGenerationModel: chatSettings?.imageGenerationModel || '',
       },
       rootId,
     });

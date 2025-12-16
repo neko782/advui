@@ -269,6 +269,17 @@ export async function saveChatContent(
     thinkingEnabled: !!pickSetting('thinkingEnabled'),
     thinkingBudgetTokens: toIntOrNull(pickSetting('thinkingBudgetTokens')),
     connectionId: resolvedConnectionId,
+    // Web Search settings
+    webSearchEnabled: !!pickSetting('webSearchEnabled'),
+    webSearchDomains: pickSetting('webSearchDomains') || undefined,
+    webSearchCountry: pickSetting('webSearchCountry') || undefined,
+    webSearchCity: pickSetting('webSearchCity') || undefined,
+    webSearchRegion: pickSetting('webSearchRegion') || undefined,
+    webSearchTimezone: pickSetting('webSearchTimezone') || undefined,
+    webSearchCacheOnly: !!pickSetting('webSearchCacheOnly'),
+    // Image Generation settings
+    imageGenerationEnabled: !!pickSetting('imageGenerationEnabled'),
+    imageGenerationModel: pickSetting('imageGenerationModel') || undefined,
   };
   const nextNodesCandidate = Array.isArray(nodes) ? nodes : (existing?.nodes || []);
   const hasNodes = nextNodesCandidate.length > 0;
@@ -433,6 +444,17 @@ export async function createChat(initial: CreateChatOptions = {}): Promise<{ id:
       })(),
       thinkingBudgetTokens: toIntOrNull(hasOwn(initial?.settings || {}, 'thinkingBudgetTokens') ? initial.settings!.thinkingBudgetTokens : preferredPreset.thinkingBudgetTokens),
       connectionId: resolvedConnectionId,
+      // Web Search settings
+      webSearchEnabled: hasOwn(initial?.settings || {}, 'webSearchEnabled') ? !!initial.settings!.webSearchEnabled : !!preferredPreset.webSearchEnabled,
+      webSearchDomains: (hasOwn(initial?.settings || {}, 'webSearchDomains') ? initial.settings!.webSearchDomains : preferredPreset.webSearchDomains) || undefined,
+      webSearchCountry: (hasOwn(initial?.settings || {}, 'webSearchCountry') ? initial.settings!.webSearchCountry : preferredPreset.webSearchCountry) || undefined,
+      webSearchCity: (hasOwn(initial?.settings || {}, 'webSearchCity') ? initial.settings!.webSearchCity : preferredPreset.webSearchCity) || undefined,
+      webSearchRegion: (hasOwn(initial?.settings || {}, 'webSearchRegion') ? initial.settings!.webSearchRegion : preferredPreset.webSearchRegion) || undefined,
+      webSearchTimezone: (hasOwn(initial?.settings || {}, 'webSearchTimezone') ? initial.settings!.webSearchTimezone : preferredPreset.webSearchTimezone) || undefined,
+      webSearchCacheOnly: hasOwn(initial?.settings || {}, 'webSearchCacheOnly') ? !!initial.settings!.webSearchCacheOnly : !!preferredPreset.webSearchCacheOnly,
+      // Image Generation settings
+      imageGenerationEnabled: hasOwn(initial?.settings || {}, 'imageGenerationEnabled') ? !!initial.settings!.imageGenerationEnabled : !!preferredPreset.imageGenerationEnabled,
+      imageGenerationModel: (hasOwn(initial?.settings || {}, 'imageGenerationModel') ? initial.settings!.imageGenerationModel : preferredPreset.imageGenerationModel) || undefined,
     },
     nodes: baseNodes,
     rootId,
