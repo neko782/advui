@@ -455,26 +455,38 @@
   function handleConnectionDragOver(e: DragEvent, id: string) {
     e.preventDefault()
     e.dataTransfer!.dropEffect = 'move'
-    if (!draggedConnectionId || id === draggedConnectionId) return
+    if (!draggedConnectionId) return
 
-    // Use center-point detection to reduce flickering
-    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
-    const centerY = rect.top + rect.height / 2
+    // Get all item rects and find which slot we're in
+    const listEl = (e.currentTarget as HTMLElement).closest('.item-list')
+    if (!listEl) return
+
     const mouseY = e.clientY
-
-    // Only update if we've crossed the center threshold
+    const items = listEl.querySelectorAll('.list-item')
     const list = Array.isArray(local?.connections) ? local.connections : []
-    const draggedIndex = list.findIndex(c => c.id === draggedConnectionId)
-    const targetIndex = list.findIndex(c => c.id === id)
 
-    if (draggedIndex < 0 || targetIndex < 0) return
+    // Build array of {id, centerY} for all items except the dragged one
+    const slots: { id: string; centerY: number }[] = []
+    items.forEach((item) => {
+      const itemId = item.getAttribute('data-id')
+      if (itemId && itemId !== draggedConnectionId) {
+        const rect = item.getBoundingClientRect()
+        slots.push({ id: itemId, centerY: rect.top + rect.height / 2 })
+      }
+    })
 
-    // Moving down: only trigger when past center
-    // Moving up: only trigger when before center
-    if (draggedIndex < targetIndex && mouseY > centerY) {
-      dragOverConnectionId = id
-    } else if (draggedIndex > targetIndex && mouseY < centerY) {
-      dragOverConnectionId = id
+    // Find which slot the mouse is closest to
+    let targetId: string | null = null
+    for (let i = 0; i < slots.length; i++) {
+      if (mouseY < slots[i].centerY) {
+        targetId = slots[i].id
+        break
+      }
+      targetId = slots[i].id // Default to last item if below all centers
+    }
+
+    if (targetId && targetId !== dragOverConnectionId) {
+      dragOverConnectionId = targetId
     }
   }
 
@@ -506,26 +518,37 @@
   function handlePresetDragOver(e: DragEvent, id: string) {
     e.preventDefault()
     e.dataTransfer!.dropEffect = 'move'
-    if (!draggedPresetId || id === draggedPresetId) return
+    if (!draggedPresetId) return
 
-    // Use center-point detection to reduce flickering
-    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
-    const centerY = rect.top + rect.height / 2
+    // Get all item rects and find which slot we're in
+    const listEl = (e.currentTarget as HTMLElement).closest('.item-list')
+    if (!listEl) return
+
     const mouseY = e.clientY
+    const items = listEl.querySelectorAll('.list-item')
 
-    // Only update if we've crossed the center threshold
-    const list = Array.isArray(local?.presets) ? local.presets : []
-    const draggedIndex = list.findIndex(p => p.id === draggedPresetId)
-    const targetIndex = list.findIndex(p => p.id === id)
+    // Build array of {id, centerY} for all items except the dragged one
+    const slots: { id: string; centerY: number }[] = []
+    items.forEach((item) => {
+      const itemId = item.getAttribute('data-id')
+      if (itemId && itemId !== draggedPresetId) {
+        const rect = item.getBoundingClientRect()
+        slots.push({ id: itemId, centerY: rect.top + rect.height / 2 })
+      }
+    })
 
-    if (draggedIndex < 0 || targetIndex < 0) return
+    // Find which slot the mouse is closest to
+    let targetId: string | null = null
+    for (let i = 0; i < slots.length; i++) {
+      if (mouseY < slots[i].centerY) {
+        targetId = slots[i].id
+        break
+      }
+      targetId = slots[i].id // Default to last item if below all centers
+    }
 
-    // Moving down: only trigger when past center
-    // Moving up: only trigger when before center
-    if (draggedIndex < targetIndex && mouseY > centerY) {
-      dragOverPresetId = id
-    } else if (draggedIndex > targetIndex && mouseY < centerY) {
-      dragOverPresetId = id
+    if (targetId && targetId !== dragOverPresetId) {
+      dragOverPresetId = targetId
     }
   }
 
@@ -580,28 +603,40 @@
     const touch = e.touches[0]
     touchCurrentY = touch.clientY
 
-    // Find which item we're over using center-point detection
-    const list = Array.isArray(local?.connections) ? local.connections : []
-    const draggedIndex = list.findIndex(c => c.id === touchDragId)
+    // Re-capture rects since items may have shifted
+    if (touchListRef) {
+      const items = touchListRef.querySelectorAll('.list-item')
+      const rects = new Map<string, DOMRect>()
+      items.forEach((item) => {
+        const itemId = item.getAttribute('data-id')
+        if (itemId) {
+          rects.set(itemId, item.getBoundingClientRect())
+        }
+      })
+      touchItemRects = rects
+    }
 
-    let foundId: string | null = null
+    // Build sorted array of slots (excluding dragged item)
+    const slots: { id: string; centerY: number }[] = []
     touchItemRects.forEach((rect, id) => {
       if (id !== touchDragId) {
-        const targetIndex = list.findIndex(c => c.id === id)
-        const centerY = rect.top + rect.height / 2
-
-        // Moving down: only trigger when past center
-        // Moving up: only trigger when before center
-        if (draggedIndex < targetIndex && touchCurrentY > centerY) {
-          foundId = id
-        } else if (draggedIndex > targetIndex && touchCurrentY < centerY) {
-          foundId = id
-        }
+        slots.push({ id, centerY: rect.top + rect.height / 2 })
       }
     })
+    slots.sort((a, b) => a.centerY - b.centerY)
 
-    if (foundId && foundId !== dragOverConnectionId) {
-      dragOverConnectionId = foundId
+    // Find which slot the touch is in
+    let targetId: string | null = null
+    for (let i = 0; i < slots.length; i++) {
+      if (touchCurrentY < slots[i].centerY) {
+        targetId = slots[i].id
+        break
+      }
+      targetId = slots[i].id
+    }
+
+    if (targetId && targetId !== dragOverConnectionId) {
+      dragOverConnectionId = targetId
     }
   }
 
@@ -643,28 +678,40 @@
     const touch = e.touches[0]
     touchCurrentY = touch.clientY
 
-    // Find which item we're over using center-point detection
-    const list = Array.isArray(local?.presets) ? local.presets : []
-    const draggedIndex = list.findIndex(p => p.id === touchDragId)
+    // Re-capture rects since items may have shifted
+    if (touchListRef) {
+      const items = touchListRef.querySelectorAll('.list-item')
+      const rects = new Map<string, DOMRect>()
+      items.forEach((item) => {
+        const itemId = item.getAttribute('data-id')
+        if (itemId) {
+          rects.set(itemId, item.getBoundingClientRect())
+        }
+      })
+      touchItemRects = rects
+    }
 
-    let foundId: string | null = null
+    // Build sorted array of slots (excluding dragged item)
+    const slots: { id: string; centerY: number }[] = []
     touchItemRects.forEach((rect, id) => {
       if (id !== touchDragId) {
-        const targetIndex = list.findIndex(p => p.id === id)
-        const centerY = rect.top + rect.height / 2
-
-        // Moving down: only trigger when past center
-        // Moving up: only trigger when before center
-        if (draggedIndex < targetIndex && touchCurrentY > centerY) {
-          foundId = id
-        } else if (draggedIndex > targetIndex && touchCurrentY < centerY) {
-          foundId = id
-        }
+        slots.push({ id, centerY: rect.top + rect.height / 2 })
       }
     })
+    slots.sort((a, b) => a.centerY - b.centerY)
 
-    if (foundId && foundId !== dragOverPresetId) {
-      dragOverPresetId = foundId
+    // Find which slot the touch is in
+    let targetId: string | null = null
+    for (let i = 0; i < slots.length; i++) {
+      if (touchCurrentY < slots[i].centerY) {
+        targetId = slots[i].id
+        break
+      }
+      targetId = slots[i].id
+    }
+
+    if (targetId && targetId !== dragOverPresetId) {
+      dragOverPresetId = targetId
     }
   }
 
