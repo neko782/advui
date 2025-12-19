@@ -423,20 +423,9 @@ export async function requestPersistentStorage(): Promise<boolean> {
   }
 
   try {
-    // Check if already persisted
-    const alreadyPersisted = await navigator.storage.persisted();
-    if (alreadyPersisted) {
-      console.log('Storage is already persistent');
-      return true;
-    }
-
-    // Request persistent storage
+    // Always request - browser will handle if already granted
     const granted = await navigator.storage.persist();
-    if (granted) {
-      console.log('Persistent storage granted');
-    } else {
-      console.warn('Persistent storage request denied');
-    }
+    console.log('Persistent storage:', granted ? 'granted' : 'denied');
     return granted;
   } catch (err) {
     console.error('Failed to request persistent storage:', err);
@@ -461,6 +450,5 @@ export async function isStoragePersistent(): Promise<boolean> {
 // Initialize BroadcastChannel on module load
 if (typeof window !== 'undefined') {
   initBroadcastChannel();
-  // Request persistent storage on initialization
   requestPersistentStorage();
 }
