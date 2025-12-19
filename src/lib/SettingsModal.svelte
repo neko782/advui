@@ -465,24 +465,33 @@
     const items = listEl.querySelectorAll('.list-item')
     const list = Array.isArray(local?.connections) ? local.connections : []
 
-    // Build array of {id, centerY} for all items except the dragged one
-    const slots: { id: string; centerY: number }[] = []
+    // Build array of {id, midpoint} for all items except the dragged one
+    // Use the midpoint between items as the trigger threshold
+    const slots: { id: string; threshold: number }[] = []
+    let prevBottom = 0
     items.forEach((item) => {
       const itemId = item.getAttribute('data-id')
       if (itemId && itemId !== draggedConnectionId) {
         const rect = item.getBoundingClientRect()
-        slots.push({ id: itemId, centerY: rect.top + rect.height / 2 })
+        // Threshold is the top of this item (gap between prev item and this one)
+        slots.push({ id: itemId, threshold: rect.top })
+        prevBottom = rect.bottom
       }
     })
 
-    // Find which slot the mouse is closest to
+    // Find which slot the mouse is in
+    // If above first threshold, target first item
+    // Otherwise target the last item whose threshold we've passed
     let targetId: string | null = null
-    for (let i = 0; i < slots.length; i++) {
-      if (mouseY < slots[i].centerY) {
+    for (let i = slots.length - 1; i >= 0; i--) {
+      if (mouseY >= slots[i].threshold) {
         targetId = slots[i].id
         break
       }
-      targetId = slots[i].id // Default to last item if below all centers
+    }
+    // If above all thresholds, target first item
+    if (!targetId && slots.length > 0) {
+      targetId = slots[0].id
     }
 
     if (targetId && targetId !== dragOverConnectionId) {
@@ -527,24 +536,26 @@
     const mouseY = e.clientY
     const items = listEl.querySelectorAll('.list-item')
 
-    // Build array of {id, centerY} for all items except the dragged one
-    const slots: { id: string; centerY: number }[] = []
+    // Build array of {id, threshold} for all items except the dragged one
+    const slots: { id: string; threshold: number }[] = []
     items.forEach((item) => {
       const itemId = item.getAttribute('data-id')
       if (itemId && itemId !== draggedPresetId) {
         const rect = item.getBoundingClientRect()
-        slots.push({ id: itemId, centerY: rect.top + rect.height / 2 })
+        slots.push({ id: itemId, threshold: rect.top })
       }
     })
 
-    // Find which slot the mouse is closest to
+    // Find which slot the mouse is in
     let targetId: string | null = null
-    for (let i = 0; i < slots.length; i++) {
-      if (mouseY < slots[i].centerY) {
+    for (let i = slots.length - 1; i >= 0; i--) {
+      if (mouseY >= slots[i].threshold) {
         targetId = slots[i].id
         break
       }
-      targetId = slots[i].id // Default to last item if below all centers
+    }
+    if (!targetId && slots.length > 0) {
+      targetId = slots[0].id
     }
 
     if (targetId && targetId !== dragOverPresetId) {
@@ -617,22 +628,24 @@
     }
 
     // Build sorted array of slots (excluding dragged item)
-    const slots: { id: string; centerY: number }[] = []
+    const slots: { id: string; threshold: number }[] = []
     touchItemRects.forEach((rect, id) => {
       if (id !== touchDragId) {
-        slots.push({ id, centerY: rect.top + rect.height / 2 })
+        slots.push({ id, threshold: rect.top })
       }
     })
-    slots.sort((a, b) => a.centerY - b.centerY)
+    slots.sort((a, b) => a.threshold - b.threshold)
 
     // Find which slot the touch is in
     let targetId: string | null = null
-    for (let i = 0; i < slots.length; i++) {
-      if (touchCurrentY < slots[i].centerY) {
+    for (let i = slots.length - 1; i >= 0; i--) {
+      if (touchCurrentY >= slots[i].threshold) {
         targetId = slots[i].id
         break
       }
-      targetId = slots[i].id
+    }
+    if (!targetId && slots.length > 0) {
+      targetId = slots[0].id
     }
 
     if (targetId && targetId !== dragOverConnectionId) {
@@ -692,22 +705,24 @@
     }
 
     // Build sorted array of slots (excluding dragged item)
-    const slots: { id: string; centerY: number }[] = []
+    const slots: { id: string; threshold: number }[] = []
     touchItemRects.forEach((rect, id) => {
       if (id !== touchDragId) {
-        slots.push({ id, centerY: rect.top + rect.height / 2 })
+        slots.push({ id, threshold: rect.top })
       }
     })
-    slots.sort((a, b) => a.centerY - b.centerY)
+    slots.sort((a, b) => a.threshold - b.threshold)
 
     // Find which slot the touch is in
     let targetId: string | null = null
-    for (let i = 0; i < slots.length; i++) {
-      if (touchCurrentY < slots[i].centerY) {
+    for (let i = slots.length - 1; i >= 0; i--) {
+      if (touchCurrentY >= slots[i].threshold) {
         targetId = slots[i].id
         break
       }
-      targetId = slots[i].id
+    }
+    if (!targetId && slots.length > 0) {
+      targetId = slots[0].id
     }
 
     if (targetId && targetId !== dragOverPresetId) {
