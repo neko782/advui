@@ -266,6 +266,32 @@
     return result
   }
 
+  // Extract all image IDs from chat nodes
+  function extractImageIds(chat) {
+    if (!chat?.nodes || !Array.isArray(chat.nodes)) return []
+
+    const imageIds = []
+    for (const node of chat.nodes) {
+      if (!node?.variants || !Array.isArray(node.variants)) continue
+
+      for (const variant of node.variants) {
+        // Collect uploaded image IDs
+        if (variant?.images && Array.isArray(variant.images)) {
+          for (const img of variant.images) {
+            if (img?.id) imageIds.push(img.id)
+          }
+        }
+        // Collect generated image IDs
+        if (variant?.generatedImages && Array.isArray(variant.generatedImages)) {
+          for (const img of variant.generatedImages) {
+            if (img?.id) imageIds.push(img.id)
+          }
+        }
+      }
+    }
+    return imageIds
+  }
+
   // Optimized search that handles large data
   function matchesSearch(chat, query, mode) {
     if (!query || !query.trim()) return true
@@ -275,6 +301,12 @@
     // Always check chat ID silently (regardless of mode)
     const chatId = (chat?.id || '').toLowerCase()
     if (chatId.includes(searchTerm)) return true
+
+    // Always check image IDs silently (regardless of mode)
+    const imageIds = extractImageIds(chat)
+    for (const imgId of imageIds) {
+      if (imgId.toLowerCase().includes(searchTerm)) return true
+    }
 
     if (mode === 'title') {
       const title = (chat?.title || '').toLowerCase()
