@@ -302,12 +302,6 @@
     const chatId = (chat?.id || '').toLowerCase()
     if (chatId.includes(searchTerm)) return true
 
-    // Always check image IDs silently (regardless of mode)
-    const imageIds = extractImageIds(chat)
-    for (const imgId of imageIds) {
-      if (imgId.toLowerCase().includes(searchTerm)) return true
-    }
-
     if (mode === 'title') {
       const title = (chat?.title || '').toLowerCase()
       return title.includes(searchTerm)
@@ -315,6 +309,12 @@
       // Content search
       const title = (chat?.title || '').toLowerCase()
       if (title.includes(searchTerm)) return true
+
+      // Check image IDs (only in content mode to avoid performance hit)
+      const imageIds = extractImageIds(chat)
+      for (const imgId of imageIds) {
+        if (imgId.toLowerCase().includes(searchTerm)) return true
+      }
 
       const content = extractChatContent(chat).toLowerCase()
       return content.includes(searchTerm)
