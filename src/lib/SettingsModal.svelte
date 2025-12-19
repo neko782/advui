@@ -1167,7 +1167,7 @@
           {:else if activeTab === 'developer'}
             <section class="group">
               <div class="group-title">Developer</div>
-              <label class="switch" title="Debug Mode">
+              <label class="switch" title="Useless and dangerous tools used for debugging. You don't need these.">
                 <input
                   type="checkbox"
                   bind:checked={local.debug}
