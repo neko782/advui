@@ -235,15 +235,8 @@
   function onOpenSettings() { showSettings = true }
 
   async function onDeleteChat(id) {
-    console.log('[DEBUG] App.onDeleteChat called with id:', id)
     if (!id) return
-    try {
-      await deleteChat(id)
-      console.log('[DEBUG] deleteChat completed for:', id)
-    } catch (err) {
-      console.error('[DEBUG] deleteChat failed:', err)
-      throw err
-    }
+    await deleteChat(id)
     setGenerating(id, false)
     // Clear previous if the deleted chat was the previous one
     if (previousSelectedId === id) {
@@ -257,7 +250,6 @@
       return
     }
     await refresh()
-    console.log('[DEBUG] App.onDeleteChat finished, chats remaining:', remaining.length)
   }
 
   async function onRenameChat(id, title) {

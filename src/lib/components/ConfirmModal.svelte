@@ -15,7 +15,6 @@
   const props: Props = $props()
 
   async function handleConfirm() {
-    console.log('[DEBUG] ConfirmModal handleConfirm called')
     try {
       await props.onConfirm?.()
     } catch (err) {
@@ -24,7 +23,6 @@
   }
 
   function handleCancel() {
-    console.log('[DEBUG] ConfirmModal handleCancel called')
     props.onCancel?.()
   }
 </script>

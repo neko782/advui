@@ -140,7 +140,6 @@
     closeChatMenu()
     deleteModalChatId = chatId
     deleteModalOpen = true
-    console.log('[DEBUG] handleMenuDelete: opening modal for chat', chatId)
   }
 
   async function handleMenuExport(chatId, event) {
@@ -173,26 +172,18 @@
   }
 
   async function confirmDeleteModal() {
-    console.log('[DEBUG] confirmDeleteModal called, chatId:', deleteModalChatId)
     if (!deleteModalChatId) return
     const chatId = deleteModalChatId
     deleteModalOpen = false
     deleteModalChatId = null
     try {
-      console.log('[DEBUG] calling onDeleteChat for:', chatId, 'onDeleteChat exists:', !!props.onDeleteChat)
-      if (!props.onDeleteChat) {
-        console.error('[DEBUG] onDeleteChat prop is undefined!')
-        return
-      }
-      await props.onDeleteChat(chatId)
-      console.log('[DEBUG] onDeleteChat completed for:', chatId)
+      await props.onDeleteChat?.(chatId)
     } catch (err) {
       console.error('Failed to delete chat:', err)
     }
   }
 
   function cancelDeleteModal() {
-    console.log('[DEBUG] cancelDeleteModal called')
     deleteModalOpen = false
     deleteModalChatId = null
   }
@@ -295,13 +286,13 @@
   }
 
   // Filtered chats based on search
-  const filteredChats = $derived((() => {
+  const filteredChats = $derived.by(() => {
     const query = searchQuery.trim()
     if (!query) return props.chats || []
 
     const chats = props.chats || []
     return chats.filter(chat => matchesSearch(chat, query, searchMode))
-  })())
+  })
 
   onMount(() => {
     function handlePointerDown(event) {
