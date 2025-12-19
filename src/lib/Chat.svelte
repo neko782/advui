@@ -373,9 +373,12 @@
     try {
       const result = await persistChatContent(cid, nodes, chatSettings, rootId, debug, mounted)
       if (destroyed) return
-      if (result.notice) sanitizerNotice = result.notice
-      if (result.nodes !== nodes) nodes = result.nodes
-      if (result.rootId !== rootId) rootId = result.rootId
+      if (result.notice) {
+        // Only update in-memory state if sanitization actually made corrections
+        sanitizerNotice = result.notice
+        if (result.nodes !== nodes) nodes = result.nodes
+        if (result.rootId !== rootId) rootId = result.rootId
+      }
       persistedSig = computePersistSig(nodes, chatSettings, rootId)
       scheduledPersistSig = persistedSig
       if (persistRetryTimer) {
