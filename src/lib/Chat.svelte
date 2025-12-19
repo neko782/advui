@@ -15,9 +15,10 @@
   import { persistChatContent, computePersistSig } from './chat/services/chatPersistence'
   import { computeValidationNotice, computeGenerationNotice, assembleNotice, computeFollowingMap } from './chat/services/noticeHelpers'
   import { resolveConnectionContext as _resolveConnectionContext } from './chat/services/connectionResolver'
-  import { createPersistenceScheduler, queueGlobalPersist } from './chat/services/persistenceScheduler'
+  import { createPersistenceScheduler, queueGlobalPersist, flushGlobalPersists } from './chat/services/persistenceScheduler'
   import { createNoticeManager } from './chat/services/noticeManager'
   import { createGenerationStateManager } from './chat/services/generationStateManager'
+  import { validateChatEdit } from './chat/services/chatEditGuard'
 
   // Action imports
   import { deleteMessage, setMessageRole, moveUp, moveDown } from './chat/actions/messageActions'
@@ -37,6 +38,7 @@
 
   // Utilities
   import { toIntOrNull, toClampedNumber } from './utils/numbers'
+  import { deepClone } from './utils/immutable'
   import { normalizeReasoning, normalizeVerbosity, normalizeReasoningSummary } from './utils/validation'
   import { NO_API_KEY_NOTICE_TEXT } from './constants/index'
   import { buildVisible as _buildVisible, buildVisibleUpTo as _buildVisibleUpTo } from './branching'
@@ -95,6 +97,7 @@
   let nextNodeId = $state(1)
   let ready = false
   let mounted = false
+  let destroyed = false
   let lastChatId: string | null = null
 
   // Settings & chat configuration
@@ -139,7 +142,9 @@
 
   let chatSettingsOpen = $state(false)
   let modelIds = $state<string[]>(loadModelsCache(initialConnectionId).ids || [])
-  let persistSig = ''
+  let persistedSig = ''
+  let scheduledPersistSig = ''
+  let persistRetryTimer: ReturnType<typeof setTimeout> | null = null
 
   // Editing state
   let editingId = $state<number | null>(null)
@@ -192,6 +197,51 @@
 
   function updateVariant(variantId, transform) {
     nodes = updateVariantById(nodes, variantId, transform)
+  }
+
+  type ChatDraft = { nodes: Node[]; rootId: number | null; nextId: number; nextNodeId: number }
+
+  function applyChatMutation(
+    label: string,
+    mutate: (draft: ChatDraft) => ChatDraft,
+    options: { allowDelete?: boolean; requireVisibleVariantIds?: number[] | (() => number[]) } = {}
+  ): boolean {
+    const before: ChatDraft = {
+      nodes: deepClone(nodes),
+      rootId,
+      nextId,
+      nextNodeId,
+    }
+
+    let after: ChatDraft
+    try {
+      after = mutate({ nodes, rootId, nextId, nextNodeId })
+    } catch (err) {
+      sanitizerNotice = `Reverted ${label}: unexpected error during edit.`
+      return false
+    }
+
+    const guard = validateChatEdit(before, after, {
+      label,
+      allowDelete: options.allowDelete,
+      debug,
+      requireVisibleVariantIds: options.requireVisibleVariantIds,
+    })
+
+    if (!guard.ok) {
+      nodes = before.nodes
+      rootId = before.rootId
+      nextId = before.nextId
+      nextNodeId = before.nextNodeId
+      if (guard.notice) sanitizerNotice = guard.notice
+      return false
+    }
+
+    nodes = after.nodes
+    rootId = after.rootId
+    nextId = after.nextId
+    nextNodeId = after.nextNodeId
+    return true
   }
 
   // Generation state management
@@ -299,14 +349,52 @@
   }
 
   // Persistence
+  function schedulePersistRetry(delayMs: number = 750) {
+    if (persistRetryTimer) return
+    persistRetryTimer = setTimeout(() => {
+      persistRetryTimer = null
+      const cid = props.chatId
+      if (!cid || !ready || !mounted || destroyed) return
+      try {
+        const desired = computePersistSig(nodes, chatSettings, rootId)
+        if (desired === persistedSig) return
+        // Force a new schedule attempt even if we previously "scheduled" this sig.
+        scheduledPersistSig = ''
+        queueGlobalPersist(cid, async () => {
+          await persistNow()
+        })
+      } catch {}
+    }, delayMs)
+  }
+
   async function persistNow() {
+    const cid = props.chatId
+    if (!cid || !mounted) return
     try {
-      const result = await persistChatContent(props.chatId, nodes, chatSettings, rootId, debug, mounted)
+      const result = await persistChatContent(cid, nodes, chatSettings, rootId, debug, mounted)
+      if (destroyed) return
       if (result.notice) sanitizerNotice = result.notice
       if (result.nodes !== nodes) nodes = result.nodes
-      persistSig = computePersistSig(nodes, chatSettings, rootId)
+      if (result.rootId !== rootId) rootId = result.rootId
+      persistedSig = computePersistSig(nodes, chatSettings, rootId)
+      scheduledPersistSig = persistedSig
+      if (persistRetryTimer) {
+        clearTimeout(persistRetryTimer)
+        persistRetryTimer = null
+      }
       scheduleParentRefresh(result.updated)
-    } catch {}
+    } catch (err) {
+      if (destroyed) return
+      const msg = (err as Error)?.message || ''
+      if (msg.includes('Concurrent modification conflict')) {
+        sanitizerNotice = `Failed to save: this chat was modified in another tab. Reload the page to sync.`
+        scheduledPersistSig = persistedSig
+        return
+      }
+      sanitizerNotice = msg ? `Failed to save chat: ${msg}` : 'Failed to save chat.'
+      scheduledPersistSig = persistedSig
+      schedulePersistRetry()
+    }
   }
 
   function scheduleParentRefresh(updated) {
@@ -643,38 +731,71 @@
 
   function handleDeleteMessage(messageId) {
     if (locked) return
-    const result = deleteMessage(nodes, rootId, messageId)
-    nodes = result.nodes
-    rootId = result.rootId
-    persistNow()
+    const ok = applyChatMutation(
+      `delete message ${messageId}`,
+      (draft) => {
+        const result = deleteMessage(draft.nodes, draft.rootId, messageId)
+        return { ...draft, nodes: result.nodes, rootId: result.rootId }
+      },
+      { allowDelete: true }
+    )
+    if (ok) persistNow()
   }
 
   function handleSetMessageRole(id, role) {
     if (locked) return
-    nodes = setMessageRole(nodes, id, role)
-    persistNow()
+    const ok = applyChatMutation(`set role ${id}`, (draft) => ({
+      ...draft,
+      nodes: setMessageRole(draft.nodes, id, role),
+    }))
+    if (ok) persistNow()
   }
 
   function handleMoveUp(messageId) {
     if (locked) return
-    const result = moveUp(nodes, rootId, messageId)
-    nodes = result.nodes
-    rootId = result.rootId
-    persistNow()
+    const ok = applyChatMutation(
+      `move up ${messageId}`,
+      (draft) => {
+        const result = moveUp(draft.nodes, draft.rootId, messageId)
+        return { ...draft, nodes: result.nodes, rootId: result.rootId }
+      },
+      { requireVisibleVariantIds: [messageId] }
+    )
+    if (ok) persistNow()
   }
 
   function handleMoveDown(messageId) {
     if (locked) return
-    const result = moveDown(nodes, rootId, messageId)
-    nodes = result.nodes
-    rootId = result.rootId
-    persistNow()
+    const ok = applyChatMutation(
+      `move down ${messageId}`,
+      (draft) => {
+        const result = moveDown(draft.nodes, draft.rootId, messageId)
+        return { ...draft, nodes: result.nodes, rootId: result.rootId }
+      },
+      { requireVisibleVariantIds: [messageId] }
+    )
+    if (ok) persistNow()
   }
 
   function handleChangeVariant(id, delta) {
     if (locked) return
-    nodes = changeVariant(nodes, id, delta)
-    persistNow()
+    const ok = applyChatMutation(`change variant ${id}`, (draft) => ({
+      ...draft,
+      nodes: changeVariant(draft.nodes, id, delta),
+    }))
+    if (ok) persistNow()
+  }
+
+  function debugMessageDeath(messageId) {
+    if (!debug) return
+    if (locked) return
+    applyChatMutation(
+      `message death ${messageId}`,
+      (draft) => {
+        const result = deleteMessage(draft.nodes, draft.rootId, messageId)
+        return { ...draft, nodes: result.nodes, rootId: result.rootId }
+      }
+    )
   }
 
   // Edit actions
@@ -719,7 +840,13 @@
   function commitEdit() {
     if (locked) return
     if (editingId == null) return
-    nodes = commitEditReplace(nodes, editingId, editingText)
+    const id = editingId
+    const text = editingText
+    const ok = applyChatMutation(`edit message ${id}`, (draft) => ({
+      ...draft,
+      nodes: commitEditReplace(draft.nodes, id, text),
+    }))
+    if (!ok) return
     editingId = null
     editingText = ''
     persistNow()
@@ -730,12 +857,16 @@
   function applyBranch() {
     if (locked) return
     if (editingId == null) return
-    const result = applyEditBranch(nodes, editingId, editingText, nextId)
-    nodes = result.nodes
-    nextId = result.nextId
-    persistNow()
+    const id = editingId
+    const text = editingText
+    const ok = applyChatMutation(`branch from ${id}`, (draft) => {
+      const result = applyEditBranch(draft.nodes, id, text, draft.nextId)
+      return { ...draft, nodes: result.nodes, nextId: result.nextId }
+    })
+    if (!ok) return
     editingId = null
     editingText = ''
+    persistNow()
   }
 
   async function applyEditSend() {
@@ -759,14 +890,42 @@
       return
     }
 
+    const { connectionId, apiKey } = resolveConnectionContext()
+    if (!apiKey) {
+      showMissingApiKeyNotice()
+      // Still apply the edit as a branch, but do not create a typing node.
+      const id = editingId
+      const text = editingText
+      const ok = applyChatMutation(`edit+send (branch only) ${id}`, (draft) => {
+        const result = applyEditBranch(draft.nodes, id, text, draft.nextId)
+        return { ...draft, nodes: result.nodes, nextId: result.nextId }
+      })
+      if (ok) {
+        editingId = null
+        editingText = ''
+        persistNow()
+      }
+      return
+    }
+    clearMissingApiKeyNotice()
+
     const typingVariantId = prepared.typingVariantId
-    nodes = prepared.nodes
-    nextId = prepared.nextId
-    nextNodeId = prepared.nextNodeId
+    const ok = applyChatMutation(
+      `edit+send ${editingId}`,
+      (draft) => ({
+        ...draft,
+        nodes: prepared.nodes,
+        nextId: prepared.nextId,
+        nextNodeId: prepared.nextNodeId,
+      }),
+      { requireVisibleVariantIds: () => (typingVariantId != null ? [typingVariantId] : []) }
+    )
+    if (!ok) return
+
     editingId = null
     editingText = ''
 
-    // Validate typing node is visible before starting generation
+    // Extra guard: should already be guaranteed by the mutation validator above.
     if (!validateTypingVariantVisible(nodes, rootId, typingVariantId)) {
       logGenerationEvent(debug, 'Typing node not visible in applyEditSend', { typingVariantId })
       nodes = handleGenerationError(nodes, typingVariantId, new Error('Typing node not visible'))
@@ -777,15 +936,6 @@
     resetGenerationState()
     const genSeq = generationState.startGeneration()
     logGenerationEvent(debug, 'Starting applyEditSend', { sequence: genSeq, typingVariantId })
-
-    const { connectionId, apiKey } = resolveConnectionContext()
-    if (!apiKey) {
-      persistNow()
-      showMissingApiKeyNotice()
-      generationState.completeGeneration(genSeq)
-      return
-    }
-    clearMissingApiKeyNotice()
 
     startSending()
     generationState.setTypingVariantId(typingVariantId)
@@ -862,19 +1012,24 @@
     const loc = findNodeByMessageId(nodes, id)
     const msg = loc?.node?.variants?.[loc.index]
     if (!msg || msg.typing) return
-    const result = applyEditBranch(nodes, id, msg.content || '', nextId)
-    nodes = result.nodes
-    nextId = result.nextId
-    persistNow()
+    const ok = applyChatMutation(`fork ${id}`, (draft) => {
+      const result = applyEditBranch(draft.nodes, id, msg.content || '', draft.nextId)
+      return { ...draft, nodes: result.nodes, nextId: result.nextId }
+    })
+    if (ok) persistNow()
   }
 
   function handleInsertBetween(afterIndex) {
     if (locked) return
     const result = insertMessageBetween(nodes, rootId, afterIndex, nextId, nextNodeId)
     if (!result) return
-    nodes = result.nodes
-    nextId = result.nextId
-    nextNodeId = result.nextNodeId
+    const ok = applyChatMutation(`insert between ${afterIndex}`, (draft) => ({
+      ...draft,
+      nodes: result.nodes,
+      nextId: result.nextId,
+      nextNodeId: result.nextNodeId,
+    }))
+    if (!ok) return
     // Start editing the new empty message
     editingId = result.insertedMessageId
     editingText = ''
@@ -902,75 +1057,129 @@
       return
     }
 
-    resetGenerationState()
-    const genSeq = generationState.startGeneration()
-    logGenerationEvent(debug, 'Starting send', { sequence: genSeq, role })
+    const resolved = resolveConnectionContext()
+    const connectionId = resolved.connectionId
+    const apiKey = resolved.apiKey
+    if (apiKey) clearMissingApiKeyNotice()
+    else showMissingApiKeyNotice()
 
-    let connectionId = null
-    let apiKey = ''
-    let typingVariantId = null
-    let newNodeId = null
+    // Nothing to send + no API key to generate with => just show notice.
+    if (!apiKey && role === 'user' && !hasContent && !hasImages) return
 
-    if (role === 'user') {
-      if (hasContent || hasImages) {
-        const prepared = prepareUserMessage(nodes, rootId, trimmedInput, nextId, nextNodeId, imageRefs)
-        if (!prepared) {
-          logGenerationEvent(debug, 'Failed to prepare user message')
-          generationState.completeGeneration(genSeq)
-          return
+    let typingVariantId: number | null = null
+    let newNodeId: number | null = null
+    const ok = applyChatMutation(
+      `send ${role}`,
+      (draft) => {
+        let nextDraft = draft
+
+        if (role === 'user') {
+          if (hasContent || hasImages) {
+            const prepared = prepareUserMessage(
+              nextDraft.nodes,
+              nextDraft.rootId,
+              trimmedInput,
+              nextDraft.nextId,
+              nextDraft.nextNodeId,
+              imageRefs
+            )
+            if (!prepared) throw new Error('Failed to prepare user message')
+            newNodeId = prepared.newNodeId
+            nextDraft = {
+              ...nextDraft,
+              nodes: prepared.nodes,
+              rootId: prepared.rootId,
+              nextId: prepared.nextId,
+              nextNodeId: prepared.nextNodeId,
+            }
+          }
+        } else {
+          const finalRole = (typeof role === 'string' && role.trim()) ? role.trim() : 'user'
+          const text = typeof rawInput === 'string' ? rawInput : ''
+          const normalizedImages = Array.isArray(imageRefs) ? imageRefs.filter(Boolean) : []
+
+          const variant = {
+            id: nextDraft.nextId,
+            role: finalRole,
+            content: text,
+            time: Date.now(),
+            typing: false,
+            error: undefined,
+            next: null,
+            images: normalizedImages.length ? normalizedImages : undefined,
+          }
+
+          const node = { id: nextDraft.nextNodeId, variants: [variant], active: 0 }
+          const visible = _buildVisible(nextDraft.nodes, nextDraft.rootId)
+          const lastVm = visible.at(-1)
+
+          let arr = nextDraft.nodes.slice()
+          arr.push(node)
+          let nextRootId = nextDraft.rootId
+          if (lastVm) {
+            arr = arr.map(n => (n.id === lastVm.nodeId
+              ? (() => {
+                  const activeIndex = Math.max(0, Math.min((n.variants?.length || 1) - 1, Number(n.active) || 0))
+                  return { ...n, variants: n.variants.map((v, i) => (i === activeIndex ? { ...v, next: node.id } : v)) }
+                })()
+              : n))
+          } else {
+            nextRootId = node.id
+          }
+
+          newNodeId = node.id
+          nextDraft = {
+            ...nextDraft,
+            nodes: arr,
+            rootId: nextRootId,
+            nextId: nextDraft.nextId + 1,
+            nextNodeId: nextDraft.nextNodeId + 1,
+          }
         }
-        nodes = prepared.nodes
-        rootId = prepared.rootId
-        nextId = prepared.nextId
-        nextNodeId = prepared.nextNodeId
-        newNodeId = prepared.newNodeId
-      }
-    } else {
-      newNodeId = appendMessage(role, rawInput, imageRefs, { persist: false })
-    }
+
+        if (apiKey) {
+          const parentNodeId = (() => {
+            if (role === 'user') {
+              if (hasContent || hasImages) return newNodeId
+              const lastVm = _buildVisible(nextDraft.nodes, nextDraft.rootId).at(-1)
+              return lastVm ? lastVm.nodeId : null
+            }
+            return newNodeId
+          })()
+
+          const prepared = prepareTypingNode(nextDraft.nodes, nextDraft.rootId, parentNodeId, nextDraft.nextId, nextDraft.nextNodeId)
+          typingVariantId = prepared.typingVariantId
+          nextDraft = {
+            ...nextDraft,
+            nodes: prepared.nodes,
+            rootId: prepared.rootId,
+            nextId: prepared.nextId,
+            nextNodeId: prepared.nextNodeId,
+          }
+        }
+
+        return nextDraft
+      },
+      { requireVisibleVariantIds: () => (typingVariantId != null ? [typingVariantId] : []) }
+    )
+    if (!ok) return
 
     input = ''
     attachedImages = []
 
-    const resolved = resolveConnectionContext()
-    connectionId = resolved.connectionId
-    apiKey = resolved.apiKey
-    if (apiKey) {
-      clearMissingApiKeyNotice()
-    } else {
-      showMissingApiKeyNotice()
-    }
-
-    if (apiKey) {
-      const parentNodeId = (() => {
-        if (role === 'user') {
-          if (hasContent || hasImages) return newNodeId
-          const lastVm = buildVisible().at(-1)
-          return lastVm ? lastVm.nodeId : null
-        }
-        return newNodeId
-      })()
-
-      const prepared = prepareTypingNode(nodes, rootId, parentNodeId, nextId, nextNodeId)
-      if (!prepared) {
-        logGenerationEvent(debug, 'Failed to prepare typing node', { role, parentNodeId })
-        persistNow()
-        generationState.completeGeneration(genSeq)
-        return
-      }
-      nodes = prepared.nodes
-      rootId = prepared.rootId
-      typingVariantId = prepared.typingVariantId
-      nextId = prepared.nextId
-      nextNodeId = prepared.nextNodeId
-
+    let genSeq: number | null = null
+    if (apiKey && typingVariantId != null) {
+      // Extra guard: should already be guaranteed by the mutation validator above.
       if (!validateTypingVariantVisible(nodes, rootId, typingVariantId)) {
         logGenerationEvent(debug, 'Typing node not visible', { typingVariantId, role })
         nodes = handleGenerationError(nodes, typingVariantId, new Error('Typing node not visible'))
         persistNow()
-        generationState.completeGeneration(genSeq)
         return
       }
+
+      resetGenerationState()
+      genSeq = generationState.startGeneration()
+      logGenerationEvent(debug, 'Starting send', { sequence: genSeq, role })
 
       startSending()
       generationState.setTypingVariantId(typingVariantId)
@@ -980,55 +1189,56 @@
     persistNow()
     queueMicrotask(() => scrollToBottom())
 
+    if (!(apiKey && typingVariantId != null && genSeq != null)) return
+
     try {
       let reply = null
       let summaryBuffer = ''
-      if (apiKey && typingVariantId != null) {
-        const requestNodes = withImageData(nodes)
-        logGenerationEvent(debug, 'Starting API request', { typingVariantId, role })
-        reply = await generateResponse({
-          nodes: requestNodes,
-          rootId,
-          chatSettings,
-          connectionId,
-          streaming: chatSettings.streaming,
-          typingVariantId,
-          onAbort: registerAbortHandler,
-          onTextDelta: (full) => {
-            if (generationState.getGenerationSequence() === genSeq) {
-              updateVariant(typingVariantId, (prev) => ({ ...prev, content: full }))
-            }
-          },
-          onReasoningSummaryDelta: (fullSummary) => {
-            if (generationState.getGenerationSequence() === genSeq && typeof fullSummary === 'string') {
-              summaryBuffer = fullSummary
-              updateVariant(typingVariantId, (prev) => ({
-                ...prev,
-                reasoningSummary: summaryBuffer,
-                reasoningSummaryLoading: true,
-              }))
-            }
-          },
-          onReasoningSummaryDone: (fullSummary) => {
-            if (generationState.getGenerationSequence() === genSeq && typeof fullSummary === 'string') {
-              summaryBuffer = fullSummary
-              updateVariant(typingVariantId, (prev) => ({
-                ...prev,
-                reasoningSummary: summaryBuffer,
-                reasoningSummaryLoading: false,
-              }))
-            }
-          },
-        })
-        logGenerationEvent(debug, 'API request completed', { typingVariantId, role })
-      }
-      if (typingVariantId != null && generationState.getGenerationSequence() === genSeq) {
+      const requestNodes = withImageData(nodes)
+      logGenerationEvent(debug, 'Starting API request', { typingVariantId, role })
+      reply = await generateResponse({
+        nodes: requestNodes,
+        rootId,
+        chatSettings,
+        connectionId,
+        streaming: chatSettings.streaming,
+        typingVariantId,
+        onAbort: registerAbortHandler,
+        onTextDelta: (full) => {
+          if (generationState.getGenerationSequence() === genSeq) {
+            updateVariant(typingVariantId, (prev) => ({ ...prev, content: full }))
+          }
+        },
+        onReasoningSummaryDelta: (fullSummary) => {
+          if (generationState.getGenerationSequence() === genSeq && typeof fullSummary === 'string') {
+            summaryBuffer = fullSummary
+            updateVariant(typingVariantId, (prev) => ({
+              ...prev,
+              reasoningSummary: summaryBuffer,
+              reasoningSummaryLoading: true,
+            }))
+          }
+        },
+        onReasoningSummaryDone: (fullSummary) => {
+          if (generationState.getGenerationSequence() === genSeq && typeof fullSummary === 'string') {
+            summaryBuffer = fullSummary
+            updateVariant(typingVariantId, (prev) => ({
+              ...prev,
+              reasoningSummary: summaryBuffer,
+              reasoningSummaryLoading: false,
+            }))
+          }
+        },
+      })
+      logGenerationEvent(debug, 'API request completed', { typingVariantId, role })
+
+      if (generationState.getGenerationSequence() === genSeq) {
         nodes = handleGenerationSuccess(nodes, typingVariantId, reply, summaryBuffer)
       }
       await persistNow()
     } catch (err) {
       logGenerationEvent(debug, 'Generation error', { error: err?.message, typingVariantId, role })
-      if (typingVariantId != null && generationState.getGenerationSequence() === genSeq) {
+      if (generationState.getGenerationSequence() === genSeq) {
         nodes = handleGenerationError(nodes, typingVariantId, err)
       }
       await persistNow()
@@ -1071,37 +1281,51 @@
     const text = typeof content === 'string' ? content : ''
     const normalizedImages = Array.isArray(imageRefs) ? imageRefs.filter(Boolean) : []
 
-    const variant = {
-      id: nextId++,
-      role: finalRole,
-      content: text,
-      time: Date.now(),
-      typing: false,
-      error: undefined,
-      next: null,
-      images: normalizedImages.length ? normalizedImages : undefined
-    }
+    let newNodeId: number | null = null
+    const ok = applyChatMutation(`append ${finalRole}`, (draft) => {
+      const variant = {
+        id: draft.nextId,
+        role: finalRole,
+        content: text,
+        time: Date.now(),
+        typing: false,
+        error: undefined,
+        next: null,
+        images: normalizedImages.length ? normalizedImages : undefined,
+      }
 
-    const node = { id: nextNodeId++, variants: [variant], active: 0 }
-    const visible = buildVisible()
-    const lastVm = visible.at(-1)
-    let arr = nodes.slice()
-    arr.push(node)
-    if (lastVm) {
-      arr = arr.map(n => (n.id === lastVm.nodeId
-        ? {
-            ...n,
-            variants: n.variants.map((v, i) => (i === (Number(n.active) || 0) ? { ...v, next: node.id } : v))
-          }
-        : n))
-    } else {
-      rootId = node.id
-    }
-    nodes = arr
-    if (persist) {
-      persistNow()
-    }
-    return node.id
+      const node = { id: draft.nextNodeId, variants: [variant], active: 0 }
+      newNodeId = node.id
+
+      const visible = _buildVisible(draft.nodes, draft.rootId)
+      const lastVm = visible.at(-1)
+
+      let arr = draft.nodes.slice()
+      arr.push(node)
+      let nextRootId = draft.rootId
+      if (lastVm) {
+        arr = arr.map(n => (n.id === lastVm.nodeId
+          ? (() => {
+              const activeIndex = Math.max(0, Math.min((n.variants?.length || 1) - 1, Number(n.active) || 0))
+              return { ...n, variants: n.variants.map((v, i) => (i === activeIndex ? { ...v, next: node.id } : v)) }
+            })()
+          : n))
+      } else {
+        nextRootId = node.id
+      }
+
+      return {
+        ...draft,
+        nodes: arr,
+        rootId: nextRootId,
+        nextId: draft.nextId + 1,
+        nextNodeId: draft.nextNodeId + 1,
+      }
+    })
+
+    if (!ok || newNodeId == null) return null
+    if (persist) persistNow()
+    return newNodeId
   }
 
   function addToChat(role = 'user') {
@@ -1109,7 +1333,8 @@
     const text = (typeof input === 'string') ? input : ''
     const imageRefs = buildImageRefs(attachedImages)
     const hasImages = imageRefs.length > 0
-    appendMessage(role, text, hasImages ? imageRefs : [])
+    const inserted = appendMessage(role, text, hasImages ? imageRefs : [])
+    if (inserted == null) return
     input = ''
     attachedImages = []
     queueMicrotask(() => scrollToBottom())
@@ -1123,6 +1348,13 @@
       return
     }
 
+    const { connectionId, apiKey } = resolveConnectionContext()
+    if (!apiKey) {
+      showMissingApiKeyNotice()
+      return
+    }
+    clearMissingApiKeyNotice()
+
     const prepared = prepareRefreshAssistant(nodes, rootId, id, nextId)
     if (!prepared) {
       logGenerationEvent(debug, 'Failed to prepare refresh assistant')
@@ -1130,31 +1362,20 @@
     }
 
     const typingVariantId = prepared.typingVariantId
-
-    // Validate typing node is visible before starting generation
-    if (!validateTypingVariantVisible(prepared.nodes, rootId, typingVariantId)) {
-      logGenerationEvent(debug, 'Typing node not visible in refreshAssistant', { typingVariantId })
-      nodes = prepared.nodes
-      nextId = prepared.nextId
-      nodes = handleGenerationError(nodes, typingVariantId, new Error('Typing node not visible'))
-      persistNow()
-      return
-    }
+    const ok = applyChatMutation(
+      `refresh assistant ${id}`,
+      (draft) => ({
+        ...draft,
+        nodes: prepared.nodes,
+        nextId: prepared.nextId,
+      }),
+      { requireVisibleVariantIds: () => [typingVariantId] }
+    )
+    if (!ok) return
 
     resetGenerationState()
     const genSeq = generationState.startGeneration()
     logGenerationEvent(debug, 'Starting refreshAssistant', { sequence: genSeq, typingVariantId })
-
-    const { connectionId, apiKey } = resolveConnectionContext()
-    if (!apiKey) {
-      showMissingApiKeyNotice()
-      generationState.completeGeneration(genSeq)
-      return
-    }
-    clearMissingApiKeyNotice()
-
-    nodes = prepared.nodes
-    nextId = prepared.nextId
     startSending()
     generationState.setTypingVariantId(typingVariantId)
     persistNow()
@@ -1227,6 +1448,13 @@
       return
     }
 
+    const { connectionId, apiKey } = resolveConnectionContext()
+    if (!apiKey) {
+      showMissingApiKeyNotice()
+      return
+    }
+    clearMissingApiKeyNotice()
+
     const prepared = prepareRefreshAfterUser(nodes, rootId, i, nextId, nextNodeId)
     if (!prepared) {
       logGenerationEvent(debug, 'Failed to prepare refresh after user')
@@ -1234,33 +1462,21 @@
     }
 
     const typingVariantId = prepared.typingVariantId
-
-    // Validate typing node is visible before starting generation
-    if (!validateTypingVariantVisible(prepared.nodes, rootId, typingVariantId)) {
-      logGenerationEvent(debug, 'Typing node not visible in refreshAfterUserIndex', { typingVariantId })
-      nodes = prepared.nodes
-      nextId = prepared.nextId
-      nextNodeId = prepared.nextNodeId
-      nodes = handleGenerationError(nodes, typingVariantId, new Error('Typing node not visible'))
-      persistNow()
-      return
-    }
+    const ok = applyChatMutation(
+      `refresh after user ${i}`,
+      (draft) => ({
+        ...draft,
+        nodes: prepared.nodes,
+        nextId: prepared.nextId,
+        nextNodeId: prepared.nextNodeId,
+      }),
+      { requireVisibleVariantIds: () => [typingVariantId] }
+    )
+    if (!ok) return
 
     resetGenerationState()
     const genSeq = generationState.startGeneration()
     logGenerationEvent(debug, 'Starting refreshAfterUserIndex', { sequence: genSeq, index: i, typingVariantId })
-
-    const { connectionId, apiKey } = resolveConnectionContext()
-    if (!apiKey) {
-      showMissingApiKeyNotice()
-      generationState.completeGeneration(genSeq)
-      return
-    }
-    clearMissingApiKeyNotice()
-
-    nodes = prepared.nodes
-    nextId = prepared.nextId
-    nextNodeId = prepared.nextNodeId
     startSending()
     generationState.setTypingVariantId(typingVariantId)
     persistNow()
@@ -1380,21 +1596,22 @@
   let loadedChatId: string | null = null
   $effect(() => {
     const cid = props.chatId
-    if (lastChatId && lastChatId !== cid && mounted) {
-      // Use untrack to prevent this effect from re-running when nodes/settings change
-      untrack(() => {
-        try { saveChatContent(lastChatId, { nodes, settings: chatSettings, rootId }) } catch {}
-      })
-    }
-    lastChatId = cid
+	    if (lastChatId && lastChatId !== cid && mounted) {
+	      // Use untrack to prevent this effect from re-running when nodes/settings change
+	      untrack(() => {
+	        try { saveChatContent(lastChatId, { nodes, settings: chatSettings, rootId }).catch(() => {}) } catch {}
+	      })
+	    }
+	    lastChatId = cid
 
     // Skip if we've already loaded this chat
     if (loadedChatId === cid) return
 
-    ready = false
-    forcedLock = false
-    persistSig = ''
-    chatSettingsOpen = false
+	    ready = false
+	    forcedLock = false
+	    persistedSig = ''
+	    scheduledPersistSig = ''
+	    chatSettingsOpen = false
 
     if (!cid) return
 
@@ -1414,14 +1631,15 @@
         chatSettings = result.chatSettings
         try { modelIds = loadModelsCache(result.chatSettings?.connectionId).ids || [] } catch {}
         rootId = result.rootId
-        editingId = null
-        editingText = ''
-        dismissedNotice = ''
-        persistSig = result.persistSig
-        loadedChatId = cid
-      } finally {
-        ready = true
-      }
+	        editingId = null
+	        editingText = ''
+	        dismissedNotice = ''
+	        persistedSig = result.persistSig
+	        scheduledPersistSig = result.persistSig
+	        loadedChatId = cid
+	      } finally {
+	        ready = true
+	      }
     }).catch(() => {
       ready = true
     })
@@ -1489,22 +1707,19 @@
     }
   })
 
-  $effect(() => {
-    const cid = props.chatId
-    if (!cid || !ready || !mounted) return
-    try {
-      const sig = computePersistSig(nodes, chatSettings, rootId)
-      if (sig === persistSig) return
-      persistSig = sig
-      // Use global throttle to prevent storage write storms across multiple chats
-      queueGlobalPersist(cid, async () => {
-        try {
-          const updated = await saveChatContent(cid, { nodes, settings: chatSettings, rootId })
-          scheduleParentRefresh(updated)
-        } catch {}
-      })
-    } catch {}
-  })
+	  $effect(() => {
+	    const cid = props.chatId
+	    if (!cid || !ready || !mounted) return
+	    try {
+	      const sig = computePersistSig(nodes, chatSettings, rootId)
+	      if (sig === persistedSig || sig === scheduledPersistSig) return
+	      scheduledPersistSig = sig
+	      // Use global throttle to prevent storage write storms across multiple chats
+	      queueGlobalPersist(cid, async () => {
+	        await persistNow()
+	      })
+	    } catch {}
+	  })
 
   $effect(() => {
     if (chatSettingsOpen) {
@@ -1535,6 +1750,7 @@
   })
 
   onDestroy(() => {
+    destroyed = true
     const chatId = props.chatId
     // Abort any in-flight generation to prevent orphaned HTTP requests
     if (generationState.isGenerationActive()) {
@@ -1543,6 +1759,14 @@
     if (!chatId) return
     try { props.onGeneratingChange?.(chatId, false) } catch {}
     persistenceScheduler.cancel()
+
+    // Best-effort: flush any pending throttled persists for this chat
+    try {
+      queueGlobalPersist(chatId, async () => {
+        await persistNow()
+      })
+      void flushGlobalPersists()
+    } catch {}
   })
 </script>
 
@@ -1576,6 +1800,7 @@
     onMoveUp={(id) => handleMoveUp(id)}
     onFork={(id) => forkMessage(id)}
     onDebugFuckBranch={(id) => debugFuckUpBranch(id)}
+    onDebugMessageDeath={(id) => debugMessageDeath(id)}
     onInsertBetween={(afterIndex) => handleInsertBetween(afterIndex)}
   />
 

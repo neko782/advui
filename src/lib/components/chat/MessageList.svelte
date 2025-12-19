@@ -31,6 +31,7 @@
     onMoveUp?: (id: number) => void
     onFork?: (id: number) => void
     onDebugFuckBranch?: (id: number) => void
+    onDebugMessageDeath?: (id: number) => void
     onInsertBetween?: (afterIndex: number) => void
   }
 
@@ -82,6 +83,7 @@
       onMoveUp={props.onMoveUp}
       onFork={props.onFork}
       onDebugFuckBranch={props.onDebugFuckBranch}
+      onDebugMessageDeath={props.onDebugMessageDeath}
     />
   {/each}
   {#if props.notice}

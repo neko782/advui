@@ -29,6 +29,7 @@
     onMoveUp?: (id: number) => void
     onFork?: (id: number) => void
     onDebugFuckBranch?: (id: number) => void
+    onDebugMessageDeath?: (id: number) => void
   }
 
   const props: Props = $props()
@@ -100,6 +101,9 @@
     {#if props.debug}
       <button class="action-btn debug" onclick={() => props.onDebugFuckBranch?.(m.id)} aria-label="Fuck up branching" title="Fuck up branching" disabled={props.locked || m.typing}>
         <IconDangerous style="font-size: 20px;" />
+      </button>
+      <button class="action-btn debug" onclick={() => props.onDebugMessageDeath?.(m.id)} aria-label="Message death (simulate bug)" title="Message death (simulate bug)" disabled={props.locked || m.typing}>
+        <IconDelete style="font-size: 20px;" />
       </button>
     {/if}
   {/if}

@@ -425,7 +425,8 @@ export interface InsertBetweenResult {
 export interface PersistenceResult {
   updated: Chat | null;
   notice: string;
-  nodes?: ChatNode[];
+  nodes: ChatNode[];
+  rootId: number | null;
 }
 
 export interface SanitizedGraphResult {

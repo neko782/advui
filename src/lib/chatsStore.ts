@@ -169,7 +169,10 @@ export async function unlockAllChats(): Promise<void> {
     for (const chat of list) {
       const sanitized = sanitizeChatLockState(chat);
       if (sanitized !== chat && sanitized) {
-        await storePut(sanitized);
+        await storePut({
+          ...sanitized,
+          _expectedVersion: chat?._version,
+        });
       }
     }
   } catch {
@@ -211,7 +214,10 @@ export function computeTitleFromNodes(nodes: ChatNode[] | null, rootId: number |
 export async function upsertChat(chat: Chat): Promise<Chat> {
   // Persist chat to localStorage
   try {
-    const persisted = await storePut(chat);
+    const persisted = await storePut({
+      ...chat,
+      _expectedVersion: chat?._version,
+    });
     return persisted || chat;
   } catch (err) {
     console.error('Failed to upsert chat:', err);
@@ -318,6 +324,7 @@ export async function saveChatContent(
     presetId,
     title: computeTitleFromNodes(nextNodes, nextRootId),
     updatedAt: Date.now(),
+    _expectedVersion: existing?._version,
   };
   const persisted = await storePut(updated);
   return persisted || updated;
@@ -339,6 +346,7 @@ export async function renameChat(id: string, title: string): Promise<Chat | null
     ...chat,
     title: nextTitle,
     updatedAt: Date.now(),
+    _expectedVersion: chat?._version,
   };
   const persisted = await storePut(updated);
   return persisted || updated;
@@ -478,11 +486,13 @@ export async function debugSetChatLockState(id: string, shouldLock: boolean = tr
     }
     if (next) {
       next.updatedAt = Date.now();
-      await storePut(next);
+      await storePut({
+        ...next,
+        _expectedVersion: chat?._version,
+      });
     }
     return next as Chat | null;
   } catch {
     return null;
   }
 }
-

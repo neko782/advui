@@ -196,7 +196,7 @@ function moveMessage(
   let arr = nodes.slice();
   function setActiveNext(nodeId: number, nextNodeId: number | null): void {
     arr = arr.map(n => (n.id === nodeId
-      ? { ...n, variants: n.variants.map((v, i) => (i === (Number(n.active) || 0) ? { ...v, next: nextNodeId ?? null } : v)) }
+      ? { ...n, variants: n.variants.map((v, i) => (i === clampActiveIndex(n) ? { ...v, next: nextNodeId ?? null } : v)) }
       : n));
   }
 
@@ -275,4 +275,3 @@ export function moveDownGuarded(
 ): GuardedResult<MoveResult> {
   return guardOperation(context, { nodes, rootId }, () => moveDown(nodes, rootId, messageId));
 }
-

@@ -321,7 +321,10 @@ export function prepareUserMessage(
   let nextRootId = rootId;
   if (parentNodeId != null) {
     arr = arr.map(n => (n.id === parentNodeId
-      ? { ...n, variants: n.variants.map((v, i) => (i === (Number(n.active) || 0) ? { ...v, next: newNode.id } : v)) }
+      ? (() => {
+          const activeIndex = Math.max(0, Math.min((n.variants?.length || 1) - 1, Number(n.active) || 0));
+          return { ...n, variants: n.variants.map((v, i) => (i === activeIndex ? { ...v, next: newNode.id } : v)) };
+        })()
       : n));
   } else {
     nextRootId = newNode.id;
@@ -630,7 +633,10 @@ export function prepareRefreshAfterUser(
   const typingNode: ChatNode = { id: nextNodeId, variants: [typingMsg], active: 0 };
   let updatedNodes = nodes.map(n => (
     n.id === curNodeId
-      ? { ...n, variants: n.variants.map((v, idx) => (idx === (Number(n.active) || 0) ? { ...v, next: typingNode.id } : v)) }
+      ? (() => {
+          const activeIndex = Math.max(0, Math.min((n.variants?.length || 1) - 1, Number(n.active) || 0));
+          return { ...n, variants: n.variants.map((v, idx) => (idx === activeIndex ? { ...v, next: typingNode.id } : v)) };
+        })()
       : n
   ));
   updatedNodes = [...updatedNodes, typingNode];
@@ -654,4 +660,3 @@ export function prepareRefreshAfterUser(
     history
   };
 }
-

@@ -9,6 +9,7 @@ export { validateTree, enforceUniqueParents, enforceUniqueParentsWithInfo };
  * Extended result with detailed mutation info
  */
 export interface DetailedSanitizedResult extends SanitizedGraphResult {
+  rootId: number | null;
   mutations: {
     activeIndexNormalized: boolean;
     rootIdCorrected: boolean;
@@ -62,6 +63,7 @@ export function sanitizeGraphComprehensive(
   if (debug) {
     return {
       nodes,
+      rootId,
       notice: '',
       mutations: {
         activeIndexNormalized: false,
@@ -119,6 +121,7 @@ export function sanitizeGraphComprehensive(
 
   return {
     nodes: currentNodes,
+    rootId: currentRootId,
     notice,
     mutations: {
       activeIndexNormalized: activeNormalized,
@@ -128,4 +131,3 @@ export function sanitizeGraphComprehensive(
     },
   };
 }
-

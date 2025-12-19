@@ -245,6 +245,16 @@ function writeOneInternal(chat: Chat): Promise<Chat> {
       readRequest.onsuccess = () => {
         const existing = readRequest.result as Chat | undefined;
 
+        // Check for concurrent modifications (cross-tab)
+        const expectedVersion = (typeof candidate._expectedVersion === 'number')
+          ? candidate._expectedVersion
+          : null;
+        const currentVersion = Number(existing?._version) || 0;
+        if (expectedVersion != null && currentVersion !== expectedVersion) {
+          reject(new Error(`Concurrent modification conflict for chat "${candidate.id}".`));
+          return;
+        }
+
         // Since writes are queued, we don't need to check versions - just increment
         const nextChatVersion = (Number(existing?._version) || 0) + 1;
         const persistedAt = Date.now();
@@ -406,4 +416,3 @@ export function closeDB(): void {
 if (typeof window !== 'undefined') {
   initBroadcastChannel();
 }
-

@@ -1,7 +1,6 @@
 // Chat persistence with signature tracking
 import { saveChatContent } from '../../chatsStore.js';
 import { sanitizeGraphComprehensive } from './graphValidation.js';
-import { ensureUniqueIds } from './chatInit.js';
 import type { ChatNode, ChatSettings, Chat, PersistenceResult, ImageReference } from '../../types/index.js';
 
 function sanitizeImages(images: unknown, stripData: boolean = false): ImageReference[] {
@@ -127,21 +126,77 @@ function hashString(str: string): number {
   return hash >>> 0; // Convert to unsigned 32-bit integer
 }
 
+function mixHash(hash: number, value: number): number {
+  return ((hash << 5) + hash) ^ value;
+}
+
+function hashMaybeString(value: unknown): number {
+  return typeof value === 'string' && value ? hashString(value) : 0;
+}
+
+function hashImages(images: unknown): number {
+  const normalized = sanitizeImages(images, true);
+  let hash = 5381;
+  for (const img of normalized) {
+    hash = mixHash(hash, hashString(`${img.id}|${img.mimeType || ''}|${img.name || ''}`));
+  }
+  return hash >>> 0;
+}
+
+function hashGeneratedImages(images: unknown): number {
+  const list = Array.isArray(images) ? images : [];
+  let hash = 5381;
+  for (const entry of list) {
+    if (!entry || typeof entry !== 'object') continue;
+    const obj = entry as Record<string, unknown>;
+    const id = typeof obj.id === 'string' ? obj.id : '';
+    const dataLen = typeof obj.data === 'string' ? obj.data.length : 0;
+    const revisedPromptHash = typeof obj.revisedPrompt === 'string' ? hashString(obj.revisedPrompt) : 0;
+    hash = mixHash(hash, hashString(id));
+    hash = mixHash(hash, dataLen);
+    hash = mixHash(hash, revisedPromptHash);
+  }
+  return hash >>> 0;
+}
+
+function hashVariant(variant: unknown): number {
+  if (!variant || typeof variant !== 'object') return 0;
+  const v = variant as Record<string, unknown>;
+  let hash = 5381;
+  hash = mixHash(hash, Number(v.id) || 0);
+  hash = mixHash(hash, hashMaybeString(v.role));
+  hash = mixHash(hash, hashMaybeString(v.content));
+  hash = mixHash(hash, v.next == null ? 0 : (Number(v.next) || 0));
+  hash = mixHash(hash, v.typing === true ? 1 : 0);
+  hash = mixHash(hash, hashMaybeString(v.error));
+  hash = mixHash(hash, hashMaybeString(v.reasoningSummary));
+  hash = mixHash(hash, v.reasoningSummaryLoading === true ? 1 : 0);
+  hash = mixHash(hash, hashImages(v.images));
+  hash = mixHash(hash, hashGeneratedImages(v.generatedImages));
+  return hash >>> 0;
+}
+
 /**
  * Computes a content-aware signature for persistence change detection.
  * Uses actual content hashes instead of just lengths to detect same-length edits.
  */
 export function computePersistSig(nodes: ChatNode[], chatSettings: ChatSettings, rootId: number | null): string {
   try {
-    const mini = (nodes || []).map(n => {
-      const variants = Array.isArray(n?.variants) ? n.variants : [];
-      const activeIdx = Math.max(0, Math.min(variants.length - 1, Number(n?.active) || 0));
-      const v = variants[activeIdx];
-      // Include content hash instead of just length
-      const contentHash = typeof v?.content === 'string' ? hashString(v.content) : 0;
-      // Include variant count and active index for branch changes
-      return `${n.id}|${v?.role || ''}|${contentHash}|${v?.next ?? 'null'}|${variants.length}|${activeIdx}`;
-    });
+    const list = Array.isArray(nodes) ? nodes : [];
+    const mini = list
+      .slice()
+      .sort((a, b) => (Number(a?.id) || 0) - (Number(b?.id) || 0))
+      .map(n => {
+        const variants = Array.isArray(n?.variants) ? n.variants : [];
+        const activeIdx = Math.max(0, Math.min(variants.length - 1, Number(n?.active) || 0));
+        let nodeHash = 5381;
+        for (const v of variants) {
+          nodeHash = mixHash(nodeHash, hashVariant(v));
+        }
+        nodeHash = mixHash(nodeHash, activeIdx);
+        nodeHash = mixHash(nodeHash, variants.length);
+        return `${n.id}|${activeIdx}|${variants.length}|${(nodeHash >>> 0)}`;
+      });
     return JSON.stringify({
       m: mini,
       settings: {
@@ -184,30 +239,27 @@ export async function persistChatContent(
   debug: boolean,
   mounted: boolean
 ): Promise<PersistenceResult> {
-  try {
-    if (!chatId || !mounted) return { updated: null, notice: '' };
+  if (!chatId || !mounted) return { updated: null, notice: '', nodes, rootId };
 
+  try {
     // Comprehensive sanitization: fix active indices, rootId, and multiple parents
     const sanitizeResult = sanitizeGraphComprehensive(nodes, rootId, debug);
-    const { nodes: sanitized, notice, mutations } = sanitizeResult;
-    
-    // Use the corrected rootId if it was fixed
-    const finalRootId = mutations.rootIdCorrected ? 
-      (sanitized.length > 0 ? sanitized[0]?.id ?? null : null) : 
-      rootId;
-    
+    const { nodes: sanitized, rootId: sanitizedRootId, notice } = sanitizeResult;
+
     const cleanedNodes = stripImageDataFromNodes(sanitized);
 
     // Persist full graph
     const updated = await saveChatContent(chatId, {
       nodes: cleanedNodes,
       settings: chatSettings,
-      rootId: finalRootId
+      rootId: sanitizedRootId
     });
 
-    return { updated, notice, nodes: cleanedNodes };
+    const finalNodes = (updated && Array.isArray(updated.nodes)) ? updated.nodes : cleanedNodes;
+    const finalRootId = updated ? updated.rootId : sanitizedRootId;
+
+    return { updated, notice, nodes: finalNodes, rootId: finalRootId };
   } catch (err) {
-    return { updated: null, notice: '', nodes };
+    throw err;
   }
 }
-

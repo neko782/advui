@@ -36,6 +36,7 @@
     onMoveUp?: (id: number) => void
     onFork?: (id: number) => void
     onDebugFuckBranch?: (id: number) => void
+    onDebugMessageDeath?: (id: number) => void
   }
 
   const props: Props = $props()
@@ -88,6 +89,7 @@
       onMoveUp={doMoveUp}
       onFork={props.onFork}
       onDebugFuckBranch={props.onDebugFuckBranch}
+      onDebugMessageDeath={props.onDebugMessageDeath}
     />
   </div>
 </div>

@@ -31,6 +31,26 @@ export function queueGlobalPersist(chatId: string, persistFn: () => Promise<void
 }
 
 /**
+ * Flush any pending global persists immediately.
+ * Useful on teardown to avoid losing the last throttled write.
+ */
+export async function flushGlobalPersists(): Promise<void> {
+  if (globalPersistTimer) {
+    clearTimeout(globalPersistTimer);
+    globalPersistTimer = null;
+  }
+
+  const batch = pendingPersists;
+  if (!batch.size) return;
+  pendingPersists = new Map();
+
+  const tasks = Array.from(batch.values()).map(fn => {
+    try { return fn(); } catch { return Promise.resolve(); }
+  });
+  await Promise.allSettled(tasks);
+}
+
+/**
  * Creates a persistence scheduler for handling refresh callbacks
  * Uses throttle behavior - first call wins, subsequent calls are ignored while pending
  */

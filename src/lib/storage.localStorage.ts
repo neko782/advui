@@ -126,6 +126,15 @@ function writeOneInternal(chat: Chat): Promise<Chat> {
     const byId = { ...store.byId };
     const existing = byId[candidate.id];
 
+    // Check for concurrent modifications (cross-tab)
+    const expectedVersion = (typeof candidate._expectedVersion === 'number')
+      ? candidate._expectedVersion
+      : null;
+    const currentVersion = Number(existing?._version) || 0;
+    if (expectedVersion != null && currentVersion !== expectedVersion) {
+      throw new Error(`Concurrent modification conflict for chat "${candidate.id}".`);
+    }
+
     // Since writes are queued, we don't need to check versions - just increment
     const nextStoreVersion = (Number(store.version) || 0) + 1;
     const nextChatVersion = (Number(existing?._version) || 0) + 1;
@@ -219,4 +228,3 @@ export function subscribeChatStorage(listener: StorageListener): () => void {
 export function isIndexedDBAvailable(): boolean {
   return false;
 }
-
