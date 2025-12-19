@@ -310,14 +310,17 @@
       const title = (chat?.title || '').toLowerCase()
       if (title.includes(searchTerm)) return true
 
-      // Check image IDs (only in content mode to avoid performance hit)
+      // Check content first (cached)
+      const content = extractChatContent(chat).toLowerCase()
+      if (content.includes(searchTerm)) return true
+
+      // Check image IDs last (not cached, requires iteration)
       const imageIds = extractImageIds(chat)
       for (const imgId of imageIds) {
         if (imgId.toLowerCase().includes(searchTerm)) return true
       }
 
-      const content = extractChatContent(chat).toLowerCase()
-      return content.includes(searchTerm)
+      return false
     }
   }
 
