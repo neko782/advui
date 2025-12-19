@@ -61,52 +61,15 @@
   let touchDragType = $state<'connection' | 'preset' | null>(null)
   let touchDragId = $state<string | null>(null)
   let touchCurrentY = $state<number>(0)
-  let touchStartY = $state<number>(0)
-  let touchItemRects = $state<Map<string, DOMRect>>(new Map())
   let touchListRef = $state<HTMLElement | null>(null)
 
-  // Visual order during drag (shows items shifting)
-  let connectionVisualOrder = $state<string[]>([])
-  let presetVisualOrder = $state<string[]>([])
-
-  // Computed visual orders for rendering
+  // Simple list getters for rendering
   const connectionsForRender = $derived(() => {
-    const list = Array.isArray(local?.connections) ? local.connections : []
-    if (!draggedConnectionId && !touchDragId) return list
-    if (touchDragType === 'connection' || draggedConnectionId) {
-      const dragId = touchDragId || draggedConnectionId
-      const targetId = dragOverConnectionId
-      if (!dragId || !targetId || dragId === targetId) return list
-
-      const fromIndex = list.findIndex(c => c.id === dragId)
-      const toIndex = list.findIndex(c => c.id === targetId)
-      if (fromIndex < 0 || toIndex < 0) return list
-
-      // Create visual order with item moved
-      const result = list.slice()
-      const [moved] = result.splice(fromIndex, 1)
-      result.splice(toIndex, 0, moved)
-      return result
-    }
-    return list
+    return Array.isArray(local?.connections) ? local.connections : []
   })
 
   const presetsForRender = $derived(() => {
-    const list = Array.isArray(local?.presets) ? local.presets : []
-    if (!draggedPresetId && !(touchDragType === 'preset' && touchDragId)) return list
-    const dragId = touchDragType === 'preset' ? touchDragId : draggedPresetId
-    const targetId = dragOverPresetId
-    if (!dragId || !targetId || dragId === targetId) return list
-
-    const fromIndex = list.findIndex(p => p.id === dragId)
-    const toIndex = list.findIndex(p => p.id === targetId)
-    if (fromIndex < 0 || toIndex < 0) return list
-
-    // Create visual order with item moved
-    const result = list.slice()
-    const [moved] = result.splice(fromIndex, 1)
-    result.splice(toIndex, 0, moved)
-    return result
+    return Array.isArray(local?.presets) ? local.presets : []
   })
   
   const TABS = [
@@ -455,59 +418,14 @@
   function handleConnectionDragOver(e: DragEvent, id: string) {
     e.preventDefault()
     e.dataTransfer!.dropEffect = 'move'
-    if (!draggedConnectionId) return
-
-    // Get all item rects and find which slot we're in
-    const listEl = (e.currentTarget as HTMLElement).closest('.item-list')
-    if (!listEl) return
-
-    const mouseY = e.clientY
-    const items = listEl.querySelectorAll('.list-item')
-    const list = Array.isArray(local?.connections) ? local.connections : []
-
-    // Build array of {id, midpoint} for all items except the dragged one
-    // Use the midpoint between items as the trigger threshold
-    const slots: { id: string; threshold: number }[] = []
-    let prevBottom = 0
-    items.forEach((item) => {
-      const itemId = item.getAttribute('data-id')
-      if (itemId && itemId !== draggedConnectionId) {
-        const rect = item.getBoundingClientRect()
-        // Threshold is the top of this item (gap between prev item and this one)
-        slots.push({ id: itemId, threshold: rect.top })
-        prevBottom = rect.bottom
-      }
-    })
-
-    // Find which slot the mouse is in
-    // If above first threshold, target first item
-    // Otherwise target the last item whose threshold we've passed
-    let targetId: string | null = null
-    for (let i = slots.length - 1; i >= 0; i--) {
-      if (mouseY >= slots[i].threshold) {
-        targetId = slots[i].id
-        break
-      }
-    }
-    // If above all thresholds, target first item
-    if (!targetId && slots.length > 0) {
-      targetId = slots[0].id
-    }
-
-    if (targetId && targetId !== dragOverConnectionId) {
-      dragOverConnectionId = targetId
-    }
+    if (!draggedConnectionId || draggedConnectionId === id) return
+    dragOverConnectionId = id
   }
 
-  function handleConnectionDragLeave() {
-    // Don't reset here - causes flickering when items shift
-    // State is reset in handleConnectionDragEnd instead
-  }
-
-  function handleConnectionDrop(e: DragEvent, toId: string) {
+  function handleConnectionDrop(e: DragEvent) {
     e.preventDefault()
-    if (draggedConnectionId && draggedConnectionId !== toId) {
-      reorderConnections(draggedConnectionId, toId)
+    if (draggedConnectionId && dragOverConnectionId && draggedConnectionId !== dragOverConnectionId) {
+      reorderConnections(draggedConnectionId, dragOverConnectionId)
     }
     draggedConnectionId = null
     dragOverConnectionId = null
@@ -527,51 +445,14 @@
   function handlePresetDragOver(e: DragEvent, id: string) {
     e.preventDefault()
     e.dataTransfer!.dropEffect = 'move'
-    if (!draggedPresetId) return
-
-    // Get all item rects and find which slot we're in
-    const listEl = (e.currentTarget as HTMLElement).closest('.item-list')
-    if (!listEl) return
-
-    const mouseY = e.clientY
-    const items = listEl.querySelectorAll('.list-item')
-
-    // Build array of {id, threshold} for all items except the dragged one
-    const slots: { id: string; threshold: number }[] = []
-    items.forEach((item) => {
-      const itemId = item.getAttribute('data-id')
-      if (itemId && itemId !== draggedPresetId) {
-        const rect = item.getBoundingClientRect()
-        slots.push({ id: itemId, threshold: rect.top })
-      }
-    })
-
-    // Find which slot the mouse is in
-    let targetId: string | null = null
-    for (let i = slots.length - 1; i >= 0; i--) {
-      if (mouseY >= slots[i].threshold) {
-        targetId = slots[i].id
-        break
-      }
-    }
-    if (!targetId && slots.length > 0) {
-      targetId = slots[0].id
-    }
-
-    if (targetId && targetId !== dragOverPresetId) {
-      dragOverPresetId = targetId
-    }
+    if (!draggedPresetId || draggedPresetId === id) return
+    dragOverPresetId = id
   }
 
-  function handlePresetDragLeave() {
-    // Don't reset here - causes flickering when items shift
-    // State is reset in handlePresetDragEnd instead
-  }
-
-  function handlePresetDrop(e: DragEvent, toId: string) {
+  function handlePresetDrop(e: DragEvent) {
     e.preventDefault()
-    if (draggedPresetId && draggedPresetId !== toId) {
-      reorderPresets(draggedPresetId, toId)
+    if (draggedPresetId && dragOverPresetId && draggedPresetId !== dragOverPresetId) {
+      reorderPresets(draggedPresetId, dragOverPresetId)
     }
     draggedPresetId = null
     dragOverPresetId = null
@@ -584,72 +465,31 @@
 
   // Touch handlers for mobile drag and drop
   function handleConnectionTouchStart(e: TouchEvent, id: string) {
-    const touch = e.touches[0]
     touchDragType = 'connection'
     touchDragId = id
-    touchStartY = touch.clientY
-    touchCurrentY = touch.clientY
+    touchCurrentY = e.touches[0].clientY
     draggedConnectionId = id
-
-    // Capture all item rects for hit testing
     const listEl = (e.currentTarget as HTMLElement).closest('.item-list')
-    if (listEl) {
-      touchListRef = listEl as HTMLElement
-      const items = listEl.querySelectorAll('.list-item')
-      const rects = new Map<string, DOMRect>()
-      items.forEach((item) => {
-        const itemId = item.getAttribute('data-id')
-        if (itemId) {
-          rects.set(itemId, item.getBoundingClientRect())
-        }
-      })
-      touchItemRects = rects
-    }
+    if (listEl) touchListRef = listEl as HTMLElement
   }
 
   function handleConnectionTouchMove(e: TouchEvent) {
-    if (touchDragType !== 'connection' || !touchDragId) return
+    if (touchDragType !== 'connection' || !touchDragId || !touchListRef) return
     e.preventDefault()
+    const touchY = e.touches[0].clientY
+    touchCurrentY = touchY
 
-    const touch = e.touches[0]
-    touchCurrentY = touch.clientY
-
-    // Re-capture rects since items may have shifted
-    if (touchListRef) {
-      const items = touchListRef.querySelectorAll('.list-item')
-      const rects = new Map<string, DOMRect>()
-      items.forEach((item) => {
-        const itemId = item.getAttribute('data-id')
-        if (itemId) {
-          rects.set(itemId, item.getBoundingClientRect())
+    // Find which item the touch is over
+    const items = touchListRef.querySelectorAll('.list-item')
+    for (const item of items) {
+      const id = item.getAttribute('data-id')
+      if (id && id !== touchDragId) {
+        const rect = item.getBoundingClientRect()
+        if (touchY >= rect.top && touchY <= rect.bottom) {
+          dragOverConnectionId = id
+          return
         }
-      })
-      touchItemRects = rects
-    }
-
-    // Build sorted array of slots (excluding dragged item)
-    const slots: { id: string; threshold: number }[] = []
-    touchItemRects.forEach((rect, id) => {
-      if (id !== touchDragId) {
-        slots.push({ id, threshold: rect.top })
       }
-    })
-    slots.sort((a, b) => a.threshold - b.threshold)
-
-    // Find which slot the touch is in
-    let targetId: string | null = null
-    for (let i = slots.length - 1; i >= 0; i--) {
-      if (touchCurrentY >= slots[i].threshold) {
-        targetId = slots[i].id
-        break
-      }
-    }
-    if (!targetId && slots.length > 0) {
-      targetId = slots[0].id
-    }
-
-    if (targetId && targetId !== dragOverConnectionId) {
-      dragOverConnectionId = targetId
     }
   }
 
@@ -661,72 +501,31 @@
   }
 
   function handlePresetTouchStart(e: TouchEvent, id: string) {
-    const touch = e.touches[0]
     touchDragType = 'preset'
     touchDragId = id
-    touchStartY = touch.clientY
-    touchCurrentY = touch.clientY
+    touchCurrentY = e.touches[0].clientY
     draggedPresetId = id
-
-    // Capture all item rects for hit testing
     const listEl = (e.currentTarget as HTMLElement).closest('.item-list')
-    if (listEl) {
-      touchListRef = listEl as HTMLElement
-      const items = listEl.querySelectorAll('.list-item')
-      const rects = new Map<string, DOMRect>()
-      items.forEach((item) => {
-        const itemId = item.getAttribute('data-id')
-        if (itemId) {
-          rects.set(itemId, item.getBoundingClientRect())
-        }
-      })
-      touchItemRects = rects
-    }
+    if (listEl) touchListRef = listEl as HTMLElement
   }
 
   function handlePresetTouchMove(e: TouchEvent) {
-    if (touchDragType !== 'preset' || !touchDragId) return
+    if (touchDragType !== 'preset' || !touchDragId || !touchListRef) return
     e.preventDefault()
+    const touchY = e.touches[0].clientY
+    touchCurrentY = touchY
 
-    const touch = e.touches[0]
-    touchCurrentY = touch.clientY
-
-    // Re-capture rects since items may have shifted
-    if (touchListRef) {
-      const items = touchListRef.querySelectorAll('.list-item')
-      const rects = new Map<string, DOMRect>()
-      items.forEach((item) => {
-        const itemId = item.getAttribute('data-id')
-        if (itemId) {
-          rects.set(itemId, item.getBoundingClientRect())
+    // Find which item the touch is over
+    const items = touchListRef.querySelectorAll('.list-item')
+    for (const item of items) {
+      const id = item.getAttribute('data-id')
+      if (id && id !== touchDragId) {
+        const rect = item.getBoundingClientRect()
+        if (touchY >= rect.top && touchY <= rect.bottom) {
+          dragOverPresetId = id
+          return
         }
-      })
-      touchItemRects = rects
-    }
-
-    // Build sorted array of slots (excluding dragged item)
-    const slots: { id: string; threshold: number }[] = []
-    touchItemRects.forEach((rect, id) => {
-      if (id !== touchDragId) {
-        slots.push({ id, threshold: rect.top })
       }
-    })
-    slots.sort((a, b) => a.threshold - b.threshold)
-
-    // Find which slot the touch is in
-    let targetId: string | null = null
-    for (let i = slots.length - 1; i >= 0; i--) {
-      if (touchCurrentY >= slots[i].threshold) {
-        targetId = slots[i].id
-        break
-      }
-    }
-    if (!targetId && slots.length > 0) {
-      targetId = slots[0].id
-    }
-
-    if (targetId && targetId !== dragOverPresetId) {
-      dragOverPresetId = targetId
     }
   }
 
@@ -741,8 +540,6 @@
     touchDragType = null
     touchDragId = null
     touchCurrentY = 0
-    touchStartY = 0
-    touchItemRects = new Map()
     touchListRef = null
     draggedConnectionId = null
     draggedPresetId = null
@@ -1099,8 +896,7 @@
                     draggable="true"
                     ondragstart={(e) => handleConnectionDragStart(e, connection.id)}
                     ondragover={(e) => handleConnectionDragOver(e, connection.id)}
-                    ondragleave={handleConnectionDragLeave}
-                    ondrop={(e) => handleConnectionDrop(e, connection.id)}
+                    ondrop={handleConnectionDrop}
                     ondragend={handleConnectionDragEnd}
                     role="listitem"
                   >
@@ -1233,8 +1029,7 @@
                     draggable="true"
                     ondragstart={(e) => handlePresetDragStart(e, preset.id)}
                     ondragover={(e) => handlePresetDragOver(e, preset.id)}
-                    ondragleave={handlePresetDragLeave}
-                    ondrop={(e) => handlePresetDrop(e, preset.id)}
+                    ondrop={handlePresetDrop}
                     ondragend={handlePresetDragEnd}
                     role="listitem"
                   >
