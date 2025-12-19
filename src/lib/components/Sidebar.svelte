@@ -272,6 +272,10 @@
 
     const searchTerm = query.toLowerCase().trim()
 
+    // Always check chat ID silently (regardless of mode)
+    const chatId = (chat?.id || '').toLowerCase()
+    if (chatId.includes(searchTerm)) return true
+
     if (mode === 'title') {
       const title = (chat?.title || '').toLowerCase()
       return title.includes(searchTerm)
