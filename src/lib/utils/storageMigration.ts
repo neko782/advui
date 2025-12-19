@@ -1,5 +1,6 @@
 // Storage migration utilities
 import type { Chat } from '../types/index.js';
+import { putChatAtomic } from '../storage.js';
 
 const OLD_LS_KEY = 'advui.chats.store.v1';
 const MIGRATION_FLAG_KEY = 'storage.migration.completed.v1';
@@ -147,14 +148,11 @@ export async function migrateChatsToIndexedDB(): Promise<MigrationResult> {
     return result;
   }
 
-  // Dynamically import to avoid circular dependencies
-  const { putChat } = await import('../storage.indexeddb.js');
-
   const chats = Object.values(oldData.byId) as Chat[];
   
   for (const chat of chats) {
     try {
-      await putChat(chat);
+      await putChatAtomic(chat);
       result.migrated++;
     } catch (err) {
       result.failed++;
@@ -181,4 +179,3 @@ export async function migrateChatsToIndexedDB(): Promise<MigrationResult> {
   result.reason = `Migrated ${result.migrated} chats`;
   return result;
 }
-

@@ -6,8 +6,9 @@ import { enforceUniqueParents, normalizeNodesActive, validateRootId } from './br
 import {
   getAllChats as storeGetAll,
   getChat as storeGetOne,
-  putChat as storePut,
-  deleteChat as storeDelete
+  putChatAtomic as storePutAtomic,
+  updateChatAtomic as storeUpdateAtomic,
+  deleteChatAtomic as storeDeleteAtomic
 } from './storage.js';
 import { toIntOrNull, toClampedNumber } from './utils/numbers.js';
 import { safeRead, safeWrite } from './utils/localStorageHelper.js';
@@ -167,13 +168,15 @@ export async function unlockAllChats(): Promise<void> {
   try {
     const list = await storeGetAll();
     for (const chat of list) {
-      const sanitized = sanitizeChatLockState(chat);
-      if (sanitized !== chat && sanitized) {
-        await storePut({
+      await storeUpdateAtomic(chat.id, (current) => {
+        if (!current) return undefined;
+        const sanitized = sanitizeChatLockState(current);
+        if (!sanitized || sanitized === current) return undefined;
+        return {
           ...sanitized,
-          _expectedVersion: chat?._version,
-        });
-      }
+          updatedAt: Date.now(),
+        };
+      });
     }
   } catch {
     /* ignore unlock errors */
@@ -212,12 +215,9 @@ export function computeTitleFromNodes(nodes: ChatNode[] | null, rootId: number |
 }
 
 export async function upsertChat(chat: Chat): Promise<Chat> {
-  // Persist chat to localStorage
+  // Persist chat
   try {
-    const persisted = await storePut({
-      ...chat,
-      _expectedVersion: chat?._version,
-    });
+    const persisted = await storePutAtomic(chat);
     return persisted || chat;
   } catch (err) {
     console.error('Failed to upsert chat:', err);
@@ -237,119 +237,121 @@ export async function saveChatContent(
 ): Promise<Chat | null> {
   const { nodes, settings, rootId } = options;
   if (!id) return null;
-  const existing = await storeGetOne(id);
-  // Be resilient: if the record doesn't exist (e.g., backend switched from IDB<->LS), create it
-  const defaults = loadSettings();
-  const basePreset = resolvePreset(defaults, { presetId: settings?.presetId || existing?.presetId || undefined });
-  const pickSetting = <K extends keyof ChatSettings>(key: K): ChatSettings[K] | undefined => {
-    if (settings && hasOwn(settings, key)) return settings[key] as ChatSettings[K];
-    if (existing?.settings && hasOwn(existing.settings, key)) return existing.settings[key];
-    if (hasOwn(basePreset, key)) return (basePreset as unknown as ChatSettings)[key];
-    return undefined;
-  };
-  const rawConnectionOverride = pickSetting('connectionId');
-  const candidatePreset = {
-    ...basePreset,
-    connectionId: (() => {
-      if (typeof rawConnectionOverride === 'string' && rawConnectionOverride.trim()) return rawConnectionOverride.trim();
-      return basePreset?.connectionId || null;
-    })(),
-  };
-  const resolvedConnectionId = computeConnectionId({
-    preset: candidatePreset,
-    settings: defaults,
-  });
-  const baseSettings: ChatSettings = {
-    model: (settings?.model || existing?.settings?.model || basePreset.model || 'gpt-5'),
-    streaming: (typeof settings?.streaming === 'boolean')
-      ? settings.streaming
-      : (typeof existing?.settings?.streaming === 'boolean'
-        ? existing.settings.streaming
-        : (typeof basePreset.streaming === 'boolean' ? basePreset.streaming : true)),
-    maxOutputTokens: toIntOrNull(pickSetting('maxOutputTokens')),
-    topP: toClampedNumber(pickSetting('topP'), 0, 1),
-    temperature: toClampedNumber(pickSetting('temperature'), 0, 2),
-    reasoningEffort: normalizeReasoning(pickSetting('reasoningEffort')),
-    textVerbosity: normalizeVerbosity(pickSetting('textVerbosity')),
-    reasoningSummary: normalizeReasoningSummary(pickSetting('reasoningSummary')),
-    thinkingEnabled: !!pickSetting('thinkingEnabled'),
-    thinkingBudgetTokens: toIntOrNull(pickSetting('thinkingBudgetTokens')),
-    connectionId: resolvedConnectionId,
-    // Web Search settings
-    webSearchEnabled: !!pickSetting('webSearchEnabled'),
-    webSearchDomains: pickSetting('webSearchDomains') || undefined,
-    webSearchCountry: pickSetting('webSearchCountry') || undefined,
-    webSearchCity: pickSetting('webSearchCity') || undefined,
-    webSearchRegion: pickSetting('webSearchRegion') || undefined,
-    webSearchTimezone: pickSetting('webSearchTimezone') || undefined,
-    webSearchCacheOnly: !!pickSetting('webSearchCacheOnly'),
-    // Image Generation settings
-    imageGenerationEnabled: !!pickSetting('imageGenerationEnabled'),
-    imageGenerationModel: pickSetting('imageGenerationModel') || undefined,
-  };
-  const nextNodesCandidate = Array.isArray(nodes) ? nodes : (existing?.nodes || []);
-  const hasNodes = nextNodesCandidate.length > 0;
-  
-  // Normalize active indices to ensure they're within bounds
-  const normalizedNodes = normalizeNodesActive(nextNodesCandidate);
-  
-  // Determine and validate rootId
-  let candidateRootId: number | null;
-  if (rootId != null) {
-    candidateRootId = rootId;
-  } else if (!hasNodes) {
-    candidateRootId = null;
-  } else if (existing?.rootId != null && normalizedNodes.some(n => n?.id === existing.rootId)) {
-    candidateRootId = existing.rootId;
-  } else {
-    candidateRootId = normalizedNodes[0]?.id ?? null;
+  try {
+    return await storeUpdateAtomic(id, (existing) => {
+      // Be resilient: if the record doesn't exist (e.g., backend switched from IDB<->LS), create it
+      const defaults = loadSettings();
+      const basePreset = resolvePreset(defaults, { presetId: settings?.presetId || existing?.presetId || undefined });
+      const pickSetting = <K extends keyof ChatSettings>(key: K): ChatSettings[K] | undefined => {
+        if (settings && hasOwn(settings, key)) return settings[key] as ChatSettings[K];
+        if (existing?.settings && hasOwn(existing.settings, key)) return existing.settings[key];
+        if (hasOwn(basePreset, key)) return (basePreset as unknown as ChatSettings)[key];
+        return undefined;
+      };
+      const rawConnectionOverride = pickSetting('connectionId');
+      const candidatePreset = {
+        ...basePreset,
+        connectionId: (() => {
+          if (typeof rawConnectionOverride === 'string' && rawConnectionOverride.trim()) return rawConnectionOverride.trim();
+          return basePreset?.connectionId || null;
+        })(),
+      };
+      const resolvedConnectionId = computeConnectionId({
+        preset: candidatePreset,
+        settings: defaults,
+      });
+      const baseSettings: ChatSettings = {
+        model: (settings?.model || existing?.settings?.model || basePreset.model || 'gpt-5'),
+        streaming: (typeof settings?.streaming === 'boolean')
+          ? settings.streaming
+          : (typeof existing?.settings?.streaming === 'boolean'
+            ? existing.settings.streaming
+            : (typeof basePreset.streaming === 'boolean' ? basePreset.streaming : true)),
+        maxOutputTokens: toIntOrNull(pickSetting('maxOutputTokens')),
+        topP: toClampedNumber(pickSetting('topP'), 0, 1),
+        temperature: toClampedNumber(pickSetting('temperature'), 0, 2),
+        reasoningEffort: normalizeReasoning(pickSetting('reasoningEffort')),
+        textVerbosity: normalizeVerbosity(pickSetting('textVerbosity')),
+        reasoningSummary: normalizeReasoningSummary(pickSetting('reasoningSummary')),
+        thinkingEnabled: !!pickSetting('thinkingEnabled'),
+        thinkingBudgetTokens: toIntOrNull(pickSetting('thinkingBudgetTokens')),
+        connectionId: resolvedConnectionId,
+        // Web Search settings
+        webSearchEnabled: !!pickSetting('webSearchEnabled'),
+        webSearchDomains: pickSetting('webSearchDomains') || undefined,
+        webSearchCountry: pickSetting('webSearchCountry') || undefined,
+        webSearchCity: pickSetting('webSearchCity') || undefined,
+        webSearchRegion: pickSetting('webSearchRegion') || undefined,
+        webSearchTimezone: pickSetting('webSearchTimezone') || undefined,
+        webSearchCacheOnly: !!pickSetting('webSearchCacheOnly'),
+        // Image Generation settings
+        imageGenerationEnabled: !!pickSetting('imageGenerationEnabled'),
+        imageGenerationModel: pickSetting('imageGenerationModel') || undefined,
+      };
+      const nextNodesCandidate = Array.isArray(nodes) ? nodes : (existing?.nodes || []);
+      const hasNodes = nextNodesCandidate.length > 0;
+
+      // Normalize active indices to ensure they're within bounds
+      const normalizedNodes = normalizeNodesActive(nextNodesCandidate);
+
+      // Determine and validate rootId
+      let candidateRootId: number | null;
+      if (rootId != null) {
+        candidateRootId = rootId;
+      } else if (!hasNodes) {
+        candidateRootId = null;
+      } else if (existing?.rootId != null && normalizedNodes.some(n => n?.id === existing.rootId)) {
+        candidateRootId = existing.rootId;
+      } else {
+        candidateRootId = normalizedNodes[0]?.id ?? null;
+      }
+
+      // Validate rootId points to a valid root (no incoming edges)
+      const rootValidation = validateRootId(normalizedNodes, candidateRootId);
+      const nextRootId = rootValidation.rootId;
+
+      // Enforce single-parent invariant before persisting (skip in debug mode)
+      const dbg = !!defaults?.debug;
+      const nextNodes = dbg ? normalizedNodes : enforceUniqueParents(normalizedNodes, nextRootId);
+      const presetId = (typeof settings?.presetId === 'string')
+        ? settings.presetId
+        : (typeof existing?.presetId === 'string' ? existing.presetId : (basePreset?.id || null));
+      const updated: Chat = {
+        ...(existing || { id }),
+        id,
+        nodes: nextNodes,
+        rootId: nextRootId,
+        settings: baseSettings,
+        presetId,
+        title: computeTitleFromNodes(nextNodes, nextRootId),
+        updatedAt: Date.now(),
+      };
+      return updated;
+    });
+  } catch (err) {
+    console.error('Failed to save chat content:', err);
+    return null;
   }
-  
-  // Validate rootId points to a valid root (no incoming edges)
-  const rootValidation = validateRootId(normalizedNodes, candidateRootId);
-  const nextRootId = rootValidation.rootId;
-  
-  // Enforce single-parent invariant before persisting (skip in debug mode)
-  const dbg = !!defaults?.debug;
-  const nextNodes = dbg ? normalizedNodes : enforceUniqueParents(normalizedNodes, nextRootId);
-  const presetId = (typeof settings?.presetId === 'string')
-    ? settings.presetId
-    : (typeof existing?.presetId === 'string' ? existing.presetId : (basePreset?.id || null));
-  const updated: Chat = {
-    ...(existing || { id }),
-    id,
-    nodes: nextNodes,
-    rootId: nextRootId,
-    settings: baseSettings,
-    presetId,
-    title: computeTitleFromNodes(nextNodes, nextRootId),
-    updatedAt: Date.now(),
-    _expectedVersion: existing?._version,
-  };
-  const persisted = await storePut(updated);
-  return persisted || updated;
 }
 
 export async function deleteChat(id: string): Promise<void> {
   if (!id) return;
-  await storeDelete(id);
+  await storeDeleteAtomic(id);
   const selected = loadAll().selectedId;
   if (selected === id) setSelected(null);
 }
 
 export async function renameChat(id: string, title: string): Promise<Chat | null> {
   if (!id) return null;
-  const chat = await storeGetOne(id);
-  if (!chat) return null;
   const nextTitle = (typeof title === 'string' && title.trim()) ? title.trim() : 'New Chat';
-  const updated: Chat = {
-    ...chat,
-    title: nextTitle,
-    updatedAt: Date.now(),
-    _expectedVersion: chat?._version,
-  };
-  const persisted = await storePut(updated);
-  return persisted || updated;
+  return await storeUpdateAtomic(id, (chat) => {
+    if (!chat) return undefined;
+    return {
+      ...chat,
+      title: nextTitle,
+      updatedAt: Date.now(),
+    };
+  });
 }
 
 export interface CreateChatOptions {
@@ -468,7 +470,7 @@ export async function createChat(initial: CreateChatOptions = {}): Promise<{ id:
     rootId,
     presetId: (typeof initial?.presetId === 'string') ? initial.presetId : (preferredPreset?.id || null),
   };
-  const persisted = await storePut(chat);
+  const persisted = await storePutAtomic(chat);
   const finalChat = persisted || chat;
   cacheChat(id, finalChat);
   setSelected(id);
@@ -478,20 +480,16 @@ export async function createChat(initial: CreateChatOptions = {}): Promise<{ id:
 export async function debugSetChatLockState(id: string, shouldLock: boolean = true): Promise<Chat | null> {
   if (!id) return null;
   try {
-    const chat = await storeGetOne(id);
-    if (!chat) return null;
-    let next = shouldLock ? applyChatLockState(chat) : sanitizeChatLockState(chat);
-    if (next === chat) {
-      next = { ...next } as Chat;
-    }
-    if (next) {
-      next.updatedAt = Date.now();
-      await storePut({
+    return await storeUpdateAtomic(id, (chat) => {
+      if (!chat) return undefined;
+      let next = shouldLock ? applyChatLockState(chat) : sanitizeChatLockState(chat);
+      if (!next) return undefined;
+      if (next === chat) next = { ...next } as Chat;
+      return {
         ...next,
-        _expectedVersion: chat?._version,
-      });
-    }
-    return next as Chat | null;
+        updatedAt: Date.now(),
+      };
+    });
   } catch {
     return null;
   }

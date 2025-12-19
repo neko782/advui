@@ -9,26 +9,13 @@ const LS_KEY = 'advui.chats.store.v1';
 const INITIAL_STORE: LocalStorageStore = { version: 0, byId: {} };
 const changeListeners = new Set<StorageListener>();
 
-// Write queue to serialize writes per chat ID and prevent concurrent modification errors
-const writeQueues = new Map<string, Promise<Chat>>();
+// localStorage backend persists the *entire* chat store under one key.
+// Writes must be globally serialized or concurrent writes to different chat IDs can overwrite each other.
+let storeWriteQueue: Promise<unknown> = Promise.resolve();
 
-/**
- * Queue a write operation for a specific chat ID
- * Ensures writes are serialized per chat to prevent version conflicts
- */
-function queueWrite(chatId: string, writeFn: () => Promise<Chat>): Promise<Chat> {
-  const existing = writeQueues.get(chatId) || Promise.resolve({} as Chat);
-  const next = existing.then(
-    () => writeFn(),
-    () => writeFn() // Also retry after failures
-  );
-  writeQueues.set(chatId, next);
-  // Clean up queue entry after completion
-  next.finally(() => {
-    if (writeQueues.get(chatId) === next) {
-      writeQueues.delete(chatId);
-    }
-  });
+function queueStoreWrite<T>(fn: () => Promise<T>): Promise<T> {
+  const next = storeWriteQueue.then(fn, fn) as Promise<T>;
+  storeWriteQueue = next as unknown as Promise<unknown>;
   return next;
 }
 
@@ -110,11 +97,10 @@ function cloneChat(chat: Chat | null): Chat | null {
 }
 
 function writeOne(chat: Chat): Promise<Chat> {
-  const chatId = chat?.id;
-  if (!chatId) {
+  if (!chat?.id) {
     return Promise.reject(new Error('Chat ID is required'));
   }
-  return queueWrite(chatId, () => writeOneInternal(chat));
+  return queueStoreWrite(() => writeOneInternal(chat));
 }
 
 function writeOneInternal(chat: Chat): Promise<Chat> {
@@ -178,25 +164,27 @@ function readOne(id: string): Promise<Chat | null> {
 }
 
 function deleteOne(id: string, expectedVersion?: number): Promise<Chat | null> {
-  return asyncOperation('delete', () => {
-    if (!id) return null;
-    const store = readStore();
-    if (!store.byId?.[id]) return null;
-    const existing = store.byId[id]!;
-    if (expectedVersion != null && existing._version !== expectedVersion) {
-      throw new Error(`Concurrent deletion conflict for chat "${id}".`);
-    }
-    const byId = { ...store.byId };
-    delete byId[id];
-    const nextStoreVersion = (Number(store.version) || 0) + 1;
-    writeStore({ version: nextStoreVersion, byId });
-    emitChange({
-      type: 'delete',
-      version: nextStoreVersion,
-      chatId: id,
-    });
-    return cloneChat(existing);
-  });
+  return queueStoreWrite(() =>
+    asyncOperation('delete', () => {
+      if (!id) return null;
+      const store = readStore();
+      if (!store.byId?.[id]) return null;
+      const existing = store.byId[id]!;
+      if (expectedVersion != null && existing._version !== expectedVersion) {
+        throw new Error(`Concurrent deletion conflict for chat "${id}".`);
+      }
+      const byId = { ...store.byId };
+      delete byId[id];
+      const nextStoreVersion = (Number(store.version) || 0) + 1;
+      writeStore({ version: nextStoreVersion, byId });
+      emitChange({
+        type: 'delete',
+        version: nextStoreVersion,
+        chatId: id,
+      });
+      return cloneChat(existing);
+    })
+  );
 }
 
 export async function getAllChats(): Promise<Chat[]> {
