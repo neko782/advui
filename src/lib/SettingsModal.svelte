@@ -770,9 +770,9 @@
                 <p class="hint">Import and export your chats, settings, and images. Export all data creates a ZIP backup of everything.</p>
               {/if}
             </section>
-            <section class="group advanced-group">
-              <div class="group-title">Advanced</div>
-              <label class="switch" title="Useless and dangerous tools used for debugging. You don't need these.">
+            <section class="group developer-group">
+              <div class="group-title">Developer</div>
+              <label class="switch">
                 <input
                   type="checkbox"
                   bind:checked={local.debug}
@@ -782,7 +782,7 @@
                 <span class="switch-ui" aria-hidden="true"></span>
                 <span class="switch-label">Debug mode</span>
               </label>
-              <p class="hint">Enable developer debugging tools. Only use if you know what you're doing.</p>
+              <p class="hint">Useless and dangerous tools used for debugging. You don't need these.</p>
             </section>
           {:else if activeTab === 'connection'}
             <section class="group">
@@ -1254,39 +1254,36 @@
   .tab-bar {
     display: flex;
     gap: 6px;
-    padding: 12px 24px 0;
+    padding: 12px 24px;
     border-bottom: 1px solid var(--border);
-    overflow-x: auto;
+    overflow: hidden;
     background: color-mix(in srgb, var(--panel) 98%, var(--bg) 2%);
   }
-  .tab-bar::-webkit-scrollbar { display: none; }
   .tab {
     border: 0;
     background: transparent;
     color: var(--muted);
     font: inherit;
     font-weight: 500;
-    padding: 12px 16px;
-    margin-bottom: -1px;
+    padding: 10px 18px;
     position: relative;
     white-space: nowrap;
     cursor: pointer;
-    border-radius: 10px 10px 0 0;
-    transition: color 0.15s ease, background 0.15s ease;
+    border-radius: 999px;
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   }
   .tab:hover:not(.active) {
     color: var(--text);
-    background: color-mix(in srgb, var(--border) 30%, transparent);
+    background: color-mix(in srgb, var(--border) 50%, transparent);
   }
   .tab:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   .tab.active {
-    color: var(--text);
+    color: #fff;
     font-weight: 600;
-    background: var(--bg);
-    border: 1px solid var(--border);
-    border-bottom-color: var(--bg);
+    background: var(--accent);
+    box-shadow: 0 2px 8px color-mix(in srgb, var(--accent) 40%, transparent);
   }
-  .modal-body { flex: 1; overflow: hidden; background: var(--bg); }
+  .modal-body { flex: 1; overflow: hidden; }
   .modal-scroller {
     height: 100%;
     overflow-y: auto;
@@ -1428,7 +1425,7 @@
   .chevron.expanded {
     transform: rotate(180deg);
   }
-  .advanced-group {
+  .developer-group {
     background: color-mix(in srgb, var(--panel) 95%, var(--muted) 5%);
     border-style: dashed;
   }
@@ -1703,8 +1700,8 @@
       border: none;
     }
     .modal-head { padding: 16px 20px; }
-    .tab-bar { padding: 8px 16px 0; gap: 4px; }
-    .tab { padding: 10px 12px; font-size: 0.9rem; }
+    .tab-bar { padding: 10px 16px; gap: 4px; }
+    .tab { padding: 8px 14px; font-size: 0.9rem; }
     .modal-scroller { padding: 20px; gap: 16px; }
     .group { padding: 16px; border-radius: 12px; }
     .data-actions { flex-direction: column; }
