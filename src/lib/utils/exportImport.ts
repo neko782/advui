@@ -66,7 +66,9 @@ export async function importChat(file: File): Promise<{ id: string; chat: Chat }
       nodes: chat.nodes,
       rootId: chat.rootId,
       settings: chat.settings,
-      presetId: chat.presetId
+      presetId: chat.presetId || undefined,
+      updatedAt: chat.updatedAt,
+      title: chat.title || undefined
     });
 
     return result;
@@ -147,10 +149,11 @@ export async function exportAllData(): Promise<void> {
           if (image.data && image.id) {
             const ext = getExtensionFromMimeType(image.mimeType) || 'dat';
             const filename = `${image.id}.${ext}`;
-            const base64Data = image.data.split(',')[1] || image.data;
+            // Normalize to fix any doubled prefixes, then extract just base64
+            const normalizedData = normalizeBase64Data(image.data);
 
             // Store as binary data so images are viewable in archive
-            tar.append(`images/${filename}`, base64ToBytes(base64Data));
+            tar.append(`images/${filename}`, base64ToBytes(normalizedData));
 
             imagesManifest.push({
               id: image.id,
@@ -228,8 +231,9 @@ export async function importAllData(file: File): Promise<ImportResult> {
             try {
               const base64Data = await archive.getBase64(`images/${imageInfo.filename}`);
               if (base64Data) {
-                // Store just the base64 data (not a data URL) to match original storage format
-                await storeImage(imageInfo.id, base64Data, imageInfo.mimeType || '', imageInfo.name || '');
+                // Normalize to fix any doubled data URL prefixes, store just the base64
+                const normalizedData = normalizeBase64Data(base64Data);
+                await storeImage(imageInfo.id, normalizedData, imageInfo.mimeType || '', imageInfo.name || '');
                 results.imagesImported++;
               }
             } catch (err) {
@@ -319,10 +323,10 @@ async function importChatsFromArchive(archive: TarArchive): Promise<{ count: num
           nodes: chat.nodes,
           rootId: chat.rootId,
           settings: chat.settings,
-          presetId: chat.presetId,
+          presetId: chat.presetId || undefined,
           // Preserve original updatedAt and title from manifest or chat data
           updatedAt: manifestEntry?.updatedAt || chat.updatedAt,
-          title: chat.title
+          title: chat.title || undefined
         });
         count++;
       } catch (err) {
@@ -352,10 +356,10 @@ async function importChatsFromArchive(archive: TarArchive): Promise<{ count: num
             nodes: chat.nodes,
             rootId: chat.rootId,
             settings: chat.settings,
-            presetId: chat.presetId,
+            presetId: chat.presetId || undefined,
             // Preserve original updatedAt and title
             updatedAt: chat.updatedAt,
-            title: chat.title
+            title: chat.title || undefined
           });
           count++;
         } catch (err) {
@@ -484,9 +488,49 @@ function base64ToBytes(base64: string): Uint8Array {
 function bytesToBase64(bytes: Uint8Array): string {
   let binString = '';
   for (let i = 0; i < bytes.length; i++) {
-    binString += String.fromCharCode(bytes[i]);
+    binString += String.fromCharCode(bytes[i]!);
   }
   return btoa(binString);
+}
+
+/**
+ * Check if bytes look like base64 text (for backwards compatibility with old exports)
+ */
+function looksLikeBase64Text(bytes: Uint8Array): boolean {
+  if (bytes.length === 0) return false;
+  // Base64 chars: A-Z (65-90), a-z (97-122), 0-9 (48-57), + (43), / (47), = (61)
+  // Also allow whitespace which might be present
+  const len = Math.min(bytes.length, 100);
+  for (let i = 0; i < len; i++) {
+    const b = bytes[i]!;
+    const isBase64Char = (b >= 65 && b <= 90) || (b >= 97 && b <= 122) ||
+                         (b >= 48 && b <= 57) || b === 43 || b === 47 || b === 61 ||
+                         b === 10 || b === 13 || b === 32; // newline, carriage return, space
+    if (!isBase64Char) return false;
+  }
+  return true;
+}
+
+/**
+ * Extract just the base64 data from a potentially doubled/prefixed data URL
+ */
+function normalizeBase64Data(data: string): string {
+  if (!data) return data;
+
+  // Keep stripping data URL prefixes until we get just base64
+  let result = data;
+  let iterations = 0;
+  while (result.includes('data:') && iterations < 5) {
+    const commaIndex = result.indexOf(',');
+    if (commaIndex !== -1) {
+      result = result.slice(commaIndex + 1);
+    } else {
+      break;
+    }
+    iterations++;
+  }
+
+  return result;
 }
 
 interface UntarFile {
@@ -533,9 +577,40 @@ async function loadTarArchive(buffer: ArrayBuffer): Promise<TarArchive> {
     async getBase64(path: string): Promise<string | null> {
       const entry = entryMap.get(normalizePath(path));
       if (!entry) return null;
-      // Convert binary image data back to base64
+      // Check if it's old text format (base64 stored as text) or new binary format
+      if (looksLikeBase64Text(entry)) {
+        // Old format: already base64 text, just decode as text
+        return decodeText(entry);
+      }
+      // New format: binary image data, convert to base64
       return bytesToBase64(entry);
     }
   };
+}
+
+/**
+ * Fix all images in the database that have doubled data URL prefixes
+ * Returns the number of images that were fixed
+ */
+export async function fixDoubledImages(): Promise<number> {
+  try {
+    const images = await getAllImages();
+    let fixedCount = 0;
+
+    for (const image of images) {
+      if (image.data && image.id) {
+        const normalized = normalizeBase64Data(image.data);
+        if (normalized !== image.data) {
+          await storeImage(image.id, normalized, image.mimeType || '', image.name || '');
+          fixedCount++;
+        }
+      }
+    }
+
+    return fixedCount;
+  } catch (err) {
+    console.error('Failed to fix doubled images:', err);
+    return 0;
+  }
 }
 
