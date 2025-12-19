@@ -332,7 +332,7 @@ describe('loadChat', () => {
 
     const result = await loadChat(null)
 
-    expect(result.chatSettings.model).toBe('gpt-5')
+    expect(result.chatSettings.model).toBe('gpt-5.1')
     expect(result.chatSettings.streaming).toBe(true)
   })
 })

@@ -85,8 +85,8 @@
   })
 
   const REASONING_OPTIONS = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh']
-  const TEXT_VERBOSITY_OPTIONS = ['low', 'medium', 'high']
-  const REASONING_SUMMARY_OPTIONS = ['auto', 'concise', 'detailed']
+  const TEXT_VERBOSITY_OPTIONS = ['none', 'low', 'medium', 'high']
+  const REASONING_SUMMARY_OPTIONS = ['none', 'auto', 'concise', 'detailed']
   const DEFAULT_SYSTEM_PROMPT = 'You are a helpful assistant.'
 
   function parseMaxTokens(value) {
@@ -983,7 +983,7 @@
                     {/if}
                   </label>
 
-                  <div class="preset-group-divider"></div>
+                <div class="preset-group-divider"></div>
                 <button class="preset-group-header" onclick={() => togglePresetGroup('general')}>
                   <span>General</span>
                   <svg class={`chevron ${expandedPresetGroups.general ? 'expanded' : ''}`} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -1002,6 +1002,38 @@
                     <span class="switch-ui" aria-hidden="true"></span>
                     <span class="switch-label">Stream</span>
                   </label>
+                  <label class="switch" title="Web search">
+                    <input
+                      type="checkbox"
+                      checked={!!activePreset.webSearchEnabled}
+                      onchange={(event) => updateActivePreset({ webSearchEnabled: !!event.currentTarget.checked })}
+                      aria-label="Web search"
+                    />
+                    <span class="switch-ui" aria-hidden="true"></span>
+                    <span class="switch-label">Web search</span>
+                  </label>
+                  <label class="switch" title="Image generation">
+                    <input
+                      type="checkbox"
+                      checked={!!activePreset.imageGenerationEnabled}
+                      onchange={(event) => updateActivePreset({ imageGenerationEnabled: !!event.currentTarget.checked })}
+                      aria-label="Image generation"
+                    />
+                    <span class="switch-ui" aria-hidden="true"></span>
+                    <span class="switch-label">Image generation</span>
+                  </label>
+                  {#if activePreset.imageGenerationEnabled}
+                    <label class="field">
+                      <span>Image generation model</span>
+                      <input
+                        type="text"
+                        placeholder="gpt-image-1"
+                        value={activePreset.imageGenerationModel || ''}
+                        oninput={(event) => updateActivePreset({ imageGenerationModel: event.currentTarget.value })}
+                        aria-label="Image generation model"
+                      />
+                    </label>
+                  {/if}
                   <label class="field">
                     <span>Text verbosity</span>
                     <select
@@ -1009,6 +1041,7 @@
                       onchange={(event) => updateActivePreset({ textVerbosity: parseVerbosity(event.currentTarget.value) })}
                       aria-label="Text verbosity"
                     >
+                      <option value="none">none</option>
                       <option value="low">low</option>
                       <option value="medium">medium</option>
                       <option value="high">high</option>
@@ -1019,7 +1052,7 @@
                     <select
                       value={activePreset.connectionId || ''}
                       onchange={(event) => updateActivePreset({ connectionId: event.currentTarget.value })}
-                      aria-label="Preset connection"
+                      aria-label="Connection"
                     >
                       {#each (local?.connections || []) as connection (connection.id)}
                         <option value={connection.id}>{connection?.name || connection?.id || 'Connection'}</option>
@@ -1096,6 +1129,7 @@
                       onchange={(event) => updateActivePreset({ reasoningSummary: parseReasoningSummary(event.currentTarget.value) })}
                       aria-label="Reasoning summary"
                     >
+                      <option value="none">none</option>
                       <option value="auto">auto</option>
                       <option value="concise">concise</option>
                       <option value="detailed">detailed</option>
@@ -1126,41 +1160,6 @@
                       />
                     </label>
                   {/if}
-                {/if}
-
-                <div class="preset-group-divider"></div>
-                <label class="switch" title="Enable web search">
-                  <input
-                    type="checkbox"
-                    checked={!!activePreset.webSearchEnabled}
-                    onchange={(event) => updateActivePreset({ webSearchEnabled: !!event.currentTarget.checked })}
-                    aria-label="Enable web search"
-                  />
-                  <span class="switch-ui" aria-hidden="true"></span>
-                  <span class="switch-label">Web search</span>
-                </label>
-                <div class="preset-group-divider"></div>
-                <label class="switch" title="Enable image generation">
-                  <input
-                    type="checkbox"
-                    checked={!!activePreset.imageGenerationEnabled}
-                    onchange={(event) => updateActivePreset({ imageGenerationEnabled: !!event.currentTarget.checked })}
-                    aria-label="Enable image generation"
-                  />
-                  <span class="switch-ui" aria-hidden="true"></span>
-                  <span class="switch-label">Image generation</span>
-                </label>
-                {#if activePreset.imageGenerationEnabled}
-                  <label class="field">
-                    <span>Image generation model</span>
-                    <input
-                      type="text"
-                      placeholder="gpt-image-1"
-                      value={activePreset.imageGenerationModel || ''}
-                      oninput={(event) => updateActivePreset({ imageGenerationModel: event.currentTarget.value })}
-                      aria-label="Image generation model"
-                    />
-                  </label>
                 {/if}
                 </div>
               {/if}
