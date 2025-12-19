@@ -925,40 +925,88 @@
 
   .chat-menu {
     position: absolute;
-    top: calc(100% + 4px);
-    right: 0;
+    top: calc(100% + 6px);
+    right: -4px;
     background: var(--panel);
     border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 4px;
+    border-radius: 12px;
+    padding: 6px;
     display: flex;
     flex-direction: column;
     gap: 2px;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    box-shadow:
+      0 0 0 1px rgba(0,0,0,0.03),
+      0 2px 4px rgba(0,0,0,0.04),
+      0 8px 16px rgba(0,0,0,0.08),
+      0 16px 32px rgba(0,0,0,0.06);
     z-index: 100;
-    min-width: 140px;
+    min-width: 150px;
+    animation: chat-menu-enter 180ms cubic-bezier(0.2, 0.9, 0.3, 1);
+    transform-origin: top right;
+  }
+
+  @keyframes chat-menu-enter {
+    from {
+      opacity: 0;
+      transform: scale(0.92) translateY(-4px);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1) translateY(0);
+    }
+  }
+
+  :global(:root[data-theme='dark']) .chat-menu {
+    box-shadow:
+      0 0 0 1px rgba(255,255,255,0.04),
+      0 2px 4px rgba(0,0,0,0.2),
+      0 8px 16px rgba(0,0,0,0.3),
+      0 16px 32px rgba(0,0,0,0.2);
   }
 
   .chat-menu-item {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 10px;
     width: 100%;
     text-align: left;
-    padding: 8px 10px;
+    padding: 9px 12px;
     border: 0;
-    border-radius: 6px;
+    border-radius: 8px;
     background: transparent;
     color: var(--text);
     font: inherit;
+    font-size: 0.9rem;
     cursor: pointer;
-    transition: background-color 120ms ease;
+    transition: background-color 150ms ease, transform 100ms ease;
     white-space: nowrap;
   }
 
   .chat-menu-item:hover,
   .chat-menu-item:focus-visible {
     background: var(--hover-bg);
+  }
+
+  .chat-menu-item:active {
+    transform: scale(0.98);
+  }
+
+  .chat-menu-item:last-child {
+    color: #ef4444;
+  }
+
+  .chat-menu-item:last-child:hover,
+  .chat-menu-item:last-child:focus-visible {
+    background: color-mix(in srgb, #ef4444 12%, transparent);
+  }
+
+  :global(:root[data-theme='dark']) .chat-menu-item:last-child {
+    color: #f87171;
+  }
+
+  :global(:root[data-theme='dark']) .chat-menu-item:last-child:hover,
+  :global(:root[data-theme='dark']) .chat-menu-item:last-child:focus-visible {
+    background: color-mix(in srgb, #ef4444 18%, transparent);
   }
 
   .side-footer { padding: 8px; border-top: 1px solid var(--border); margin-top: auto; }
