@@ -900,7 +900,7 @@
                     ondragend={handleConnectionDragEnd}
                     role="listitem"
                   >
-                    <button
+                    <div
                       class="drag-handle"
                       aria-label="Drag to reorder"
                       ontouchstart={(e) => handleConnectionTouchStart(e, connection.id)}
@@ -909,7 +909,7 @@
                       ontouchcancel={resetTouchState}
                     >
                       <IconDragHandle style="font-size: 20px;" />
-                    </button>
+                    </div>
                     <button
                       type="button"
                       class="item-content"
@@ -1033,7 +1033,7 @@
                     ondragend={handlePresetDragEnd}
                     role="listitem"
                   >
-                    <button
+                    <div
                       class="drag-handle"
                       aria-label="Drag to reorder"
                       ontouchstart={(e) => handlePresetTouchStart(e, preset.id)}
@@ -1042,7 +1042,7 @@
                       ontouchcancel={resetTouchState}
                     >
                       <IconDragHandle style="font-size: 20px;" />
-                    </button>
+                    </div>
                     <button
                       type="button"
                       class="item-content"
