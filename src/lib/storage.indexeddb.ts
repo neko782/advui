@@ -412,7 +412,55 @@ export function closeDB(): void {
   }
 }
 
+/**
+ * Request persistent storage permission from the browser
+ * This prevents the browser from evicting IndexedDB data under storage pressure
+ */
+export async function requestPersistentStorage(): Promise<boolean> {
+  if (typeof navigator === 'undefined' || !navigator.storage?.persist) {
+    console.warn('Persistent storage API not available');
+    return false;
+  }
+
+  try {
+    // Check if already persisted
+    const alreadyPersisted = await navigator.storage.persisted();
+    if (alreadyPersisted) {
+      console.log('Storage is already persistent');
+      return true;
+    }
+
+    // Request persistent storage
+    const granted = await navigator.storage.persist();
+    if (granted) {
+      console.log('Persistent storage granted');
+    } else {
+      console.warn('Persistent storage request denied');
+    }
+    return granted;
+  } catch (err) {
+    console.error('Failed to request persistent storage:', err);
+    return false;
+  }
+}
+
+/**
+ * Check if storage is currently persistent
+ */
+export async function isStoragePersistent(): Promise<boolean> {
+  if (typeof navigator === 'undefined' || !navigator.storage?.persisted) {
+    return false;
+  }
+  try {
+    return await navigator.storage.persisted();
+  } catch {
+    return false;
+  }
+}
+
 // Initialize BroadcastChannel on module load
 if (typeof window !== 'undefined') {
   initBroadcastChannel();
+  // Request persistent storage on initialization
+  requestPersistentStorage();
 }
