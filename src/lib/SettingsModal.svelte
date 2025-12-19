@@ -455,11 +455,32 @@
   function handleConnectionDragOver(e: DragEvent, id: string) {
     e.preventDefault()
     e.dataTransfer!.dropEffect = 'move'
-    dragOverConnectionId = id
+    if (!draggedConnectionId || id === draggedConnectionId) return
+
+    // Use center-point detection to reduce flickering
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+    const centerY = rect.top + rect.height / 2
+    const mouseY = e.clientY
+
+    // Only update if we've crossed the center threshold
+    const list = Array.isArray(local?.connections) ? local.connections : []
+    const draggedIndex = list.findIndex(c => c.id === draggedConnectionId)
+    const targetIndex = list.findIndex(c => c.id === id)
+
+    if (draggedIndex < 0 || targetIndex < 0) return
+
+    // Moving down: only trigger when past center
+    // Moving up: only trigger when before center
+    if (draggedIndex < targetIndex && mouseY > centerY) {
+      dragOverConnectionId = id
+    } else if (draggedIndex > targetIndex && mouseY < centerY) {
+      dragOverConnectionId = id
+    }
   }
 
   function handleConnectionDragLeave() {
-    dragOverConnectionId = null
+    // Don't reset here - causes flickering when items shift
+    // State is reset in handleConnectionDragEnd instead
   }
 
   function handleConnectionDrop(e: DragEvent, toId: string) {
@@ -485,11 +506,32 @@
   function handlePresetDragOver(e: DragEvent, id: string) {
     e.preventDefault()
     e.dataTransfer!.dropEffect = 'move'
-    dragOverPresetId = id
+    if (!draggedPresetId || id === draggedPresetId) return
+
+    // Use center-point detection to reduce flickering
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+    const centerY = rect.top + rect.height / 2
+    const mouseY = e.clientY
+
+    // Only update if we've crossed the center threshold
+    const list = Array.isArray(local?.presets) ? local.presets : []
+    const draggedIndex = list.findIndex(p => p.id === draggedPresetId)
+    const targetIndex = list.findIndex(p => p.id === id)
+
+    if (draggedIndex < 0 || targetIndex < 0) return
+
+    // Moving down: only trigger when past center
+    // Moving up: only trigger when before center
+    if (draggedIndex < targetIndex && mouseY > centerY) {
+      dragOverPresetId = id
+    } else if (draggedIndex > targetIndex && mouseY < centerY) {
+      dragOverPresetId = id
+    }
   }
 
   function handlePresetDragLeave() {
-    dragOverPresetId = null
+    // Don't reset here - causes flickering when items shift
+    // State is reset in handlePresetDragEnd instead
   }
 
   function handlePresetDrop(e: DragEvent, toId: string) {
@@ -538,18 +580,27 @@
     const touch = e.touches[0]
     touchCurrentY = touch.clientY
 
-    // Find which item we're over
+    // Find which item we're over using center-point detection
+    const list = Array.isArray(local?.connections) ? local.connections : []
+    const draggedIndex = list.findIndex(c => c.id === touchDragId)
+
     let foundId: string | null = null
     touchItemRects.forEach((rect, id) => {
       if (id !== touchDragId) {
+        const targetIndex = list.findIndex(c => c.id === id)
         const centerY = rect.top + rect.height / 2
-        if (touchCurrentY >= rect.top && touchCurrentY <= rect.bottom) {
+
+        // Moving down: only trigger when past center
+        // Moving up: only trigger when before center
+        if (draggedIndex < targetIndex && touchCurrentY > centerY) {
+          foundId = id
+        } else if (draggedIndex > targetIndex && touchCurrentY < centerY) {
           foundId = id
         }
       }
     })
 
-    if (foundId) {
+    if (foundId && foundId !== dragOverConnectionId) {
       dragOverConnectionId = foundId
     }
   }
@@ -592,17 +643,27 @@
     const touch = e.touches[0]
     touchCurrentY = touch.clientY
 
-    // Find which item we're over
+    // Find which item we're over using center-point detection
+    const list = Array.isArray(local?.presets) ? local.presets : []
+    const draggedIndex = list.findIndex(p => p.id === touchDragId)
+
     let foundId: string | null = null
     touchItemRects.forEach((rect, id) => {
       if (id !== touchDragId) {
-        if (touchCurrentY >= rect.top && touchCurrentY <= rect.bottom) {
+        const targetIndex = list.findIndex(p => p.id === id)
+        const centerY = rect.top + rect.height / 2
+
+        // Moving down: only trigger when past center
+        // Moving up: only trigger when before center
+        if (draggedIndex < targetIndex && touchCurrentY > centerY) {
+          foundId = id
+        } else if (draggedIndex > targetIndex && touchCurrentY < centerY) {
           foundId = id
         }
       }
     })
 
-    if (foundId) {
+    if (foundId && foundId !== dragOverPresetId) {
       dragOverPresetId = foundId
     }
   }
