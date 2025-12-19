@@ -149,7 +149,8 @@ export async function exportAllData(): Promise<void> {
             const filename = `${image.id}.${ext}`;
             const base64Data = image.data.split(',')[1] || image.data;
 
-            tar.append(`images/${filename}`, encodeText(base64Data));
+            // Store as binary data so images are viewable in archive
+            tar.append(`images/${filename}`, base64ToBytes(base64Data));
 
             imagesManifest.push({
               id: image.id,
@@ -227,8 +228,8 @@ export async function importAllData(file: File): Promise<ImportResult> {
             try {
               const base64Data = await archive.getBase64(`images/${imageInfo.filename}`);
               if (base64Data) {
-                const dataUrl = `data:${imageInfo.mimeType || 'image/png'};base64,${base64Data}`;
-                await storeImage(imageInfo.id, dataUrl, imageInfo.mimeType || '', imageInfo.name || '');
+                // Store just the base64 data (not a data URL) to match original storage format
+                await storeImage(imageInfo.id, base64Data, imageInfo.mimeType || '', imageInfo.name || '');
                 results.imagesImported++;
               }
             } catch (err) {
@@ -471,6 +472,23 @@ function decodeText(bytes: Uint8Array | null): string {
   return textDecoder.decode(bytes);
 }
 
+function base64ToBytes(base64: string): Uint8Array {
+  const binString = atob(base64);
+  const bytes = new Uint8Array(binString.length);
+  for (let i = 0; i < binString.length; i++) {
+    bytes[i] = binString.charCodeAt(i);
+  }
+  return bytes;
+}
+
+function bytesToBase64(bytes: Uint8Array): string {
+  let binString = '';
+  for (let i = 0; i < bytes.length; i++) {
+    binString += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binString);
+}
+
 interface UntarFile {
   name: string;
   buffer: ArrayBuffer | { buffer?: ArrayBuffer };
@@ -515,7 +533,8 @@ async function loadTarArchive(buffer: ArrayBuffer): Promise<TarArchive> {
     async getBase64(path: string): Promise<string | null> {
       const entry = entryMap.get(normalizePath(path));
       if (!entry) return null;
-      return decodeText(entry);
+      // Convert binary image data back to base64
+      return bytesToBase64(entry);
     }
   };
 }
