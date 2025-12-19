@@ -1,6 +1,4 @@
 <script lang="ts">
-  import { IconClose } from '../icons'
-
   interface Props {
     open?: boolean
     title?: string
@@ -28,44 +26,74 @@
 </script>
 
 {#if props.open}
-  <button type="button" class="backdrop" aria-label="Close dialog" onclick={handleCancel}></button>
-  <div
-    class="modal"
-    role="dialog"
-    aria-modal="true"
-    aria-labelledby="modal-title"
-    tabindex="-1"
-    onpointerdown={(event) => { if (event.target === event.currentTarget) handleCancel() }}
-    onkeydown={(event) => { if (event.key === 'Escape') handleCancel() }}
-  >
-    <div class="panel">
-      <header class="modal-head">
-        <div id="modal-title" class="title">{props.title || 'Confirm'}</div>
-        <button class="icon-btn" onclick={handleCancel} aria-label="Close">
-          <IconClose style="font-size: 20px;" />
-        </button>
-      </header>
-      <div class="modal-body">
-        <p class="message">{props.message || 'Are you sure?'}</p>
+  <div class="modal-overlay" role="presentation">
+    <button type="button" class="backdrop" aria-label="Close dialog" onclick={handleCancel}></button>
+    <div
+      class="modal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="modal-title"
+      tabindex="-1"
+      onpointerdown={(event) => { if (event.target === event.currentTarget) handleCancel() }}
+      onkeydown={(event) => { if (event.key === 'Escape') handleCancel() }}
+    >
+      <div class="panel" class:danger={props.danger}>
+        <div class="modal-content">
+          {#if props.danger}
+            <div class="icon-wrapper danger">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                <path d="M12 9v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </div>
+          {/if}
+          <div class="text-content">
+            <div id="modal-title" class="title">{props.title || 'Confirm'}</div>
+            <p class="message">{props.message || 'Are you sure?'}</p>
+          </div>
+        </div>
+        <footer class="modal-footer">
+          <button type="button" class="btn btn-secondary" onclick={handleCancel}>
+            {props.cancelText || 'Cancel'}
+          </button>
+          <button type="button" class={`btn ${props.danger ? 'btn-danger' : 'btn-primary'}`} onclick={handleConfirm}>
+            {props.confirmText || 'Confirm'}
+          </button>
+        </footer>
       </div>
-      <footer class="modal-footer">
-        <button type="button" class="btn btn-secondary" onclick={handleCancel}>
-          {props.cancelText || 'Cancel'}
-        </button>
-        <button type="button" class={`btn btn-primary ${props.danger ? 'btn-danger' : ''}`} onclick={handleConfirm}>
-          {props.confirmText || 'Confirm'}
-        </button>
-      </footer>
     </div>
   </div>
 {/if}
 
 <style>
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    animation: fadeIn 0.15s ease-out;
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  @keyframes slideUp {
+    from {
+      opacity: 0;
+      transform: scale(0.96) translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1) translateY(0);
+    }
+  }
+
   .backdrop {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.5);
-    z-index: 1000;
+    background: rgba(0, 0, 0, 0.4);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
     border: 0;
     padding: 0;
     cursor: pointer;
@@ -78,125 +106,154 @@
     align-items: center;
     justify-content: center;
     padding: 24px;
-    z-index: 1001;
+    pointer-events: none;
   }
 
   .panel {
-    width: min(calc(100vw - 48px), 480px);
+    width: min(calc(100vw - 48px), 360px);
     background: var(--panel);
     border: 1px solid var(--border);
-    border-radius: 18px;
-    box-shadow: 0 20px 40px rgba(0,0,0,0.2);
+    border-radius: 16px;
+    box-shadow:
+      0 0 0 1px rgba(0, 0, 0, 0.03),
+      0 4px 8px rgba(0, 0, 0, 0.04),
+      0 16px 32px rgba(0, 0, 0, 0.08),
+      0 32px 64px rgba(0, 0, 0, 0.12);
     color: var(--text);
     display: flex;
     flex-direction: column;
     overflow: hidden;
+    pointer-events: auto;
+    animation: slideUp 0.2s ease-out;
   }
 
-  .modal-head {
+  .modal-content {
+    padding: 24px 24px 20px 24px;
     display: flex;
+    flex-direction: column;
     align-items: center;
-    justify-content: space-between;
-    padding: 20px 24px;
-    border-bottom: 1px solid var(--border);
+    text-align: center;
+    gap: 16px;
+  }
+
+  .icon-wrapper {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    flex-shrink: 0;
+  }
+
+  .icon-wrapper.danger {
+    background: rgba(220, 80, 80, 0.12);
+    color: #dc5050;
+  }
+
+  .text-content {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
   }
 
   .title {
     font-weight: 600;
-    font-size: 1.1rem;
-  }
-
-  .modal-body {
-    padding: 24px;
-    flex: 1;
+    font-size: 1.05rem;
+    letter-spacing: -0.01em;
   }
 
   .message {
     margin: 0;
     line-height: 1.5;
-    color: var(--text);
+    color: var(--muted);
+    font-size: 0.9rem;
   }
 
   .modal-footer {
     display: flex;
     align-items: center;
-    justify-content: flex-end;
-    gap: 12px;
-    padding: 16px 24px;
-    border-top: 1px solid var(--border);
-  }
-
-  .icon-btn {
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    background: transparent;
-    width: 32px;
-    height: 32px;
-    display: grid;
-    place-items: center;
-    line-height: 1;
-    color: var(--text);
-    cursor: pointer;
-    transition: background-color 0.15s ease;
-  }
-
-  .icon-btn:hover {
-    background: color-mix(in srgb, var(--text) 8%, transparent);
+    gap: 10px;
+    padding: 0 24px 24px 24px;
   }
 
   .btn {
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 10px 20px;
+    flex: 1;
+    border: none;
+    border-radius: 10px;
+    padding: 12px 18px;
     font: inherit;
-    font-size: 0.95rem;
+    font-size: 0.9rem;
+    font-weight: 500;
     cursor: pointer;
     transition: all 0.15s ease;
   }
 
   .btn-secondary {
-    background: transparent;
+    background: color-mix(in srgb, var(--text) 8%, transparent);
     color: var(--text);
   }
 
   .btn-secondary:hover {
-    background: color-mix(in srgb, var(--text) 8%, transparent);
+    background: color-mix(in srgb, var(--text) 12%, transparent);
   }
 
   .btn-primary {
     background: var(--accent);
-    border-color: var(--accent);
     color: white;
   }
 
   .btn-primary:hover {
-    background: color-mix(in srgb, var(--accent) 90%, black 10%);
-    border-color: color-mix(in srgb, var(--accent) 90%, black 10%);
+    background: color-mix(in srgb, var(--accent) 85%, black 15%);
+    transform: translateY(-1px);
+  }
+
+  .btn-primary:active {
+    transform: translateY(0);
   }
 
   .btn-danger {
-    background: #d64545;
-    border-color: #d64545;
+    background: #dc5050;
+    color: white;
   }
 
   .btn-danger:hover {
-    background: #b83838;
-    border-color: #b83838;
+    background: #c44040;
+    transform: translateY(-1px);
+  }
+
+  .btn-danger:active {
+    transform: translateY(0);
   }
 
   @media (max-width: 640px) {
     .modal {
-      padding: 12px;
+      padding: 16px;
+      align-items: flex-end;
     }
 
     .panel {
       width: 100%;
+      border-radius: 20px 20px 12px 12px;
+      animation: slideUpMobile 0.25s ease-out;
     }
 
-    .modal-head,
-    .modal-body,
+    @keyframes slideUpMobile {
+      from {
+        opacity: 0;
+        transform: translateY(100%);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .modal-content {
+      padding: 24px 20px 20px 20px;
+    }
+
     .modal-footer {
-      padding: 16px;
+      padding: 0 20px 24px 20px;
     }
   }
 </style>
