@@ -56,6 +56,58 @@
   let draggedPresetId = $state<string | null>(null)
   let dragOverConnectionId = $state<string | null>(null)
   let dragOverPresetId = $state<string | null>(null)
+
+  // Touch drag state for mobile
+  let touchDragType = $state<'connection' | 'preset' | null>(null)
+  let touchDragId = $state<string | null>(null)
+  let touchCurrentY = $state<number>(0)
+  let touchStartY = $state<number>(0)
+  let touchItemRects = $state<Map<string, DOMRect>>(new Map())
+  let touchListRef = $state<HTMLElement | null>(null)
+
+  // Visual order during drag (shows items shifting)
+  let connectionVisualOrder = $state<string[]>([])
+  let presetVisualOrder = $state<string[]>([])
+
+  // Computed visual orders for rendering
+  const connectionsForRender = $derived(() => {
+    const list = Array.isArray(local?.connections) ? local.connections : []
+    if (!draggedConnectionId && !touchDragId) return list
+    if (touchDragType === 'connection' || draggedConnectionId) {
+      const dragId = touchDragId || draggedConnectionId
+      const targetId = dragOverConnectionId
+      if (!dragId || !targetId || dragId === targetId) return list
+
+      const fromIndex = list.findIndex(c => c.id === dragId)
+      const toIndex = list.findIndex(c => c.id === targetId)
+      if (fromIndex < 0 || toIndex < 0) return list
+
+      // Create visual order with item moved
+      const result = list.slice()
+      const [moved] = result.splice(fromIndex, 1)
+      result.splice(toIndex, 0, moved)
+      return result
+    }
+    return list
+  })
+
+  const presetsForRender = $derived(() => {
+    const list = Array.isArray(local?.presets) ? local.presets : []
+    if (!draggedPresetId && !(touchDragType === 'preset' && touchDragId)) return list
+    const dragId = touchDragType === 'preset' ? touchDragId : draggedPresetId
+    const targetId = dragOverPresetId
+    if (!dragId || !targetId || dragId === targetId) return list
+
+    const fromIndex = list.findIndex(p => p.id === dragId)
+    const toIndex = list.findIndex(p => p.id === targetId)
+    if (fromIndex < 0 || toIndex < 0) return list
+
+    // Create visual order with item moved
+    const result = list.slice()
+    const [moved] = result.splice(fromIndex, 1)
+    result.splice(toIndex, 0, moved)
+    return result
+  })
   
   const TABS = [
     { id: 'general', label: 'General' },
@@ -454,6 +506,127 @@
     dragOverPresetId = null
   }
 
+  // Touch handlers for mobile drag and drop
+  function handleConnectionTouchStart(e: TouchEvent, id: string) {
+    const touch = e.touches[0]
+    touchDragType = 'connection'
+    touchDragId = id
+    touchStartY = touch.clientY
+    touchCurrentY = touch.clientY
+    draggedConnectionId = id
+
+    // Capture all item rects for hit testing
+    const listEl = (e.currentTarget as HTMLElement).closest('.item-list')
+    if (listEl) {
+      touchListRef = listEl as HTMLElement
+      const items = listEl.querySelectorAll('.list-item')
+      const rects = new Map<string, DOMRect>()
+      items.forEach((item) => {
+        const itemId = item.getAttribute('data-id')
+        if (itemId) {
+          rects.set(itemId, item.getBoundingClientRect())
+        }
+      })
+      touchItemRects = rects
+    }
+  }
+
+  function handleConnectionTouchMove(e: TouchEvent) {
+    if (touchDragType !== 'connection' || !touchDragId) return
+    e.preventDefault()
+
+    const touch = e.touches[0]
+    touchCurrentY = touch.clientY
+
+    // Find which item we're over
+    let foundId: string | null = null
+    touchItemRects.forEach((rect, id) => {
+      if (id !== touchDragId) {
+        const centerY = rect.top + rect.height / 2
+        if (touchCurrentY >= rect.top && touchCurrentY <= rect.bottom) {
+          foundId = id
+        }
+      }
+    })
+
+    if (foundId) {
+      dragOverConnectionId = foundId
+    }
+  }
+
+  function handleConnectionTouchEnd() {
+    if (touchDragType === 'connection' && touchDragId && dragOverConnectionId) {
+      reorderConnections(touchDragId, dragOverConnectionId)
+    }
+    resetTouchState()
+  }
+
+  function handlePresetTouchStart(e: TouchEvent, id: string) {
+    const touch = e.touches[0]
+    touchDragType = 'preset'
+    touchDragId = id
+    touchStartY = touch.clientY
+    touchCurrentY = touch.clientY
+    draggedPresetId = id
+
+    // Capture all item rects for hit testing
+    const listEl = (e.currentTarget as HTMLElement).closest('.item-list')
+    if (listEl) {
+      touchListRef = listEl as HTMLElement
+      const items = listEl.querySelectorAll('.list-item')
+      const rects = new Map<string, DOMRect>()
+      items.forEach((item) => {
+        const itemId = item.getAttribute('data-id')
+        if (itemId) {
+          rects.set(itemId, item.getBoundingClientRect())
+        }
+      })
+      touchItemRects = rects
+    }
+  }
+
+  function handlePresetTouchMove(e: TouchEvent) {
+    if (touchDragType !== 'preset' || !touchDragId) return
+    e.preventDefault()
+
+    const touch = e.touches[0]
+    touchCurrentY = touch.clientY
+
+    // Find which item we're over
+    let foundId: string | null = null
+    touchItemRects.forEach((rect, id) => {
+      if (id !== touchDragId) {
+        if (touchCurrentY >= rect.top && touchCurrentY <= rect.bottom) {
+          foundId = id
+        }
+      }
+    })
+
+    if (foundId) {
+      dragOverPresetId = foundId
+    }
+  }
+
+  function handlePresetTouchEnd() {
+    if (touchDragType === 'preset' && touchDragId && dragOverPresetId) {
+      reorderPresets(touchDragId, dragOverPresetId)
+    }
+    resetTouchState()
+  }
+
+  function resetTouchState() {
+    touchDragType = null
+    touchDragId = null
+    touchCurrentY = 0
+    touchStartY = 0
+    touchItemRects = new Map()
+    touchListRef = null
+    draggedConnectionId = null
+    draggedPresetId = null
+    dragOverConnectionId = null
+    dragOverPresetId = null
+  }
+
   async function handleExportAllData() {
     if (importExportWorking) return
     importExportWorking = true
@@ -793,10 +966,13 @@
                 </button>
               </div>
               <p class="hint section-hint">Manage your API connections. Drag to reorder.</p>
-              <div class="item-list">
-                {#each (local?.connections || []) as connection (connection.id)}
+              <div class="item-list reorder-list">
+                {#each connectionsForRender() as connection (connection.id)}
+                  {@const isDragging = draggedConnectionId === connection.id}
+                  {@const isDragOver = dragOverConnectionId === connection.id && draggedConnectionId !== connection.id}
                   <div
-                    class="list-item {connection.id === activeConnectionId ? 'active' : ''} {draggedConnectionId === connection.id ? 'dragging' : ''} {dragOverConnectionId === connection.id && draggedConnectionId !== connection.id ? 'drag-over' : ''}"
+                    class="list-item {connection.id === activeConnectionId ? 'active' : ''} {isDragging ? 'dragging' : ''} {isDragOver ? 'drag-over' : ''}"
+                    data-id={connection.id}
                     draggable="true"
                     ondragstart={(e) => handleConnectionDragStart(e, connection.id)}
                     ondragover={(e) => handleConnectionDragOver(e, connection.id)}
@@ -805,7 +981,14 @@
                     ondragend={handleConnectionDragEnd}
                     role="listitem"
                   >
-                    <button class="drag-handle" aria-label="Drag to reorder">
+                    <button
+                      class="drag-handle"
+                      aria-label="Drag to reorder"
+                      ontouchstart={(e) => handleConnectionTouchStart(e, connection.id)}
+                      ontouchmove={handleConnectionTouchMove}
+                      ontouchend={handleConnectionTouchEnd}
+                      ontouchcancel={resetTouchState}
+                    >
                       <IconDragHandle style="font-size: 20px;" />
                     </button>
                     <button
@@ -916,11 +1099,14 @@
                 </button>
               </div>
               <p class="hint section-hint">Configure model presets for different use cases. Drag to reorder.</p>
-              <div class="item-list">
-                {#each (local.presets || []) as preset (preset.id)}
+              <div class="item-list reorder-list">
+                {#each presetsForRender() as preset (preset.id)}
                   {@const presetConnection = (local?.connections || []).find(c => c.id === preset.connectionId)}
+                  {@const isDragging = draggedPresetId === preset.id}
+                  {@const isDragOver = dragOverPresetId === preset.id && draggedPresetId !== preset.id}
                   <div
-                    class="list-item {preset.id === activePresetId ? 'active' : ''} {draggedPresetId === preset.id ? 'dragging' : ''} {dragOverPresetId === preset.id && draggedPresetId !== preset.id ? 'drag-over' : ''}"
+                    class="list-item {preset.id === activePresetId ? 'active' : ''} {isDragging ? 'dragging' : ''} {isDragOver ? 'drag-over' : ''}"
+                    data-id={preset.id}
                     draggable="true"
                     ondragstart={(e) => handlePresetDragStart(e, preset.id)}
                     ondragover={(e) => handlePresetDragOver(e, preset.id)}
@@ -929,7 +1115,14 @@
                     ondragend={handlePresetDragEnd}
                     role="listitem"
                   >
-                    <button class="drag-handle" aria-label="Drag to reorder">
+                    <button
+                      class="drag-handle"
+                      aria-label="Drag to reorder"
+                      ontouchstart={(e) => handlePresetTouchStart(e, preset.id)}
+                      ontouchmove={handlePresetTouchMove}
+                      ontouchend={handlePresetTouchEnd}
+                      ontouchcancel={resetTouchState}
+                    >
                       <IconDragHandle style="font-size: 20px;" />
                     </button>
                     <button
@@ -1462,22 +1655,30 @@
       0 2px 8px rgba(0,0,0,0.06);
   }
   .list-item.dragging {
-    opacity: 0.4;
+    opacity: 0.5;
     border-style: dashed;
-    transform: scale(0.98);
-  }
-  .list-item.drag-over {
     border-color: var(--accent);
-    background: color-mix(in srgb, var(--accent) 12%, var(--bg) 88%);
-    transform: scale(1.02);
-    box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+    transform: scale(0.98);
+    z-index: 10;
+    background: color-mix(in srgb, var(--accent) 8%, var(--bg) 92%);
+  }
+  /* Reorder list with smooth transitions */
+  .reorder-list .list-item {
+    transition: transform 0.2s cubic-bezier(0.2, 0, 0, 1), opacity 0.15s ease, border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+  }
+  .reorder-list .list-item.dragging {
+    transition: opacity 0.15s ease, border-color 0.15s ease;
+  }
+  /* Remove old drag-over highlight - items now shift visually */
+  .list-item.drag-over {
+    /* Items shift position instead of just highlighting */
   }
   .drag-handle {
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 32px;
-    height: 40px;
+    width: 36px;
+    height: 44px;
     color: var(--muted);
     cursor: grab;
     border: none;
@@ -1485,7 +1686,11 @@
     border-radius: 8px;
     flex-shrink: 0;
     transition: color 0.15s ease, background 0.15s ease;
-    opacity: 0.6;
+    opacity: 0.7;
+    touch-action: none;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
   }
   .list-item:hover .drag-handle {
     opacity: 1;
@@ -1497,6 +1702,15 @@
   .drag-handle:active {
     cursor: grabbing;
     color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
+  }
+  /* Mobile: always show drag handle clearly */
+  @media (pointer: coarse) {
+    .drag-handle {
+      opacity: 1;
+      width: 44px;
+      height: 48px;
+    }
   }
   .item-content {
     flex: 1;
