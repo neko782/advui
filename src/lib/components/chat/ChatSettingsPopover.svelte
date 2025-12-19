@@ -401,8 +401,27 @@
 {/if}
 
 <style>
-  .icon-btn { border: 1px solid var(--border); border-radius: 10px; background: transparent; min-width: 44px; height: 44px; display: grid; place-items: center; line-height: 1; }
-  .icon-btn:disabled { opacity: .6; cursor: not-allowed; }
+  .icon-btn {
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--bg);
+    min-width: 44px;
+    height: 44px;
+    display: grid;
+    place-items: center;
+    line-height: 1;
+    color: var(--text);
+    transition: background-color .15s ease, border-color .15s ease, color .15s ease, transform .1s ease;
+  }
+  .icon-btn:hover:not(:disabled) {
+    background: var(--panel);
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+  .icon-btn:active:not(:disabled) {
+    transform: scale(0.95);
+  }
+  .icon-btn:disabled { opacity: .5; cursor: not-allowed; }
   .icon { font-size: 22px; }
   .chat-settings-menu { min-width: 270px; padding: 14px; }
   .menu-section { display: grid; gap: 6px; margin-bottom: 10px; }
@@ -430,15 +449,19 @@
     color: var(--muted);
     border-radius: 6px;
     cursor: pointer;
-    transition: background-color .15s ease, color .15s ease;
+    transition: background-color .15s ease, color .15s ease, transform .1s ease;
     user-select: none;
   }
-  .settings-tab:hover {
+  .settings-tab:hover:not(.active) {
     color: var(--text);
+    background: color-mix(in srgb, var(--panel) 50%, transparent);
+  }
+  .settings-tab:active {
+    transform: scale(0.97);
   }
   .settings-tab.active {
     background: var(--panel);
-    color: var(--text);
+    color: var(--accent);
     box-shadow: 0 1px 3px rgba(0,0,0,0.08);
   }
   .tab-content > .menu-section:last-child {
@@ -455,13 +478,19 @@
     color: var(--text);
     font: inherit;
     box-sizing: border-box;
-    transition: border-color .15s ease;
+    transition: border-color .15s ease, box-shadow .15s ease;
+  }
+  input[type="text"]:hover,
+  input[type="number"]:hover,
+  select:hover {
+    border-color: color-mix(in srgb, var(--border) 70%, var(--accent));
   }
   input[type="text"]:focus,
   input[type="number"]:focus,
   select:focus {
     outline: none;
     border-color: var(--accent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 15%, transparent);
   }
   /* Toggle switch */
   .switch { display: inline-flex; align-items: center; gap: 10px; cursor: pointer; user-select: none; }
@@ -521,15 +550,19 @@
     background: var(--bg);
     color: var(--text);
     cursor: pointer;
-    transition: background-color .15s ease, border-color .15s ease;
+    transition: background-color .15s ease, border-color .15s ease, color .15s ease, transform .1s ease;
     flex-shrink: 0;
   }
-  .preset-toggle-btn:hover {
+  .preset-toggle-btn:hover:not(:disabled) {
     background: var(--panel);
     border-color: var(--accent);
+    color: var(--accent);
+  }
+  .preset-toggle-btn:active:not(:disabled) {
+    transform: scale(0.92);
   }
   .preset-toggle-btn:disabled {
-    opacity: .6;
+    opacity: .5;
     cursor: not-allowed;
   }
   .preset-menu {
@@ -551,18 +584,22 @@
     align-items: start;
     gap: 2px;
     text-align: left;
-    border: 0;
+    border: 1px solid transparent;
     border-radius: 8px;
-    padding: 8px 10px;
+    padding: 10px 12px;
     background: transparent;
     color: var(--text);
     font: inherit;
     cursor: pointer;
-    transition: background-color 150ms ease;
+    transition: background-color .12s ease, border-color .12s ease, transform .1s ease;
   }
   .preset-menu-item:hover,
   .preset-menu-item:focus-visible {
-    background: var(--hover-bg);
+    background: color-mix(in srgb, var(--accent) 10%, transparent);
+    border-color: color-mix(in srgb, var(--accent) 30%, transparent);
+  }
+  .preset-menu-item:active {
+    transform: scale(0.98);
   }
   .preset-menu-name {
     font-weight: 600;

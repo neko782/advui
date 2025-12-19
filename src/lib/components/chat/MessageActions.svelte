@@ -131,20 +131,24 @@
     line-height: 1;
     padding: 0;
     cursor: default;
-    transition: color .15s ease, background-color .15s ease;
+    transition: color .15s ease, background-color .15s ease, transform .1s ease;
   }
-  .action-btn:hover,
-  .action-btn:focus-visible {
-    color: var(--text);
-    background-color: color-mix(in srgb, var(--text) 12%, transparent 88%);
+  .action-btn:hover:not(:disabled),
+  .action-btn:focus-visible:not(:disabled) {
+    color: var(--accent);
+    background-color: color-mix(in srgb, var(--accent) 12%, transparent);
+  }
+  .action-btn:active:not(:disabled) {
+    transform: scale(0.9);
   }
   :global(:root[data-theme='dark']) .action-btn {
     color: color-mix(in srgb, var(--muted) 55%, var(--text) 45%);
   }
-  :global(:root[data-theme='dark']) .action-btn:hover,
-  :global(:root[data-theme='dark']) .action-btn:focus-visible {
-    background-color: color-mix(in srgb, var(--text) 18%, transparent 82%);
+  :global(:root[data-theme='dark']) .action-btn:hover:not(:disabled),
+  :global(:root[data-theme='dark']) .action-btn:focus-visible:not(:disabled) {
+    color: var(--accent);
+    background-color: color-mix(in srgb, var(--accent) 18%, transparent);
   }
-  .action-btn:disabled { opacity: .5; cursor: not-allowed; }
+  .action-btn:disabled { opacity: .4; cursor: not-allowed; }
   /* No special styles for .debug to keep consistency with other buttons */
 </style>

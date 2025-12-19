@@ -694,7 +694,14 @@
     border-radius: 8px;
     background: var(--panel);
     color: var(--text);
-    transition: background-color 150ms ease, color 150ms ease, transform 120ms ease;
+    transition: background-color 150ms ease, color 150ms ease, border-color 150ms ease, transform 100ms ease;
+  }
+  .icon-btn:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+  .icon-btn:active {
+    transform: scale(0.94);
   }
   .sidebar.collapsed .brand { display: none; }
   .sidebar.collapsed .chat-list { display: none; }
@@ -711,9 +718,15 @@
     border-radius: 8px;
     background: transparent;
     color: var(--text);
-    transition: background-color 150ms ease, color 150ms ease, transform 120ms ease;
+    transition: background-color 150ms ease, color 150ms ease, transform 100ms ease;
   }
-  .nav-item:hover { background: var(--panel); }
+  .nav-item:hover {
+    background: var(--panel);
+    color: var(--accent);
+  }
+  .nav-item:active {
+    transform: scale(0.98);
+  }
   .nav-item .label { white-space: nowrap; }
   .sidebar.collapsed .nav-item .label { display: none; }
   .new-chat-wrapper { position: relative; }
@@ -737,17 +750,23 @@
     align-items: start;
     gap: 2px;
     text-align: left;
-    border: 0;
+    border: 1px solid transparent;
     border-radius: 8px;
-    padding: 8px 10px;
+    padding: 10px 12px;
     background: transparent;
     color: var(--text);
     font: inherit;
     cursor: pointer;
-    transition: background-color 150ms ease;
+    transition: background-color 120ms ease, border-color 120ms ease, transform 100ms ease;
   }
   .preset-menu-item:hover,
-  .preset-menu-item:focus-visible { background: var(--hover-bg); }
+  .preset-menu-item:focus-visible {
+    background: color-mix(in srgb, var(--accent) 10%, transparent);
+    border-color: color-mix(in srgb, var(--accent) 30%, transparent);
+  }
+  .preset-menu-item:active {
+    transform: scale(0.98);
+  }
   .preset-menu-name { font-weight: 600; }
   .preset-menu-model { font-size: .85rem; color: var(--muted); }
   /* Collapsed nav items: icon-only ghost buttons (no border/background) */
@@ -798,11 +817,15 @@
     }
   }
 
-  /* Collapse button hover: animate without changing border or background */
+  /* Collapse button hover: use accent color and subtle lift */
   .side-header .icon-btn:hover,
-  .side-header .icon-btn:active,
   .side-header .icon-btn:focus-visible {
     transform: translateY(-1px);
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+  .side-header .icon-btn:active {
+    transform: scale(0.94);
   }
 
   /* Align label with chat buttons and add spacing from New chat */
@@ -939,20 +962,29 @@
     background: transparent;
     color: var(--muted);
     cursor: pointer;
-    transition: background-color 120ms ease, color 120ms ease;
+    transition: background-color 120ms ease, color 120ms ease, transform 100ms ease;
   }
   .chat-action-btn:hover,
   .chat-action-btn:focus-visible {
-    background: var(--hover-bg);
-    color: var(--text);
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
+    color: var(--accent);
+  }
+  .chat-action-btn:active {
+    transform: scale(0.9);
   }
 
   .chat-action-btn.confirm { color: #16a34a; }
   .chat-action-btn.cancel { color: #dc2626; }
   .chat-action-btn.confirm:hover,
-  .chat-action-btn.confirm:focus-visible { color: #15803d; }
+  .chat-action-btn.confirm:focus-visible {
+    background: color-mix(in srgb, #16a34a 12%, transparent);
+    color: #15803d;
+  }
   .chat-action-btn.cancel:hover,
-  .chat-action-btn.cancel:focus-visible { color: #b91c1c; }
+  .chat-action-btn.cancel:focus-visible {
+    background: color-mix(in srgb, #dc2626 12%, transparent);
+    color: #b91c1c;
+  }
 
   .chat-menu-wrapper {
     position: relative;
@@ -1102,14 +1134,17 @@
     background: transparent;
     color: var(--muted);
     cursor: pointer;
-    transition: background-color 120ms ease, color 120ms ease;
+    transition: background-color 120ms ease, color 120ms ease, transform 100ms ease;
     flex: 0 0 auto;
   }
 
   .search-clear-btn:hover,
   .search-clear-btn:focus-visible {
-    background: var(--hover-bg);
-    color: var(--text);
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
+    color: var(--accent);
+  }
+  .search-clear-btn:active {
+    transform: scale(0.9);
   }
 
   .search-mode-btn {
@@ -1122,7 +1157,7 @@
     background: transparent;
     color: var(--muted);
     cursor: pointer;
-    transition: background-color 150ms ease, color 150ms ease, opacity 150ms ease;
+    transition: background-color 120ms ease, color 120ms ease, opacity 150ms ease, transform 100ms ease;
     flex: 0 0 auto;
     opacity: 0;
     pointer-events: none;
@@ -1136,11 +1171,14 @@
 
   .search-mode-btn:hover,
   .search-mode-btn:focus-visible {
-    background: var(--hover-bg);
-    color: var(--text);
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
+    color: var(--accent);
+  }
+  .search-mode-btn:active {
+    transform: scale(0.9);
   }
 
   .search-mode-btn.active {
-    color: var(--text);
+    color: var(--accent);
   }
 </style>

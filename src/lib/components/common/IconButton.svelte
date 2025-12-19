@@ -25,9 +25,22 @@
     place-items: center;
     border: 1px solid var(--border);
     border-radius: 10px;
-    background: transparent;
+    background: var(--bg);
     color: var(--text);
     line-height: 1;
+    transition: background-color .15s ease, border-color .15s ease, color .15s ease, transform .1s ease;
+  }
+  .icon-btn:hover:not(:disabled) {
+    background: var(--panel);
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+  .icon-btn:active:not(:disabled) {
+    transform: scale(0.95);
+  }
+  .icon-btn:disabled {
+    opacity: .5;
+    cursor: not-allowed;
   }
   .icon-btn :global(.icon) { font-size: 22px; }
 </style>
