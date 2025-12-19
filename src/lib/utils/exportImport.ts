@@ -83,8 +83,8 @@ export async function exportAllData(): Promise<void> {
   try {
     const tar = new Tar();
 
-    // Export all chats
-    const chats = await getChats();
+    // Export all chats (sorted by updatedAt descending to preserve ordering)
+    const chats = (await getChats()).slice().sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
     const exportedAt = new Date().toISOString();
     const chatManifest: ChatManifestEntry[] = [];
     const usedChatPaths = new Set<string>();
@@ -105,7 +105,9 @@ export async function exportAllData(): Promise<void> {
       chatManifest.push({
         id: chat.id,
         title: chat.title,
-        path: filename
+        path: filename,
+        order: index,
+        updatedAt: chat.updatedAt
       });
     });
 
@@ -269,7 +271,35 @@ async function importChatsFromArchive(archive: TarArchive): Promise<{ count: num
     .filter((path) => normalizePath(path).toLowerCase() !== 'chats/manifest.json');
 
   if (chatFilePaths.length > 0) {
-    chatFilePaths.sort();
+    // Try to read manifest for ordering
+    let manifestEntries: ChatManifestEntry[] = [];
+    try {
+      const manifestText = await archive.getText('chats/manifest.json');
+      if (manifestText) {
+        const manifestData = JSON.parse(manifestText) as { chats?: ChatManifestEntry[] };
+        if (Array.isArray(manifestData.chats)) {
+          manifestEntries = manifestData.chats;
+        }
+      }
+    } catch {
+      // Manifest not found or invalid, will fall back to alphabetical order
+    }
+
+    // Create a map from path to manifest entry for ordering and metadata
+    const pathToManifest = new Map<string, ChatManifestEntry>();
+    for (const entry of manifestEntries) {
+      pathToManifest.set(normalizePath(entry.path), entry);
+    }
+
+    // Sort by manifest order if available, otherwise alphabetically
+    chatFilePaths.sort((a, b) => {
+      const entryA = pathToManifest.get(normalizePath(a));
+      const entryB = pathToManifest.get(normalizePath(b));
+      if (entryA?.order !== undefined && entryB?.order !== undefined) {
+        return entryA.order - entryB.order;
+      }
+      return a.localeCompare(b);
+    });
 
     for (const path of chatFilePaths) {
       try {
@@ -281,11 +311,17 @@ async function importChatsFromArchive(archive: TarArchive): Promise<{ count: num
         const parsed = JSON.parse(chatText) as ExportedChat | Chat;
         const chat = extractChatFromPayload(parsed);
 
+        // Get manifest entry for this chat to preserve updatedAt
+        const manifestEntry = pathToManifest.get(normalizePath(path));
+
         await createChat({
           nodes: chat.nodes,
           rootId: chat.rootId,
           settings: chat.settings,
-          presetId: chat.presetId
+          presetId: chat.presetId,
+          // Preserve original updatedAt and title from manifest or chat data
+          updatedAt: manifestEntry?.updatedAt || chat.updatedAt,
+          title: chat.title
         });
         count++;
       } catch (err) {
@@ -307,13 +343,18 @@ async function importChatsFromArchive(archive: TarArchive): Promise<{ count: num
     const chatsData = JSON.parse(chatsText) as { chats?: Chat[] };
 
     if (Array.isArray(chatsData?.chats)) {
-      for (const chat of chatsData.chats) {
+      // Sort by updatedAt descending to preserve ordering
+      const sortedChats = chatsData.chats.slice().sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+      for (const chat of sortedChats) {
         try {
           await createChat({
             nodes: chat.nodes,
             rootId: chat.rootId,
             settings: chat.settings,
-            presetId: chat.presetId
+            presetId: chat.presetId,
+            // Preserve original updatedAt and title
+            updatedAt: chat.updatedAt,
+            title: chat.title
           });
           count++;
         } catch (err) {

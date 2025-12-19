@@ -456,6 +456,8 @@ export interface ChatManifestEntry {
   id: string;
   title: string;
   path: string;
+  order?: number;
+  updatedAt?: number;
 }
 
 export interface ImageManifestEntry {

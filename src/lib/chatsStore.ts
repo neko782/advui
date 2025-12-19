@@ -364,6 +364,10 @@ export interface CreateChatOptions {
   presetId?: string;
   preset?: Record<string, unknown>;
   connectionId?: string;
+  /** Optional: preserve original updatedAt timestamp (for imports) */
+  updatedAt?: number;
+  /** Optional: preserve original title (for imports) */
+  title?: string;
 }
 
 export async function createChat(initial: CreateChatOptions = {}): Promise<{ id: string; chat: Chat }> {
@@ -434,8 +438,8 @@ export async function createChat(initial: CreateChatOptions = {}): Promise<{ id:
   });
   const chat: Chat = {
     id,
-    title: computeTitleFromNodes(baseNodes, rootId),
-    updatedAt: Date.now(),
+    title: initial?.title || computeTitleFromNodes(baseNodes, rootId),
+    updatedAt: initial?.updatedAt || Date.now(),
     settings: {
       model: initial?.settings?.model || initial?.model || preferredPreset.model || 'gpt-5',
       streaming: (typeof initial?.settings?.streaming === 'boolean')
