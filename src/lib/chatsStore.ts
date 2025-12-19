@@ -239,7 +239,8 @@ export async function saveChatContent(
   if (!id) return null;
   try {
     return await storeUpdateAtomic(id, (existing) => {
-      // Be resilient: if the record doesn't exist (e.g., backend switched from IDB<->LS), create it
+      // If the chat doesn't exist (e.g., was deleted), don't recreate it
+      if (!existing) return undefined;
       const defaults = loadSettings();
       const basePreset = resolvePreset(defaults, { presetId: settings?.presetId || existing?.presetId || undefined });
       const pickSetting = <K extends keyof ChatSettings>(key: K): ChatSettings[K] | undefined => {
