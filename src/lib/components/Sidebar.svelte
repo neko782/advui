@@ -140,6 +140,7 @@
     closeChatMenu()
     deleteModalChatId = chatId
     deleteModalOpen = true
+    console.log('[DEBUG] handleMenuDelete: opening modal for chat', chatId)
   }
 
   async function handleMenuExport(chatId, event) {
@@ -172,14 +173,26 @@
   }
 
   async function confirmDeleteModal() {
+    console.log('[DEBUG] confirmDeleteModal called, chatId:', deleteModalChatId)
     if (!deleteModalChatId) return
     const chatId = deleteModalChatId
     deleteModalOpen = false
     deleteModalChatId = null
-    await props.onDeleteChat?.(chatId)
+    try {
+      console.log('[DEBUG] calling onDeleteChat for:', chatId, 'onDeleteChat exists:', !!props.onDeleteChat)
+      if (!props.onDeleteChat) {
+        console.error('[DEBUG] onDeleteChat prop is undefined!')
+        return
+      }
+      await props.onDeleteChat(chatId)
+      console.log('[DEBUG] onDeleteChat completed for:', chatId)
+    } catch (err) {
+      console.error('Failed to delete chat:', err)
+    }
   }
 
   function cancelDeleteModal() {
+    console.log('[DEBUG] cancelDeleteModal called')
     deleteModalOpen = false
     deleteModalChatId = null
   }
