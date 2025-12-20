@@ -2,6 +2,7 @@ import { defineConfig } from 'vite';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 import Icons from 'unplugin-icons/vite';
 import { viteSingleFile } from 'vite-plugin-singlefile';
+import { visualizer } from 'rollup-plugin-visualizer';
 import { execSync } from 'child_process';
 
 // Get git commit hash (first 4 characters)
@@ -21,6 +22,12 @@ export default defineConfig({
       compiler: 'svelte',
     }),
     viteSingleFile(),
+    visualizer({
+      filename: 'stats.json',
+      template: 'raw-data',
+      gzipSize: true,
+      brotliSize: true,
+    }),
   ],
   define: {
     __GIT_HASH__: JSON.stringify(getGitHash()),
