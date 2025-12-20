@@ -648,6 +648,8 @@
     padding-right: env(safe-area-inset-right, 0px);
     padding-bottom: env(safe-area-inset-bottom, 0px);
     padding-left: env(safe-area-inset-left, 0px);
+    /* Smooth slide animation */
+    transition: width 200ms cubic-bezier(0.4, 0, 0.2, 1);
   }
   .sidebar.collapsed { width: 52px; overflow-x: visible; padding: 0; }
   :global(:root[data-theme='dark']) .sidebar {
@@ -743,6 +745,19 @@
     gap: 4px;
     box-shadow: 0 8px 18px rgba(0,0,0,0.18);
     z-index: 200;
+    animation: preset-menu-enter 180ms cubic-bezier(0.2, 0.9, 0.3, 1);
+    transform-origin: top left;
+  }
+
+  @keyframes preset-menu-enter {
+    from {
+      opacity: 0;
+      transform: scale(0.92) translateY(-4px);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1) translateY(0);
+    }
   }
   .sidebar.collapsed .preset-menu { left: 8px; right: auto; width: 220px; }
   .preset-menu-item {

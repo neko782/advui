@@ -519,12 +519,13 @@
     overflow-y: auto;
     overscroll-behavior: contain;
     opacity: 0;
-    transform: translateY(6px);
-    transition: opacity .12s ease, transform .12s ease;
+    transform: scale(0.95) translateY(8px);
+    transform-origin: bottom left;
+    transition: opacity 180ms cubic-bezier(0.2, 0.9, 0.3, 1), transform 180ms cubic-bezier(0.2, 0.9, 0.3, 1);
     pointer-events: none;
     z-index: 20;
   }
-  .chat-settings-group.open .chat-settings-menu { opacity: 1; pointer-events: auto; transform: translateY(0); }
+  .chat-settings-group.open .chat-settings-menu { opacity: 1; pointer-events: auto; transform: scale(1) translateY(0); }
   .chat-settings-group::before { content: ''; position: absolute; left: 0; bottom: 100%; width: 220px; height: 12px; }
 
   /* Model section with preset button */
@@ -578,6 +579,19 @@
     max-height: 300px;
     overflow-y: auto;
     min-width: 220px;
+    animation: preset-menu-enter 180ms cubic-bezier(0.2, 0.9, 0.3, 1);
+    transform-origin: bottom left;
+  }
+
+  @keyframes preset-menu-enter {
+    from {
+      opacity: 0;
+      transform: scale(0.92) translateY(4px);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1) translateY(0);
+    }
   }
   .preset-menu-item {
     display: grid;
