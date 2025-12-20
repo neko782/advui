@@ -1380,19 +1380,17 @@
     position: relative;
     white-space: nowrap;
     cursor: pointer;
-    border-radius: 999px;
-    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    border-radius: 10px;
+    transition: color 0.15s ease, background 0.15s ease;
   }
   .tab:hover:not(.active) {
     color: var(--text);
-    background: color-mix(in srgb, var(--border) 50%, transparent);
+    background: color-mix(in srgb, var(--border) 40%, transparent);
   }
   .tab:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   .tab.active {
-    color: #fff;
-    font-weight: 600;
-    background: var(--accent);
-    box-shadow: 0 2px 8px color-mix(in srgb, var(--accent) 40%, transparent);
+    color: var(--text);
+    background: color-mix(in srgb, var(--border) 60%, transparent);
   }
   .modal-body { flex: 1; overflow: hidden; }
   .modal-scroller {
