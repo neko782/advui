@@ -533,21 +533,23 @@
     display: grid;
     place-items: center;
     border-radius: 10px;
-    border: 2px solid color-mix(in srgb, var(--accent) 50%, var(--border));
-    background: var(--bg);
-    color: var(--text);
+    border: 1px solid var(--accent);
+    background: color-mix(in srgb, var(--accent) 10%, var(--bg));
+    color: var(--accent);
     line-height: 1;
     transition: background-color .15s ease, border-color .15s ease, color .15s ease, transform .1s ease, box-shadow .15s ease;
+    box-shadow: 0 2px 8px color-mix(in srgb, var(--accent) 15%, transparent);
   }
   .float-btn:hover:not(:disabled) {
-    background: var(--panel);
+    background: color-mix(in srgb, var(--accent) 20%, var(--bg));
     border-color: var(--accent);
-    color: var(--accent);
+    box-shadow: 0 4px 12px color-mix(in srgb, var(--accent) 25%, transparent);
   }
   .float-btn:active:not(:disabled) {
     transform: scale(0.95);
+    box-shadow: 0 1px 4px color-mix(in srgb, var(--accent) 15%, transparent);
   }
-  .float-btn:disabled { background: var(--bg); border-color: var(--muted); color: var(--muted); cursor: not-allowed; opacity: 0.6; }
+  .float-btn:disabled { background: var(--bg); border-color: var(--muted); color: var(--muted); cursor: not-allowed; opacity: 0.6; box-shadow: none; }
   .stop-btn { background: #ef4444; border-color: #ef4444; color: #fff; box-shadow: 0 2px 8px rgba(239, 68, 68, 0.3); }
   .stop-btn:hover:not(:disabled) { background: #dc2626; border-color: #dc2626; box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4); }
   .stop-btn:active:not(:disabled) { box-shadow: 0 1px 4px rgba(239, 68, 68, 0.25); }
