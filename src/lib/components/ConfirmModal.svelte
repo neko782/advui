@@ -6,6 +6,10 @@
     confirmText?: string
     cancelText?: string
     danger?: boolean
+    checkbox?: boolean
+    checkboxLabel?: string
+    checkboxChecked?: boolean
+    onCheckboxChange?: (checked: boolean) => void
     onConfirm?: () => void
     onCancel?: () => void
   }
@@ -22,6 +26,11 @@
 
   function handleCancel() {
     props.onCancel?.()
+  }
+
+  function handleCheckbox(e: Event) {
+    const target = e.target as HTMLInputElement
+    props.onCheckboxChange?.(target.checked)
   }
 </script>
 
@@ -50,6 +59,12 @@
             <div id="modal-title" class="title">{props.title || 'Confirm'}</div>
             <p class="message">{props.message || 'Are you sure?'}</p>
           </div>
+          {#if props.checkbox}
+            <label class="checkbox-row">
+              <input type="checkbox" checked={props.checkboxChecked} onchange={handleCheckbox} />
+              <span class="checkbox-label">{props.checkboxLabel || "Don't ask again"}</span>
+            </label>
+          {/if}
         </div>
         <footer class="modal-footer">
           <button type="button" class="btn btn-secondary" onclick={handleCancel}>
@@ -154,6 +169,26 @@
     display: flex;
     flex-direction: column;
     gap: 8px;
+  }
+
+  .checkbox-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    margin-top: 4px;
+  }
+
+  .checkbox-row input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    accent-color: var(--accent);
+    cursor: pointer;
+  }
+
+  .checkbox-label {
+    font-size: 0.85rem;
+    color: var(--muted);
   }
 
   .title {

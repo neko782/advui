@@ -7,6 +7,7 @@
   import { copyText as copyToClipboard } from './utils/clipboard'
   import MessageList from './components/chat/MessageList.svelte'
   import Composer from './components/chat/Composer.svelte'
+  import ConfirmModal from './components/ConfirmModal.svelte'
   import { storeImage, generateImageId, fileToBase64, getImage } from './imageStore'
 
   // Chat module imports
@@ -149,6 +150,11 @@
   // Editing state
   let editingId = $state<number | null>(null)
   let editingText = $state('')
+
+  // Delete confirmation state (session-only, resets on page refresh)
+  let skipDeleteConfirm = $state(false)
+  let deleteModalOpen = $state(false)
+  let deleteModalMessageId = $state<number | null>(null)
 
   // Notices
   let sanitizerNotice = $state('')
@@ -732,8 +738,17 @@
     try { await copyToClipboard(text) } catch {}
   }
 
-  function handleDeleteMessage(messageId) {
+  function requestDeleteMessage(messageId: number) {
     if (locked) return
+    if (skipDeleteConfirm) {
+      executeDeleteMessage(messageId)
+      return
+    }
+    deleteModalMessageId = messageId
+    deleteModalOpen = true
+  }
+
+  function executeDeleteMessage(messageId: number) {
     const ok = applyChatMutation(
       `delete message ${messageId}`,
       (draft) => {
@@ -743,6 +758,19 @@
       { allowDelete: true }
     )
     if (ok) persistNow()
+  }
+
+  function confirmDeleteMessage() {
+    if (deleteModalMessageId != null) {
+      executeDeleteMessage(deleteModalMessageId)
+    }
+    deleteModalOpen = false
+    deleteModalMessageId = null
+  }
+
+  function cancelDeleteMessage() {
+    deleteModalOpen = false
+    deleteModalMessageId = null
   }
 
   function handleSetMessageRole(id, role) {
@@ -1797,7 +1825,7 @@
     onRefreshAssistant={(id) => refreshAssistant(id)}
     onRefreshAfterUserIndex={(i) => refreshAfterUserIndex(i)}
     onCopy={(text) => copyMessage(text)}
-    onDelete={(id) => handleDeleteMessage(id)}
+    onDelete={(id) => requestDeleteMessage(id)}
     onEdit={(id) => editMessage(id)}
     onMoveDown={(id) => handleMoveDown(id)}
     onMoveUp={(id) => handleMoveUp(id)}
@@ -1866,6 +1894,21 @@
       title={forcedLock ? 'Clear simulated lock' : 'Simulate persisted lock leak'}
     />
   {/if}
+
+  <ConfirmModal
+    open={deleteModalOpen}
+    title="Delete message"
+    message="Are you sure you want to delete this message?"
+    confirmText="Delete"
+    cancelText="Cancel"
+    danger={true}
+    checkbox={true}
+    checkboxLabel="Don't ask again this session"
+    checkboxChecked={skipDeleteConfirm}
+    onCheckboxChange={(checked) => (skipDeleteConfirm = checked)}
+    onConfirm={confirmDeleteMessage}
+    onCancel={cancelDeleteMessage}
+  />
 </section>
 
 <style>
