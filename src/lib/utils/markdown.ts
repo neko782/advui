@@ -63,13 +63,8 @@ function escapeHtml(text: string): string {
     .replace(/"/g, '&quot;');
 }
 
-// Create marked instance with custom renderer
-const marked = new Marked({
-  breaks: true,
-  gfm: true,
-});
-
-marked.use({
+// Custom renderer shared between instances
+const customRenderer = {
   renderer: {
     code(token) {
       const rawCode = token.text;
@@ -126,14 +121,30 @@ marked.use({
       return `<a href="${escapeHtml(href)}"${titleAttr} target="_blank" rel="noopener noreferrer">${text}</a>`;
     },
   },
-});
+};
+
+// Create two marked instances: one with HTML disabled (default), one with HTML enabled
+const markedNoHtml = new Marked({ breaks: true, gfm: true });
+markedNoHtml.use(customRenderer);
+
+const markedWithHtml = new Marked({ breaks: true, gfm: true });
+markedWithHtml.use(customRenderer);
 
 // LRU cache for rendered markdown (max 200 entries to avoid memory bloat)
-const cache = new Map<string, string>();
+// Separate caches for html-enabled and html-disabled to avoid conflicts
+const cacheNoHtml = new Map<string, string>();
+const cacheWithHtml = new Map<string, string>();
 const MAX_CACHE_SIZE = 200;
 
-export function renderMarkdown(src: string): string {
+export interface RenderMarkdownOptions {
+  allowInlineHtml?: boolean;
+}
+
+export function renderMarkdown(src: string, options: RenderMarkdownOptions = {}): string {
+  const { allowInlineHtml = false } = options;
   const key = String(src || '');
+  const cache = allowInlineHtml ? cacheWithHtml : cacheNoHtml;
+  const marked = allowInlineHtml ? markedWithHtml : markedNoHtml;
 
   // Return cached result if available
   if (cache.has(key)) {

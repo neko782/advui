@@ -248,6 +248,7 @@ export interface Settings {
   keybinds: Keybinds;
   showThinkingSettings: boolean;
   fancyEffects: boolean;
+  allowInlineHtml: boolean;
   defaultChat: DefaultChatSettings;
   model: string;
 }

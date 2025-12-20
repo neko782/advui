@@ -7,6 +7,7 @@
     message: Message
     isEditing?: boolean
     editingText?: string
+    allowInlineHtml?: boolean
     onEditInput?: (text: string) => void
     onEditKeydown?: (e: KeyboardEvent) => void
   }
@@ -229,7 +230,7 @@ function attachmentMimeLabel(attachment) {
       </button>
       {#if reasoningOpen}
         <div class="reasoning-body">
-          {@html renderMarkdown(reasoningSummaryText)}
+          {@html renderMarkdown(reasoningSummaryText, { allowInlineHtml: props.allowInlineHtml })}
         </div>
       {/if}
     </div>
@@ -238,7 +239,7 @@ function attachmentMimeLabel(attachment) {
     <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions a11y_no_noninteractive_element_interactions -->
     <div class={`bubble ${props.message.role}`} data-typing={true} onclick={handleBubbleClick}>
       {#if props.message.content && props.message.content !== 'typing'}
-          {@html renderMarkdown(props.message.content)}
+          {@html renderMarkdown(props.message.content, { allowInlineHtml: props.allowInlineHtml })}
       {:else}
         <span class="dots"><i></i><i></i><i></i></span>
       {/if}
@@ -283,7 +284,7 @@ function attachmentMimeLabel(attachment) {
     {#if props.message.content}
       <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions a11y_no_noninteractive_element_interactions -->
       <div class={`bubble ${props.message.role}`} onclick={handleBubbleClick}>
-        {@html renderMarkdown(props.message.content)}
+        {@html renderMarkdown(props.message.content, { allowInlineHtml: props.allowInlineHtml })}
       </div>
     {/if}
     {#if props.message.generatedImages && props.message.generatedImages.length > 0}

@@ -833,6 +833,20 @@
                 <span class="switch-label">Fancy effects</span>
               </label>
               <p class="hint">Enable blur effects, shadows, and animations. Disable for better performance on slower devices.</p>
+              <label class="switch" title="Allow inline HTML">
+                <input
+                  type="checkbox"
+                  checked={!!local.allowInlineHtml}
+                  onchange={(event) => {
+                    local.allowInlineHtml = !!event.currentTarget.checked
+                    persistSettings()
+                  }}
+                  aria-label="Allow inline HTML"
+                />
+                <span class="switch-ui" aria-hidden="true"></span>
+                <span class="switch-label">Allow inline HTML</span>
+              </label>
+              <p class="hint">Allow HTML tags in markdown messages. Disabled by default for security.</p>
             </section>
             <section class="group">
               <div class="group-title">Data</div>

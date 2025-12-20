@@ -19,6 +19,7 @@
     parentId?: number | null
     branchIndex?: number
     branchesLength?: number
+    allowInlineHtml?: boolean
     onSetRole?: (id: number, role: MessageRole) => void
     onEditInput?: (text: string) => void
     onEditKeydown?: (e: KeyboardEvent) => void
@@ -58,6 +59,7 @@
       message={m}
       isEditing={isEditing}
       editingText={props.editingText}
+      allowInlineHtml={props.allowInlineHtml}
       onEditInput={(t) => props.onEditInput?.(t)}
       onEditKeydown={props.onEditKeydown}
     />

@@ -1841,6 +1841,7 @@
     debug={debug}
     editingId={editingId}
     editingText={editingText}
+    allowInlineHtml={settings?.allowInlineHtml}
     followingMap={computeFollowingMap(nodes, rootId)}
     onDismissNotice={dismissNotice}
     onSetRole={(id, role) => handleSetMessageRole(id, role)}

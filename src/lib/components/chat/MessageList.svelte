@@ -12,6 +12,7 @@
     debug?: boolean
     editingId?: number | null
     editingText?: string
+    allowInlineHtml?: boolean
     followingMap?: Record<number, { has: boolean; id?: number; typing?: boolean }>
     onDismissNotice?: () => void
     onSetRole?: (id: number, role: MessageRole) => void
@@ -66,6 +67,7 @@
       parentId={(vm?.i > 0 && props.items?.[vm.i - 1]?.m?.id) ? props.items[vm.i - 1].m.id : null}
       branchIndex={(typeof vm?.variantIndex === 'number') ? vm.variantIndex : 0}
       branchesLength={(typeof vm?.variantsLength === 'number') ? vm.variantsLength : 1}
+      allowInlineHtml={props.allowInlineHtml}
       onSetRole={props.onSetRole}
       onEditInput={props.onEditInput}
       onEditKeydown={props.onEditKeydown}
