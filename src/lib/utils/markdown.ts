@@ -134,6 +134,10 @@ marked.use({
       return allowHtml ? token.raw : escapeHtml(token.raw);
     },
   },
+  // Disable indented code blocks (only allow fenced ```)
+  tokenizer: {
+    code(): false { return false; },
+  },
 });
 
 // LRU cache for rendered markdown (keyed by content + html setting)
