@@ -247,6 +247,7 @@ export interface Settings {
   apiMode: ApiMode;
   keybinds: Keybinds;
   showThinkingSettings: boolean;
+  fancyEffects: boolean;
   defaultChat: DefaultChatSettings;
   model: string;
 }

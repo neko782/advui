@@ -127,6 +127,10 @@
       const settings = loadSettings()
       appSettings = settings
       presets = Array.isArray(settings?.presets) ? settings.presets : []
+      // Apply fancy effects attribute to root element
+      if (typeof document !== 'undefined') {
+        document.documentElement.setAttribute('data-fancy-effects', settings?.fancyEffects ? 'true' : 'false')
+      }
     } catch {
       appSettings = null
       presets = []
@@ -320,5 +324,6 @@
     visibility: hidden;
     pointer-events: none;
   }
-  .app-fade { position: absolute; inset: 0; pointer-events: none; background: linear-gradient(180deg, transparent, transparent 35%, rgba(0,0,0,0.06) 100%); opacity: .18; mix-blend-mode: multiply; }
+  .app-fade { position: absolute; inset: 0; pointer-events: none; background: linear-gradient(180deg, transparent, transparent 35%, rgba(0,0,0,0.06) 100%); opacity: .18; }
+  :global(:root[data-fancy-effects="true"]) .app-fade { mix-blend-mode: multiply; }
 </style>

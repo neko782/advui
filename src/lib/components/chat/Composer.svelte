@@ -569,15 +569,20 @@
     background: var(--panel);
     border: 1px solid var(--border);
     border-radius: 12px;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15), 0 2px 8px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
     opacity: 0;
-    transform: translateY(8px) scale(0.96);
-    transition: opacity .15s ease, transform .15s ease;
     pointer-events: none;
     min-width: 160px;
     z-index: 10;
   }
-  .send-group:hover .send-menu, .send-group:focus-within .send-menu { opacity: 1; transform: translateY(0) scale(1); pointer-events: auto; }
+  :global(:root[data-fancy-effects="true"]) .send-menu {
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15), 0 2px 8px rgba(0, 0, 0, 0.1);
+    transform: translateY(8px) scale(0.96);
+    transition: opacity .15s ease, transform .15s ease;
+  }
+  .send-group:hover .send-menu, .send-group:focus-within .send-menu { opacity: 1; pointer-events: auto; }
+  :global(:root[data-fancy-effects="true"]) .send-group:hover .send-menu,
+  :global(:root[data-fancy-effects="true"]) .send-group:focus-within .send-menu { transform: translateY(0) scale(1); }
   .menu-item {
     width: 100%;
     text-align: left;

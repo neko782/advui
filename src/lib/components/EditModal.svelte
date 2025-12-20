@@ -101,6 +101,8 @@
     position: fixed;
     inset: 0;
     z-index: 1000;
+  }
+  :global(:root[data-fancy-effects="true"]) .modal-overlay {
     animation: fadeIn 0.15s ease-out;
   }
 
@@ -124,11 +126,13 @@
     position: fixed;
     inset: 0;
     background: rgba(0, 0, 0, 0.4);
-    backdrop-filter: blur(4px);
-    -webkit-backdrop-filter: blur(4px);
     border: 0;
     padding: 0;
     cursor: pointer;
+  }
+  :global(:root[data-fancy-effects="true"]) .backdrop {
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
   }
 
   .modal {
@@ -146,16 +150,19 @@
     background: var(--panel);
     border: 1px solid var(--border);
     border-radius: 16px;
-    box-shadow:
-      0 0 0 1px rgba(0, 0, 0, 0.03),
-      0 4px 8px rgba(0, 0, 0, 0.04),
-      0 16px 32px rgba(0, 0, 0, 0.08),
-      0 32px 64px rgba(0, 0, 0, 0.12);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
     color: var(--text);
     display: flex;
     flex-direction: column;
     overflow: hidden;
     pointer-events: auto;
+  }
+  :global(:root[data-fancy-effects="true"]) .panel {
+    box-shadow:
+      0 0 0 1px rgba(0, 0, 0, 0.03),
+      0 4px 8px rgba(0, 0, 0, 0.04),
+      0 16px 32px rgba(0, 0, 0, 0.08),
+      0 32px 64px rgba(0, 0, 0, 0.12);
     animation: slideUp 0.2s ease-out;
   }
 
@@ -279,6 +286,9 @@
     .panel {
       width: 100%;
       border-radius: 20px 20px 12px 12px;
+    }
+
+    :global(:root[data-fancy-effects="true"]) .panel {
       animation: slideUpMobile 0.25s ease-out;
     }
 

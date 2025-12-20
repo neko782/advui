@@ -743,10 +743,13 @@
     padding: 6px;
     display: grid;
     gap: 4px;
-    box-shadow: 0 8px 18px rgba(0,0,0,0.18);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.12);
     z-index: 200;
-    animation: preset-menu-enter 180ms cubic-bezier(0.2, 0.9, 0.3, 1);
     transform-origin: top left;
+  }
+  :global(:root[data-fancy-effects="true"]) .preset-menu {
+    box-shadow: 0 8px 18px rgba(0,0,0,0.18);
+    animation: preset-menu-enter 180ms cubic-bezier(0.2, 0.9, 0.3, 1);
   }
 
   @keyframes preset-menu-enter {
@@ -1016,15 +1019,18 @@
     display: flex;
     flex-direction: column;
     gap: 2px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+    z-index: 100;
+    min-width: 150px;
+    transform-origin: top right;
+  }
+  :global(:root[data-fancy-effects="true"]) .chat-menu {
     box-shadow:
       0 0 0 1px rgba(0,0,0,0.03),
       0 2px 4px rgba(0,0,0,0.04),
       0 8px 16px rgba(0,0,0,0.08),
       0 16px 32px rgba(0,0,0,0.06);
-    z-index: 100;
-    min-width: 150px;
     animation: chat-menu-enter 180ms cubic-bezier(0.2, 0.9, 0.3, 1);
-    transform-origin: top right;
   }
 
   @keyframes chat-menu-enter {
@@ -1039,6 +1045,9 @@
   }
 
   :global(:root[data-theme='dark']) .chat-menu {
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+  }
+  :global(:root[data-theme='dark'][data-fancy-effects="true"]) .chat-menu {
     box-shadow:
       0 0 0 1px rgba(255,255,255,0.04),
       0 2px 4px rgba(0,0,0,0.2),
@@ -1094,7 +1103,8 @@
   .side-footer { padding: 8px; border-top: 1px solid var(--border); margin-top: auto; }
   /* Remove horizontal separator in collapsed mode */
   .sidebar.collapsed .side-footer { border-top: 0; }
-  .side-fade { position: absolute; inset: 0; pointer-events: none; background: linear-gradient(180deg, transparent, transparent 40%, rgba(0,0,0,0.04) 100%); mix-blend-mode: multiply; opacity: .35; }
+  .side-fade { position: absolute; inset: 0; pointer-events: none; background: linear-gradient(180deg, transparent, transparent 40%, rgba(0,0,0,0.04) 100%); opacity: .35; }
+  :global(:root[data-fancy-effects="true"]) .side-fade { mix-blend-mode: multiply; }
 
   /* Search styles */
   .search-wrapper {

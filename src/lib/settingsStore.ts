@@ -160,6 +160,7 @@ function attachCompatFields(out: Partial<Settings> & Record<string, unknown>): S
   out.apiKey = typeof activeConnection?.apiKey === 'string' ? activeConnection.apiKey : '';
   out.apiBaseUrl = normalizeApiBaseUrl(activeConnection?.apiBaseUrl);
   out.showThinkingSettings = !!out.showThinkingSettings;
+  out.fancyEffects = !!out.fancyEffects;
   return out as Settings;
 }
 
@@ -208,6 +209,7 @@ export function loadSettings(): Settings {
     apiMode: 'responses' as ApiMode,
     keybinds: { ...DEFAULT_KEYBINDS },
     showThinkingSettings: false,
+    fancyEffects: false,
   });
   const parsed = safeRead<Record<string, unknown> | null>(SETTINGS_KEY, null, (value) => (value && typeof value === 'object' ? value as Record<string, unknown> : null));
   if (!parsed) return defaults;
@@ -244,6 +246,7 @@ export function loadSettings(): Settings {
     const apiBaseUrl = normalizeApiBaseUrl(parsed?.apiBaseUrl);
     const keybinds = normalizeKeybinds(parsed?.keybinds);
     const showThinkingSettings = !!parsed?.showThinkingSettings;
+    const fancyEffects = !!parsed?.fancyEffects;
     return attachCompatFields({
       apiKey,
       apiBaseUrl,
@@ -255,6 +258,7 @@ export function loadSettings(): Settings {
       apiMode: mode,
       keybinds,
       showThinkingSettings,
+      fancyEffects,
     });
   } catch (err) {
     console.error('Failed to load settings, falling back to defaults:', err);
@@ -294,6 +298,7 @@ export function saveSettings(next: Partial<Settings>): Settings {
   const activeApiMode: ApiMode = API_MODE_VALUES.has(activeConnection?.apiMode) ? activeConnection.apiMode : 'responses';
   const keybinds = normalizeKeybinds(next?.keybinds);
   const showThinkingSettings = !!next?.showThinkingSettings;
+  const fancyEffects = !!next?.fancyEffects;
   const data = attachCompatFields({
     apiKey: typeof next?.apiKey === 'string' ? next.apiKey : '',
     apiBaseUrl: normalizeApiBaseUrl(next?.apiBaseUrl),
@@ -305,6 +310,7 @@ export function saveSettings(next: Partial<Settings>): Settings {
     apiMode: activeApiMode,
     keybinds,
     showThinkingSettings,
+    fancyEffects,
   });
   const ok = safeWrite(SETTINGS_KEY, data);
   if (!ok) {

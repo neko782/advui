@@ -819,6 +819,20 @@
                 <span class="switch-label">Anthropic thinking controls</span>
               </label>
               <p class="hint">Enable control of Anthropic-style thinking parameters in chat settings.</p>
+              <label class="switch" title="Fancy effects">
+                <input
+                  type="checkbox"
+                  checked={!!local.fancyEffects}
+                  onchange={(event) => {
+                    local.fancyEffects = !!event.currentTarget.checked
+                    persistSettings()
+                  }}
+                  aria-label="Fancy effects"
+                />
+                <span class="switch-ui" aria-hidden="true"></span>
+                <span class="switch-label">Fancy effects</span>
+              </label>
+              <p class="hint">Enable blur effects, shadows, and animations. Disable for better performance on slower devices.</p>
             </section>
             <section class="group">
               <div class="group-title">Data</div>
@@ -1299,11 +1313,13 @@
   .backdrop {
     position: fixed; inset: 0;
     background: rgba(0,0,0,0.6);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
     z-index: 1000;
     border: 0;
     padding: 0;
+  }
+  :global(:root[data-fancy-effects="true"]) .backdrop {
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
     animation: backdrop-fade-in 0.2s ease-out;
   }
   @keyframes backdrop-fade-in {
@@ -1322,17 +1338,23 @@
     background: var(--panel);
     border: 1px solid var(--border);
     border-radius: 20px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    color: var(--text);
+    display: flex; flex-direction: column;
+    overflow: hidden;
+  }
+  :global(:root[data-fancy-effects="true"]) .panel {
     box-shadow:
       0 0 0 1px rgba(0,0,0,0.03),
       0 4px 12px rgba(0,0,0,0.08),
       0 16px 48px rgba(0,0,0,0.12),
       0 24px 64px rgba(0,0,0,0.08);
-    color: var(--text);
-    display: flex; flex-direction: column;
-    overflow: hidden;
     animation: panel-slide-in 0.25s cubic-bezier(0.16, 1, 0.3, 1);
   }
   :global(:root[data-theme='dark']) .panel {
+    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+  }
+  :global(:root[data-theme='dark'][data-fancy-effects="true"]) .panel {
     box-shadow:
       0 0 0 1px rgba(255,255,255,0.05),
       0 4px 12px rgba(0,0,0,0.3),

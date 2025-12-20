@@ -574,13 +574,16 @@
     padding: 6px;
     display: grid;
     gap: 4px;
-    box-shadow: 0 8px 18px rgba(0,0,0,0.18);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.12);
     z-index: 300;
     max-height: 300px;
     overflow-y: auto;
     min-width: 220px;
-    animation: preset-menu-enter 180ms cubic-bezier(0.2, 0.9, 0.3, 1);
     transform-origin: bottom left;
+  }
+  :global(:root[data-fancy-effects="true"]) .preset-menu {
+    box-shadow: 0 8px 18px rgba(0,0,0,0.18);
+    animation: preset-menu-enter 180ms cubic-bezier(0.2, 0.9, 0.3, 1);
   }
 
   @keyframes preset-menu-enter {
