@@ -123,17 +123,21 @@ const customRenderer = {
   },
 };
 
-// Create two marked instances: one with HTML disabled (default), one with HTML enabled
-const markedNoHtml = new Marked({ breaks: true, gfm: true });
-markedNoHtml.use(customRenderer);
+// Flag checked by html renderer
+let allowHtml = false;
 
-const markedWithHtml = new Marked({ breaks: true, gfm: true });
-markedWithHtml.use(customRenderer);
+const marked = new Marked({ breaks: true, gfm: true });
+marked.use(customRenderer);
+marked.use({
+  renderer: {
+    html(token) {
+      return allowHtml ? token.raw : escapeHtml(token.raw);
+    },
+  },
+});
 
-// LRU cache for rendered markdown (max 200 entries to avoid memory bloat)
-// Separate caches for html-enabled and html-disabled to avoid conflicts
-const cacheNoHtml = new Map<string, string>();
-const cacheWithHtml = new Map<string, string>();
+// LRU cache for rendered markdown (keyed by content + html setting)
+const cache = new Map<string, string>();
 const MAX_CACHE_SIZE = 200;
 
 export interface RenderMarkdownOptions {
@@ -141,10 +145,9 @@ export interface RenderMarkdownOptions {
 }
 
 export function renderMarkdown(src: string, options: RenderMarkdownOptions = {}): string {
-  const { allowInlineHtml = false } = options;
-  const key = String(src || '');
-  const cache = allowInlineHtml ? cacheWithHtml : cacheNoHtml;
-  const marked = allowInlineHtml ? markedWithHtml : markedNoHtml;
+  allowHtml = !!options.allowInlineHtml;
+  const text = String(src || '');
+  const key = `${allowHtml ? '1' : '0'}:${text}`;
 
   // Return cached result if available
   if (cache.has(key)) {
@@ -156,7 +159,7 @@ export function renderMarkdown(src: string, options: RenderMarkdownOptions = {})
   }
 
   // Render and cache
-  const result = marked.parse(key) as string;
+  const result = marked.parse(text) as string;
   cache.set(key, result);
 
   // Evict oldest entry if cache is full
