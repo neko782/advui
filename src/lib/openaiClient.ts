@@ -1,7 +1,6 @@
 // Client-side OpenAI helper for Responses and Chat Completions APIs
-// Uses the official OpenAI SDK only (no fetch fallback)
+// Uses native fetch for minimal bundle size
 
-import OpenAI from 'openai';
 import { loadSettings, findConnection } from './settingsStore.js';
 import { toIntOrNull, toClampedNumber } from './utils/numbers.js';
 import type {
@@ -96,11 +95,16 @@ function ensureDataUrl(data: unknown, mimeType: string | undefined): string {
   return `data:${mime};base64,${data}`;
 }
 
+interface FetchClientConfig {
+  apiKey: string;
+  baseURL: string;
+}
+
 export async function getClient(options: {
   settings?: Settings | null;
   connectionId?: string | null;
   connection?: Partial<Connection> | null;
-} = {}): Promise<OpenAI | null> {
+} = {}): Promise<FetchClientConfig | null> {
   const settings = options.settings || loadSettings();
   const connection = resolveConnection({
     connectionId: options.connectionId,
@@ -110,7 +114,10 @@ export async function getClient(options: {
   if (!connection.apiKey) return null;
   const clientOptions = buildClientOptions(connection);
   if (!clientOptions) return null;
-  return new OpenAI(clientOptions);
+  return {
+    apiKey: clientOptions.apiKey,
+    baseURL: clientOptions.baseURL || 'https://api.openai.com/v1',
+  };
 }
 
 function pickActivePreset(settings: Settings | null): { model: string; streaming: boolean; connectionId: string | null } {
@@ -179,24 +186,17 @@ export async function respond(options: RespondOptions): Promise<GenerationRespon
   const apiMode = resolvedConnection.apiMode === 'chat_completions' ? 'chat_completions' : 'responses';
   const useChatCompletions = apiMode === 'chat_completions';
 
-  // SDK call only
+  // Build fetch config
   const effectiveConnectionId = resolvedConnection.id || preferredConnectionId || null;
-  const client = await getClient({
+  const clientConfig = await getClient({
     settings,
     connectionId: effectiveConnectionId,
     connection: { ...resolvedConnection, id: effectiveConnectionId } as Connection,
   });
-  if (!client) {
-    throw new Error('OpenAI SDK is not available or is outdated.');
+  if (!clientConfig) {
+    throw new Error('Missing API configuration.');
   }
-  const supportsResponses = !!(client as unknown as { responses?: { create?: unknown } })?.responses?.create;
-  const supportsChatCompletions = !!client?.chat?.completions?.create;
-  if (useChatCompletions && !supportsChatCompletions) {
-    throw new Error('OpenAI SDK does not support the Chat Completions API.');
-  }
-  if (!useChatCompletions && !supportsResponses) {
-    throw new Error('OpenAI SDK is not available or is outdated.');
-  }
+  const { apiKey, baseURL } = clientConfig;
 
   const provideAbort = (fn: () => void): void => {
     if (typeof onAbort !== 'function') return;
@@ -397,19 +397,30 @@ export async function respond(options: RespondOptions): Promise<GenerationRespon
 
   if (stream) {
     if (useChatCompletions) {
-      const abortController = (typeof AbortController === 'function') ? new AbortController() : null;
-      if (abortController) {
-        provideAbort(() => {
-          try { abortController.abort(); } catch { /* ignore */ }
-        });
-      }
-      const streamIt = await client.chat.completions.create(
-        { ...chatRequest, stream: true } as Parameters<typeof client.chat.completions.create>[0],
-        abortController ? { signal: abortController.signal } : undefined,
-      );
+      const abortController = new AbortController();
       provideAbort(() => {
-        try { (streamIt as unknown as { controller?: { abort?: () => void } }).controller?.abort?.(); } catch { /* ignore */ }
+        try { abortController.abort(); } catch { /* ignore */ }
       });
+
+      const response = await fetch(`${baseURL}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({ ...chatRequest, stream: true }),
+        signal: abortController.signal,
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => '');
+        throw new Error(`API error ${response.status}: ${errorText}`);
+      }
+
+      const reader = response.body?.getReader();
+      if (!reader) throw new Error('No response body');
+      const decoder = new TextDecoder();
+
       let full = '';
       const summaryByIndex = new Map<number, string>();
       let summaryDelivered = false;
@@ -422,64 +433,82 @@ export async function respond(options: RespondOptions): Promise<GenerationRespon
         const combined = ordered.join('\n\n\n');
         return normalizeReasoningText(combined);
       };
+
+      let buffer = '';
       try {
-        for await (const chunk of streamIt) {
-          try { onEvent?.(chunk); } catch { /* ignore */ }
-          const deltaText = collectChatDeltaText(chunk);
-          if (deltaText) {
-            full += deltaText;
-            try { onTextDelta?.(full); } catch { /* ignore */ }
-          }
-          // Check for top-level reasoning field in chunk
-          const topLevelReasoning = collectChatReasoningContent((chunk as unknown as { reasoning?: unknown })?.reasoning);
-          if (topLevelReasoning) {
-            const prev = summaryByIndex.get(0) || '';
-            const next = topLevelReasoning;
-            if (next !== prev) {
-              summaryByIndex.set(0, next);
-              const summary = buildSummary();
-              try { onReasoningSummaryDelta?.(summary, topLevelReasoning, chunk); } catch { /* ignore */ }
-            }
-          }
-          const choices = Array.isArray((chunk as unknown as { choices?: unknown[] })?.choices) ? (chunk as unknown as { choices: unknown[] }).choices : [];
-          let finishReasonSeen = false;
-          for (const choice of choices as Array<{ index?: number; delta?: { reasoning_content?: unknown; reasoning?: unknown }; message?: { reasoning_content?: unknown; reasoning?: unknown }; finish_reason?: string }>) {
-            const idx = Number.isFinite(Number(choice?.index)) ? Number(choice.index) : 0;
-            const prev = summaryByIndex.get(idx) || '';
-            let next = prev;
-            const deltaSummary = collectChatReasoningContent(choice?.delta?.reasoning_content) || collectChatReasoningContent(choice?.delta?.reasoning);
-            if (deltaSummary) {
-              next += deltaSummary;
-            }
-            const messageSummary = collectChatReasoningContent(choice?.message?.reasoning_content) || collectChatReasoningContent(choice?.message?.reasoning);
-            if (messageSummary) {
-              next = messageSummary;
-            }
-            if (next !== prev) {
-              summaryByIndex.set(idx, next);
-              const summary = buildSummary();
-              try { onReasoningSummaryDelta?.(summary, deltaSummary || messageSummary || '', choice); } catch { /* ignore */ }
-            }
-            if (!finishReasonSeen && typeof choice?.finish_reason === 'string' && choice.finish_reason) {
-              finishReasonSeen = true;
-            }
-          }
-          if (finishReasonSeen && !summaryDelivered) {
-            const summary = buildSummary();
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed || trimmed === 'data: [DONE]') continue;
+            if (!trimmed.startsWith('data: ')) continue;
+
             try {
-              onReasoningSummaryDone?.(summary || '', chunk);
-              summaryDelivered = true;
-            } catch { /* ignore */ }
-          }
-          if (finishReasonSeen) {
-            break;
+              const chunk = JSON.parse(trimmed.slice(6));
+              try { onEvent?.(chunk); } catch { /* ignore */ }
+
+              const deltaText = collectChatDeltaText(chunk);
+              if (deltaText) {
+                full += deltaText;
+                try { onTextDelta?.(full); } catch { /* ignore */ }
+              }
+
+              // Check for top-level reasoning field in chunk
+              const topLevelReasoning = collectChatReasoningContent((chunk as Record<string, unknown>)?.reasoning);
+              if (topLevelReasoning) {
+                const prev = summaryByIndex.get(0) || '';
+                const next = topLevelReasoning;
+                if (next !== prev) {
+                  summaryByIndex.set(0, next);
+                  const summary = buildSummary();
+                  try { onReasoningSummaryDelta?.(summary, topLevelReasoning, chunk); } catch { /* ignore */ }
+                }
+              }
+
+              const choices = Array.isArray(chunk?.choices) ? chunk.choices : [];
+              let finishReasonSeen = false;
+              for (const choice of choices as Array<{ index?: number; delta?: { reasoning_content?: unknown; reasoning?: unknown }; message?: { reasoning_content?: unknown; reasoning?: unknown }; finish_reason?: string }>) {
+                const idx = Number.isFinite(Number(choice?.index)) ? Number(choice.index) : 0;
+                const prev = summaryByIndex.get(idx) || '';
+                let next = prev;
+                const deltaSummary = collectChatReasoningContent(choice?.delta?.reasoning_content) || collectChatReasoningContent(choice?.delta?.reasoning);
+                if (deltaSummary) {
+                  next += deltaSummary;
+                }
+                const messageSummary = collectChatReasoningContent(choice?.message?.reasoning_content) || collectChatReasoningContent(choice?.message?.reasoning);
+                if (messageSummary) {
+                  next = messageSummary;
+                }
+                if (next !== prev) {
+                  summaryByIndex.set(idx, next);
+                  const summary = buildSummary();
+                  try { onReasoningSummaryDelta?.(summary, deltaSummary || messageSummary || '', choice); } catch { /* ignore */ }
+                }
+                if (!finishReasonSeen && typeof choice?.finish_reason === 'string' && choice.finish_reason) {
+                  finishReasonSeen = true;
+                }
+              }
+
+              if (finishReasonSeen && !summaryDelivered) {
+                const summary = buildSummary();
+                try {
+                  onReasoningSummaryDone?.(summary || '', chunk);
+                  summaryDelivered = true;
+                } catch { /* ignore */ }
+              }
+            } catch { /* ignore parse errors */ }
           }
         }
-      } catch (err) {
-        throw err;
       } finally {
-        try { (streamIt as unknown as { controller?: { abort?: () => void } }).controller?.abort?.(); } catch { /* ignore */ }
+        reader.releaseLock();
       }
+
       const finalSummary = buildSummary();
       if (!summaryDelivered) {
         try {
@@ -493,18 +522,30 @@ export async function respond(options: RespondOptions): Promise<GenerationRespon
       };
     }
 
-    // Stream via SDK's async iterator
-    const abortController = (typeof AbortController === 'function') ? new AbortController() : null;
-    if (abortController) {
-      provideAbort(() => {
-        try { abortController.abort(); } catch { /* ignore */ }
-      });
-    }
-    const responsesApi = (client as unknown as { responses: { create: (req: unknown, opts?: { signal?: AbortSignal }) => Promise<AsyncIterable<unknown>> } }).responses;
-    const streamIt = await responsesApi.create({ ...request, stream: true }, abortController ? { signal: abortController.signal } : undefined);
+    // Stream Responses API via fetch
+    const abortController = new AbortController();
     provideAbort(() => {
-      try { (streamIt as unknown as { controller?: { abort?: () => void } }).controller?.abort?.(); } catch { /* ignore */ }
+      try { abortController.abort(); } catch { /* ignore */ }
     });
+
+    const response = await fetch(`${baseURL}/responses`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({ ...request, stream: true }),
+      signal: abortController.signal,
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => '');
+      throw new Error(`API error ${response.status}: ${errorText}`);
+    }
+
+    const reader = response.body?.getReader();
+    if (!reader) throw new Error('No response body');
+    const decoder = new TextDecoder();
     let full = '';
     const summaryByIndex = new Map<number, string>();
     let summaryDelivered = false;
@@ -525,8 +566,9 @@ export async function respond(options: RespondOptions): Promise<GenerationRespon
     // Image generation tracking
     const generatedImages: GeneratedImage[] = [];
     let imageGenerationDelivered = false;
-    try {
-      for await (const event of streamIt as AsyncIterable<Record<string, unknown>>) {
+
+    let buffer = '';
+    const processEvent = (event: Record<string, unknown>) => {
         try { onEvent?.(event); } catch { /* ignore */ }
         const t = (event?.type || event?.event || '') as string;
         if (t === 'response.output_text.delta') {
@@ -667,19 +709,36 @@ export async function respond(options: RespondOptions): Promise<GenerationRespon
               } catch { /* ignore */ }
             }
           }
-          break;
         } else if (t === 'response.failed' || t === 'error') {
           const msg = ((event?.error as Record<string, unknown>)?.message as string) || 'Stream failed.';
           throw new Error(msg);
         }
+    };
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed || trimmed === 'data: [DONE]') continue;
+          if (!trimmed.startsWith('data: ')) continue;
+
+          try {
+            const event = JSON.parse(trimmed.slice(6));
+            processEvent(event);
+            if (completed) break;
+          } catch { /* ignore parse errors */ }
+        }
+        if (completed) break;
       }
-    } catch (err) {
-      // Re-throw so callers can handle
-      throw err;
     } finally {
-      if (completed) {
-        try { (streamIt as unknown as { controller?: { abort?: () => void } }).controller?.abort?.(); } catch { /* ignore */ }
-      }
+      reader.releaseLock();
     }
     const finalSummary = buildSummary();
     if (!summaryDelivered && finalSummary) {
@@ -710,36 +769,54 @@ export async function respond(options: RespondOptions): Promise<GenerationRespon
     };
   } else {
     if (useChatCompletions) {
-      const abortController = (typeof AbortController === 'function') ? new AbortController() : null;
-      if (abortController) {
-        provideAbort(() => {
-          try { abortController.abort(); } catch { /* ignore */ }
-        });
-      } else if (typeof onAbort === 'function') {
-        // Still provide a callable no-op so callers can clear their abort handle
-        onAbort(() => {});
+      const abortController = new AbortController();
+      provideAbort(() => {
+        try { abortController.abort(); } catch { /* ignore */ }
+      });
+
+      const response = await fetch(`${baseURL}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify(chatRequest),
+        signal: abortController.signal,
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => '');
+        throw new Error(`API error ${response.status}: ${errorText}`);
       }
-      const res = await client.chat.completions.create(
-        chatRequest as Parameters<typeof client.chat.completions.create>[0],
-        abortController ? { signal: abortController.signal } : undefined,
-      );
+
+      const res = await response.json();
       const text = extractOutputText(res);
       const summary = extractChatReasoningSummary(res);
       try { onReasoningSummaryDone?.(summary || '', null); } catch { /* ignore */ }
       return { text, reasoningSummary: summary || '' };
     }
 
-    const abortController = (typeof AbortController === 'function') ? new AbortController() : null;
-    if (abortController) {
-      provideAbort(() => {
-        try { abortController.abort(); } catch { /* ignore */ }
-      });
-    } else if (typeof onAbort === 'function') {
-      // Still provide a callable no-op so callers can clear their abort handle
-      onAbort(() => {});
+    const abortController = new AbortController();
+    provideAbort(() => {
+      try { abortController.abort(); } catch { /* ignore */ }
+    });
+
+    const response = await fetch(`${baseURL}/responses`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify(request),
+      signal: abortController.signal,
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => '');
+      throw new Error(`API error ${response.status}: ${errorText}`);
     }
-    const responsesApi = (client as unknown as { responses: { create: (req: unknown, opts?: { signal?: AbortSignal }) => Promise<unknown> } }).responses;
-    const res = await responsesApi.create(request, abortController ? { signal: abortController.signal } : undefined);
+
+    const res = await response.json();
     const text = extractOutputText(res);
     const summary = extractReasoningSummary(res);
     const webSearchResult = extractWebSearchResult(res);
@@ -763,17 +840,34 @@ export async function listModels(options: {
   apiBaseUrl?: string;
   connectionId?: string;
 } = {}): Promise<string[]> {
-  let client: OpenAI | null = null;
+  let apiKey: string;
+  let baseURL: string;
+
   if (options?.apiKey) {
     const clientOptions = buildClientOptions(options as { apiKey: string; apiBaseUrl?: string });
     if (!clientOptions) throw new Error('Missing OpenAI API key.');
-    client = new OpenAI(clientOptions);
+    apiKey = clientOptions.apiKey;
+    baseURL = clientOptions.baseURL || 'https://api.openai.com/v1';
   } else {
-    client = await getClient(options);
+    const config = await getClient(options);
+    if (!config) throw new Error('Missing OpenAI API key. Set it in Settings.');
+    apiKey = config.apiKey;
+    baseURL = config.baseURL;
   }
-  if (!client) throw new Error('Missing OpenAI API key. Set it in Settings.');
-  if (!client?.models?.list) throw new Error('OpenAI SDK does not support listing models.');
-  const res = await client.models.list();
+
+  const response = await fetch(`${baseURL}/models`, {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+    },
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => '');
+    throw new Error(`API error ${response.status}: ${errorText}`);
+  }
+
+  const res = await response.json();
   const items = Array.isArray(res?.data) ? res.data : [];
   return sortModels(items).map(m => m.id);
 }
@@ -893,13 +987,22 @@ function extractOutputText(res: unknown): string {
   // SDK convenience property
   if (resObj && typeof resObj.output_text === 'string' && (resObj.output_text as string).length) return resObj.output_text as string;
   try {
-    // Try Responses API shape
+    // Try Responses API shape - iterate through all output items to find message
     const parts = (resObj?.output ?? resObj?.choices ?? []) as unknown[];
     if (Array.isArray(parts) && parts.length) {
-      const first = parts[0] as Record<string, unknown>;
-      const content = first?.content ?? (first?.message as Record<string, unknown>)?.content ?? first;
-      const text = collectContentText(content);
-      if (text) return text;
+      for (const part of parts as Array<Record<string, unknown>>) {
+        // Look for message type items (skip reasoning, web_search_call, etc.)
+        if (part?.type === 'message' && part?.content) {
+          const text = collectContentText(part.content);
+          if (text) return text;
+        }
+        // Fallback for items without type
+        if (!part?.type) {
+          const content = part?.content ?? (part?.message as Record<string, unknown>)?.content ?? part;
+          const text = collectContentText(content);
+          if (text) return text;
+        }
+      }
     }
     const dataContent = ((resObj?.data as unknown[])?.[0] as Record<string, unknown>)?.content;
     const dataText = collectContentText(dataContent);
