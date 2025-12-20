@@ -1,7 +1,4 @@
-import MarkdownIt from 'markdown-it';
-import type Token from 'markdown-it/lib/token.mjs';
-import type Renderer from 'markdown-it/lib/renderer.mjs';
-import type StateCore from 'markdown-it/lib/rules_core/state_core.mjs';
+import { Marked } from 'marked';
 import hljs from 'highlight.js/lib/core';
 
 // 25 most common languages
@@ -54,124 +51,82 @@ for (const [alias, lang] of Object.entries(aliases)) {
   hljs.registerLanguage(alias, lang);
 }
 
-// markdown-it instance configured for our chat bubbles
-const md = new MarkdownIt({
-  html: false,
-  linkify: true,
-  typographer: false,
-  breaks: true,
-});
-md.disable('code'); // disallow indented code blocks; require fenced blocks
-
 // Guardrail to avoid creating thousands of DOM nodes when code blocks are huge
 const MAX_HIGHLIGHT_CHARS = 20000;
 const MAX_HIGHLIGHT_LINES = 400;
 
-// Custom fence renderer to add copy button
-const defaultFence = md.renderer.rules.fence || function(
-  tokens: Token[],
-  idx: number,
-  options: MarkdownIt.Options,
-  _env: unknown,
-  self: Renderer
-): string {
-  return self.renderToken(tokens, idx, options);
-};
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
 
-md.renderer.rules.fence = function(
-  tokens: Token[],
-  idx: number,
-  options: MarkdownIt.Options,
-  env: unknown,
-  self: Renderer
-): string {
-  const token = tokens[idx]!;
-  const rawCode = token.content;
-  const info = token.info ? token.info.trim() : '';
-  const specifiedLang = info.split(/\s+/g)[0] || '';
-  const skipHighlight = (
-    rawCode.length > MAX_HIGHLIGHT_CHARS ||
-    rawCode.split(/\r?\n/).length > MAX_HIGHLIGHT_LINES
-  );
+// Create marked instance with custom renderer
+const marked = new Marked({
+  breaks: true,
+  gfm: true,
+});
 
-  // Get the highlighted content and detect language if not specified
-  let code = rawCode;
-  let langLabel = specifiedLang;
+marked.use({
+  renderer: {
+    code(token) {
+      const rawCode = token.text;
+      const specifiedLang = token.lang || '';
+      const skipHighlight = (
+        rawCode.length > MAX_HIGHLIGHT_CHARS ||
+        rawCode.split(/\r?\n/).length > MAX_HIGHLIGHT_LINES
+      );
 
-  if (!skipHighlight) {
-    if (specifiedLang && hljs.getLanguage(specifiedLang)) {
-      // Language specified, use it
-      try {
-        code = hljs.highlight(rawCode, { language: specifiedLang, ignoreIllegals: true }).value;
-      } catch {
-        code = md.utils.escapeHtml(rawCode);
+      let code = rawCode;
+      let langLabel = specifiedLang;
+
+      if (!skipHighlight) {
+        if (specifiedLang && hljs.getLanguage(specifiedLang)) {
+          try {
+            code = hljs.highlight(rawCode, { language: specifiedLang, ignoreIllegals: true }).value;
+          } catch {
+            code = escapeHtml(rawCode);
+          }
+        } else if (!specifiedLang) {
+          try {
+            const result = hljs.highlightAuto(rawCode);
+            code = result.value;
+            langLabel = result.language || 'text';
+          } catch {
+            code = escapeHtml(rawCode);
+            langLabel = 'text';
+          }
+        } else {
+          code = escapeHtml(rawCode);
+          langLabel = specifiedLang;
+        }
+      } else {
+        code = escapeHtml(rawCode);
+        if (!langLabel) {
+          langLabel = 'text';
+        }
       }
-    } else if (!specifiedLang) {
-      // No language specified, auto-detect
-      try {
-        const result = hljs.highlightAuto(rawCode);
-        code = result.value;
-        langLabel = result.language || 'text';
-      } catch {
-        code = md.utils.escapeHtml(rawCode);
-        langLabel = 'text';
-      }
-    } else {
-      // Unknown language, just escape
-      code = md.utils.escapeHtml(rawCode);
-      langLabel = specifiedLang;
-    }
-  } else {
-    code = md.utils.escapeHtml(rawCode);
-    if (!langLabel) {
-      langLabel = 'text';
-    }
-  }
 
-  // Build the code block with header containing language label and copy button
-  return `<div class="code-block-wrapper">
+      return `<div class="code-block-wrapper">
 <div class="code-block-header">
-<span class="code-lang">${md.utils.escapeHtml(langLabel)}</span>
+<span class="code-lang">${escapeHtml(langLabel)}</span>
 <button type="button" class="code-copy-btn" aria-label="Copy code">Copy</button>
 </div>
-<pre><code class="hljs language-${md.utils.escapeHtml(langLabel)}">${code}</code></pre>
+<pre><code class="hljs language-${escapeHtml(langLabel)}">${code}</code></pre>
 </div>`;
-};
+    },
 
-const defaultRenderLink = md.renderer.rules.link_open || function(
-  tokens: Token[],
-  idx: number,
-  options: MarkdownIt.Options,
-  _env: unknown,
-  self: Renderer
-): string {
-  return self.renderToken(tokens, idx, options);
-};
-
-md.renderer.rules.link_open = function(
-  tokens: Token[],
-  idx: number,
-  options: MarkdownIt.Options,
-  env: unknown,
-  self: Renderer
-): string {
-  const a = tokens[idx];
-  if (a) {
-    const targetIndex = a.attrIndex('target');
-    if (targetIndex < 0) {
-      a.attrPush(['target', '_blank']);
-    } else if (a.attrs) {
-      a.attrs[targetIndex]![1] = '_blank';
-    }
-    const relIndex = a.attrIndex('rel');
-    if (relIndex < 0) {
-      a.attrPush(['rel', 'noopener noreferrer']);
-    } else if (a.attrs) {
-      a.attrs[relIndex]![1] = 'noopener noreferrer';
-    }
-  }
-  return defaultRenderLink(tokens, idx, options, env, self);
-};
+    link(token) {
+      const href = token.href;
+      const title = token.title;
+      const text = token.tokens ? this.parser!.parseInline(token.tokens) : token.text;
+      const titleAttr = title ? ` title="${escapeHtml(title)}"` : '';
+      return `<a href="${escapeHtml(href)}"${titleAttr} target="_blank" rel="noopener noreferrer">${text}</a>`;
+    },
+  },
+});
 
 // LRU cache for rendered markdown (max 200 entries to avoid memory bloat)
 const cache = new Map<string, string>();
@@ -190,7 +145,7 @@ export function renderMarkdown(src: string): string {
   }
 
   // Render and cache
-  const result = md.render(key);
+  const result = marked.parse(key) as string;
   cache.set(key, result);
 
   // Evict oldest entry if cache is full
