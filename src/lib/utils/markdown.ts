@@ -136,7 +136,7 @@ marked.use({
   },
   // Disable indented code blocks (only allow fenced ```)
   tokenizer: {
-    code(): false { return false; },
+    code() { return undefined; },
   },
 });
 
