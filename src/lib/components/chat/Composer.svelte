@@ -533,7 +533,7 @@
     display: grid;
     place-items: center;
     border-radius: 10px;
-    border: 1px solid color-mix(in srgb, var(--accent) 50%, var(--border));
+    border: 2px solid color-mix(in srgb, var(--accent) 50%, var(--border));
     background: var(--bg);
     color: var(--text);
     line-height: 1;
