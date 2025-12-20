@@ -19,6 +19,7 @@
   import { createPersistenceScheduler, queueGlobalPersist, flushGlobalPersists } from './chat/services/persistenceScheduler'
   import { createNoticeManager } from './chat/services/noticeManager'
   import { createGenerationStateManager } from './chat/services/generationStateManager'
+  import { createEditStateManager } from './chat/services/editStateManager'
   import { validateChatEdit } from './chat/services/chatEditGuard'
 
   // Action imports
@@ -61,6 +62,7 @@
   const persistenceScheduler = createPersistenceScheduler()
   const noticeManager = createNoticeManager()
   const generationState = createGenerationStateManager()
+  const editStateManager = createEditStateManager()
 
   // State
   let nodes = $state<Node[]>([])
@@ -842,7 +844,9 @@
         ? eOrText
         : eOrText?.currentTarget?.innerText
       if (typeof next === 'string') {
-        editingText = normalizeEditableText(next)
+        const normalized = normalizeEditableText(next)
+        editStateManager.updateText(normalized)
+        editingText = normalized
       }
     } catch {}
   }
@@ -864,8 +868,16 @@
     const loc = findNodeByMessageId(nodes, id)
     const msg = loc?.node?.variants?.[loc.index]
     if (!msg || msg.typing) return
+
+    // Use edit state manager to prevent switching edits
+    const text = msg.content || ''
+    if (!editStateManager.startEdit(id, text)) {
+      // Already editing another message, blocked
+      return
+    }
+
     editingId = id
-    editingText = msg.content || ''
+    editingText = text
   }
 
   function commitEdit() {
@@ -878,6 +890,7 @@
       nodes: commitEditReplace(draft.nodes, id, text),
     }))
     if (!ok) return
+    editStateManager.finishEdit(true)
     editingId = null
     editingText = ''
     persistNow()
@@ -895,6 +908,7 @@
       return { ...draft, nodes: result.nodes, nextId: result.nextId }
     })
     if (!ok) return
+    editStateManager.finishEdit(true)
     editingId = null
     editingText = ''
     persistNow()
@@ -915,6 +929,7 @@
     }
 
     if (prepared.shouldRefreshOnly) {
+      editStateManager.finishEdit(true)
       editingId = null
       editingText = ''
       await refreshAfterUserIndex(prepared.insertIndex)
@@ -932,6 +947,7 @@
         return { ...draft, nodes: result.nodes, nextId: result.nextId }
       })
       if (ok) {
+        editStateManager.finishEdit(true)
         editingId = null
         editingText = ''
         persistNow()
@@ -953,6 +969,7 @@
     )
     if (!ok) return
 
+    editStateManager.finishEdit(true)
     editingId = null
     editingText = ''
 
@@ -1034,6 +1051,7 @@
   }
 
   function cancelEdit() {
+    editStateManager.finishEdit(false)
     editingId = null
     editingText = ''
   }
@@ -1052,6 +1070,12 @@
 
   function handleInsertBetween(afterIndex) {
     if (locked) return
+
+    // Block insert if already editing another message
+    if (editStateManager.isEditing()) {
+      return
+    }
+
     const result = insertMessageBetween(nodes, rootId, afterIndex, nextId, nextNodeId)
     if (!result) return
     const ok = applyChatMutation(`insert between ${afterIndex}`, (draft) => ({
@@ -1061,7 +1085,11 @@
       nextNodeId: result.nextNodeId,
     }))
     if (!ok) return
-    // Start editing the new empty message
+
+    // Start editing the new empty message using edit state manager
+    if (!editStateManager.startEdit(result.insertedMessageId, '')) {
+      return
+    }
     editingId = result.insertedMessageId
     editingText = ''
     persistNow()
@@ -1662,6 +1690,7 @@
         chatSettings = result.chatSettings
         try { modelIds = loadModelsCache(result.chatSettings?.connectionId).ids || [] } catch {}
         rootId = result.rootId
+	        editStateManager.forceClear()
 	        editingId = null
 	        editingText = ''
 	        dismissedNotice = ''
