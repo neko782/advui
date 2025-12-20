@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { IconAdd, IconClose, IconAddComment, IconPerson, IconSmartToy, IconTune, IconStop, IconSend } from '../../icons'
+  import { IconAdd, IconClose, IconStop, IconSend } from '../../icons'
   import { autoGrow } from '../../utils/dom'
   import ChatSettingsPopover from './ChatSettingsPopover.svelte'
   import { onMount } from 'svelte'
@@ -329,26 +329,6 @@
       ></textarea>
     </div>
 
-    <div class="send-group add-group" data-side="top" aria-haspopup="menu" title="Add to chat as">
-      <button class="float-btn" onclick={() => props.onAdd?.('user')} disabled={props.locked} aria-label="Add to chat">
-        <IconAddComment style="font-size: 22px;" />
-      </button>
-      <div class="send-menu" role="menu" aria-label="Add to chat as">
-        <button role="menuitem" class="menu-item" onclick={() => props.onAdd?.('user')} disabled={props.locked} aria-label="Add as user">
-          <IconPerson style="font-size: 18px;" />
-          User
-        </button>
-        <button role="menuitem" class="menu-item" onclick={() => props.onAdd?.('assistant')} disabled={props.locked} aria-label="Add as assistant">
-          <IconSmartToy style="font-size: 18px;" />
-          Assistant
-        </button>
-        <button role="menuitem" class="menu-item" onclick={() => props.onAdd?.('system')} disabled={props.locked} aria-label="Add as system">
-          <IconTune style="font-size: 18px;" />
-          System
-        </button>
-      </div>
-    </div>
-
     <!-- Send group (single send button shows the menu on hover/focus) -->
     {#if props.sending}
       <div class="send-group" title="Stop response">
@@ -403,7 +383,7 @@
     margin-inline: auto;
     padding: 12px 0;
     display: grid;
-    grid-template-columns: auto auto 1fr auto auto;
+    grid-template-columns: auto auto 1fr auto;
     align-items: end;
     gap: 14px;
   }
@@ -553,24 +533,25 @@
     display: grid;
     place-items: center;
     border-radius: 10px;
-    border: none;
-    background: var(--accent);
-    color: #fff;
+    border: 1px solid var(--accent);
+    background: color-mix(in srgb, var(--accent) 10%, var(--bg));
+    color: var(--accent);
     line-height: 1;
-    transition: background-color .15s ease, color .15s ease, transform .1s ease, box-shadow .15s ease;
-    box-shadow: 0 2px 8px color-mix(in srgb, var(--accent) 30%, transparent);
+    transition: background-color .15s ease, border-color .15s ease, color .15s ease, transform .1s ease, box-shadow .15s ease;
+    box-shadow: 0 2px 8px color-mix(in srgb, var(--accent) 15%, transparent);
   }
   .float-btn:hover:not(:disabled) {
-    background: color-mix(in srgb, var(--accent) 85%, #000);
-    box-shadow: 0 4px 12px color-mix(in srgb, var(--accent) 40%, transparent);
+    background: color-mix(in srgb, var(--accent) 20%, var(--bg));
+    border-color: var(--accent);
+    box-shadow: 0 4px 12px color-mix(in srgb, var(--accent) 25%, transparent);
   }
   .float-btn:active:not(:disabled) {
     transform: scale(0.95);
-    box-shadow: 0 1px 4px color-mix(in srgb, var(--accent) 25%, transparent);
+    box-shadow: 0 1px 4px color-mix(in srgb, var(--accent) 15%, transparent);
   }
-  .float-btn:disabled { background: var(--muted); color: var(--bg); cursor: not-allowed; opacity: 0.6; box-shadow: none; }
-  .stop-btn { background: #ef4444; box-shadow: 0 2px 8px rgba(239, 68, 68, 0.3); }
-  .stop-btn:hover:not(:disabled) { background: #dc2626; box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4); }
+  .float-btn:disabled { background: var(--bg); border-color: var(--muted); color: var(--muted); cursor: not-allowed; opacity: 0.6; box-shadow: none; }
+  .stop-btn { background: #ef4444; border-color: #ef4444; color: #fff; box-shadow: 0 2px 8px rgba(239, 68, 68, 0.3); }
+  .stop-btn:hover:not(:disabled) { background: #dc2626; border-color: #dc2626; box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4); }
   .stop-btn:active:not(:disabled) { box-shadow: 0 1px 4px rgba(239, 68, 68, 0.25); }
   .send-group { position: relative; display: grid; place-items: center; z-index: 0; }
   .send-group::before { content: ''; position: absolute; left: 50%; transform: translateX(-50%); width: max(100%, 44px); height: 16px; pointer-events: none; }
@@ -631,8 +612,7 @@
     .composer-inner.mobile-input-focused .attachment-btn {
       display: none;
     }
-    .composer-inner.mobile-input-focused .chat-settings-group,
-    .composer-inner.mobile-input-focused .add-group {
+    .composer-inner.mobile-input-focused .chat-settings-group {
       display: none;
     }
     .composer-input::placeholder {
