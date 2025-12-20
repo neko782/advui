@@ -1504,7 +1504,7 @@
   .preset-group-divider {
     height: 1px;
     background: var(--border);
-    margin: 8px 0 4px;
+    margin: 4px 0 0;
   }
   .preset-group-header {
     font-size: .75rem;
@@ -1516,7 +1516,7 @@
     width: 100%;
     border: none;
     background: transparent;
-    padding: 8px 0 4px;
+    padding: 4px 0;
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -1694,7 +1694,7 @@
   /* Form section styling */
   .form-section {
     display: grid;
-    gap: 12px;
+    gap: 10px;
     padding: 20px;
     background: var(--bg);
     border: 1px solid var(--border);
@@ -1746,10 +1746,9 @@
   .switch {
     display: inline-flex;
     align-items: center;
-    gap: 12px;
+    gap: 10px;
     cursor: pointer;
     user-select: none;
-    padding: 6px 0;
   }
   .switch > input { position: absolute; opacity: 0; width: 1px; height: 1px; pointer-events: none; }
   .switch-ui {
