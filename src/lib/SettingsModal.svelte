@@ -867,7 +867,7 @@
                   class="data-action-btn"
                   onclick={handleExportAllData}
                   disabled={importExportWorking}
-                  title="Export all chats, settings, and images as ZIP"
+                  title="Export all chats, settings, and images as an archive"
                   aria-label="Export all data"
                 >
                   <IconDownload style="font-size: 20px;" />
@@ -878,7 +878,7 @@
                   class="data-action-btn"
                   onclick={handleImportAllData}
                   disabled={importExportWorking}
-                  title="Import all data from ZIP file"
+                  title="Import all data from an archive"
                   aria-label="Import all data"
                 >
                   <IconUpload style="font-size: 20px;" />
@@ -888,7 +888,7 @@
               {#if importExportStatus}
                 <p class="hint" aria-live="polite">{importExportStatus}</p>
               {:else}
-                <p class="hint">Import and export your chats, settings, and images. Export all data creates a ZIP backup of everything.</p>
+                <p class="hint">Import and export your chats, settings, and images. Export all data creates a backup of everything.</p>
               {/if}
             </section>
             <section class="group developer-group">
