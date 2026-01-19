@@ -1922,7 +1922,7 @@
       aria-label={forcedLock ? 'Clear simulated lock' : 'Simulate persisted lock leak'}
       aria-pressed={forcedLock ? 'true' : 'false'}
       title={forcedLock ? 'Clear simulated lock' : 'Simulate persisted lock leak'}
-    />
+    ></button>
   {/if}
 
   <ConfirmModal

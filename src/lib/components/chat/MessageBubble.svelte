@@ -256,8 +256,8 @@ function attachmentMimeLabel(attachment) {
     </div>
   {/if}
   {#if props.message.typing}
-    <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions a11y_no_noninteractive_element_interactions -->
-    <div class={`bubble ${props.message.role}`} data-typing={true} onclick={handleBubbleClick}>
+    <!-- svelte-ignore a11y_click_events_have_key_events -->
+    <div class={`bubble ${props.message.role}`} data-typing={true} onclick={handleBubbleClick} role="button" tabindex="0">
       {#if props.message.content && props.message.content !== 'typing'}
           {@html renderMarkdown(props.message.content, { allowInlineHtml: props.allowInlineHtml })}
       {:else}
@@ -339,8 +339,8 @@ function attachmentMimeLabel(attachment) {
       </div>
     {/if}
     {#if props.message.content}
-      <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions a11y_no_noninteractive_element_interactions -->
-      <div class={`bubble ${props.message.role}`} onclick={handleBubbleClick}>
+    <!-- svelte-ignore a11y_click_events_have_key_events -->
+    <div class={`bubble ${props.message.role}`} onclick={handleBubbleClick} role="button" tabindex="0">
         {@html renderMarkdown(props.message.content, { allowInlineHtml: props.allowInlineHtml })}
       </div>
     {/if}

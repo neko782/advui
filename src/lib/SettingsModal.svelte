@@ -1467,7 +1467,6 @@
   }
   .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
   input[type="text"],
-  input[type="password"],
   input[type="number"],
   select,
   textarea {
@@ -1481,7 +1480,6 @@
     transition: border-color 0.15s ease, box-shadow 0.15s ease;
   }
   input[type="text"]:focus,
-  input[type="password"]:focus,
   input[type="number"]:focus,
   select:focus,
   textarea:focus {
@@ -1490,7 +1488,6 @@
     box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 15%, transparent);
   }
   input[type="text"]:hover:not(:focus),
-  input[type="password"]:hover:not(:focus),
   input[type="number"]:hover:not(:focus),
   select:hover:not(:focus),
   textarea:hover:not(:focus) {
