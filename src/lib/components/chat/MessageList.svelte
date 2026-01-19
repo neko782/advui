@@ -47,11 +47,18 @@
     getScrollElement: () => listEl ?? null,
     estimateSize: () => 120, // Estimated average message height
     overscan: 5,
+    getItemKey: (index: number) => props.items?.[index]?.m?.id ?? index,
+  })
+
+  // Notify virtualizer when scroll element becomes available
+  $effect(() => {
+    if (listEl) {
+      $virtualizer.setOptions({ getScrollElement: () => listEl! })
+    }
   })
 
   // Svelte action to measure element and report size to virtualizer
   function measureElement(node: HTMLElement, v: typeof $virtualizer) {
-    const idx = Number(node.dataset.index)
     v.measureElement(node)
     return {
       update(v: typeof $virtualizer) {
@@ -69,7 +76,7 @@
 
 <div class="messages" bind:this={listEl}>
   <div class="virtual-spacer" style="height: {$virtualizer.getTotalSize()}px;">
-    {#each $virtualizer.getVirtualItems() as vItem (vItem.key)}
+    {#each $virtualizer.getVirtualItems() as vItem (props.items?.[vItem.index]?.m?.id ?? vItem.index)}
       {@const idx = vItem.index}
       {@const vm = props.items?.[idx]}
       {#if vm}
@@ -133,7 +140,7 @@
 </div>
 
 <style>
-  .messages { overflow: auto; padding: 16px 0 8px; contain: layout style; }
+  .messages { overflow: auto; padding: 16px 0 8px; contain: layout style; height: 100%; min-height: 0; }
   .virtual-spacer { position: relative; width: 100%; }
   .virtual-item { position: absolute; top: 0; left: 0; width: 100%; padding-bottom: 8px; will-change: transform; }
   .notice {
