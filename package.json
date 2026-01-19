@@ -25,6 +25,7 @@
     "vitest": "^3.2.4"
   },
   "dependencies": {
+    "@tanstack/svelte-virtual": "^3.13.18",
     "highlight.js": "^11.11.1",
     "js-untar": "^2.0.0",
     "klona": "^2.0.6",

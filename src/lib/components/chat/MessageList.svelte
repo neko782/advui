@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { createVirtualizer } from '@tanstack/svelte-virtual'
   import MessageItem from './MessageItem.svelte'
   import { IconAdd } from '../../icons'
   import type { VisibleMessage, MessageRole } from '../../types'
@@ -37,57 +38,92 @@
   }
 
   const props: Props = $props()
-  let listEl: HTMLDivElement | undefined
+  let listEl: HTMLDivElement | undefined = $state()
+
+  const itemCount = $derived(props.items?.length ?? 0)
+
+  const virtualizer = createVirtualizer({
+    get count() { return itemCount },
+    getScrollElement: () => listEl ?? null,
+    estimateSize: () => 120, // Estimated average message height
+    overscan: 5,
+  })
+
+  // Svelte action to measure element and report size to virtualizer
+  function measureElement(node: HTMLElement, v: typeof $virtualizer) {
+    const idx = Number(node.dataset.index)
+    v.measureElement(node)
+    return {
+      update(v: typeof $virtualizer) {
+        v.measureElement(node)
+      }
+    }
+  }
+
   export function scrollToBottom(): void {
-    // Instant scroll on mobile for better performance
-    try { listEl?.scrollTo({ top: listEl.scrollHeight, behavior: 'instant' }) } catch {}
+    if (itemCount > 0) {
+      $virtualizer.scrollToIndex(itemCount - 1, { align: 'end', behavior: 'auto' })
+    }
   }
 </script>
 
 <div class="messages" bind:this={listEl}>
-  {#each props.items as vm, idx (`${props.chatId ?? ''}:${vm.m.id}`)}
-    {#if idx > 0}
-      <div class="insert-zone" class:disabled={props.locked} role="button" tabindex={props.locked ? -1 : 0} aria-label="Insert message here" aria-disabled={props.locked} onclick={() => !props.locked && props.onInsertBetween?.(idx - 1)} onkeydown={(e) => !props.locked && (e.key === 'Enter' || e.key === ' ') && props.onInsertBetween?.(idx - 1)}>
-        <div class="insert-line"></div>
-        <span class="insert-btn" aria-hidden="true"><IconAdd style="font-size: 18px;" /></span>
-        <div class="insert-line"></div>
-      </div>
-    {/if}
-    <MessageItem
-      vm={vm}
-      total={props.total}
-      visibleCount={(props.items?.length || 0)}
-      locked={props.locked}
-      debug={props.debug}
-      editingId={props.editingId}
-      editingText={props.editingText}
-      hasFollowingAssistant={props.followingMap?.[vm.i]?.has}
-      nextAssistantId={props.followingMap?.[vm.i]?.id}
-      nextAssistantTyping={props.followingMap?.[vm.i]?.typing}
-      parentId={(vm?.i > 0 && props.items?.[vm.i - 1]?.m?.id) ? props.items[vm.i - 1].m.id : null}
-      branchIndex={(typeof vm?.variantIndex === 'number') ? vm.variantIndex : 0}
-      branchesLength={(typeof vm?.variantsLength === 'number') ? vm.variantsLength : 1}
-      allowInlineHtml={props.allowInlineHtml}
-      onSetRole={props.onSetRole}
-      onEditInput={props.onEditInput}
-      onEditKeydown={props.onEditKeydown}
-      onApplyEditSend={props.onApplyEditSend}
-      onApplyEditBranch={props.onApplyEditBranch}
-      onApplyEditReplace={props.onApplyEditReplace}
-      onCancelEdit={props.onCancelEdit}
-      onChangeVariant={props.onChangeVariant}
-      onRefreshAssistant={props.onRefreshAssistant}
-      onRefreshAfterUserIndex={props.onRefreshAfterUserIndex}
-      onCopy={props.onCopy}
-      onDelete={props.onDelete}
-      onEdit={props.onEdit}
-      onMoveDown={props.onMoveDown}
-      onMoveUp={props.onMoveUp}
-      onFork={props.onFork}
-      onDebugFuckBranch={props.onDebugFuckBranch}
-      onDebugMessageDeath={props.onDebugMessageDeath}
-    />
-  {/each}
+  <div class="virtual-spacer" style="height: {$virtualizer.getTotalSize()}px;">
+    {#each $virtualizer.getVirtualItems() as vItem (vItem.key)}
+      {@const idx = vItem.index}
+      {@const vm = props.items?.[idx]}
+      {#if vm}
+        <div
+          class="virtual-item"
+          data-index={idx}
+          style="transform: translateY({vItem.start}px);"
+          use:measureElement={$virtualizer}
+        >
+          {#if idx > 0}
+            <div class="insert-zone" class:disabled={props.locked} role="button" tabindex={props.locked ? -1 : 0} aria-label="Insert message here" aria-disabled={props.locked} onclick={() => !props.locked && props.onInsertBetween?.(idx - 1)} onkeydown={(e) => !props.locked && (e.key === 'Enter' || e.key === ' ') && props.onInsertBetween?.(idx - 1)}>
+              <div class="insert-line"></div>
+              <span class="insert-btn" aria-hidden="true"><IconAdd style="font-size: 18px;" /></span>
+              <div class="insert-line"></div>
+            </div>
+          {/if}
+          <MessageItem
+            vm={vm}
+            total={props.total}
+            visibleCount={(props.items?.length || 0)}
+            locked={props.locked}
+            debug={props.debug}
+            editingId={props.editingId}
+            editingText={props.editingText}
+            hasFollowingAssistant={props.followingMap?.[vm.i]?.has}
+            nextAssistantId={props.followingMap?.[vm.i]?.id}
+            nextAssistantTyping={props.followingMap?.[vm.i]?.typing}
+            parentId={(vm?.i > 0 && props.items?.[vm.i - 1]?.m?.id) ? props.items[vm.i - 1].m.id : null}
+            branchIndex={(typeof vm?.variantIndex === 'number') ? vm.variantIndex : 0}
+            branchesLength={(typeof vm?.variantsLength === 'number') ? vm.variantsLength : 1}
+            allowInlineHtml={props.allowInlineHtml}
+            onSetRole={props.onSetRole}
+            onEditInput={props.onEditInput}
+            onEditKeydown={props.onEditKeydown}
+            onApplyEditSend={props.onApplyEditSend}
+            onApplyEditBranch={props.onApplyEditBranch}
+            onApplyEditReplace={props.onApplyEditReplace}
+            onCancelEdit={props.onCancelEdit}
+            onChangeVariant={props.onChangeVariant}
+            onRefreshAssistant={props.onRefreshAssistant}
+            onRefreshAfterUserIndex={props.onRefreshAfterUserIndex}
+            onCopy={props.onCopy}
+            onDelete={props.onDelete}
+            onEdit={props.onEdit}
+            onMoveDown={props.onMoveDown}
+            onMoveUp={props.onMoveUp}
+            onFork={props.onFork}
+            onDebugFuckBranch={props.onDebugFuckBranch}
+            onDebugMessageDeath={props.onDebugMessageDeath}
+          />
+        </div>
+      {/if}
+    {/each}
+  </div>
   {#if props.notice}
     <div class="notice error" role="status" aria-live="polite">
       <span class="notice-text">{props.notice}</span>
@@ -97,8 +133,11 @@
 </div>
 
 <style>
-  .messages { overflow: auto; padding: 16px 0 8px; display: grid; align-content: start; gap: 8px; contain: layout style; }
+  .messages { overflow: auto; padding: 16px 0 8px; contain: layout style; }
+  .virtual-spacer { position: relative; width: 100%; }
+  .virtual-item { position: absolute; top: 0; left: 0; width: 100%; padding-bottom: 8px; will-change: transform; }
   .notice {
+    position: sticky; bottom: 8px;
     font-size: 0.88rem; line-height: 1.3;
     padding: 6px 10px; border-radius: 10px;
     border: 1px solid color-mix(in srgb, #ef4444 45%, transparent);
@@ -119,13 +158,12 @@
     justify-content: center;
     gap: 8px;
     padding: 4px 0;
-    margin: -2px 0;
+    margin: -2px auto 0;
     cursor: pointer;
     opacity: 0;
     transition: opacity 0.15s ease;
     max-width: var(--page-max);
     width: min(720px, 92%);
-    justify-self: center;
   }
   .insert-zone:hover, .insert-zone:focus-visible { opacity: 1; }
   .insert-zone:focus-visible { outline: none; }
