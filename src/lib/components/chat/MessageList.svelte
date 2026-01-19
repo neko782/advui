@@ -265,8 +265,9 @@
     border: 1px solid color-mix(in srgb, #ef4444 45%, transparent);
     background: color-mix(in srgb, #ef4444 9%, transparent);
     color: color-mix(in srgb, #b91c1c 92%, transparent);
-    max-width: var(--page-max); justify-self: center; width: min(720px, 92%);
+    max-width: var(--page-max); margin-inline: auto; width: min(720px, 92%);
     display: grid; grid-template-columns: 1fr auto; align-items: start; gap: 8px;
+    z-index: 10;
   }
   .notice-close {
     appearance: none; border: none; background: transparent; color: inherit;
