@@ -43,15 +43,14 @@
   let scrollTop = $state(0)
   let containerHeight = $state(600)
   
-  const ESTIMATED_HEIGHT = 150 // Estimated average message height
+  const ESTIMATED_HEIGHT = 150
   const BUFFER_COUNT = 3
 
-  // Track measured heights - use reactive object for Svelte 5
+  // Height cache - persists across renders, only measures once per message
   let heightCache = $state<Record<number, number>>({})
-  let heightVersion = $state(0) // Force reactivity updates
+  let heightVersion = $state(0)
 
   function getItemHeight(index: number): number {
-    // Reference heightVersion to ensure reactivity
     void heightVersion
     const id = props.items?.[index]?.m?.id
     if (id !== undefined && heightCache[id]) {
@@ -62,7 +61,7 @@
 
   // Pre-compute offsets for all items
   const itemOffsets = $derived.by(() => {
-    void heightVersion // Depend on height updates
+    void heightVersion
     const items = props.items ?? []
     const offsets: number[] = []
     let offset = 0
@@ -133,22 +132,43 @@
   }
 
   function measureItem(node: HTMLElement, id: number) {
+    // Only measure once - skip if already cached
+    if (heightCache[id]) return {}
+    
     const measure = () => {
+      if (heightCache[id]) return // Already measured
       const h = node.offsetHeight
-      if (h > 0 && heightCache[id] !== h) {
+      if (h > 0) {
+        // Find the index of this item to check if it's above viewport
+        const items = props.items ?? []
+        let itemIndex = -1
+        for (let i = 0; i < items.length; i++) {
+          if (items[i]?.m?.id === id) {
+            itemIndex = i
+            break
+          }
+        }
+        
+        const oldHeight = ESTIMATED_HEIGHT
+        const heightDiff = h - oldHeight
+        
+        // If this item is above the current scroll position, adjust scroll to compensate
+        if (itemIndex >= 0 && listEl) {
+          const itemOffset = itemOffsets[itemIndex] ?? 0
+          if (itemOffset < scrollTop && heightDiff !== 0) {
+            listEl.scrollTop = scrollTop + heightDiff
+            scrollTop = listEl.scrollTop
+          }
+        }
+        
         heightCache[id] = h
-        heightVersion++ // Trigger reactivity
+        heightVersion++
       }
     }
-    // Measure after a frame to ensure content is rendered
+    
     requestAnimationFrame(measure)
-    const ro = new ResizeObserver(() => requestAnimationFrame(measure))
-    ro.observe(node)
-    return {
-      destroy() {
-        ro.disconnect()
-      }
-    }
+    
+    return {}
   }
 
   // Track container size
@@ -160,6 +180,13 @@
     })
     ro.observe(listEl)
     return () => ro.disconnect()
+  })
+
+  // Clear height cache when chat changes
+  $effect(() => {
+    props.chatId
+    heightCache = {}
+    heightVersion++
   })
 
   export function scrollToBottom(): void {
