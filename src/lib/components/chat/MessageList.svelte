@@ -49,6 +49,10 @@
   // Height cache - persists across renders, only measures once per message
   let heightCache = $state<Record<number, number>>({})
   let heightVersion = $state(0)
+  
+  // Track pending scroll adjustments and batch them
+  let pendingMeasurements: Array<{ id: number; height: number; oldHeight: number }> = []
+  let measurementFrameScheduled = false
 
   function getItemHeight(index: number): number {
     void heightVersion
@@ -57,6 +61,63 @@
       return heightCache[id]
     }
     return ESTIMATED_HEIGHT
+  }
+  
+  function getItemHeightById(id: number): number {
+    if (heightCache[id]) {
+      return heightCache[id]
+    }
+    return ESTIMATED_HEIGHT
+  }
+  
+  function processPendingMeasurements() {
+    measurementFrameScheduled = false
+    if (pendingMeasurements.length === 0) return
+    
+    const items = props.items ?? []
+    const currentScrollTop = scrollTop
+    let scrollAdjustment = 0
+    
+    // Build a map of id to index for quick lookup
+    const idToIndex = new Map<number, number>()
+    for (let i = 0; i < items.length; i++) {
+      const id = items[i]?.m?.id
+      if (id !== undefined) idToIndex.set(id, i)
+    }
+    
+    // Sort measurements by index to process from top to bottom
+    const measurementsWithIndex = pendingMeasurements
+      .map(m => ({ ...m, index: idToIndex.get(m.id) ?? -1 }))
+      .filter(m => m.index >= 0)
+      .sort((a, b) => a.index - b.index)
+    
+    // Calculate offset for each pending measurement and determine scroll adjustment
+    // Process in order so cache updates affect subsequent offset calculations correctly
+    for (const { id, height, oldHeight, index } of measurementsWithIndex) {
+      // Calculate offset of this item (using current cache state)
+      let itemOffset = 0
+      for (let i = 0; i < index; i++) {
+        itemOffset += getItemHeight(i)
+      }
+      
+      // If this item ends above the current scroll position (plus any accumulated adjustment),
+      // adjust scroll to keep visible content stable
+      if (itemOffset + oldHeight <= currentScrollTop + scrollAdjustment) {
+        scrollAdjustment += height - oldHeight
+      }
+      
+      // Update the cache immediately so subsequent items use the correct height
+      heightCache[id] = height
+    }
+    
+    pendingMeasurements = []
+    heightVersion++
+    
+    // Apply scroll adjustment if needed
+    if (scrollAdjustment !== 0 && listEl) {
+      listEl.scrollTop = listEl.scrollTop + scrollAdjustment
+      scrollTop = listEl.scrollTop
+    }
   }
 
   // Pre-compute offsets for all items
@@ -139,8 +200,14 @@
       if (heightCache[id]) return // Already measured
       const h = node.offsetHeight
       if (h > 0) {
-        heightCache[id] = h
-        heightVersion++
+        const oldHeight = getItemHeightById(id)
+        pendingMeasurements.push({ id, height: h, oldHeight })
+        
+        // Schedule processing if not already scheduled
+        if (!measurementFrameScheduled) {
+          measurementFrameScheduled = true
+          requestAnimationFrame(processPendingMeasurements)
+        }
       }
     }
     
