@@ -139,28 +139,6 @@
       if (heightCache[id]) return // Already measured
       const h = node.offsetHeight
       if (h > 0) {
-        // Find the index of this item to check if it's above viewport
-        const items = props.items ?? []
-        let itemIndex = -1
-        for (let i = 0; i < items.length; i++) {
-          if (items[i]?.m?.id === id) {
-            itemIndex = i
-            break
-          }
-        }
-        
-        const oldHeight = ESTIMATED_HEIGHT
-        const heightDiff = h - oldHeight
-        
-        // If this item is above the current scroll position, adjust scroll to compensate
-        if (itemIndex >= 0 && listEl) {
-          const itemOffset = itemOffsets[itemIndex] ?? 0
-          if (itemOffset < scrollTop && heightDiff !== 0) {
-            listEl.scrollTop = scrollTop + heightDiff
-            scrollTop = listEl.scrollTop
-          }
-        }
-        
         heightCache[id] = h
         heightVersion++
       }
@@ -183,10 +161,12 @@
   })
 
   // Clear height cache when chat changes
+  let lastChatId: string | undefined
   $effect(() => {
-    props.chatId
-    heightCache = {}
-    heightVersion++
+    if (props.chatId !== lastChatId) {
+      lastChatId = props.chatId
+      heightCache = {}
+    }
   })
 
   export function scrollToBottom(): void {
