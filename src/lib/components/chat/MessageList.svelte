@@ -263,7 +263,7 @@
     font-size: 0.88rem; line-height: 1.3;
     padding: 6px 10px; border-radius: 10px;
     border: 1px solid color-mix(in srgb, #ef4444 45%, transparent);
-    background: color-mix(in srgb, #ef4444 25%, var(--panel));
+    background: color-mix(in srgb, #ef4444 20%, var(--bg));
     color: color-mix(in srgb, #b91c1c 92%, transparent);
     max-width: var(--page-max); margin-inline: auto; width: min(720px, 92%);
     display: grid; grid-template-columns: 1fr auto; align-items: start; gap: 8px;
