@@ -423,14 +423,21 @@
     if (!file) return false
     const type = typeof file.type === 'string' ? file.type : ''
     if (type.startsWith('image/')) return true
+    if (type.startsWith('video/')) return true
+    if (type.startsWith('audio/')) return true
     if (type === 'application/pdf') return true
     if (!type && typeof file.name === 'string') {
       const lower = file.name.toLowerCase()
       if (lower.endsWith('.pdf')) return true
       if (/\.(png|jpe?g|gif|webp)$/i.test(lower)) return true
+      if (/\.(mp4|webm|mov|avi)$/i.test(lower)) return true
+      if (/\.(mp3|wav|ogg|m4a)$/i.test(lower)) return true
     }
     if (type === 'application/octet-stream' && typeof file.name === 'string') {
-      return file.name.toLowerCase().endsWith('.pdf')
+      const lower = file.name.toLowerCase()
+      if (lower.endsWith('.pdf')) return true
+      if (/\.(mp4|webm|mov|avi)$/i.test(lower)) return true
+      if (/\.(mp3|wav|ogg|m4a)$/i.test(lower)) return true
     }
     return false
   }
@@ -445,6 +452,16 @@
       if (lower.endsWith('.gif')) return 'image/gif'
       if (lower.endsWith('.webp')) return 'image/webp'
       if (lower.endsWith('.pdf')) return 'application/pdf'
+      // Video types
+      if (lower.endsWith('.mp4')) return 'video/mp4'
+      if (lower.endsWith('.webm')) return 'video/webm'
+      if (lower.endsWith('.mov')) return 'video/quicktime'
+      if (lower.endsWith('.avi')) return 'video/x-msvideo'
+      // Audio types
+      if (lower.endsWith('.mp3')) return 'audio/mpeg'
+      if (lower.endsWith('.wav')) return 'audio/wav'
+      if (lower.endsWith('.ogg')) return 'audio/ogg'
+      if (lower.endsWith('.m4a')) return 'audio/mp4'
     }
     return ''
   }

@@ -197,27 +197,27 @@
     const clipboard = e?.clipboardData
     if (!clipboard) return
 
-    const imageFiles = []
+    const pastedFiles = []
     const items = clipboard.items
     if (items && items.length > 0) {
       for (const item of items) {
         if (!item || item.kind !== 'file') continue
         const file = item.getAsFile?.()
-        if (file && typeof file.type === 'string' && file.type.startsWith('image/')) {
-          imageFiles.push(file)
+        if (file && isSupportedAttachment(file)) {
+          pastedFiles.push(file)
         }
       }
     }
 
-    if (imageFiles.length === 0 && clipboard.files?.length > 0) {
+    if (pastedFiles.length === 0 && clipboard.files?.length > 0) {
       for (const file of Array.from(clipboard.files)) {
-        if (file && typeof file.type === 'string' && file.type.startsWith('image/')) {
-          imageFiles.push(file)
+        if (file && isSupportedAttachment(file)) {
+          pastedFiles.push(file)
         }
       }
     }
 
-    if (imageFiles.length === 0) return
+    if (pastedFiles.length === 0) return
 
     const hasTextData = (() => {
       try {
@@ -236,7 +236,7 @@
       e.preventDefault()
     }
 
-    props.onFilesSelected?.(imageFiles)
+    props.onFilesSelected?.(pastedFiles)
   }
 </script>
 
