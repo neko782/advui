@@ -43,63 +43,71 @@
   let scrollTop = $state(0)
   let containerHeight = $state(600)
   
-  const ESTIMATED_HEIGHT = 120 // Estimated average message height
+  const ESTIMATED_HEIGHT = 150 // Estimated average message height
   const BUFFER_COUNT = 3
 
-  // Track measured heights per message id
-  let measuredHeights: Map<number, number> = new Map()
+  // Track measured heights - use reactive object for Svelte 5
+  let heightCache = $state<Record<number, number>>({})
+  let heightVersion = $state(0) // Force reactivity updates
 
   function getItemHeight(index: number): number {
+    // Reference heightVersion to ensure reactivity
+    void heightVersion
     const id = props.items?.[index]?.m?.id
-    if (id !== undefined && measuredHeights.has(id)) {
-      return measuredHeights.get(id)!
+    if (id !== undefined && heightCache[id]) {
+      return heightCache[id]
     }
     return ESTIMATED_HEIGHT
   }
 
-  function getItemOffset(index: number): number {
+  // Pre-compute offsets for all items
+  const itemOffsets = $derived.by(() => {
+    void heightVersion // Depend on height updates
+    const items = props.items ?? []
+    const offsets: number[] = []
     let offset = 0
-    for (let i = 0; i < index; i++) {
+    for (let i = 0; i < items.length; i++) {
+      offsets.push(offset)
       offset += getItemHeight(i)
     }
-    return offset
-  }
+    return offsets
+  })
 
   const totalHeight = $derived.by(() => {
+    void heightVersion
     const items = props.items ?? []
-    let h = 0
-    for (let i = 0; i < items.length; i++) {
-      h += getItemHeight(i)
-    }
-    return h
+    if (items.length === 0) return 0
+    const lastOffset = itemOffsets[items.length - 1] ?? 0
+    return lastOffset + getItemHeight(items.length - 1)
   })
 
   const visibleRange = $derived.by(() => {
+    void heightVersion
     const items = props.items ?? []
     if (items.length === 0) return { startIndex: 0, endIndex: 0 }
     
-    // Find start index
+    // Binary search for start index
     let startIndex = 0
-    let accum = 0
-    for (let i = 0; i < items.length; i++) {
-      const h = getItemHeight(i)
-      if (accum + h > scrollTop) {
-        startIndex = i
-        break
+    let lo = 0, hi = items.length - 1
+    while (lo <= hi) {
+      const mid = (lo + hi) >>> 1
+      const offset = itemOffsets[mid] ?? 0
+      const height = getItemHeight(mid)
+      if (offset + height < scrollTop) {
+        lo = mid + 1
+      } else {
+        hi = mid - 1
       }
-      accum += h
-      startIndex = i
     }
-    startIndex = Math.max(0, startIndex - BUFFER_COUNT)
+    startIndex = Math.max(0, lo - BUFFER_COUNT)
 
     // Find end index
-    let endIndex = startIndex
-    accum = getItemOffset(startIndex)
     const viewEnd = scrollTop + containerHeight
+    let endIndex = startIndex
     for (let i = startIndex; i < items.length; i++) {
       endIndex = i + 1
-      if (accum > viewEnd + ESTIMATED_HEIGHT * BUFFER_COUNT) break
-      accum += getItemHeight(i)
+      const offset = itemOffsets[i] ?? 0
+      if (offset > viewEnd + ESTIMATED_HEIGHT * BUFFER_COUNT) break
     }
     
     return { startIndex, endIndex: Math.min(items.length, endIndex) }
@@ -112,7 +120,7 @@
     for (let i = startIndex; i < endIndex; i++) {
       const vm = items[i]
       if (vm) {
-        result.push({ vm, index: i, offsetY: getItemOffset(i) })
+        result.push({ vm, index: i, offsetY: itemOffsets[i] ?? 0 })
       }
     }
     return result
@@ -127,13 +135,14 @@
   function measureItem(node: HTMLElement, id: number) {
     const measure = () => {
       const h = node.offsetHeight
-      if (h > 0 && measuredHeights.get(id) !== h) {
-        measuredHeights.set(id, h)
-        measuredHeights = measuredHeights // trigger reactivity
+      if (h > 0 && heightCache[id] !== h) {
+        heightCache[id] = h
+        heightVersion++ // Trigger reactivity
       }
     }
-    measure()
-    const ro = new ResizeObserver(measure)
+    // Measure after a frame to ensure content is rendered
+    requestAnimationFrame(measure)
+    const ro = new ResizeObserver(() => requestAnimationFrame(measure))
     ro.observe(node)
     return {
       destroy() {
@@ -145,6 +154,7 @@
   // Track container size
   $effect(() => {
     if (!listEl) return
+    containerHeight = listEl.clientHeight
     const ro = new ResizeObserver((entries) => {
       containerHeight = entries[0]?.contentRect.height ?? 600
     })
@@ -220,9 +230,9 @@
 </div>
 
 <style>
-  .messages { overflow: auto; padding: 16px 0 8px; contain: layout style; height: 100%; min-height: 0; }
+  .messages { overflow-y: auto; overflow-x: hidden; padding: 16px 0 8px; height: 100%; min-height: 0; }
   .virtual-spacer { position: relative; width: 100%; }
-  .virtual-item { position: absolute; top: 0; left: 0; width: 100%; will-change: transform; }
+  .virtual-item { position: absolute; top: 0; left: 0; width: 100%; }
   .notice {
     position: sticky; bottom: 8px;
     font-size: 0.88rem; line-height: 1.3;
