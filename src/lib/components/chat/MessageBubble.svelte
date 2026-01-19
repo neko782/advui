@@ -40,6 +40,11 @@
     }
   }
 
+// ============================================================================
+// ATTACHMENT TYPE DETECTION & DISPLAY
+// Keep in sync with: Chat.svelte, Composer.svelte, openaiClient.ts
+// See Chat.svelte "ATTACHMENT SYSTEM" comment for full list of locations
+// ============================================================================
 function isImageAttachment(attachment) {
   if (!attachment || typeof attachment !== 'object') return false
   const mime = typeof attachment.mimeType === 'string' ? attachment.mimeType : ''
@@ -282,16 +287,18 @@ function attachmentMimeLabel(attachment) {
             {/if}
           {:else if isVideoAttachment(attachment)}
             {#if attachment?.data}
-              <video
-                src={attachmentDataUrl(attachment)}
-                class="message-video"
-                controls
-                preload="metadata"
-              >
-                <track kind="captions" />
-                Your browser does not support the video tag.
-              </video>
-              <div class="attachment-name">{attachmentDisplayName(attachment)}</div>
+              <div class="message-video-container">
+                <video
+                  src={attachmentDataUrl(attachment)}
+                  class="message-video"
+                  controls
+                  preload="metadata"
+                >
+                  <track kind="captions" />
+                  Your browser does not support the video tag.
+                </video>
+                <div class="attachment-name">{attachmentDisplayName(attachment)}</div>
+              </div>
             {:else}
               <div class="message-file placeholder">
                 <span class="file-label">{attachmentDisplayName(attachment)}</span>
@@ -620,6 +627,11 @@ function attachmentMimeLabel(attachment) {
     border-radius: 10px;
     object-fit: contain;
     border: 1px solid var(--border);
+  }
+  .message-video-container {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
   }
   .message-video {
     max-width: 400px;

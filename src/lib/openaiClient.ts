@@ -68,6 +68,11 @@ function buildClientOptions(options: { apiKey: string; apiBaseUrl?: string }): C
   return clientOptions;
 }
 
+// ============================================================================
+// ATTACHMENT MIME TYPE DETECTION
+// Keep in sync with: Chat.svelte, Composer.svelte, MessageBubble.svelte
+// See Chat.svelte "ATTACHMENT SYSTEM" comment for full list of locations
+// ============================================================================
 function normalizeMimeType(mimeType: unknown): string {
   if (typeof mimeType !== 'string') return '';
   return mimeType.trim().toLowerCase();

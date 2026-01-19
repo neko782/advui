@@ -149,21 +149,28 @@
   }
 
   function measureItem(node: HTMLElement, id: number) {
-    // Only measure once - skip if already cached
-    if (heightCache[id]) return {}
-    
     const measure = () => {
-      if (heightCache[id]) return // Already measured
       const h = node.offsetHeight
-      if (h > 0) {
+      if (h > 0 && heightCache[id] !== h) {
         heightCache[id] = h
         heightVersion++
       }
     }
     
+    // Initial measure
     requestAnimationFrame(measure)
     
-    return {}
+    // Watch for size changes (e.g., video/image loading)
+    const ro = new ResizeObserver(() => {
+      measure()
+    })
+    ro.observe(node)
+    
+    return {
+      destroy() {
+        ro.disconnect()
+      }
+    }
   }
 
   // Track container size

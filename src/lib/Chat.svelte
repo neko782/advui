@@ -418,7 +418,17 @@
     try { listCmp?.scrollToBottom?.() } catch {}
   }
 
-  // Attachment handling
+  // ============================================================================
+  // ATTACHMENT SYSTEM
+  // When modifying supported file types, update ALL of these locations:
+  //   1. isSupportedAttachment() below - validates files during upload
+  //   2. inferMimeType() below - maps extensions to MIME types
+  //   3. Composer.svelte: isSupportedAttachment(), isVideoAttachment(), isAudioAttachment(),
+  //      getAttachmentTypeLabel(), file input accept attribute, paste handler
+  //   4. MessageBubble.svelte: isVideoAttachment(), isAudioAttachment(), isPdfAttachment(),
+  //      attachmentMimeLabel(), attachmentDataUrl(), and the rendering template
+  //   5. openaiClient.ts: isVideoMimeType(), isAudioMimeType(), content conversion logic
+  // ============================================================================
   function isSupportedAttachment(file) {
     if (!file) return false
     const type = typeof file.type === 'string' ? file.type : ''

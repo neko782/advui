@@ -83,6 +83,11 @@
     }
   })
 
+  // ============================================================================
+  // ATTACHMENT TYPE DETECTION
+  // Keep in sync with: Chat.svelte, MessageBubble.svelte, openaiClient.ts
+  // See Chat.svelte "ATTACHMENT SYSTEM" comment for full list of locations
+  // ============================================================================
   function isSupportedAttachment(file) {
     if (!file) return false
     const type = typeof file.type === 'string' ? file.type : ''
@@ -113,6 +118,38 @@
       return /\.(png|jpe?g|gif|webp)$/i.test(attachment.name)
     }
     return false
+  }
+
+  function isVideoAttachment(attachment) {
+    if (!attachment || typeof attachment !== 'object') return false
+    const mime = typeof attachment.mimeType === 'string' ? attachment.mimeType : ''
+    if (mime.startsWith('video/')) return true
+    if (!mime && typeof attachment.name === 'string') {
+      return /\.(mp4|webm|mov|avi|mkv)$/i.test(attachment.name)
+    }
+    return false
+  }
+
+  function isAudioAttachment(attachment) {
+    if (!attachment || typeof attachment !== 'object') return false
+    const mime = typeof attachment.mimeType === 'string' ? attachment.mimeType : ''
+    if (mime.startsWith('audio/')) return true
+    if (!mime && typeof attachment.name === 'string') {
+      return /\.(mp3|wav|ogg|m4a|aac|flac)$/i.test(attachment.name)
+    }
+    return false
+  }
+
+  function getAttachmentTypeLabel(attachment) {
+    if (isVideoAttachment(attachment)) return 'VIDEO'
+    if (isAudioAttachment(attachment)) return 'AUDIO'
+    const mime = typeof attachment?.mimeType === 'string' ? attachment.mimeType : ''
+    if (mime === 'application/pdf') return 'PDF'
+    if (mime) {
+      const parts = mime.split('/')
+      if (parts.length === 2 && parts[1]) return parts[1].toUpperCase()
+    }
+    return 'FILE'
   }
 
   function getAttachmentDisplayName(attachment) {
@@ -241,6 +278,7 @@
 </script>
 
 <footer class="composer" class:dragging={isDragging} ondragover={handleDragOver} ondragleave={handleDragLeave} ondrop={handleDrop}>
+  <!-- File input accept attribute: keep in sync with isSupportedAttachment() above -->
   <input
     type="file"
     accept="image/png,image/jpeg,image/jpg,image/webp,image/gif,application/pdf,video/mp4,video/webm,video/quicktime,video/x-msvideo,audio/mpeg,audio/wav,audio/ogg,audio/webm,audio/mp4"
@@ -299,19 +337,27 @@
       {#if props.attachedImages && props.attachedImages.length > 0}
         <div class="image-previews">
           {#each props.attachedImages as img (img.id)}
-            <div class={`attachment-preview ${isImageAttachment(img) ? 'image' : 'file'}`}>
+            <div class={`attachment-preview ${isImageAttachment(img) ? 'image' : isVideoAttachment(img) ? 'video' : isAudioAttachment(img) ? 'audio' : 'file'}`}>
               {#if img?.data}
                 {#if isImageAttachment(img)}
                   <img src={`data:${img.mimeType || 'image/png'};base64,${img.data}`} alt={img.name || img.id || 'Attached image'} />
+                {:else if isVideoAttachment(img)}
+                  <video src={`data:${img.mimeType || 'video/mp4'};base64,${img.data}`} class="video-preview" preload="metadata"></video>
+                  <span class="file-chip-overlay">{getAttachmentDisplayName(img)}</span>
+                {:else if isAudioAttachment(img)}
+                  <div class="file-chip audio-chip">
+                    <span class="file-chip-icon">AUDIO</span>
+                    <span class="file-chip-name">{getAttachmentDisplayName(img)}</span>
+                  </div>
                 {:else}
                   <a
                     class="file-chip"
-                    href={`data:${img.mimeType || 'application/pdf'};base64,${img.data}`}
+                    href={`data:${img.mimeType || 'application/octet-stream'};base64,${img.data}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     download={getAttachmentDisplayName(img)}
                   >
-                    <span class="file-chip-icon">PDF</span>
+                    <span class="file-chip-icon">{getAttachmentTypeLabel(img)}</span>
                     <span class="file-chip-name">{getAttachmentDisplayName(img)}</span>
                   </a>
                 {/if}
@@ -450,6 +496,33 @@
   }
   .attachment-preview.file {
     padding: 8px;
+  }
+  .attachment-preview.video {
+    width: 120px;
+  }
+  .attachment-preview.video .video-preview {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+  .attachment-preview.video .file-chip-overlay {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: rgba(0,0,0,0.7);
+    color: #fff;
+    font-size: 0.65rem;
+    padding: 2px 4px;
+    text-overflow: ellipsis;
+    overflow: hidden;
+    white-space: nowrap;
+  }
+  .attachment-preview.audio {
+    padding: 8px;
+    width: auto;
+    min-width: 80px;
+    max-width: 160px;
   }
   .file-chip {
     display: flex;
