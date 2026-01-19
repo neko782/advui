@@ -43,16 +43,22 @@
   let scrollTop = $state(0)
   let containerHeight = $state(600)
   
-  const ESTIMATED_HEIGHT = 150
   const BUFFER_COUNT = 3
 
   // Height cache - persists across renders, only measures once per message
   let heightCache = $state<Record<number, number>>({})
   let heightVersion = $state(0)
-  
-  // Track pending scroll adjustments and batch them
-  let pendingMeasurements: Array<{ id: number; height: number; oldHeight: number }> = []
-  let measurementFrameScheduled = false
+
+  // Check if all items have been measured
+  const allItemsMeasured = $derived.by(() => {
+    void heightVersion
+    const items = props.items ?? []
+    if (items.length === 0) return true
+    for (const item of items) {
+      if (!heightCache[item.m.id]) return false
+    }
+    return true
+  })
 
   function getItemHeight(index: number): number {
     void heightVersion
@@ -60,67 +66,10 @@
     if (id !== undefined && heightCache[id]) {
       return heightCache[id]
     }
-    return ESTIMATED_HEIGHT
-  }
-  
-  function getItemHeightById(id: number): number {
-    if (heightCache[id]) {
-      return heightCache[id]
-    }
-    return ESTIMATED_HEIGHT
-  }
-  
-  function processPendingMeasurements() {
-    measurementFrameScheduled = false
-    if (pendingMeasurements.length === 0) return
-    
-    const items = props.items ?? []
-    const currentScrollTop = scrollTop
-    let scrollAdjustment = 0
-    
-    // Build a map of id to index for quick lookup
-    const idToIndex = new Map<number, number>()
-    for (let i = 0; i < items.length; i++) {
-      const id = items[i]?.m?.id
-      if (id !== undefined) idToIndex.set(id, i)
-    }
-    
-    // Sort measurements by index to process from top to bottom
-    const measurementsWithIndex = pendingMeasurements
-      .map(m => ({ ...m, index: idToIndex.get(m.id) ?? -1 }))
-      .filter(m => m.index >= 0)
-      .sort((a, b) => a.index - b.index)
-    
-    // Calculate offset for each pending measurement and determine scroll adjustment
-    // Process in order so cache updates affect subsequent offset calculations correctly
-    for (const { id, height, oldHeight, index } of measurementsWithIndex) {
-      // Calculate offset of this item (using current cache state)
-      let itemOffset = 0
-      for (let i = 0; i < index; i++) {
-        itemOffset += getItemHeight(i)
-      }
-      
-      // If this item ends above the current scroll position (plus any accumulated adjustment),
-      // adjust scroll to keep visible content stable
-      if (itemOffset + oldHeight <= currentScrollTop + scrollAdjustment) {
-        scrollAdjustment += height - oldHeight
-      }
-      
-      // Update the cache immediately so subsequent items use the correct height
-      heightCache[id] = height
-    }
-    
-    pendingMeasurements = []
-    heightVersion++
-    
-    // Apply scroll adjustment if needed
-    if (scrollAdjustment !== 0 && listEl) {
-      listEl.scrollTop = listEl.scrollTop + scrollAdjustment
-      scrollTop = listEl.scrollTop
-    }
+    return 0 // Should not happen when virtualization is enabled
   }
 
-  // Pre-compute offsets for all items
+  // Pre-compute offsets for all items (only used when virtualized)
   const itemOffsets = $derived.by(() => {
     void heightVersion
     const items = props.items ?? []
@@ -146,6 +95,11 @@
     const items = props.items ?? []
     if (items.length === 0) return { startIndex: 0, endIndex: 0 }
     
+    // If not all items measured, show all items (no virtualization)
+    if (!allItemsMeasured) {
+      return { startIndex: 0, endIndex: items.length }
+    }
+    
     // Binary search for start index
     let startIndex = 0
     let lo = 0, hi = items.length - 1
@@ -161,13 +115,14 @@
     }
     startIndex = Math.max(0, lo - BUFFER_COUNT)
 
-    // Find end index
+    // Find end index - use measured heights for buffer calculation
     const viewEnd = scrollTop + containerHeight
     let endIndex = startIndex
     for (let i = startIndex; i < items.length; i++) {
       endIndex = i + 1
       const offset = itemOffsets[i] ?? 0
-      if (offset > viewEnd + ESTIMATED_HEIGHT * BUFFER_COUNT) break
+      const height = getItemHeight(i)
+      if (offset > viewEnd + height * BUFFER_COUNT) break
     }
     
     return { startIndex, endIndex: Math.min(items.length, endIndex) }
@@ -180,7 +135,8 @@
     for (let i = startIndex; i < endIndex; i++) {
       const vm = items[i]
       if (vm) {
-        result.push({ vm, index: i, offsetY: itemOffsets[i] ?? 0 })
+        // When not virtualized (allItemsMeasured = false), offsetY is not used
+        result.push({ vm, index: i, offsetY: allItemsMeasured ? (itemOffsets[i] ?? 0) : 0 })
       }
     }
     return result
@@ -200,14 +156,8 @@
       if (heightCache[id]) return // Already measured
       const h = node.offsetHeight
       if (h > 0) {
-        const oldHeight = getItemHeightById(id)
-        pendingMeasurements.push({ id, height: h, oldHeight })
-        
-        // Schedule processing if not already scheduled
-        if (!measurementFrameScheduled) {
-          measurementFrameScheduled = true
-          requestAnimationFrame(processPendingMeasurements)
-        }
+        heightCache[id] = h
+        heightVersion++
       }
     }
     
@@ -244,11 +194,11 @@
 </script>
 
 <div class="messages" bind:this={listEl} onscroll={handleScroll}>
-  <div class="virtual-spacer" style="height: {totalHeight}px;">
+  <div class="virtual-spacer" style={allItemsMeasured ? `height: ${totalHeight}px;` : ''}>
     {#each visibleItems as { vm, index: idx, offsetY } (vm.m.id)}
       <div
-        class="virtual-item"
-        style="transform: translateY({offsetY}px);"
+        class={allItemsMeasured ? 'virtual-item' : 'flow-item'}
+        style={allItemsMeasured ? `transform: translateY(${offsetY}px);` : ''}
         use:measureItem={vm.m.id}
       >
         {#if idx > 0}
@@ -307,6 +257,7 @@
   .messages { overflow-y: auto; overflow-x: hidden; padding: 16px 0 8px; height: 100%; min-height: 0; }
   .virtual-spacer { position: relative; width: 100%; }
   .virtual-item { position: absolute; top: 0; left: 0; width: 100%; }
+  .flow-item { position: relative; width: 100%; }
   .notice {
     position: sticky; bottom: 8px;
     font-size: 0.88rem; line-height: 1.3;
