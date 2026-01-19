@@ -22,7 +22,7 @@ function genConnectionId(): string {
   return `connection_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
-const API_MODE_VALUES: ReadonlySet<string> = new Set(['responses', 'chat_completions']);
+const API_MODE_VALUES: ReadonlySet<string> = new Set(['responses', 'chat_completions', 'gemini']);
 
 const DEFAULT_API_BASE_URL = 'https://api.openai.com/v1';
 

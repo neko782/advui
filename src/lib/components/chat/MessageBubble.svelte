@@ -60,6 +60,26 @@ function isPdfAttachment(attachment) {
   return false
 }
 
+function isVideoAttachment(attachment) {
+  if (!attachment || typeof attachment !== 'object') return false
+  const mime = (attachment.mimeType || '').toLowerCase()
+  if (mime.startsWith('video/')) return true
+  if (!mime && typeof attachment.name === 'string') {
+    return /\.(mp4|webm|mov|avi|mkv)$/i.test(attachment.name)
+  }
+  return false
+}
+
+function isAudioAttachment(attachment) {
+  if (!attachment || typeof attachment !== 'object') return false
+  const mime = (attachment.mimeType || '').toLowerCase()
+  if (mime.startsWith('audio/')) return true
+  if (!mime && typeof attachment.name === 'string') {
+    return /\.(mp3|wav|ogg|m4a|aac|flac)$/i.test(attachment.name)
+  }
+  return false
+}
+
 function attachmentDisplayName(attachment) {
   if (!attachment || typeof attachment !== 'object') return 'attachment'
   if (typeof attachment.name === 'string' && attachment.name.trim()) return attachment.name.trim()
@@ -258,6 +278,43 @@ function attachmentMimeLabel(attachment) {
             {:else}
               <div class="message-file placeholder">
                 <span class="file-label">{attachmentDisplayName(attachment)}</span>
+              </div>
+            {/if}
+          {:else if isVideoAttachment(attachment)}
+            {#if attachment?.data}
+              <video
+                src={attachmentDataUrl(attachment)}
+                class="message-video"
+                controls
+                preload="metadata"
+              >
+                <track kind="captions" />
+                Your browser does not support the video tag.
+              </video>
+              <div class="attachment-name">{attachmentDisplayName(attachment)}</div>
+            {:else}
+              <div class="message-file placeholder">
+                <span class="file-label">{attachmentDisplayName(attachment)}</span>
+                <span class="file-meta">VIDEO</span>
+              </div>
+            {/if}
+          {:else if isAudioAttachment(attachment)}
+            {#if attachment?.data}
+              <div class="message-audio-container">
+                <audio
+                  src={attachmentDataUrl(attachment)}
+                  class="message-audio"
+                  controls
+                  preload="metadata"
+                >
+                  Your browser does not support the audio tag.
+                </audio>
+                <div class="attachment-name">{attachmentDisplayName(attachment)}</div>
+              </div>
+            {:else}
+              <div class="message-file placeholder">
+                <span class="file-label">{attachmentDisplayName(attachment)}</span>
+                <span class="file-meta">AUDIO</span>
               </div>
             {/if}
           {:else}
@@ -563,6 +620,30 @@ function attachmentMimeLabel(attachment) {
     border-radius: 10px;
     object-fit: contain;
     border: 1px solid var(--border);
+  }
+  .message-video {
+    max-width: 400px;
+    max-height: 300px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: #000;
+  }
+  .message-audio-container {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .message-audio {
+    max-width: 300px;
+    border-radius: 24px;
+  }
+  .attachment-name {
+    font-size: 0.75rem;
+    color: var(--muted);
+    max-width: 300px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .message-file {
     display: inline-flex;

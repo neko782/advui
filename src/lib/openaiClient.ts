@@ -32,7 +32,11 @@ function resolveConnection(options: {
       : null;
     const apiKey = typeof connection.apiKey === 'string' ? connection.apiKey : '';
     const apiBaseUrl = connection.apiBaseUrl;
-    const apiMode: ApiMode = connection.apiMode === 'chat_completions' ? 'chat_completions' : 'responses';
+    const apiMode: ApiMode = connection.apiMode === 'chat_completions' 
+      ? 'chat_completions' 
+      : connection.apiMode === 'gemini' 
+        ? 'gemini' 
+        : 'responses';
     return { id, apiKey, apiBaseUrl, apiMode };
   }
   const srcSettings = settings || loadSettings();
@@ -41,7 +45,11 @@ function resolveConnection(options: {
     id: resolved?.id || null,
     apiKey: typeof resolved?.apiKey === 'string' ? resolved.apiKey : '',
     apiBaseUrl: resolved?.apiBaseUrl,
-    apiMode: resolved?.apiMode === 'chat_completions' ? 'chat_completions' : 'responses',
+    apiMode: resolved?.apiMode === 'chat_completions' 
+      ? 'chat_completions' 
+      : resolved?.apiMode === 'gemini' 
+        ? 'gemini' 
+        : 'responses',
   };
 }
 
@@ -68,6 +76,16 @@ function normalizeMimeType(mimeType: unknown): string {
 function isImageMimeType(mimeType: string | undefined): boolean {
   const normalized = normalizeMimeType(mimeType);
   return normalized.startsWith('image/');
+}
+
+function isVideoMimeType(mimeType: string | undefined): boolean {
+  const normalized = normalizeMimeType(mimeType);
+  return normalized.startsWith('video/');
+}
+
+function isAudioMimeType(mimeType: string | undefined): boolean {
+  const normalized = normalizeMimeType(mimeType);
+  return normalized.startsWith('audio/');
 }
 
 function isPdfMimeType(mimeType: string | undefined): boolean {
@@ -133,12 +151,178 @@ function pickActivePreset(settings: Settings | null): { model: string; streaming
 type ContentPart = 
   | { type: 'input_text'; text: string }
   | { type: 'input_image'; image_url: string }
+  | { type: 'input_video'; video_url: string; mimeType: string }
+  | { type: 'input_audio'; audio_url: string; mimeType: string }
   | { type: 'input_file'; file_data: string; filename: string };
 
 type ChatContentPart =
   | { type: 'text'; text: string }
   | { type: 'image_url'; image_url: { url: string } }
   | { type: 'file'; file: { file_data: string; filename: string } };
+
+// Gemini API types
+type GeminiPart = 
+  | { text: string }
+  | { inlineData: { mimeType: string; data: string } };
+
+interface GeminiContent {
+  role: 'user' | 'model';
+  parts: GeminiPart[];
+}
+
+interface GeminiRequest {
+  contents: GeminiContent[];
+  systemInstruction?: { parts: Array<{ text: string }> };
+  generationConfig?: {
+    temperature?: number;
+    topP?: number;
+    maxOutputTokens?: number;
+    thinkingConfig?: {
+      thinkingMode?: string;
+      thinkingBudget?: number;
+    };
+  };
+}
+
+const DEFAULT_GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta';
+
+// Convert messages to Gemini format
+function convertToGeminiFormat(
+  messages: Array<{ role: string; content: string | ContentPart[] }>,
+  prompt?: string
+): { contents: GeminiContent[]; systemInstruction?: { parts: Array<{ text: string }> } } {
+  const contents: GeminiContent[] = [];
+  let systemInstruction: { parts: Array<{ text: string }> } | undefined;
+
+  // Handle simple prompt case
+  if (typeof prompt === 'string' && prompt && (!messages || !messages.length)) {
+    return {
+      contents: [{ role: 'user', parts: [{ text: prompt }] }],
+    };
+  }
+
+  for (const msg of messages) {
+    // Handle system messages as systemInstruction
+    if (msg.role === 'system') {
+      const text = typeof msg.content === 'string' 
+        ? msg.content 
+        : (msg.content as ContentPart[])
+            .filter(p => p.type === 'input_text')
+            .map(p => (p as { text: string }).text)
+            .join('\n');
+      if (text) {
+        systemInstruction = { parts: [{ text }] };
+      }
+      continue;
+    }
+
+    // Map roles: user -> user, assistant -> model
+    const geminiRole: 'user' | 'model' = msg.role === 'assistant' ? 'model' : 'user';
+    const parts: GeminiPart[] = [];
+
+    if (typeof msg.content === 'string') {
+      parts.push({ text: msg.content });
+    } else if (Array.isArray(msg.content)) {
+      for (const part of msg.content as ContentPart[]) {
+        if (part.type === 'input_text') {
+          parts.push({ text: (part as { text: string }).text });
+        } else if (part.type === 'input_image') {
+          // Extract base64 data from data URL
+          const imageUrl = (part as { image_url: string }).image_url;
+          const match = imageUrl.match(/^data:([^;]+);base64,(.+)$/);
+          if (match && match[1] && match[2]) {
+            parts.push({
+              inlineData: {
+                mimeType: match[1],
+                data: match[2],
+              },
+            });
+          }
+        } else if (part.type === 'input_video') {
+          // Handle video attachments for Gemini
+          const videoPart = part as { video_url: string; mimeType: string };
+          const match = videoPart.video_url.match(/^data:([^;]+);base64,(.+)$/);
+          if (match && match[1] && match[2]) {
+            parts.push({
+              inlineData: {
+                mimeType: match[1],
+                data: match[2],
+              },
+            });
+          }
+        } else if (part.type === 'input_audio') {
+          // Handle audio attachments for Gemini
+          const audioPart = part as { audio_url: string; mimeType: string };
+          const match = audioPart.audio_url.match(/^data:([^;]+);base64,(.+)$/);
+          if (match && match[1] && match[2]) {
+            parts.push({
+              inlineData: {
+                mimeType: match[1],
+                data: match[2],
+              },
+            });
+          }
+        } else if (part.type === 'input_file') {
+          // Handle file attachments (PDFs, etc.)
+          const filePart = part as { file_data: string; filename: string };
+          const match = filePart.file_data.match(/^data:([^;]+);base64,(.+)$/);
+          if (match && match[1] && match[2]) {
+            parts.push({
+              inlineData: {
+                mimeType: match[1],
+                data: match[2],
+              },
+            });
+          }
+        }
+      }
+    }
+
+    if (parts.length > 0) {
+      contents.push({ role: geminiRole, parts });
+    }
+  }
+
+  return { contents, systemInstruction };
+}
+
+// Extract text from Gemini response
+function extractGeminiText(res: unknown): string {
+  const resObj = res as Record<string, unknown>;
+  try {
+    const candidates = resObj?.candidates as Array<Record<string, unknown>> | undefined;
+    if (Array.isArray(candidates) && candidates.length > 0) {
+      const content = candidates[0]?.content as Record<string, unknown> | undefined;
+      const parts = content?.parts as Array<Record<string, unknown>> | undefined;
+      if (Array.isArray(parts)) {
+        return parts
+          .filter(p => typeof p?.text === 'string')
+          .map(p => p.text as string)
+          .join('');
+      }
+    }
+  } catch { /* ignore */ }
+  return '';
+}
+
+// Extract text delta from Gemini streaming chunk
+function extractGeminiStreamDelta(chunk: unknown): string {
+  const chunkObj = chunk as Record<string, unknown>;
+  try {
+    const candidates = chunkObj?.candidates as Array<Record<string, unknown>> | undefined;
+    if (Array.isArray(candidates) && candidates.length > 0) {
+      const content = candidates[0]?.content as Record<string, unknown> | undefined;
+      const parts = content?.parts as Array<Record<string, unknown>> | undefined;
+      if (Array.isArray(parts)) {
+        return parts
+          .filter(p => typeof p?.text === 'string')
+          .map(p => p.text as string)
+          .join('');
+      }
+    }
+  } catch { /* ignore */ }
+  return '';
+}
 
 // Create a response using either a single prompt string or an array of messages
 // Messages should be of the form: { role: 'system'|'user'|'assistant', content: string }
@@ -181,10 +365,15 @@ export async function respond(options: RespondOptions): Promise<GenerationRespon
     settings,
   });
   if (!resolvedConnection.apiKey) {
-    throw new Error('Missing OpenAI API key. Set it in Settings.');
+    throw new Error('Missing API key. Set it in Settings.');
   }
-  const apiMode = resolvedConnection.apiMode === 'chat_completions' ? 'chat_completions' : 'responses';
+  const apiMode = resolvedConnection.apiMode === 'chat_completions' 
+    ? 'chat_completions' 
+    : resolvedConnection.apiMode === 'gemini' 
+      ? 'gemini' 
+      : 'responses';
   const useChatCompletions = apiMode === 'chat_completions';
+  const useGemini = apiMode === 'gemini';
 
   // Build fetch config
   const effectiveConnectionId = resolvedConnection.id || preferredConnectionId || null;
@@ -226,6 +415,20 @@ export async function respond(options: RespondOptions): Promise<GenerationRespon
                 contentArray.push({
                   type: 'input_image',
                   image_url: `data:${safeMime};base64,${img.data}`,
+                });
+              } else if (isVideoMimeType(mimeType)) {
+                // Video attachments - supported by Gemini API
+                contentArray.push({
+                  type: 'input_video',
+                  video_url: `data:${mimeType};base64,${img.data}`,
+                  mimeType: mimeType,
+                });
+              } else if (isAudioMimeType(mimeType)) {
+                // Audio attachments - supported by Gemini API
+                contentArray.push({
+                  type: 'input_audio',
+                  audio_url: `data:${mimeType};base64,${img.data}`,
+                  mimeType: mimeType,
                 });
               } else if (isPdfMimeType(mimeType) || (!mimeType && typeof img.name === 'string' && img.name.toLowerCase().endsWith('.pdf'))) {
                 const dataUrl = ensureDataUrl(img.data, mimeType || 'application/pdf');
@@ -396,6 +599,93 @@ export async function respond(options: RespondOptions): Promise<GenerationRespon
   }
 
   if (stream) {
+    // Gemini streaming
+    if (useGemini) {
+      const abortController = new AbortController();
+      provideAbort(() => {
+        try { abortController.abort(); } catch { /* ignore */ }
+      });
+
+      const geminiBaseUrl = resolvedConnection.apiBaseUrl?.trim() || DEFAULT_GEMINI_BASE_URL;
+      const geminiEndpoint = `${geminiBaseUrl}/models/${useModel}:streamGenerateContent?alt=sse&key=${apiKey}`;
+
+      // Convert messages to Gemini format
+      const { contents, systemInstruction } = convertToGeminiFormat(
+        Array.isArray(input) ? input : [],
+        typeof input === 'string' ? input : undefined
+      );
+
+      const geminiRequest: GeminiRequest = { contents };
+      if (systemInstruction) {
+        geminiRequest.systemInstruction = systemInstruction;
+      }
+
+      // Add generation config
+      const generationConfig: GeminiRequest['generationConfig'] = {};
+      const tempVal = toClampedNumber(temperature, 0, 2);
+      if (tempVal != null) generationConfig.temperature = tempVal;
+      const topPVal = toClampedNumber(topP, 0, 1);
+      if (topPVal != null) generationConfig.topP = topPVal;
+      const tokens = toIntOrNull(maxOutputTokens);
+      if (tokens != null) generationConfig.maxOutputTokens = tokens;
+      if (Object.keys(generationConfig).length > 0) {
+        geminiRequest.generationConfig = generationConfig;
+      }
+
+      const response = await fetch(geminiEndpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(geminiRequest),
+        signal: abortController.signal,
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => '');
+        throw new Error(`Gemini API error ${response.status}: ${errorText}`);
+      }
+
+      const reader = response.body?.getReader();
+      if (!reader) throw new Error('No response body');
+      const decoder = new TextDecoder();
+
+      let full = '';
+      let buffer = '';
+
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed || trimmed === 'data: [DONE]') continue;
+            if (!trimmed.startsWith('data: ')) continue;
+
+            try {
+              const chunk = JSON.parse(trimmed.slice(6));
+              try { onEvent?.(chunk); } catch { /* ignore */ }
+
+              const delta = extractGeminiStreamDelta(chunk);
+              if (delta) {
+                full += delta;
+                try { onTextDelta?.(full, delta, chunk); } catch { /* ignore */ }
+              }
+            } catch { /* ignore parse errors */ }
+          }
+        }
+      } finally {
+        reader.releaseLock();
+      }
+
+      return { text: full, reasoningSummary: '' };
+    }
+
     if (useChatCompletions) {
       const abortController = new AbortController();
       provideAbort(() => {
@@ -768,6 +1058,58 @@ export async function respond(options: RespondOptions): Promise<GenerationRespon
       generatedImages: generatedImages.length > 0 ? generatedImages : undefined,
     };
   } else {
+    // Gemini non-streaming
+    if (useGemini) {
+      const abortController = new AbortController();
+      provideAbort(() => {
+        try { abortController.abort(); } catch { /* ignore */ }
+      });
+
+      const geminiBaseUrl = resolvedConnection.apiBaseUrl?.trim() || DEFAULT_GEMINI_BASE_URL;
+      const geminiEndpoint = `${geminiBaseUrl}/models/${useModel}:generateContent?key=${apiKey}`;
+
+      // Convert messages to Gemini format
+      const { contents, systemInstruction } = convertToGeminiFormat(
+        Array.isArray(input) ? input : [],
+        typeof input === 'string' ? input : undefined
+      );
+
+      const geminiRequest: GeminiRequest = { contents };
+      if (systemInstruction) {
+        geminiRequest.systemInstruction = systemInstruction;
+      }
+
+      // Add generation config
+      const generationConfig: GeminiRequest['generationConfig'] = {};
+      const tempVal = toClampedNumber(temperature, 0, 2);
+      if (tempVal != null) generationConfig.temperature = tempVal;
+      const topPVal = toClampedNumber(topP, 0, 1);
+      if (topPVal != null) generationConfig.topP = topPVal;
+      const tokens = toIntOrNull(maxOutputTokens);
+      if (tokens != null) generationConfig.maxOutputTokens = tokens;
+      if (Object.keys(generationConfig).length > 0) {
+        geminiRequest.generationConfig = generationConfig;
+      }
+
+      const response = await fetch(geminiEndpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(geminiRequest),
+        signal: abortController.signal,
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => '');
+        throw new Error(`Gemini API error ${response.status}: ${errorText}`);
+      }
+
+      const res = await response.json();
+      const text = extractGeminiText(res);
+      return { text, reasoningSummary: '' };
+    }
+
     if (useChatCompletions) {
       const abortController = new AbortController();
       provideAbort(() => {
@@ -839,22 +1181,62 @@ export async function listModels(options: {
   apiKey?: string;
   apiBaseUrl?: string;
   connectionId?: string;
+  apiMode?: ApiMode;
 } = {}): Promise<string[]> {
   let apiKey: string;
   let baseURL: string;
+  let apiMode: ApiMode = 'responses';
 
   if (options?.apiKey) {
     const clientOptions = buildClientOptions(options as { apiKey: string; apiBaseUrl?: string });
-    if (!clientOptions) throw new Error('Missing OpenAI API key.');
+    if (!clientOptions) throw new Error('Missing API key.');
     apiKey = clientOptions.apiKey;
     baseURL = clientOptions.baseURL || 'https://api.openai.com/v1';
+    apiMode = options.apiMode || 'responses';
   } else {
-    const config = await getClient(options);
-    if (!config) throw new Error('Missing OpenAI API key. Set it in Settings.');
-    apiKey = config.apiKey;
-    baseURL = config.baseURL;
+    const settings = loadSettings();
+    const connection = resolveConnection({
+      connectionId: options.connectionId,
+      settings,
+    });
+    if (!connection.apiKey) throw new Error('Missing API key. Set it in Settings.');
+    apiKey = connection.apiKey;
+    baseURL = connection.apiBaseUrl || 'https://api.openai.com/v1';
+    apiMode = connection.apiMode;
   }
 
+  // Handle Gemini API
+  if (apiMode === 'gemini') {
+    const geminiBaseUrl = baseURL.includes('generativelanguage.googleapis.com') 
+      ? baseURL 
+      : DEFAULT_GEMINI_BASE_URL;
+    const response = await fetch(`${geminiBaseUrl}/models?key=${apiKey}`, {
+      method: 'GET',
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => '');
+      throw new Error(`Gemini API error ${response.status}: ${errorText}`);
+    }
+
+    const res = await response.json();
+    const models = Array.isArray(res?.models) ? res.models : [];
+    // Filter to only generative models and extract model names
+    return models
+      .filter((m: Record<string, unknown>) => 
+        typeof m?.name === 'string' && 
+        m.name.includes('/') &&
+        (m.supportedGenerationMethods as string[] || []).includes('generateContent')
+      )
+      .map((m: Record<string, unknown>) => {
+        // Extract model ID from full name (e.g., "models/gemini-pro" -> "gemini-pro")
+        const name = m.name as string;
+        return name.startsWith('models/') ? name.slice(7) : name;
+      })
+      .sort();
+  }
+
+  // Handle OpenAI-compatible APIs
   const response = await fetch(`${baseURL}/models`, {
     method: 'GET',
     headers: {
@@ -873,8 +1255,8 @@ export async function listModels(options: {
 }
 
 // List models using a provided API key (without saving it)
-export async function listModelsWithKey(apiKey: string, apiBaseUrl: string = ''): Promise<string[]> {
-  return listModels({ apiKey, apiBaseUrl });
+export async function listModelsWithKey(apiKey: string, apiBaseUrl: string = '', apiMode?: ApiMode): Promise<string[]> {
+  return listModels({ apiKey, apiBaseUrl, apiMode });
 }
 
 function sortModels(items: Array<{ id?: string; created?: number }>): Array<{ id: string; created: number }> {

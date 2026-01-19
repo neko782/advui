@@ -690,7 +690,7 @@
       refreshMessages = { ...refreshMessages, [targetId]: 'Connecting…' }
     }
     try {
-      const ids = await listModelsWithKey(connection.apiKey, connection.apiBaseUrl)
+      const ids = await listModelsWithKey(connection.apiKey, connection.apiBaseUrl, connection.apiMode)
       setModelsCache(targetId, ids)
       modelCacheByConnection = { ...modelCacheByConnection, [targetId]: { ids, fetchedAt: Date.now() } }
       refreshMessages = { ...refreshMessages, [targetId]: `Connected ✓ Fetched ${ids.length} models.` }
@@ -1019,7 +1019,7 @@
                       data-lpignore="true"
                     />
                   </label>
-                  <p class="hint">Leave blank to use the default OpenAI endpoint.</p>
+                  <p class="hint">Leave blank to use the default endpoint for the selected API.</p>
                   <label class="field">
                     <span>API</span>
                     <select
@@ -1029,6 +1029,7 @@
                     >
                       <option value="responses">Responses API</option>
                       <option value="chat_completions">Chat Completions API</option>
+                      <option value="gemini">Gemini API</option>
                     </select>
                   </label>
                   {#if activeRefreshMsg}

@@ -11,7 +11,7 @@ export type TextVerbosity = 'none' | 'low' | 'medium' | 'high';
 export type ReasoningSummary = 'none' | 'auto' | 'concise' | 'detailed';
 
 // API modes
-export type ApiMode = 'responses' | 'chat_completions';
+export type ApiMode = 'responses' | 'chat_completions' | 'gemini';
 
 // Theme modes
 export type ThemeMode = 'light' | 'dark' | 'system';

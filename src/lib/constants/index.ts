@@ -5,6 +5,7 @@ export const REASONING_OPTIONS: readonly ReasoningEffort[] = ['none', 'minimal',
 export const TEXT_VERBOSITY_OPTIONS: readonly TextVerbosity[] = ['none', 'low', 'medium', 'high'] as const;
 export const REASONING_SUMMARY_OPTIONS: readonly ReasoningSummary[] = ['none', 'auto', 'concise', 'detailed'] as const;
 export const DEFAULT_API_BASE_URL = 'https://api.openai.com/v1';
+export const DEFAULT_GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta';
 export const VALID_MESSAGE_ROLES: ReadonlySet<MessageRole> = new Set(['user', 'assistant', 'system'] as const);
 export const BUG_NOTICE = 'This indicates a bug in the app. Please try to reproduce it and report it.';
 export const DEBUG_AUTOFIX_NOTICE = 'Autofix is disabled in debug mode.';

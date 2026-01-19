@@ -88,9 +88,10 @@ interface ConnectionInput {
   connectionId?: string;
   apiKey?: string;
   apiBaseUrl?: string;
+  apiMode?: 'responses' | 'chat_completions' | 'gemini';
 }
 
-function resolveConnection(input: ConnectionInput | string | null | undefined): { id: string; apiKey: string; apiBaseUrl?: string } {
+function resolveConnection(input: ConnectionInput | string | null | undefined): { id: string; apiKey: string; apiBaseUrl?: string; apiMode?: 'responses' | 'chat_completions' | 'gemini' } {
   if (!input) {
     const settings = loadSettings();
     const active = findConnection(settings, settings?.selectedConnectionId);
@@ -98,6 +99,7 @@ function resolveConnection(input: ConnectionInput | string | null | undefined): 
       id: active?.id || 'default',
       apiKey: typeof active?.apiKey === 'string' ? active.apiKey : '',
       apiBaseUrl: active?.apiBaseUrl,
+      apiMode: active?.apiMode,
     };
   }
   if (typeof input === 'string') {
@@ -109,6 +111,7 @@ function resolveConnection(input: ConnectionInput | string | null | undefined): 
       id: chosen?.id || input || 'default',
       apiKey: typeof chosen?.apiKey === 'string' ? chosen.apiKey : '',
       apiBaseUrl: chosen?.apiBaseUrl,
+      apiMode: chosen?.apiMode,
     };
   }
   const id = typeof input?.id === 'string' && input.id.trim()
@@ -118,6 +121,7 @@ function resolveConnection(input: ConnectionInput | string | null | undefined): 
     id: id || 'default',
     apiKey: typeof input?.apiKey === 'string' ? input.apiKey : '',
     apiBaseUrl: input?.apiBaseUrl,
+    apiMode: input?.apiMode,
   };
 }
 
@@ -130,17 +134,19 @@ export async function ensureModels(connectionInput?: ConnectionInput | string | 
     connectionId: connection.id,
     apiKey: connection.apiKey,
     apiBaseUrl: connection.apiBaseUrl,
+    apiMode: connection.apiMode,
   });
   return saveEntry(connection.id, ids);
 }
 
 export async function refreshModels(connectionInput?: ConnectionInput | string | null): Promise<ModelsCacheEntry> {
   const connection = resolveConnection(connectionInput);
-  if (!connection.apiKey) throw new Error('Missing OpenAI API key.');
+  if (!connection.apiKey) throw new Error('Missing API key.');
   const ids = await listModels({
     connectionId: connection.id,
     apiKey: connection.apiKey,
     apiBaseUrl: connection.apiBaseUrl,
+    apiMode: connection.apiMode,
   });
   return saveEntry(connection.id, ids);
 }
