@@ -49,6 +49,13 @@
   // Cache for extracted content to avoid re-processing
   let contentCache = new Map()
 
+  // Virtualization state
+  const ITEM_HEIGHT = 40 // Height of each chat row (36px) + gap (4px)
+  const BUFFER_COUNT = 5 // Extra items to render above/below viewport
+  let chatListEl = $state<HTMLElement | null>(null)
+  let scrollTop = $state(0)
+  let containerHeight = $state(400)
+
   function selectChat(id) {
     if (!id || editingId === id || confirmDeleteId === id) return
     props.onSelect?.(id)
@@ -333,6 +340,37 @@
     return chats.filter(chat => matchesSearch(chat, query, searchMode))
   })
 
+  // Virtualization calculations
+  const totalHeight = $derived(filteredChats.length * ITEM_HEIGHT)
+  
+  const visibleRange = $derived.by(() => {
+    const startIndex = Math.max(0, Math.floor(scrollTop / ITEM_HEIGHT) - BUFFER_COUNT)
+    const visibleCount = Math.ceil(containerHeight / ITEM_HEIGHT) + BUFFER_COUNT * 2
+    const endIndex = Math.min(filteredChats.length, startIndex + visibleCount)
+    return { startIndex, endIndex }
+  })
+
+  const visibleChats = $derived.by(() => {
+    const { startIndex, endIndex } = visibleRange
+    return filteredChats.slice(startIndex, endIndex).map((chat, i) => ({
+      chat,
+      index: startIndex + i,
+      offsetY: (startIndex + i) * ITEM_HEIGHT
+    }))
+  })
+
+  function handleChatListScroll(event: Event) {
+    const target = event.target as HTMLElement
+    scrollTop = target.scrollTop
+  }
+
+  // Update container height on mount and resize
+  function updateContainerHeight() {
+    if (chatListEl) {
+      containerHeight = chatListEl.clientHeight
+    }
+  }
+
   onMount(() => {
     function handlePointerDown(event) {
       if (presetMenuOpen) {
@@ -359,10 +397,35 @@
     }
     document.addEventListener('pointerdown', handlePointerDown)
     document.addEventListener('keydown', handleKeydown)
+
+    // Initialize container height
+    updateContainerHeight()
+    
+    // Use ResizeObserver for container height changes
+    let resizeObserver: ResizeObserver | null = null
+    if (chatListEl) {
+      resizeObserver = new ResizeObserver(() => {
+        updateContainerHeight()
+      })
+      resizeObserver.observe(chatListEl)
+    }
+
     return () => {
       document.removeEventListener('pointerdown', handlePointerDown)
       document.removeEventListener('keydown', handleKeydown)
+      resizeObserver?.disconnect()
     }
+  })
+
+  // Re-observe when chatListEl changes
+  $effect(() => {
+    if (!chatListEl) return
+    updateContainerHeight()
+    const resizeObserver = new ResizeObserver(() => {
+      updateContainerHeight()
+    })
+    resizeObserver.observe(chatListEl)
+    return () => resizeObserver.disconnect()
   })
 
   $effect(() => {
@@ -464,124 +527,127 @@
             </div>
           </div>
 
-          <nav class="chat-list" aria-label="Chats">
-            {#each filteredChats as c (c.id)}
-              <div
-                class={`chat-row ${props.selectedId === c.id ? 'active' : ''} ${(confirmDeleteId === c.id || editingId === c.id || props.selectedId === c.id || chatMenuOpen === c.id) ? 'show-actions' : ''}`}
-                title={c.title || 'Chat'}
-              >
-                {#if editingId === c.id}
-                  <div class="chat-main editing">
-                    <input
-                      class="chat-input"
-                      bind:this={editingInput}
-                      value={draftTitle}
-                      oninput={(event) => (draftTitle = event.currentTarget.value)}
-                      onblur={() => handleInputBlur(c.id, c.title)}
+          <nav class="chat-list" aria-label="Chats" bind:this={chatListEl} onscroll={handleChatListScroll}>
+            <div class="chat-list-spacer" style="height: {totalHeight}px;">
+              {#each visibleChats as { chat: c, offsetY } (c.id)}
+                <div
+                  class={`chat-row ${props.selectedId === c.id ? 'active' : ''} ${(confirmDeleteId === c.id || editingId === c.id || props.selectedId === c.id || chatMenuOpen === c.id) ? 'show-actions' : ''}`}
+                  title={c.title || 'Chat'}
+                  style="transform: translateY({offsetY}px);"
+                >
+                  {#if editingId === c.id}
+                    <div class="chat-main editing">
+                      <input
+                        class="chat-input"
+                        bind:this={editingInput}
+                        value={draftTitle}
+                        oninput={(event) => (draftTitle = event.currentTarget.value)}
+                        onblur={() => handleInputBlur(c.id, c.title)}
+                        onkeydown={(event) => {
+                          if (event.key === 'Enter') {
+                            event.preventDefault()
+                            applyEdit(c.id, c.title)
+                          } else if (event.key === 'Escape') {
+                            event.preventDefault()
+                            cancelEdit(c.id)
+                          }
+                        }}
+                        aria-label="Edit chat title"
+                      />
+                    </div>
+                  {:else}
+                    <button
+                      type="button"
+                      class="chat-link {props.selectedId === c.id ? 'active' : ''}"
+                      onclick={() => selectChat(c.id)}
                       onkeydown={(event) => {
-                        if (event.key === 'Enter') {
+                        if (event.key === 'Enter' || event.key === ' ') {
                           event.preventDefault()
-                          applyEdit(c.id, c.title)
-                        } else if (event.key === 'Escape') {
-                          event.preventDefault()
-                          cancelEdit(c.id)
+                          selectChat(c.id)
                         }
                       }}
-                      aria-label="Edit chat title"
-                    />
-                  </div>
-                {:else}
-                  <button
-                    type="button"
-                    class="chat-link {props.selectedId === c.id ? 'active' : ''}"
-                    onclick={() => selectChat(c.id)}
-                    onkeydown={(event) => {
-                      if (event.key === 'Enter' || event.key === ' ') {
-                        event.preventDefault()
-                        selectChat(c.id)
-                      }
-                    }}
-                  >
-                    <span class="chat-label">
-                      {#if isGenerating(c.id)}
-                        <span class="chat-spinner" aria-hidden="true"></span>
-                      {/if}
-                      <span class="chat-title">{c.title || 'New Chat'}</span>
-                    </span>
-                  </button>
-                {/if}
-                <div class="chat-actions">
-                  {#if confirmDeleteId === c.id}
-                    <button type="button" class="chat-action-btn cancel" onclick={() => cancelDelete(c.id)} aria-label="Cancel delete">
-                      <IconClose style="font-size: 18px;" />
-                    </button>
-                    <button type="button" class="chat-action-btn confirm" onclick={() => confirmDelete(c.id)} aria-label="Confirm delete">
-                      <IconCheck style="font-size: 18px;" />
-                    </button>
-                  {:else if editingId === c.id}
-                    <button
-                      type="button"
-                      class="chat-action-btn cancel"
-                      onmousedown={() => (suppressBlur = true)}
-                      onclick={() => cancelEdit(c.id)}
-                      aria-label="Cancel edit"
                     >
-                      <IconClose style="font-size: 18px;" />
+                      <span class="chat-label">
+                        {#if isGenerating(c.id)}
+                          <span class="chat-spinner" aria-hidden="true"></span>
+                        {/if}
+                        <span class="chat-title">{c.title || 'New Chat'}</span>
+                      </span>
                     </button>
-                    <button
-                      type="button"
-                      class="chat-action-btn confirm"
-                      onmousedown={() => (suppressBlur = true)}
-                      onclick={() => applyEdit(c.id, c.title)}
-                      aria-label="Confirm title"
-                    >
-                      <IconCheck style="font-size: 18px;" />
-                    </button>
-                  {:else}
-                    <div class="chat-menu-wrapper">
+                  {/if}
+                  <div class="chat-actions">
+                    {#if confirmDeleteId === c.id}
+                      <button type="button" class="chat-action-btn cancel" onclick={() => cancelDelete(c.id)} aria-label="Cancel delete">
+                        <IconClose style="font-size: 18px;" />
+                      </button>
+                      <button type="button" class="chat-action-btn confirm" onclick={() => confirmDelete(c.id)} aria-label="Confirm delete">
+                        <IconCheck style="font-size: 18px;" />
+                      </button>
+                    {:else if editingId === c.id}
                       <button
                         type="button"
-                        class="chat-action-btn chat-menu-btn"
-                        onclick={(e) => toggleChatMenu(c.id, e)}
-                        aria-label="Chat options"
-                        aria-haspopup="true"
-                        aria-expanded={chatMenuOpen === c.id ? 'true' : 'false'}
+                        class="chat-action-btn cancel"
+                        onmousedown={() => (suppressBlur = true)}
+                        onclick={() => cancelEdit(c.id)}
+                        aria-label="Cancel edit"
                       >
-                        <IconMoreVert style="font-size: 18px;" />
+                        <IconClose style="font-size: 18px;" />
                       </button>
-                      {#if chatMenuOpen === c.id}
-                        <div class="chat-menu">
-                          <button
-                            type="button"
-                            class="chat-menu-item"
-                            onclick={(e) => handleMenuEdit(c, e)}
-                          >
-                            <IconEdit style="font-size: 18px;" />
-                            <span>Edit</span>
-                          </button>
-                          <button
-                            type="button"
-                            class="chat-menu-item"
-                            onclick={(e) => handleMenuExport(c.id, e)}
-                          >
-                            <IconDownload style="font-size: 18px;" />
-                            <span>Export</span>
-                          </button>
-                          <button
-                            type="button"
-                            class="chat-menu-item"
-                            onclick={(e) => handleMenuDelete(c.id, e)}
-                          >
-                            <IconDelete style="font-size: 18px;" />
-                            <span>Delete</span>
-                          </button>
-                        </div>
-                      {/if}
-                    </div>
-                  {/if}
+                      <button
+                        type="button"
+                        class="chat-action-btn confirm"
+                        onmousedown={() => (suppressBlur = true)}
+                        onclick={() => applyEdit(c.id, c.title)}
+                        aria-label="Confirm title"
+                      >
+                        <IconCheck style="font-size: 18px;" />
+                      </button>
+                    {:else}
+                      <div class="chat-menu-wrapper">
+                        <button
+                          type="button"
+                          class="chat-action-btn chat-menu-btn"
+                          onclick={(e) => toggleChatMenu(c.id, e)}
+                          aria-label="Chat options"
+                          aria-haspopup="true"
+                          aria-expanded={chatMenuOpen === c.id ? 'true' : 'false'}
+                        >
+                          <IconMoreVert style="font-size: 18px;" />
+                        </button>
+                        {#if chatMenuOpen === c.id}
+                          <div class="chat-menu">
+                            <button
+                              type="button"
+                              class="chat-menu-item"
+                              onclick={(e) => handleMenuEdit(c, e)}
+                            >
+                              <IconEdit style="font-size: 18px;" />
+                              <span>Edit</span>
+                            </button>
+                            <button
+                              type="button"
+                              class="chat-menu-item"
+                              onclick={(e) => handleMenuExport(c.id, e)}
+                            >
+                              <IconDownload style="font-size: 18px;" />
+                              <span>Export</span>
+                            </button>
+                            <button
+                              type="button"
+                              class="chat-menu-item"
+                              onclick={(e) => handleMenuDelete(c.id, e)}
+                            >
+                              <IconDelete style="font-size: 18px;" />
+                              <span>Delete</span>
+                            </button>
+                          </div>
+                        {/if}
+                      </div>
+                    {/if}
+                  </div>
                 </div>
-              </div>
-            {/each}
+              {/each}
+            </div>
           </nav>
         </div>
       {/if}
@@ -862,9 +928,7 @@
     margin-bottom: 8px; /* space between label and chat list */
   }
   .chat-list {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
+    display: block;
     padding: 0 6px 10px;
     /* Only vertical scrolling; clip horizontal overflow */
     overflow-y: auto;
@@ -874,17 +938,26 @@
     /* Allow flex child to shrink and avoid overflow */
     min-width: 0;
   }
-  .chat-row {
+  .chat-list-spacer {
     position: relative;
+    width: 100%;
+  }
+  .chat-row {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
     display: flex;
     align-items: center;
     gap: 6px;
-    flex: 0 0 auto;
+    height: 36px;
+    margin-bottom: 4px;
     padding: 2px 4px;
     padding-right: 36px;
     border-radius: 8px;
     overflow: visible;
     z-index: 1;
+    will-change: transform;
   }
   .chat-row.show-actions {
     z-index: 150;
