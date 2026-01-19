@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { createVirtualizer } from '@tanstack/svelte-virtual'
   import MessageItem from './MessageItem.svelte'
   import { IconAdd } from '../../icons'
   import type { VisibleMessage, MessageRole } from '../../types'
@@ -38,97 +37,178 @@
   }
 
   const props: Props = $props()
+  
+  // Virtual scrolling state
   let listEl: HTMLDivElement | undefined = $state()
+  let scrollTop = $state(0)
+  let containerHeight = $state(600)
+  
+  const ESTIMATED_HEIGHT = 120 // Estimated average message height
+  const BUFFER_COUNT = 3
 
-  const itemCount = $derived(props.items?.length ?? 0)
+  // Track measured heights per message id
+  let measuredHeights: Map<number, number> = new Map()
 
-  const virtualizer = createVirtualizer({
-    get count() { return itemCount },
-    getScrollElement: () => listEl ?? null,
-    estimateSize: () => 120, // Estimated average message height
-    overscan: 5,
-    getItemKey: (index: number) => props.items?.[index]?.m?.id ?? index,
-  })
-
-  // Notify virtualizer when scroll element becomes available
-  $effect(() => {
-    if (listEl) {
-      $virtualizer.setOptions({ getScrollElement: () => listEl! })
+  function getItemHeight(index: number): number {
+    const id = props.items?.[index]?.m?.id
+    if (id !== undefined && measuredHeights.has(id)) {
+      return measuredHeights.get(id)!
     }
+    return ESTIMATED_HEIGHT
+  }
+
+  function getItemOffset(index: number): number {
+    let offset = 0
+    for (let i = 0; i < index; i++) {
+      offset += getItemHeight(i)
+    }
+    return offset
+  }
+
+  const totalHeight = $derived.by(() => {
+    const items = props.items ?? []
+    let h = 0
+    for (let i = 0; i < items.length; i++) {
+      h += getItemHeight(i)
+    }
+    return h
   })
 
-  // Svelte action to measure element and report size to virtualizer
-  function measureElement(node: HTMLElement, v: typeof $virtualizer) {
-    v.measureElement(node)
+  const visibleRange = $derived.by(() => {
+    const items = props.items ?? []
+    if (items.length === 0) return { startIndex: 0, endIndex: 0 }
+    
+    // Find start index
+    let startIndex = 0
+    let accum = 0
+    for (let i = 0; i < items.length; i++) {
+      const h = getItemHeight(i)
+      if (accum + h > scrollTop) {
+        startIndex = i
+        break
+      }
+      accum += h
+      startIndex = i
+    }
+    startIndex = Math.max(0, startIndex - BUFFER_COUNT)
+
+    // Find end index
+    let endIndex = startIndex
+    accum = getItemOffset(startIndex)
+    const viewEnd = scrollTop + containerHeight
+    for (let i = startIndex; i < items.length; i++) {
+      endIndex = i + 1
+      if (accum > viewEnd + ESTIMATED_HEIGHT * BUFFER_COUNT) break
+      accum += getItemHeight(i)
+    }
+    
+    return { startIndex, endIndex: Math.min(items.length, endIndex) }
+  })
+
+  const visibleItems = $derived.by(() => {
+    const items = props.items ?? []
+    const { startIndex, endIndex } = visibleRange
+    const result: { vm: VisibleMessage; index: number; offsetY: number }[] = []
+    for (let i = startIndex; i < endIndex; i++) {
+      const vm = items[i]
+      if (vm) {
+        result.push({ vm, index: i, offsetY: getItemOffset(i) })
+      }
+    }
+    return result
+  })
+
+  function handleScroll() {
+    if (listEl) {
+      scrollTop = listEl.scrollTop
+    }
+  }
+
+  function measureItem(node: HTMLElement, id: number) {
+    const measure = () => {
+      const h = node.offsetHeight
+      if (h > 0 && measuredHeights.get(id) !== h) {
+        measuredHeights.set(id, h)
+        measuredHeights = measuredHeights // trigger reactivity
+      }
+    }
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(node)
     return {
-      update(v: typeof $virtualizer) {
-        v.measureElement(node)
+      destroy() {
+        ro.disconnect()
       }
     }
   }
 
+  // Track container size
+  $effect(() => {
+    if (!listEl) return
+    const ro = new ResizeObserver((entries) => {
+      containerHeight = entries[0]?.contentRect.height ?? 600
+    })
+    ro.observe(listEl)
+    return () => ro.disconnect()
+  })
+
   export function scrollToBottom(): void {
-    if (itemCount > 0) {
-      $virtualizer.scrollToIndex(itemCount - 1, { align: 'end', behavior: 'auto' })
+    if (listEl) {
+      listEl.scrollTo({ top: listEl.scrollHeight, behavior: 'instant' })
     }
   }
 </script>
 
-<div class="messages" bind:this={listEl}>
-  <div class="virtual-spacer" style="height: {$virtualizer.getTotalSize()}px;">
-    {#each $virtualizer.getVirtualItems() as vItem (props.items?.[vItem.index]?.m?.id ?? vItem.index)}
-      {@const idx = vItem.index}
-      {@const vm = props.items?.[idx]}
-      {#if vm}
-        <div
-          class="virtual-item"
-          data-index={idx}
-          style="transform: translateY({vItem.start}px);"
-          use:measureElement={$virtualizer}
-        >
-          {#if idx > 0}
-            <div class="insert-zone" class:disabled={props.locked} role="button" tabindex={props.locked ? -1 : 0} aria-label="Insert message here" aria-disabled={props.locked} onclick={() => !props.locked && props.onInsertBetween?.(idx - 1)} onkeydown={(e) => !props.locked && (e.key === 'Enter' || e.key === ' ') && props.onInsertBetween?.(idx - 1)}>
-              <div class="insert-line"></div>
-              <span class="insert-btn" aria-hidden="true"><IconAdd style="font-size: 18px;" /></span>
-              <div class="insert-line"></div>
-            </div>
-          {/if}
-          <MessageItem
-            vm={vm}
-            total={props.total}
-            visibleCount={(props.items?.length || 0)}
-            locked={props.locked}
-            debug={props.debug}
-            editingId={props.editingId}
-            editingText={props.editingText}
-            hasFollowingAssistant={props.followingMap?.[vm.i]?.has}
-            nextAssistantId={props.followingMap?.[vm.i]?.id}
-            nextAssistantTyping={props.followingMap?.[vm.i]?.typing}
-            parentId={(vm?.i > 0 && props.items?.[vm.i - 1]?.m?.id) ? props.items[vm.i - 1].m.id : null}
-            branchIndex={(typeof vm?.variantIndex === 'number') ? vm.variantIndex : 0}
-            branchesLength={(typeof vm?.variantsLength === 'number') ? vm.variantsLength : 1}
-            allowInlineHtml={props.allowInlineHtml}
-            onSetRole={props.onSetRole}
-            onEditInput={props.onEditInput}
-            onEditKeydown={props.onEditKeydown}
-            onApplyEditSend={props.onApplyEditSend}
-            onApplyEditBranch={props.onApplyEditBranch}
-            onApplyEditReplace={props.onApplyEditReplace}
-            onCancelEdit={props.onCancelEdit}
-            onChangeVariant={props.onChangeVariant}
-            onRefreshAssistant={props.onRefreshAssistant}
-            onRefreshAfterUserIndex={props.onRefreshAfterUserIndex}
-            onCopy={props.onCopy}
-            onDelete={props.onDelete}
-            onEdit={props.onEdit}
-            onMoveDown={props.onMoveDown}
-            onMoveUp={props.onMoveUp}
-            onFork={props.onFork}
-            onDebugFuckBranch={props.onDebugFuckBranch}
-            onDebugMessageDeath={props.onDebugMessageDeath}
-          />
-        </div>
-      {/if}
+<div class="messages" bind:this={listEl} onscroll={handleScroll}>
+  <div class="virtual-spacer" style="height: {totalHeight}px;">
+    {#each visibleItems as { vm, index: idx, offsetY } (vm.m.id)}
+      <div
+        class="virtual-item"
+        style="transform: translateY({offsetY}px);"
+        use:measureItem={vm.m.id}
+      >
+        {#if idx > 0}
+          <div class="insert-zone" class:disabled={props.locked} role="button" tabindex={props.locked ? -1 : 0} aria-label="Insert message here" aria-disabled={props.locked} onclick={() => !props.locked && props.onInsertBetween?.(idx - 1)} onkeydown={(e) => !props.locked && (e.key === 'Enter' || e.key === ' ') && props.onInsertBetween?.(idx - 1)}>
+            <div class="insert-line"></div>
+            <span class="insert-btn" aria-hidden="true"><IconAdd style="font-size: 18px;" /></span>
+            <div class="insert-line"></div>
+          </div>
+        {/if}
+        <MessageItem
+          vm={vm}
+          total={props.total}
+          visibleCount={(props.items?.length || 0)}
+          locked={props.locked}
+          debug={props.debug}
+          editingId={props.editingId}
+          editingText={props.editingText}
+          hasFollowingAssistant={props.followingMap?.[vm.i]?.has}
+          nextAssistantId={props.followingMap?.[vm.i]?.id}
+          nextAssistantTyping={props.followingMap?.[vm.i]?.typing}
+          parentId={(vm?.i > 0 && props.items?.[vm.i - 1]?.m?.id) ? props.items[vm.i - 1].m.id : null}
+          branchIndex={(typeof vm?.variantIndex === 'number') ? vm.variantIndex : 0}
+          branchesLength={(typeof vm?.variantsLength === 'number') ? vm.variantsLength : 1}
+          allowInlineHtml={props.allowInlineHtml}
+          onSetRole={props.onSetRole}
+          onEditInput={props.onEditInput}
+          onEditKeydown={props.onEditKeydown}
+          onApplyEditSend={props.onApplyEditSend}
+          onApplyEditBranch={props.onApplyEditBranch}
+          onApplyEditReplace={props.onApplyEditReplace}
+          onCancelEdit={props.onCancelEdit}
+          onChangeVariant={props.onChangeVariant}
+          onRefreshAssistant={props.onRefreshAssistant}
+          onRefreshAfterUserIndex={props.onRefreshAfterUserIndex}
+          onCopy={props.onCopy}
+          onDelete={props.onDelete}
+          onEdit={props.onEdit}
+          onMoveDown={props.onMoveDown}
+          onMoveUp={props.onMoveUp}
+          onFork={props.onFork}
+          onDebugFuckBranch={props.onDebugFuckBranch}
+          onDebugMessageDeath={props.onDebugMessageDeath}
+        />
+      </div>
     {/each}
   </div>
   {#if props.notice}
@@ -142,7 +222,7 @@
 <style>
   .messages { overflow: auto; padding: 16px 0 8px; contain: layout style; height: 100%; min-height: 0; }
   .virtual-spacer { position: relative; width: 100%; }
-  .virtual-item { position: absolute; top: 0; left: 0; width: 100%; padding-bottom: 8px; will-change: transform; }
+  .virtual-item { position: absolute; top: 0; left: 0; width: 100%; will-change: transform; }
   .notice {
     position: sticky; bottom: 8px;
     font-size: 0.88rem; line-height: 1.3;
