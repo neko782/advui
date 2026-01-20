@@ -153,6 +153,7 @@ export interface Connection {
 export interface ConnectionOption {
   id: string;
   name: string;
+  apiMode?: ApiMode;
 }
 
 // ============================================================================

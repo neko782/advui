@@ -169,7 +169,7 @@
       const list = Array.isArray(settings?.connections) ? settings.connections : []
       return list
         .filter(conn => conn && typeof conn.id === 'string')
-        .map(conn => ({ id: conn.id, name: conn.name || conn.id }))
+        .map(conn => ({ id: conn.id, name: conn.name || conn.id, apiMode: conn.apiMode }))
     } catch { return [] }
   })())
 
@@ -1919,7 +1919,16 @@
     presets={settings?.presets}
     onToggleChatSettings={toggleChatSettings}
     onCloseChatSettings={() => (chatSettingsOpen = false)}
-    onChangeConnection={(val) => (chatSettings = { ...chatSettings, connectionId: (typeof val === 'string' && val.trim()) ? val.trim() : null })}
+    onChangeConnection={(val) => {
+      const newConnectionId = (typeof val === 'string' && val.trim()) ? val.trim() : null
+      const newConnection = connectionOptions.find(c => c.id === newConnectionId)
+      // Clear responses-API-only features when switching to non-responses API connection
+      if (newConnection?.apiMode !== 'responses') {
+        chatSettings = { ...chatSettings, connectionId: newConnectionId, webSearchEnabled: false, imageGenerationEnabled: false }
+      } else {
+        chatSettings = { ...chatSettings, connectionId: newConnectionId }
+      }
+    }}
     onChangeModel={(val) => (chatSettings = { ...chatSettings, model: val })}
     onChangeStreaming={(val) => (chatSettings = { ...chatSettings, streaming: !!val })}
     onChangeMaxOutputTokens={(val) => (chatSettings = { ...chatSettings, maxOutputTokens: toIntOrNull(val) })}

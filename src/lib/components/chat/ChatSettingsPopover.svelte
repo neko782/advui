@@ -1,6 +1,6 @@
 <script lang="ts">
   import { IconTune, IconLayers } from '../../icons'
-  import type { Preset, ReasoningEffort, TextVerbosity, ReasoningSummary } from '../../types'
+  import type { Preset, ReasoningEffort, TextVerbosity, ReasoningSummary, ConnectionOption, ApiMode } from '../../types'
 
   interface Props {
     open?: boolean
@@ -19,7 +19,7 @@
     imageGenerationEnabled?: boolean
     imageGenerationModel?: string
     modelIds?: string[]
-    connections?: { id: string; name: string }[]
+    connections?: ConnectionOption[]
     connectionId?: string | null
     showThinkingControls?: boolean
     presets?: Preset[]
@@ -52,6 +52,14 @@
   let presetMenuEl = $state<HTMLDivElement | null>(null)
   let presetButtonEl = $state<HTMLButtonElement | null>(null)
   let presetMenuPosition = $state({ bottom: 0, left: 0 })
+
+  // Check if current connection supports Responses API features (web search, image generation)
+  const supportsResponsesApiFeatures = $derived((() => {
+    const conns = props.connections || []
+    const currentConn = conns.find(c => c.id === props.connectionId) || conns[0]
+    // Only 'responses' API mode supports web search and image generation
+    return currentConn?.apiMode === 'responses'
+  })())
 
   function togglePresetMenu() {
     if (!presetMenuOpen && presetButtonEl) {
@@ -150,59 +158,61 @@
             <span class="switch-label">Stream</span>
           </label>
         </div>
-        <div class="menu-section">
-          <label class="switch" title="Web search">
-            <input
-              type="checkbox"
-              checked={!!props.webSearchEnabled}
-              disabled={props.disabled}
-              onchange={(e) => (!props.disabled && props.onInputWebSearchEnabled?.(e.currentTarget.checked))}
-              aria-label="Web search"
-            />
-            <span class="switch-ui" aria-hidden="true"></span>
-            <span class="switch-label">Web search</span>
-          </label>
-        </div>
-        <div class="menu-section">
-          <div class="image-gen-row">
-            <label class="switch" title="Image generation">
+        {#if supportsResponsesApiFeatures}
+          <div class="menu-section">
+            <label class="switch" title="Web search (Responses API only)">
               <input
                 type="checkbox"
-                checked={!!props.imageGenerationEnabled}
+                checked={!!props.webSearchEnabled}
                 disabled={props.disabled}
-                onchange={(e) => (!props.disabled && props.onInputImageGenerationEnabled?.(e.currentTarget.checked))}
-                aria-label="Image generation"
+                onchange={(e) => (!props.disabled && props.onInputWebSearchEnabled?.(e.currentTarget.checked))}
+                aria-label="Web search"
               />
               <span class="switch-ui" aria-hidden="true"></span>
-              <span class="switch-label">Image generation</span>
+              <span class="switch-label">Web search</span>
             </label>
-            {#if props.imageGenerationEnabled}
-              <button
-                type="button"
-                class="image-gen-model-btn"
-                onclick={() => imageGenModelExpanded = !imageGenModelExpanded}
+          </div>
+          <div class="menu-section">
+            <div class="image-gen-row">
+              <label class="switch" title="Image generation (Responses API only)">
+                <input
+                  type="checkbox"
+                  checked={!!props.imageGenerationEnabled}
+                  disabled={props.disabled}
+                  onchange={(e) => (!props.disabled && props.onInputImageGenerationEnabled?.(e.currentTarget.checked))}
+                  aria-label="Image generation"
+                />
+                <span class="switch-ui" aria-hidden="true"></span>
+                <span class="switch-label">Image generation</span>
+              </label>
+              {#if props.imageGenerationEnabled}
+                <button
+                  type="button"
+                  class="image-gen-model-btn"
+                  onclick={() => imageGenModelExpanded = !imageGenModelExpanded}
+                  disabled={props.disabled}
+                  title={imageGenModelExpanded ? 'Hide model setting' : 'Set model'}
+                  aria-label={imageGenModelExpanded ? 'Hide model setting' : 'Set model'}
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points={imageGenModelExpanded ? "18 15 12 9 6 15" : "6 9 12 15 18 9"}></polyline>
+                  </svg>
+                </button>
+              {/if}
+            </div>
+            {#if props.imageGenerationEnabled && imageGenModelExpanded}
+              <input
+                type="text"
+                placeholder="gpt-image-1"
+                value={props.imageGenerationModel || ''}
                 disabled={props.disabled}
-                title={imageGenModelExpanded ? 'Hide model setting' : 'Set model'}
-                aria-label={imageGenModelExpanded ? 'Hide model setting' : 'Set model'}
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <polyline points={imageGenModelExpanded ? "18 15 12 9 6 15" : "6 9 12 15 18 9"}></polyline>
-                </svg>
-              </button>
+                oninput={(e) => (!props.disabled && props.onInputImageGenerationModel?.(e.currentTarget.value))}
+                aria-label="Image generation model"
+                class="image-gen-model-input"
+              />
             {/if}
           </div>
-          {#if props.imageGenerationEnabled && imageGenModelExpanded}
-            <input
-              type="text"
-              placeholder="gpt-image-1"
-              value={props.imageGenerationModel || ''}
-              disabled={props.disabled}
-              oninput={(e) => (!props.disabled && props.onInputImageGenerationModel?.(e.currentTarget.value))}
-              aria-label="Image generation model"
-              class="image-gen-model-input"
-            />
-          {/if}
-        </div>
+        {/if}
         <div class="menu-section">
           <div class="menu-label">Text verbosity</div>
           <select

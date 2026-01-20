@@ -3,7 +3,7 @@
   import { autoGrow } from '../../utils/dom'
   import ChatSettingsPopover from './ChatSettingsPopover.svelte'
   import { onMount } from 'svelte'
-  import type { Image, Preset, Connection, Keybinds, ReasoningEffort, TextVerbosity, ReasoningSummary, MessageRole } from '../../types'
+  import type { Image, Preset, Connection, ConnectionOption, Keybinds, ReasoningEffort, TextVerbosity, ReasoningSummary, MessageRole, ApiMode } from '../../types'
 
   interface Props {
     input?: string
@@ -24,7 +24,7 @@
     chatImageGenerationEnabled?: boolean
     chatImageGenerationModel?: string
     modelIds?: string[]
-    connections?: { id: string; name: string }[]
+    connections?: ConnectionOption[]
     chatConnectionId?: string | null
     attachedImages?: Image[]
     keybinds?: Keybinds

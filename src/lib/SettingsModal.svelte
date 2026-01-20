@@ -236,6 +236,14 @@
     return Array.isArray(entry?.ids) ? entry.ids : []
   })())
 
+  // Check if active preset's connection supports Responses API features (web search, image generation)
+  const activePresetSupportsResponsesApiFeatures = $derived((() => {
+    const connectionId = activePreset?.connectionId
+    if (!connectionId) return false
+    const connection = (local?.connections || []).find(c => c.id === connectionId)
+    return connection?.apiMode === 'responses'
+  })())
+
   let persistTimer: ReturnType<typeof setTimeout> | null = null
   function persistSettings(): void {
     // Debounce to avoid blocking on rapid state changes
@@ -290,7 +298,19 @@
     const idx = list.findIndex(p => p?.id === activePresetId)
     if (idx < 0) return
     const next = [...list]
-    next[idx] = { ...next[idx], ...patch }
+    let updatedPatch = { ...patch }
+    
+    // If connectionId is being changed, check if we need to clear responses-API-only features
+    if ('connectionId' in patch) {
+      const newConnection = (local?.connections || []).find(c => c.id === patch.connectionId)
+      if (newConnection?.apiMode !== 'responses') {
+        // Clear responses API features when switching to non-responses API connection
+        updatedPatch.webSearchEnabled = false
+        updatedPatch.imageGenerationEnabled = false
+      }
+    }
+    
+    next[idx] = { ...next[idx], ...updatedPatch }
     local.presets = next
     persistSettings()
   }
@@ -355,6 +375,22 @@
       setModelsCache(current.id, [])
       const cache = { ...modelCacheByConnection, [current.id]: { ids: [], fetchedAt: 0 } }
       modelCacheByConnection = cache
+    }
+    // If apiMode is being changed away from 'responses', clear responses-API-only features
+    // on all presets that use this connection
+    if ('apiMode' in patch && patch.apiMode !== 'responses') {
+      if (Array.isArray(local?.presets)) {
+        local.presets = local.presets.map(p => {
+          if (p?.connectionId === current.id) {
+            return {
+              ...p,
+              webSearchEnabled: false,
+              imageGenerationEnabled: false,
+            }
+          }
+          return p
+        })
+      }
     }
     persistSettings()
   }
@@ -1155,37 +1191,39 @@
                     <span class="switch-ui" aria-hidden="true"></span>
                     <span class="switch-label">Stream</span>
                   </label>
-                  <label class="switch" title="Web search">
-                    <input
-                      type="checkbox"
-                      checked={!!activePreset.webSearchEnabled}
-                      onchange={(event) => updateActivePreset({ webSearchEnabled: !!event.currentTarget.checked })}
-                      aria-label="Web search"
-                    />
-                    <span class="switch-ui" aria-hidden="true"></span>
-                    <span class="switch-label">Web search</span>
-                  </label>
-                  <label class="switch" title="Image generation">
-                    <input
-                      type="checkbox"
-                      checked={!!activePreset.imageGenerationEnabled}
-                      onchange={(event) => updateActivePreset({ imageGenerationEnabled: !!event.currentTarget.checked })}
-                      aria-label="Image generation"
-                    />
-                    <span class="switch-ui" aria-hidden="true"></span>
-                    <span class="switch-label">Image generation</span>
-                  </label>
-                  {#if activePreset.imageGenerationEnabled}
-                    <label class="field">
-                      <span>Image generation model</span>
+                  {#if activePresetSupportsResponsesApiFeatures}
+                    <label class="switch" title="Web search (Responses API only)">
                       <input
-                        type="text"
-                        placeholder="gpt-image-1"
-                        value={activePreset.imageGenerationModel || ''}
-                        oninput={(event) => updateActivePreset({ imageGenerationModel: event.currentTarget.value })}
-                        aria-label="Image generation model"
+                        type="checkbox"
+                        checked={!!activePreset.webSearchEnabled}
+                        onchange={(event) => updateActivePreset({ webSearchEnabled: !!event.currentTarget.checked })}
+                        aria-label="Web search"
                       />
+                      <span class="switch-ui" aria-hidden="true"></span>
+                      <span class="switch-label">Web search</span>
                     </label>
+                    <label class="switch" title="Image generation (Responses API only)">
+                      <input
+                        type="checkbox"
+                        checked={!!activePreset.imageGenerationEnabled}
+                        onchange={(event) => updateActivePreset({ imageGenerationEnabled: !!event.currentTarget.checked })}
+                        aria-label="Image generation"
+                      />
+                      <span class="switch-ui" aria-hidden="true"></span>
+                      <span class="switch-label">Image generation</span>
+                    </label>
+                    {#if activePreset.imageGenerationEnabled}
+                      <label class="field">
+                        <span>Image generation model</span>
+                        <input
+                          type="text"
+                          placeholder="gpt-image-1"
+                          value={activePreset.imageGenerationModel || ''}
+                          oninput={(event) => updateActivePreset({ imageGenerationModel: event.currentTarget.value })}
+                          aria-label="Image generation model"
+                        />
+                      </label>
+                    {/if}
                   {/if}
                   <label class="field">
                     <span>Text verbosity</span>
