@@ -8,22 +8,12 @@ import {
   recomputeNextIds,
   ensureUniqueIds,
   detectIdCollisions,
-  computeInitialConnectionId,
   DEFAULT_SYSTEM_PROMPT
 } from './chatInit.js';
 import { migrateLegacyGraphToNodes } from './legacyMigration.js';
 import { computePersistSig } from './chatPersistence.js';
-import {
-  parseMaxTokens,
-  parseTopP,
-  parseTemperature,
-  normalizeReasoning,
-  normalizeVerbosity,
-  normalizeReasoningSummary,
-  parseThinkingBudgetTokens
-} from '../../utils/validation.js';
+import { loadChatSettings } from '../../utils/presetHelpers.js';
 import type { ChatNode, ChatSettings, Settings, LoadedChat, Chat, Preset } from '../../types/index.js';
-import { hasOwn } from '../../types/index.js';
 
 export async function loadChat(chatId: string | null): Promise<LoadedChat> {
   const nextSettings = loadSettings();
@@ -79,35 +69,9 @@ export async function loadChat(chatId: string | null): Promise<LoadedChat> {
         nextRootId = mig.rootId;
       }
 
-      nextChatSettings = {
-        model: loaded?.settings?.model || basePreset.model || 'gpt-5',
-        streaming: (typeof loaded?.settings?.streaming === 'boolean'
-          ? loaded.settings.streaming
-          : (typeof basePreset.streaming === 'boolean' ? basePreset.streaming : true)),
-        presetId: (typeof loaded?.presetId === 'string') ? loaded.presetId : basePreset.id,
-        maxOutputTokens: parseMaxTokens(hasOwn(loaded?.settings || {}, 'maxOutputTokens') ? loaded.settings?.maxOutputTokens : basePreset.maxOutputTokens),
-        topP: parseTopP(hasOwn(loaded?.settings || {}, 'topP') ? loaded.settings?.topP : basePreset.topP),
-        temperature: parseTemperature(hasOwn(loaded?.settings || {}, 'temperature') ? loaded.settings?.temperature : basePreset.temperature),
-        reasoningEffort: normalizeReasoning(hasOwn(loaded?.settings || {}, 'reasoningEffort') ? loaded.settings?.reasoningEffort : basePreset.reasoningEffort),
-        textVerbosity: normalizeVerbosity(hasOwn(loaded?.settings || {}, 'textVerbosity') ? loaded.settings?.textVerbosity : basePreset.textVerbosity),
-        reasoningSummary: normalizeReasoningSummary(hasOwn(loaded?.settings || {}, 'reasoningSummary') ? loaded.settings?.reasoningSummary : basePreset.reasoningSummary),
-        thinkingEnabled: (() => {
-          if (hasOwn(loaded?.settings || {}, 'thinkingEnabled')) return !!loaded.settings?.thinkingEnabled;
-          return !!basePreset.thinkingEnabled;
-        })(),
-        thinkingBudgetTokens: parseThinkingBudgetTokens(hasOwn(loaded?.settings || {}, 'thinkingBudgetTokens') ? loaded.settings?.thinkingBudgetTokens : basePreset.thinkingBudgetTokens),
-        connectionId: (() => {
-          const candidatePreset = {
-            ...basePreset,
-            connectionId: (() => {
-              const fromLoaded = hasOwn(loaded?.settings || {}, 'connectionId') ? loaded.settings?.connectionId : undefined;
-              if (typeof fromLoaded === 'string' && fromLoaded.trim()) return fromLoaded.trim();
-              return basePreset?.connectionId || null;
-            })(),
-          };
-          return computeInitialConnectionId(candidatePreset, nextSettings);
-        })(),
-      };
+      // Use centralized loadChatSettings to merge loaded settings with preset defaults.
+      // When adding new ChatSettings fields, add them to loadChatSettings() in presetHelpers.ts
+      nextChatSettings = loadChatSettings(loaded, basePreset, nextSettings);
 
       if (!nextNodes.length) {
         if (loaded?.rootId == null) {

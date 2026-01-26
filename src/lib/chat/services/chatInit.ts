@@ -23,23 +23,9 @@ export function makeSystemPrologue(idBase: number = 1, prompt: string = DEFAULT_
 }
 
 export function normalizePreset(preset: unknown): Preset {
-  const normalized = normalizePresetHelper(preset, 0, {});
-  return {
-    id: normalized.id,
-    name: normalized.name,
-    model: normalized.model,
-    streaming: normalized.streaming,
-    maxOutputTokens: normalized.maxOutputTokens,
-    topP: normalized.topP,
-    temperature: normalized.temperature,
-    reasoningEffort: normalized.reasoningEffort,
-    textVerbosity: normalized.textVerbosity,
-    reasoningSummary: normalized.reasoningSummary,
-    thinkingEnabled: normalized.thinkingEnabled,
-    thinkingBudgetTokens: normalized.thinkingBudgetTokens,
-    connectionId: normalized.connectionId ?? null,
-    systemPrompt: normalized.systemPrompt,
-  };
+  // Delegate entirely to normalizePresetHelper to avoid field duplication.
+  // When adding new Preset fields, update normalizePreset in presetHelpers.ts
+  return normalizePresetHelper(preset, 0, {});
 }
 
 export function pickPresetFromSettings(state: Partial<Settings> | null): Preset {

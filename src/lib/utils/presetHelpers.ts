@@ -344,3 +344,53 @@ export function buildChatSettings(preset: Preset, settings: Partial<Settings> | 
   };
 }
 
+/**
+ * Merges loaded chat settings with preset defaults.
+ * This is the single source of truth for loading ChatSettings - when adding new fields
+ * to ChatSettings, add them here to ensure they are properly loaded from storage.
+ */
+export function loadChatSettings(
+  loaded: { settings?: Partial<ChatSettings>; presetId?: string | null } | null,
+  preset: Preset,
+  settings: Partial<Settings> | null
+): ChatSettings {
+  const s = loaded?.settings || {};
+  const has = <K extends keyof ChatSettings>(key: K): boolean => isPlainObject(s) && key in s;
+
+  return {
+    model: s.model || preset.model || 'gpt-5',
+    streaming: typeof s.streaming === 'boolean' ? s.streaming : preset.streaming,
+    presetId: (typeof loaded?.presetId === 'string') ? loaded.presetId : preset.id,
+    maxOutputTokens: parseMaxTokens(has('maxOutputTokens') ? s.maxOutputTokens : preset.maxOutputTokens),
+    topP: parseTopP(has('topP') ? s.topP : preset.topP),
+    temperature: parseTemperature(has('temperature') ? s.temperature : preset.temperature),
+    reasoningEffort: normalizeReasoning(has('reasoningEffort') ? s.reasoningEffort : preset.reasoningEffort),
+    textVerbosity: normalizeVerbosity(has('textVerbosity') ? s.textVerbosity : preset.textVerbosity),
+    reasoningSummary: normalizeReasoningSummary(has('reasoningSummary') ? s.reasoningSummary : preset.reasoningSummary),
+    thinkingEnabled: has('thinkingEnabled') ? !!s.thinkingEnabled : !!preset.thinkingEnabled,
+    thinkingBudgetTokens: parseThinkingBudgetTokens(has('thinkingBudgetTokens') ? s.thinkingBudgetTokens : preset.thinkingBudgetTokens),
+    connectionId: (() => {
+      const candidatePreset = {
+        ...preset,
+        connectionId: (() => {
+          const fromLoaded = has('connectionId') ? s.connectionId : undefined;
+          if (typeof fromLoaded === 'string' && fromLoaded.trim()) return fromLoaded.trim();
+          return preset?.connectionId || null;
+        })(),
+      };
+      return computeConnectionId({ preset: candidatePreset, settings });
+    })(),
+    // Web Search settings
+    webSearchEnabled: has('webSearchEnabled') ? !!s.webSearchEnabled : !!preset.webSearchEnabled,
+    webSearchDomains: has('webSearchDomains') ? s.webSearchDomains : preset.webSearchDomains,
+    webSearchCountry: has('webSearchCountry') ? s.webSearchCountry : preset.webSearchCountry,
+    webSearchCity: has('webSearchCity') ? s.webSearchCity : preset.webSearchCity,
+    webSearchRegion: has('webSearchRegion') ? s.webSearchRegion : preset.webSearchRegion,
+    webSearchTimezone: has('webSearchTimezone') ? s.webSearchTimezone : preset.webSearchTimezone,
+    webSearchCacheOnly: has('webSearchCacheOnly') ? !!s.webSearchCacheOnly : !!preset.webSearchCacheOnly,
+    // Image Generation settings
+    imageGenerationEnabled: has('imageGenerationEnabled') ? !!s.imageGenerationEnabled : !!preset.imageGenerationEnabled,
+    imageGenerationModel: has('imageGenerationModel') ? s.imageGenerationModel : preset.imageGenerationModel,
+  };
+}
+
