@@ -12,6 +12,7 @@ dist
 dist-ssr
 stats.json
 *.local
+.env.deploy
 
 # Editor directories and files
 .vscode/*

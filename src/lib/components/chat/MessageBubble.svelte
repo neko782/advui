@@ -442,7 +442,7 @@ function attachmentMimeLabel(attachment) {
     width: 100%;
     max-width: 100%;
     margin: 0.5em 0;
-    border-radius: 10px;
+    border-radius: 0;
     border: 1px solid var(--border);
     background: color-mix(in srgb, var(--panel), #000000 4%);
     overflow-x: auto;
@@ -453,6 +453,8 @@ function attachmentMimeLabel(attachment) {
     width: max-content;
     border-collapse: separate;
     border-spacing: 0;
+    border-radius: 8px;
+    overflow: hidden;
     margin: 0;
     font-size: 0.9rem;
   }

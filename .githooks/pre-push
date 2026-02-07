@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+REMOTE_NAME="${1:-}"
+REMOTE_URL="${2:-}"
+TARGET_REMOTE="${CF_DEPLOY_REMOTE:-publish}"
+
+if [[ "${SKIP_CLOUDFLARE_DEPLOY:-0}" == "1" ]]; then
+  exit 0
+fi
+
+if [[ -z "$REMOTE_NAME" || "$REMOTE_NAME" != "$TARGET_REMOTE" ]]; then
+  exit 0
+fi
+
+SHOULD_DEPLOY=0
+while read -r LOCAL_REF LOCAL_SHA REMOTE_REF REMOTE_SHA; do
+  case "$LOCAL_REF" in
+    refs/heads/master|refs/heads/main)
+      SHOULD_DEPLOY=1
+      ;;
+  esac
+done
+
+if [[ "$SHOULD_DEPLOY" != "1" ]]; then
+  exit 0
+fi
+
+DEPLOY_BRANCH="${CF_PAGES_DEPLOY_BRANCH:-main}"
+
+echo "[pre-push] Remote: $REMOTE_NAME ($REMOTE_URL)"
+echo "[pre-push] Running tests"
+npm test -- --run
+
+echo "[pre-push] Building"
+npm run build
+
+echo "[pre-push] Deploying to Cloudflare Pages"
+"$(git rev-parse --show-toplevel)/scripts/deploy-pages.sh" --branch "$DEPLOY_BRANCH"

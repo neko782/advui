@@ -40,3 +40,22 @@ Open the local URL shown by Vite.
 - `src/lib/components/` - reusable UI components
 - `src/lib/chat/` - chat actions and service modules
 - `src/lib/utils/` - shared helpers and persistence utilities
+
+## Cloudflare Pages Hook
+
+- Local hook path: `.githooks/pre-push`
+- Trigger: push `master` to remote `publish` (override with `CF_DEPLOY_REMOTE`)
+- It runs tests, builds, then deploys `dist/` from your machine using Wrangler.
+- Setup:
+  - `git config core.hooksPath .githooks`
+  - optional: `cp .env.deploy.example .env.deploy` and fill credentials
+- Auth mode:
+  - if `.env.deploy` has token/account, deploy uses those
+  - otherwise deploy uses your existing local Wrangler login/token
+- Required in `.env.deploy`:
+  - `CLOUDFLARE_API_TOKEN`
+  - `CLOUDFLARE_ACCOUNT_ID`
+  - optional `CLOUDFLARE_PAGES_PROJECT` (defaults to `advui`)
+  - optional `CLOUDFLARE_PAGES_BRANCH` (defaults to `main`, your production branch)
+- Manual deploy command:
+  - `npm run build && npm run deploy:pages`
