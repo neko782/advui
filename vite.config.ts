@@ -22,13 +22,15 @@ export default defineConfig({
       compiler: 'svelte',
     }),
     viteSingleFile(),
-    visualizer({
-      filename: 'stats.json',
-      template: 'raw-data',
-      gzipSize: true,
-      brotliSize: true,
-    }),
-  ],
+    process.env.ANALYZE === '1'
+      ? visualizer({
+          filename: 'stats.json',
+          template: 'raw-data',
+          gzipSize: true,
+          brotliSize: true,
+        })
+      : null,
+  ].filter(Boolean),
   define: {
     __GIT_HASH__: JSON.stringify(getGitHash()),
   },
@@ -37,4 +39,3 @@ export default defineConfig({
     globals: true,
   },
 });
-

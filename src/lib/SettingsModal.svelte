@@ -102,6 +102,7 @@
   const TEXT_VERBOSITY_OPTIONS = ['none', 'low', 'medium', 'high']
   const REASONING_SUMMARY_OPTIONS = ['none', 'auto', 'concise', 'detailed']
   const DEFAULT_SYSTEM_PROMPT = 'You are a helpful assistant.'
+  const SOURCE_CODE_URL = (import.meta.env.VITE_SOURCE_CODE_URL || 'https://github.com/neko782/advui').trim()
 
   function parseMaxTokens(value) {
     if (value === '' || value == null) return null
@@ -927,6 +928,20 @@
                 <p class="hint">Import and export your chats, settings, and images. Export all data creates a backup of everything.</p>
               {/if}
             </section>
+            <section class="group legal-group">
+              <div class="group-title">Open-source notice</div>
+              <p class="hint">This program is licensed under the GNU Affero General Public License, version 3 or any later version.</p>
+              <p class="hint">You can access the complete corresponding source code here:</p>
+              <a
+                class="legal-link"
+                href={SOURCE_CODE_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                {SOURCE_CODE_URL}
+              </a>
+              <p class="hint">This software is provided without warranty, to the extent permitted by law.</p>
+            </section>
             <section class="group developer-group">
               <div class="group-title">Developer</div>
               <label class="switch">
@@ -1609,6 +1624,20 @@
   .developer-group {
     background: color-mix(in srgb, var(--panel) 95%, var(--muted) 5%);
     border-style: dashed;
+  }
+  .legal-group {
+    background: color-mix(in srgb, var(--panel) 96%, var(--accent) 4%);
+  }
+  .legal-link {
+    color: var(--accent);
+    font-size: 0.9rem;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    word-break: break-all;
+  }
+  .legal-link:hover,
+  .legal-link:focus-visible {
+    color: color-mix(in srgb, var(--accent) 80%, var(--text) 20%);
   }
   /* Item list for connections and presets */
   .section-hint {

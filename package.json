@@ -1,7 +1,17 @@
 {
   "name": "advui",
-  "private": true,
+  "private": false,
   "version": "0.0.0",
+  "description": "Advanced single-page chat UI built with Svelte and Vite.",
+  "license": "AGPL-3.0-or-later",
+  "repository": {
+    "type": "git",
+    "url": "git@github.com:neko782/advui.git"
+  },
+  "homepage": "https://github.com/neko782/advui",
+  "bugs": {
+    "url": "https://github.com/neko782/advui/issues"
+  },
   "type": "module",
   "scripts": {
     "dev": "vite",
