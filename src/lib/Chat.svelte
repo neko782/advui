@@ -1,9 +1,9 @@
 <script lang="ts">
   // Core imports
-  import { onMount, onDestroy, untrack } from 'svelte'
+  import { onMount, onDestroy } from 'svelte'
   import { loadSettings, findConnection } from './settingsStore'
   import { ensureModels, loadModelsCache } from './modelsStore'
-  import { saveChatContent, debugSetChatLockState } from './chatsStore'
+  import { debugSetChatLockState } from './chatsStore'
   import { copyText as copyToClipboard } from './utils/clipboard'
   import MessageList from './components/chat/MessageList.svelte'
   import Composer from './components/chat/Composer.svelte'
@@ -101,7 +101,6 @@
   let ready = false
   let mounted = false
   let destroyed = false
-  let lastChatId: string | null = null
 
   // Settings & chat configuration
   // Prefer settings from prop (shared across all chats) over loading independently
@@ -1682,22 +1681,15 @@
   let loadedChatId: string | null = null
   $effect(() => {
     const cid = props.chatId
-	    if (lastChatId && lastChatId !== cid && mounted) {
-	      // Use untrack to prevent this effect from re-running when nodes/settings change
-	      untrack(() => {
-	        try { saveChatContent(lastChatId, { nodes, settings: chatSettings, rootId }).catch(() => {}) } catch {}
-	      })
-	    }
-	    lastChatId = cid
 
     // Skip if we've already loaded this chat
     if (loadedChatId === cid) return
 
-	    ready = false
-	    forcedLock = false
-	    persistedSig = ''
-	    scheduledPersistSig = ''
-	    chatSettingsOpen = false
+    ready = false
+    forcedLock = false
+    persistedSig = ''
+    scheduledPersistSig = ''
+    chatSettingsOpen = false
 
     if (!cid) return
 
@@ -1705,7 +1697,6 @@
       // Skip if we switched to a different chat while loading, or user started editing
       if (props.chatId !== cid || editingId !== null) {
         ready = true
-        loadedChatId = cid
         return
       }
       try {
@@ -1838,6 +1829,7 @@
 
   onDestroy(() => {
     destroyed = true
+    mounted = false
     const chatId = props.chatId
     // Abort any in-flight generation to prevent orphaned HTTP requests
     if (generationState.isGenerationActive()) {
@@ -1847,12 +1839,22 @@
     try { props.onGeneratingChange?.(chatId, false) } catch {}
     persistenceScheduler.cancel()
 
-    // Best-effort: flush any pending throttled persists for this chat
+    // Best-effort: flush any pending throttled persists for this chat.
+    // Guard against persisting uninitialized state when a chat unmounts before load completes.
     try {
-      queueGlobalPersist(chatId, async () => {
-        await persistNow()
-      })
-      void flushGlobalPersists()
+      if (ready && loadedChatId === chatId) {
+        const snapshotNodes = deepClone(nodes)
+        const snapshotSettings = { ...chatSettings }
+        const snapshotRootId = rootId
+        const snapshotDebug = debug
+        const snapshotSig = computePersistSig(snapshotNodes, snapshotSettings, snapshotRootId)
+        if (snapshotSig && snapshotSig !== persistedSig) {
+          queueGlobalPersist(chatId, async () => {
+            await persistChatContent(chatId, snapshotNodes, snapshotSettings, snapshotRootId, snapshotDebug, true)
+          })
+          void flushGlobalPersists()
+        }
+      }
     } catch {}
   })
 </script>
