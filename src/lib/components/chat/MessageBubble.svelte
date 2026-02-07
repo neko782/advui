@@ -443,7 +443,6 @@ function attachmentMimeLabel(attachment) {
     max-width: 100%;
     margin: 0.5em 0;
     border-radius: 0;
-    border: 1px solid var(--border);
     background: color-mix(in srgb, var(--panel), #000000 4%);
     overflow-x: auto;
     overflow-y: hidden;
