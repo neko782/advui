@@ -1,24 +1,24 @@
 // Connection resolution helpers
 import { loadSettings, findConnection } from '../../settingsStore.js';
-import type { AppSettings, Connection } from '../../types/index.js';
+import type { Settings, Connection } from '../../types/index.js';
 
 export interface ConnectionContext {
   connectionId: string | null;
   apiKey: string;
   activeConnection: Connection | null;
-  latestSettings: AppSettings;
+  latestSettings: Settings;
 }
 
 export function resolveConnectionContext(
-  currentSettings: Partial<AppSettings> | null,
+  currentSettings: Partial<Settings> | null,
   preferredConnectionId: string | null | undefined
 ): ConnectionContext {
   // Always try to load the latest settings
-  let latestSettings: AppSettings;
+  let latestSettings: Settings;
   try {
     latestSettings = loadSettings();
   } catch {
-    latestSettings = currentSettings as AppSettings;
+    latestSettings = (currentSettings || {}) as Settings;
   }
 
   // Determine which connection ID to use
@@ -33,8 +33,8 @@ export function resolveConnectionContext(
   }
 
   // Extract API key, ensuring it's a string
-  const apiKey = (activeConnection && typeof activeConnection.apiKey === 'string') 
-    ? activeConnection.apiKey 
+  const apiKey = (activeConnection && typeof activeConnection.apiKey === 'string')
+    ? activeConnection.apiKey
     : '';
 
   return {

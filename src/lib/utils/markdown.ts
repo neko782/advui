@@ -54,6 +54,7 @@ for (const [alias, lang] of Object.entries(aliases)) {
 // Guardrail to avoid creating thousands of DOM nodes when code blocks are huge
 const MAX_HIGHLIGHT_CHARS = 20000;
 const MAX_HIGHLIGHT_LINES = 400;
+const SAFE_LINK_PROTOCOLS = new Set(['http:', 'https:', 'mailto:', 'tel:']);
 
 function escapeHtml(text: string): string {
   return text
@@ -63,11 +64,40 @@ function escapeHtml(text: string): string {
     .replace(/"/g, '&quot;');
 }
 
+function sanitizeLinkHref(href: unknown): string {
+  if (typeof href !== 'string') return '#';
+  const raw = href.trim();
+  if (!raw) return '#';
+
+  // Keep in-app anchors and relative links intact.
+  if (
+    raw.startsWith('#') ||
+    raw.startsWith('/') ||
+    raw.startsWith('./') ||
+    raw.startsWith('../') ||
+    raw.startsWith('?') ||
+    raw.startsWith('//')
+  ) {
+    return raw;
+  }
+
+  try {
+    const parsed = new URL(raw);
+    if (SAFE_LINK_PROTOCOLS.has(parsed.protocol.toLowerCase())) {
+      return raw;
+    }
+  } catch {
+    return '#';
+  }
+
+  return '#';
+}
+
 // Custom renderer shared between instances
 const customRenderer = {
   renderer: {
-    code(token) {
-      const rawCode = token.text;
+    code(token: { text?: string; lang?: string }) {
+      const rawCode = typeof token.text === 'string' ? token.text : '';
       const specifiedLang = token.lang || '';
       const skipHighlight = (
         rawCode.length > MAX_HIGHLIGHT_CHARS ||
@@ -113,10 +143,15 @@ const customRenderer = {
 </div>`;
     },
 
-    link(token) {
-      const href = token.href;
+    link(
+      this: { parser?: { parseInline?: (tokens: unknown[]) => string } },
+      token: { href?: string; title?: string; tokens?: unknown[]; text?: string }
+    ) {
+      const href = sanitizeLinkHref(token.href);
       const title = token.title;
-      const text = token.tokens ? this.parser!.parseInline(token.tokens) : token.text;
+      const text = token.tokens && this?.parser?.parseInline
+        ? this.parser.parseInline(token.tokens)
+        : (token.text || '');
       const titleAttr = title ? ` title="${escapeHtml(title)}"` : '';
       return `<a href="${escapeHtml(href)}"${titleAttr} target="_blank" rel="noopener noreferrer">${text}</a>`;
     },
@@ -127,7 +162,7 @@ const customRenderer = {
 let allowHtml = false;
 
 const marked = new Marked({ breaks: true, gfm: true });
-marked.use(customRenderer);
+marked.use(customRenderer as any);
 marked.use({
   renderer: {
     html(token) {

@@ -342,6 +342,7 @@
                 {#if isImageAttachment(img)}
                   <img src={`data:${img.mimeType || 'image/png'};base64,${img.data}`} alt={img.name || img.id || 'Attached image'} />
                 {:else if isVideoAttachment(img)}
+                  <!-- svelte-ignore a11y_media_has_caption -->
                   <video src={`data:${img.mimeType || 'video/mp4'};base64,${img.data}`} class="video-preview" preload="metadata"></video>
                   <span class="file-chip-overlay">{getAttachmentDisplayName(img)}</span>
                 {:else if isAudioAttachment(img)}

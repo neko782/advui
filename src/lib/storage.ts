@@ -12,6 +12,24 @@ let backendInitialized = false;
 
 const chatStoreQueue = createKeyedPersistenceQueue();
 
+function persistBackendChoice(name: 'indexeddb' | 'localstorage'): void {
+  try {
+    localStorage.setItem(BACKEND_KEY, name);
+  } catch {
+    // Ignore localStorage errors
+  }
+}
+
+function fallbackToLocalStorage(err?: unknown): StorageBackend {
+  if (activeBackend !== lsStorage) {
+    console.warn('IndexedDB operation failed, falling back to localStorage', err);
+  }
+  activeBackend = lsStorage;
+  backendInitialized = true;
+  persistBackendChoice('localstorage');
+  return activeBackend;
+}
+
 /**
  * Get the preferred storage backend
  */
@@ -23,24 +41,29 @@ function getStorageBackend(): StorageBackend {
   // Try IndexedDB first
   if (idbStorage.isIndexedDBAvailable()) {
     activeBackend = idbStorage;
-    try {
-      localStorage.setItem(BACKEND_KEY, 'indexeddb');
-    } catch {
-      // Ignore localStorage errors
-    }
+    persistBackendChoice('indexeddb');
   } else {
     // Fallback to localStorage
     console.warn('IndexedDB not available, falling back to localStorage');
     activeBackend = lsStorage;
-    try {
-      localStorage.setItem(BACKEND_KEY, 'localstorage');
-    } catch {
-      // Ignore localStorage errors
-    }
+    persistBackendChoice('localstorage');
   }
 
   backendInitialized = true;
   return activeBackend;
+}
+
+async function runWithBackendFallback<T>(
+  run: (backend: StorageBackend) => Promise<T>
+): Promise<T> {
+  let backend = getStorageBackend();
+  try {
+    return await run(backend);
+  } catch (err) {
+    if (backend !== idbStorage) throw err;
+    backend = fallbackToLocalStorage(err);
+    return run(backend);
+  }
 }
 
 /**
@@ -48,8 +71,7 @@ function getStorageBackend(): StorageBackend {
  */
 export async function getAllChats(): Promise<Chat[]> {
   return chatStoreQueue.run(CHAT_STORE_QUEUE_KEY, async () => {
-    const backend = getStorageBackend();
-    return backend.getAllChats();
+    return runWithBackendFallback((backend) => backend.getAllChats());
   });
 }
 
@@ -58,8 +80,7 @@ export async function getAllChats(): Promise<Chat[]> {
  */
 export async function getChat(id: string): Promise<Chat | null> {
   return chatStoreQueue.run(CHAT_STORE_QUEUE_KEY, async () => {
-    const backend = getStorageBackend();
-    return backend.getChat(id);
+    return runWithBackendFallback((backend) => backend.getChat(id));
   });
 }
 
@@ -68,8 +89,7 @@ export async function getChat(id: string): Promise<Chat | null> {
  */
 export async function putChat(chat: Chat): Promise<Chat> {
   return chatStoreQueue.run(CHAT_STORE_QUEUE_KEY, async () => {
-    const backend = getStorageBackend();
-    return backend.putChat(chat);
+    return runWithBackendFallback((backend) => backend.putChat(chat));
   });
 }
 
@@ -78,8 +98,7 @@ export async function putChat(chat: Chat): Promise<Chat> {
  */
 export async function deleteChat(id: string, expectedVersion?: number): Promise<Chat | null> {
   return chatStoreQueue.run(CHAT_STORE_QUEUE_KEY, async () => {
-    const backend = getStorageBackend();
-    return backend.deleteChat(id, expectedVersion);
+    return runWithBackendFallback((backend) => backend.deleteChat(id, expectedVersion));
   });
 }
 
@@ -109,10 +128,10 @@ export async function updateChatAtomic(
   if (typeof updater !== 'function') throw new Error('updateChatAtomic: updater must be a function');
 
   return chatStoreQueue.run(CHAT_STORE_QUEUE_KEY, async () => {
-    const backend = getStorageBackend();
     let lastErr: unknown = null;
 
     for (let attempt = 0; attempt <= Math.max(0, retries); attempt += 1) {
+      const backend = getStorageBackend();
       try {
         const current = await backend.getChat(id);
         const next = await updater(current);
@@ -134,6 +153,10 @@ export async function updateChatAtomic(
         return await backend.putChat(toPersist);
       } catch (err) {
         lastErr = err;
+        if (backend === idbStorage && !isConcurrencyConflict(err)) {
+          fallbackToLocalStorage(err);
+          continue;
+        }
         if (attempt < Math.max(0, retries) && isConcurrencyConflict(err)) continue;
         throw err;
       }
@@ -154,10 +177,10 @@ export async function putChatAtomic(
   if (!id) throw new Error('putChatAtomic: chat.id is required');
 
   return chatStoreQueue.run(CHAT_STORE_QUEUE_KEY, async () => {
-    const backend = getStorageBackend();
     let lastErr: unknown = null;
 
     for (let attempt = 0; attempt <= Math.max(0, retries); attempt += 1) {
+      const backend = getStorageBackend();
       try {
         const current = await backend.getChat(id);
         const toPersist: Chat = {
@@ -168,6 +191,10 @@ export async function putChatAtomic(
         return await backend.putChat(toPersist);
       } catch (err) {
         lastErr = err;
+        if (backend === idbStorage && !isConcurrencyConflict(err)) {
+          fallbackToLocalStorage(err);
+          continue;
+        }
         if (attempt < Math.max(0, retries) && isConcurrencyConflict(err)) continue;
         throw err;
       }
@@ -187,16 +214,20 @@ export async function deleteChatAtomic(
   if (!id) return null;
 
   return chatStoreQueue.run(CHAT_STORE_QUEUE_KEY, async () => {
-    const backend = getStorageBackend();
     let lastErr: unknown = null;
 
     for (let attempt = 0; attempt <= Math.max(0, retries); attempt += 1) {
+      const backend = getStorageBackend();
       try {
         const current = await backend.getChat(id);
         if (!current) return null;
         return await backend.deleteChat(id, current?._version);
       } catch (err) {
         lastErr = err;
+        if (backend === idbStorage && !isConcurrencyConflict(err)) {
+          fallbackToLocalStorage(err);
+          continue;
+        }
         if (attempt < Math.max(0, retries) && isConcurrencyConflict(err)) continue;
         throw err;
       }

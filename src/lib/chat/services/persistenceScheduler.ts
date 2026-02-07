@@ -52,10 +52,12 @@ export async function flushGlobalPersists(): Promise<void> {
 
 /**
  * Creates a persistence scheduler for handling refresh callbacks
- * Uses throttle behavior - first call wins, subsequent calls are ignored while pending
+ * Uses debounce behavior - latest callback payload wins while pending.
  */
 export function createPersistenceScheduler(): PersistenceScheduler {
   let refreshTimer: ReturnType<typeof setTimeout> | null = null;
+  let pendingCallback: ((updated?: Chat) => void) | undefined;
+  let pendingUpdated: Chat | null | undefined;
 
   function scheduleRefresh(
     callback: ((updated?: Chat) => void) | undefined,
@@ -63,15 +65,21 @@ export function createPersistenceScheduler(): PersistenceScheduler {
   ): void {
     if (!callback || typeof callback !== 'function') return;
 
-    // If a refresh is already pending, ignore this call (first wins)
+    pendingCallback = callback;
+    pendingUpdated = updated;
+
     if (refreshTimer) {
       return;
     }
 
     refreshTimer = setTimeout(() => {
       refreshTimer = null;
+      const cb = pendingCallback;
+      const payload = pendingUpdated;
+      pendingCallback = undefined;
+      pendingUpdated = undefined;
       try {
-        callback(updated ?? undefined);
+        cb?.(payload ?? undefined);
       } catch {
         // Ignore callback errors
       }
@@ -83,6 +91,8 @@ export function createPersistenceScheduler(): PersistenceScheduler {
       clearTimeout(refreshTimer);
       refreshTimer = null;
     }
+    pendingCallback = undefined;
+    pendingUpdated = undefined;
   }
 
   return {

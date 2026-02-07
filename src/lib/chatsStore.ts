@@ -390,7 +390,13 @@ export async function createChat(initial: CreateChatOptions = {}): Promise<{ id:
   let rootId: number | null = 1;
   if (Array.isArray(initial?.nodes)) {
     baseNodes = initial.nodes.slice();
-    rootId = initial?.rootId ?? (baseNodes[0]?.id || 1);
+    if (!baseNodes.length) {
+      rootId = null;
+    } else if (typeof initial?.rootId === 'number' && Number.isFinite(initial.rootId) && baseNodes.some((n) => n?.id === initial.rootId)) {
+      rootId = initial.rootId;
+    } else {
+      rootId = baseNodes[0]?.id ?? null;
+    }
   } else if (Array.isArray(initial?.messages)) {
     // Legacy: create one node per message with single variant, linear chain
     const now = Date.now();

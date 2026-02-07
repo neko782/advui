@@ -26,7 +26,7 @@ describe('createPersistenceScheduler', () => {
     expect(callback).toHaveBeenCalledTimes(1)
   })
 
-  it('should only schedule one refresh at a time', async () => {
+  it('should keep only the latest refresh payload while pending', async () => {
     const scheduler = createPersistenceScheduler()
     const callback = vi.fn()
 
@@ -37,25 +37,24 @@ describe('createPersistenceScheduler', () => {
     await vi.runAllTimersAsync()
 
     expect(callback).toHaveBeenCalledTimes(1)
-    expect(callback).toHaveBeenCalledWith({ data: 'first' })
+    expect(callback).toHaveBeenCalledWith({ data: 'third' })
   })
 
-  it('should not schedule new refresh when one is already pending', async () => {
+  it('should use latest callback when multiple are scheduled before flush', async () => {
     const scheduler = createPersistenceScheduler()
     const callback1 = vi.fn()
     const callback2 = vi.fn()
 
     scheduler.scheduleRefresh(callback1, { data: 'first' })
 
-    // Try to schedule another refresh while first is pending
+    // Replace pending callback before timer flush
     scheduler.scheduleRefresh(callback2, { data: 'second' })
 
-    // Only first callback should be called
     await vi.runAllTimersAsync()
 
-    expect(callback1).toHaveBeenCalledTimes(1)
-    expect(callback1).toHaveBeenCalledWith({ data: 'first' })
-    expect(callback2).not.toHaveBeenCalled()
+    expect(callback1).not.toHaveBeenCalled()
+    expect(callback2).toHaveBeenCalledTimes(1)
+    expect(callback2).toHaveBeenCalledWith({ data: 'second' })
   })
 
   it('should handle callback throwing error gracefully', async () => {

@@ -433,12 +433,19 @@ function extractChatFromPayload(payload: unknown): Chat {
     throw new Error('Chat data missing');
   }
 
-  if (chat.nodes == null) {
+  if (!Array.isArray(chat.nodes)) {
     throw new Error('Chat data missing nodes');
   }
 
   if (chat.rootId == null) {
-    throw new Error('Chat data missing required fields');
+    if (chat.nodes.length > 0) {
+      throw new Error('Chat data missing required fields');
+    }
+    return chat;
+  }
+
+  if (!Number.isFinite(Number(chat.rootId))) {
+    throw new Error('Chat rootId must be numeric or null');
   }
 
   return chat;

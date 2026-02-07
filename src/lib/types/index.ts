@@ -667,7 +667,7 @@ export interface ConnectionContext {
   connectionId: string | null;
   apiKey: string;
   activeConnection: Connection | null;
-  latestSettings: AppSettings;
+  latestSettings: Settings;
 }
 
 // ============================================================================

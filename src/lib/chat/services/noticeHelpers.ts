@@ -1,10 +1,10 @@
 // Notice computation helpers
 import { validateTree, buildVisible } from '../../branching.js';
 import { BUG_NOTICE, DEBUG_AUTOFIX_NOTICE } from '../../constants/index.js';
-import type { Node, VisibleMessage } from '../../types/index.js';
+import type { ChatNode } from '../../types/index.js';
 
 export function computeValidationNotice(
-  nodes: Node[],
+  nodes: ChatNode[],
   rootId: number | null,
   debug: boolean
 ): string {
@@ -24,7 +24,7 @@ export function computeValidationNotice(
   return '';
 }
 
-export function computeGenerationNotice(nodes: Node[], rootId: number | null): string {
+export function computeGenerationNotice(nodes: ChatNode[], rootId: number | null): string {
   try {
     const visible = buildVisible(nodes, rootId);
     const last = visible[visible.length - 1];
@@ -67,7 +67,7 @@ export interface FollowingInfo {
 }
 
 export function computeFollowingMap(
-  nodes: Node[],
+  nodes: ChatNode[],
   rootId: number | null
 ): Record<number, FollowingInfo> {
   const map: Record<number, FollowingInfo> = {};
