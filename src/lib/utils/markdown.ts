@@ -148,6 +148,16 @@ export interface RenderMarkdownOptions {
   allowInlineHtml?: boolean;
 }
 
+function wrapTables(html: string): string {
+  if (!html || !html.includes('<table')) {
+    return html;
+  }
+
+  return html
+    .replace(/<table(\s[^>]*)?>/g, '<div class="table-block-wrapper"><table$1>')
+    .replace(/<\/table>/g, '</table></div>');
+}
+
 export function renderMarkdown(src: string, options: RenderMarkdownOptions = {}): string {
   allowHtml = !!options.allowInlineHtml;
   const text = String(src || '');
@@ -163,7 +173,7 @@ export function renderMarkdown(src: string, options: RenderMarkdownOptions = {})
   }
 
   // Render and cache
-  const result = marked.parse(text) as string;
+  const result = wrapTables(marked.parse(text) as string);
   cache.set(key, result);
 
   // Evict oldest entry if cache is full

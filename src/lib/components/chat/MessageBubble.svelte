@@ -373,7 +373,7 @@ function attachmentMimeLabel(attachment) {
 {/if}
 
 <style>
-  .bubble { display: block; max-width: 100%; padding: 10px var(--bubble-pad-x); border-radius: 14px; border: none; white-space: normal; overflow-wrap: anywhere; word-break: break-word; line-height: 1.4; font-size: 0.98rem; box-shadow: 0 1px 0 rgba(0,0,0,0.04); overflow-x: auto; }
+  .bubble { display: block; max-width: 100%; min-width: 0; padding: 10px var(--bubble-pad-x); border-radius: 14px; border: none; white-space: normal; overflow-wrap: anywhere; word-break: break-word; line-height: 1.4; font-size: 0.98rem; box-shadow: 0 1px 0 rgba(0,0,0,0.04); overflow-x: auto; }
   .bubble.editing { white-space: pre-wrap; }
   .editor-container {
     display: inline-grid;
@@ -438,52 +438,63 @@ function attachmentMimeLabel(attachment) {
   .bubble :global(ul > li:last-child), .bubble :global(ol > li:last-child) { margin-bottom: 0; }
   .bubble :global(a) { color: var(--accent); text-decoration: underline; }
   /* Table styles */
-  .bubble :global(table) {
+  .bubble :global(.table-block-wrapper) {
+    width: 100%;
+    max-width: 100%;
+    margin: 0.5em 0;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: color-mix(in srgb, var(--panel), #000000 4%);
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+  }
+  .bubble :global(.table-block-wrapper table) {
     width: max-content;
     border-collapse: separate;
     border-spacing: 0;
-    margin: 0.5em 0;
+    margin: 0;
     font-size: 0.9rem;
   }
-  .bubble :global(th), .bubble :global(td) {
+  .bubble :global(.table-block-wrapper th), .bubble :global(.table-block-wrapper td) {
     padding: 8px 12px;
     text-align: left;
-    max-width: 300px;
-    word-break: break-word;
+    word-break: normal;
+    overflow-wrap: anywhere;
     border: 1px solid var(--border);
     border-top: none;
     border-left: none;
   }
-  .bubble :global(th) {
+  .bubble :global(.table-block-wrapper th) {
     font-weight: 600;
     background: color-mix(in srgb, var(--panel), #000000 6%);
   }
-  .bubble :global(tr:nth-child(even)) {
+  .bubble :global(.table-block-wrapper tr:nth-child(even)) {
     background: color-mix(in srgb, var(--panel), #000000 2%);
   }
   /* First column left border */
-  .bubble :global(th:first-child), .bubble :global(td:first-child) {
+  .bubble :global(.table-block-wrapper th:first-child), .bubble :global(.table-block-wrapper td:first-child) {
     border-left: 1px solid var(--border);
   }
   /* First row top border */
-  .bubble :global(thead tr:first-child th), .bubble :global(tbody:first-child tr:first-child td) {
+  .bubble :global(.table-block-wrapper thead tr:first-child th), .bubble :global(.table-block-wrapper tbody:first-child tr:first-child td) {
     border-top: 1px solid var(--border);
   }
   /* Rounded corners */
-  .bubble :global(thead tr:first-child th:first-child), .bubble :global(tbody:first-child tr:first-child td:first-child) {
+  .bubble :global(.table-block-wrapper thead tr:first-child th:first-child), .bubble :global(.table-block-wrapper tbody:first-child tr:first-child td:first-child) {
     border-top-left-radius: 8px;
   }
-  .bubble :global(thead tr:first-child th:last-child), .bubble :global(tbody:first-child tr:first-child td:last-child) {
+  .bubble :global(.table-block-wrapper thead tr:first-child th:last-child), .bubble :global(.table-block-wrapper tbody:first-child tr:first-child td:last-child) {
     border-top-right-radius: 8px;
   }
-  .bubble :global(tbody tr:last-child td:first-child) {
+  .bubble :global(.table-block-wrapper tbody tr:last-child td:first-child) {
     border-bottom-left-radius: 8px;
   }
-  .bubble :global(tbody tr:last-child td:last-child) {
+  .bubble :global(.table-block-wrapper tbody tr:last-child td:last-child) {
     border-bottom-right-radius: 8px;
   }
-  .bubble :global(table:first-child) { margin-top: 0; }
-  .bubble :global(table:last-child) { margin-bottom: 0; }
+  .bubble :global(.table-block-wrapper:first-child) { margin-top: 0; }
+  .bubble :global(.table-block-wrapper:last-child) { margin-bottom: 0; }
   .bubble :global(code) { background: color-mix(in srgb, var(--panel), #ffffff 8%); padding: 0 3px; border-radius: 4px; }
   .bubble :global(.code-block-wrapper) {
     border-radius: 10px;
@@ -550,8 +561,8 @@ function attachmentMimeLabel(attachment) {
     :global(:root:not([data-theme='light'])) .bubble :global(.hljs-attr) { color: #79c0ff; }
     :global(:root:not([data-theme='light'])) .bubble :global(.hljs-deletion) { color: #ffa198; }
   }
-  .bubble :global(p:first-child), .bubble :global(ul:first-child), .bubble :global(ol:first-child), .bubble :global(pre:first-child), .bubble :global(h1:first-child), .bubble :global(h2:first-child), .bubble :global(h3:first-child), .bubble :global(h4:first-child), .bubble :global(h5:first-child), .bubble :global(h6:first-child), .bubble :global(.code-block-wrapper:first-child) { margin-top: 0; }
-  .bubble :global(p:last-child), .bubble :global(ul:last-child), .bubble :global(ol:last-child), .bubble :global(pre:last-child), .bubble :global(h1:last-child), .bubble :global(h2:last-child), .bubble :global(h3:last-child), .bubble :global(h4:last-child), .bubble :global(h5:last-child), .bubble :global(h6:last-child), .bubble :global(.code-block-wrapper:last-child) { margin-bottom: 0; }
+  .bubble :global(p:first-child), .bubble :global(ul:first-child), .bubble :global(ol:first-child), .bubble :global(pre:first-child), .bubble :global(h1:first-child), .bubble :global(h2:first-child), .bubble :global(h3:first-child), .bubble :global(h4:first-child), .bubble :global(h5:first-child), .bubble :global(h6:first-child), .bubble :global(.code-block-wrapper:first-child), .bubble :global(.table-block-wrapper:first-child) { margin-top: 0; }
+  .bubble :global(p:last-child), .bubble :global(ul:last-child), .bubble :global(ol:last-child), .bubble :global(pre:last-child), .bubble :global(h1:last-child), .bubble :global(h2:last-child), .bubble :global(h3:last-child), .bubble :global(h4:last-child), .bubble :global(h5:last-child), .bubble :global(h6:last-child), .bubble :global(.code-block-wrapper:last-child), .bubble :global(.table-block-wrapper:last-child) { margin-bottom: 0; }
   .bubble.assistant {
     background: transparent;
     justify-self: start;
