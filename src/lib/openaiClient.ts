@@ -329,6 +329,46 @@ function extractGeminiStreamDelta(chunk: unknown): string {
   return '';
 }
 
+function extractStreamError(event: unknown): { code: string; message: string } | null {
+  if (!event || typeof event !== 'object') return null;
+
+  const eventObj = event as Record<string, unknown>;
+  const type = typeof eventObj.type === 'string' ? eventObj.type : '';
+  const topLevelError = eventObj.error && typeof eventObj.error === 'object'
+    ? eventObj.error as Record<string, unknown>
+    : null;
+  const getCode = (errorObj: Record<string, unknown> | null, fallback: string): string => {
+    if (!errorObj) return fallback;
+    if (typeof errorObj.code === 'string' && errorObj.code.trim()) return errorObj.code.trim();
+    if (typeof errorObj.type === 'string' && errorObj.type.trim()) return errorObj.type.trim();
+    return fallback;
+  };
+  const getMessage = (errorObj: Record<string, unknown> | null, code: string): string => {
+    if (errorObj && typeof errorObj.message === 'string' && errorObj.message.trim()) {
+      return errorObj.message.trim();
+    }
+    return code ? `Stream failed (${code}).` : 'Stream failed.';
+  };
+
+  if (type === 'response.failed') {
+    const responseObj = eventObj.response && typeof eventObj.response === 'object'
+      ? eventObj.response as Record<string, unknown>
+      : null;
+    const errorObj = responseObj?.error && typeof responseObj.error === 'object'
+      ? responseObj.error as Record<string, unknown>
+      : topLevelError;
+    const code = getCode(errorObj, 'response.failed');
+    return { code, message: getMessage(errorObj, code) };
+  }
+
+  if (type === 'error' || (!type && topLevelError && !Array.isArray(eventObj.choices) && !Array.isArray(eventObj.output))) {
+    const code = getCode(topLevelError, 'stream_error');
+    return { code, message: getMessage(topLevelError, code) };
+  }
+
+  return null;
+}
+
 // Create a response using either a single prompt string or an array of messages
 // Messages should be of the form: { role: 'system'|'user'|'assistant', content: string }
 export async function respond(options: RespondOptions): Promise<GenerationResponse> {
@@ -744,60 +784,69 @@ export async function respond(options: RespondOptions): Promise<GenerationRespon
             if (!trimmed || trimmed === 'data: [DONE]') continue;
             if (!trimmed.startsWith('data: ')) continue;
 
+            let chunk: Record<string, unknown>;
             try {
-              const chunk = JSON.parse(trimmed.slice(6));
-              try { onEvent?.(chunk); } catch { /* ignore */ }
+              chunk = JSON.parse(trimmed.slice(6));
+            } catch {
+              continue;
+            }
 
-              const deltaText = collectChatDeltaText(chunk);
-              if (deltaText) {
-                full += deltaText;
-                try { onTextDelta?.(full); } catch { /* ignore */ }
-              }
+            try { onEvent?.(chunk); } catch { /* ignore */ }
 
-              // Check for top-level reasoning field in chunk
-              const topLevelReasoning = collectChatReasoningContent((chunk as Record<string, unknown>)?.reasoning);
-              if (topLevelReasoning) {
-                const prev = summaryByIndex.get(0) || '';
-                const next = topLevelReasoning;
-                if (next !== prev) {
-                  summaryByIndex.set(0, next);
-                  const summary = buildSummary();
-                  try { onReasoningSummaryDelta?.(summary, topLevelReasoning, chunk); } catch { /* ignore */ }
-                }
-              }
+            const streamError = extractStreamError(chunk);
+            if (streamError) {
+              throw new Error(streamError.message);
+            }
 
-              const choices = Array.isArray(chunk?.choices) ? chunk.choices : [];
-              let finishReasonSeen = false;
-              for (const choice of choices as Array<{ index?: number; delta?: { reasoning_content?: unknown; reasoning?: unknown }; message?: { reasoning_content?: unknown; reasoning?: unknown }; finish_reason?: string }>) {
-                const idx = Number.isFinite(Number(choice?.index)) ? Number(choice.index) : 0;
-                const prev = summaryByIndex.get(idx) || '';
-                let next = prev;
-                const deltaSummary = collectChatReasoningContent(choice?.delta?.reasoning_content) || collectChatReasoningContent(choice?.delta?.reasoning);
-                if (deltaSummary) {
-                  next += deltaSummary;
-                }
-                const messageSummary = collectChatReasoningContent(choice?.message?.reasoning_content) || collectChatReasoningContent(choice?.message?.reasoning);
-                if (messageSummary) {
-                  next = messageSummary;
-                }
-                if (next !== prev) {
-                  summaryByIndex.set(idx, next);
-                  const summary = buildSummary();
-                  try { onReasoningSummaryDelta?.(summary, deltaSummary || messageSummary || '', choice); } catch { /* ignore */ }
-                }
-                if (!finishReasonSeen && typeof choice?.finish_reason === 'string' && choice.finish_reason) {
-                  finishReasonSeen = true;
-                }
-              }
+            const deltaText = collectChatDeltaText(chunk);
+            if (deltaText) {
+              full += deltaText;
+              try { onTextDelta?.(full); } catch { /* ignore */ }
+            }
 
-              if (finishReasonSeen && !summaryDelivered) {
+            // Check for top-level reasoning field in chunk
+            const topLevelReasoning = collectChatReasoningContent((chunk as Record<string, unknown>)?.reasoning);
+            if (topLevelReasoning) {
+              const prev = summaryByIndex.get(0) || '';
+              const next = topLevelReasoning;
+              if (next !== prev) {
+                summaryByIndex.set(0, next);
                 const summary = buildSummary();
-                try {
-                  onReasoningSummaryDone?.(summary || '', chunk);
-                  summaryDelivered = true;
-                } catch { /* ignore */ }
+                try { onReasoningSummaryDelta?.(summary, topLevelReasoning, chunk); } catch { /* ignore */ }
               }
-            } catch { /* ignore parse errors */ }
+            }
+
+            const choices = Array.isArray(chunk?.choices) ? chunk.choices : [];
+            let finishReasonSeen = false;
+            for (const choice of choices as Array<{ index?: number; delta?: { reasoning_content?: unknown; reasoning?: unknown }; message?: { reasoning_content?: unknown; reasoning?: unknown }; finish_reason?: string }>) {
+              const idx = Number.isFinite(Number(choice?.index)) ? Number(choice.index) : 0;
+              const prev = summaryByIndex.get(idx) || '';
+              let next = prev;
+              const deltaSummary = collectChatReasoningContent(choice?.delta?.reasoning_content) || collectChatReasoningContent(choice?.delta?.reasoning);
+              if (deltaSummary) {
+                next += deltaSummary;
+              }
+              const messageSummary = collectChatReasoningContent(choice?.message?.reasoning_content) || collectChatReasoningContent(choice?.message?.reasoning);
+              if (messageSummary) {
+                next = messageSummary;
+              }
+              if (next !== prev) {
+                summaryByIndex.set(idx, next);
+                const summary = buildSummary();
+                try { onReasoningSummaryDelta?.(summary, deltaSummary || messageSummary || '', choice); } catch { /* ignore */ }
+              }
+              if (!finishReasonSeen && typeof choice?.finish_reason === 'string' && choice.finish_reason) {
+                finishReasonSeen = true;
+              }
+            }
+
+            if (finishReasonSeen && !summaryDelivered) {
+              const summary = buildSummary();
+              try {
+                onReasoningSummaryDone?.(summary || '', chunk);
+                summaryDelivered = true;
+              } catch { /* ignore */ }
+            }
           }
         }
       } finally {
@@ -865,6 +914,10 @@ export async function respond(options: RespondOptions): Promise<GenerationRespon
     let buffer = '';
     const processEvent = (event: Record<string, unknown>) => {
         try { onEvent?.(event); } catch { /* ignore */ }
+        const streamError = extractStreamError(event);
+        if (streamError) {
+          throw new Error(streamError.message);
+        }
         const t = (event?.type || event?.event || '') as string;
         if (t === 'response.output_text.delta') {
           const delta = event?.delta || '';
@@ -1004,9 +1057,6 @@ export async function respond(options: RespondOptions): Promise<GenerationRespon
               } catch { /* ignore */ }
             }
           }
-        } else if (t === 'response.failed' || t === 'error') {
-          const msg = ((event?.error as Record<string, unknown>)?.message as string) || 'Stream failed.';
-          throw new Error(msg);
         }
     };
 
@@ -1024,11 +1074,15 @@ export async function respond(options: RespondOptions): Promise<GenerationRespon
           if (!trimmed || trimmed === 'data: [DONE]') continue;
           if (!trimmed.startsWith('data: ')) continue;
 
+          let event: Record<string, unknown>;
           try {
-            const event = JSON.parse(trimmed.slice(6));
-            processEvent(event);
-            if (completed) break;
-          } catch { /* ignore parse errors */ }
+            event = JSON.parse(trimmed.slice(6));
+          } catch {
+            continue;
+          }
+
+          processEvent(event);
+          if (completed) break;
         }
         if (completed) break;
       }
@@ -1562,4 +1616,3 @@ function extractChatReasoningSummary(res: unknown): string {
   } catch { /* ignore */ }
   return '';
 }
-
