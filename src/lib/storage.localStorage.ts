@@ -3,7 +3,7 @@ import { safeRead, safeWrite } from './utils/localStorageHelper.js';
 import { deepClone } from './utils/immutable.js';
 import { assertValidChat } from './utils/chatSchema.js';
 import { validateImageReferences } from './chat/services/imageCleanup.js';
-import type { Chat, StorageChange, StorageListener, LocalStorageStore } from './types/index.js';
+import type { Chat, ChatListItem, StorageChange, StorageListener, LocalStorageStore } from './types/index.js';
 
 const LS_KEY = 'advui.chats.store.v1';
 const INITIAL_STORE: LocalStorageStore = { version: 0, byId: {} };
@@ -96,6 +96,15 @@ function cloneChat(chat: Chat | null): Chat | null {
   return chat ? deepClone(chat) : null;
 }
 
+function toChatListItem(chat: Chat | null | undefined): ChatListItem | null {
+  if (!chat?.id) return null;
+  return {
+    id: chat.id,
+    title: typeof chat.title === 'string' && chat.title.trim() ? chat.title : 'New Chat',
+    updatedAt: Number(chat.updatedAt) || 0,
+  };
+}
+
 function writeOne(chat: Chat): Promise<Chat> {
   if (!chat?.id) {
     return Promise.reject(new Error('Chat ID is required'));
@@ -154,6 +163,15 @@ function readAll(): Promise<Chat[]> {
   });
 }
 
+function readAllListItems(): Promise<ChatListItem[]> {
+  return asyncOperation('readAllListItems', () => {
+    const store = readStore();
+    return Object.values(store.byId || {})
+      .map((chat) => toChatListItem(chat))
+      .filter((chat): chat is ChatListItem => !!chat);
+  });
+}
+
 function readOne(id: string): Promise<Chat | null> {
   return asyncOperation('readOne', () => {
     if (!id) return null;
@@ -189,6 +207,10 @@ function deleteOne(id: string, expectedVersion?: number): Promise<Chat | null> {
 
 export async function getAllChats(): Promise<Chat[]> {
   return readAll();
+}
+
+export async function getChatListItems(): Promise<ChatListItem[]> {
+  return readAllListItems();
 }
 
 export async function getChat(id: string): Promise<Chat | null> {

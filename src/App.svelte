@@ -2,13 +2,13 @@
   import Chat from './lib/Chat.svelte'
   import Sidebar from './lib/components/Sidebar.svelte'
   import SettingsModal from './lib/SettingsModal.svelte'
-  import { loadAll, getChats, createChat, setSelected, getChat, deleteChat, renameChat, unlockAllChats } from './lib/chatsStore'
+  import { loadAll, getChatListItems, createChat, setSelected, getChat, deleteChat, renameChat, toChatListItem, unlockAllChats } from './lib/chatsStore'
   import { loadSettings } from './lib/settingsStore'
   import { ensureModels } from './lib/modelsStore'
   import { initTheme } from './lib/themeStore'
-  import type { Chat as ChatType, Preset, AppSettings } from './lib/types'
+  import type { Chat as ChatType, ChatListItem, Preset, AppSettings } from './lib/types'
 
-  let chats = $state<ChatType[]>([])
+  let chats = $state<ChatListItem[]>([])
   let selectedId = $state<string | null>(null)
   let sidebarOpen = $state(true)
   let showSettings = $state(false)
@@ -101,10 +101,28 @@
     setGenerating(chatId, isGenerating)
   }
 
+  function sortChats(list: ChatListItem[]): ChatListItem[] {
+    return list.slice().sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
+  }
+
+  function upsertChat(updated: ChatType): void {
+    const summary = toChatListItem(updated)
+    if (!summary?.id) return
+    const current = Array.isArray(chats) ? chats : []
+    const index = current.findIndex(chat => chat.id === summary.id)
+    if (index === -1) {
+      chats = sortChats([summary, ...current])
+      return
+    }
+    const next = current.slice()
+    next[index] = summary
+    chats = sortChats(next)
+  }
+
   async function refresh() {
     try {
       // Show most recent chats first
-      const list = (await getChats()).slice().sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
+      const list = sortChats(await getChatListItems())
       chats = list
       pruneGenerating(list.map(item => item.id).filter(Boolean))
       const saved = loadAll().selectedId
@@ -138,7 +156,7 @@
   }
 
   async function ensureOneChat() {
-    const all = await getChats()
+    const all = await getChatListItems()
     if (!all.length) {
       const c = await createChat()
       selectedId = c.id
@@ -214,7 +232,8 @@
     }
     selectedId = c.id
     // Optimized: instead of reloading all chats from storage, just add the new one
-    chats = [c.chat, ...chats].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
+    const summary = toChatListItem(c.chat)
+    if (summary) chats = sortChats([summary, ...chats])
   }
   // Coalesce sidebar refresh triggered by child updates
   let refreshTimer: ReturnType<typeof setTimeout> | null = null
@@ -225,8 +244,13 @@
       refresh()
     }, 0)
   }
-  function onChatUpdated() {
-    // Refresh list/titles without re-entrant updates during reconciliation
+  function onChatUpdated(updated?: ChatType) {
+    if (updated?.id) {
+      upsertChat(updated)
+      pruneGenerating([...(chats || []).map(item => item.id).filter(Boolean)])
+      return
+    }
+    // Fall back to full refresh when no payload is available
     scheduleRefresh()
   }
 
@@ -248,7 +272,7 @@
     }
     const wasSelected = selectedId === id
     if (wasSelected) selectedId = null
-    const remaining = await getChats()
+    const remaining = await getChatListItems()
     if (!Array.isArray(remaining) || remaining.length === 0) {
       await onNewChat()
       return

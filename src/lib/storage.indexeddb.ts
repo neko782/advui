@@ -2,7 +2,7 @@
 import { deepClone } from './utils/immutable.js';
 import { assertValidChat } from './utils/chatSchema.js';
 import { validateImageReferences } from './chat/services/imageCleanup.js';
-import type { Chat, StorageChange, StorageListener } from './types/index.js';
+import type { Chat, ChatListItem, StorageChange, StorageListener } from './types/index.js';
 
 const DB_NAME = 'advui_chats';
 const DB_VERSION = 1;
@@ -154,6 +154,15 @@ function cloneChat(chat: Chat | null): Chat | null {
   return chat ? deepClone(chat) : null;
 }
 
+function toChatListItem(chat: Chat | null | undefined): ChatListItem | null {
+  if (!chat?.id) return null;
+  return {
+    id: chat.id,
+    title: typeof chat.title === 'string' && chat.title.trim() ? chat.title : 'New Chat',
+    updatedAt: Number(chat.updatedAt) || 0,
+  };
+}
+
 /**
  * Emit change event to all subscribers
  */
@@ -182,6 +191,52 @@ function readAll(): Promise<Chat[]> {
       request.onsuccess = () => {
         const chats = (request.result || []) as Chat[];
         resolve(chats.map(chat => cloneChat(chat)!));
+      };
+
+      request.onerror = () => reject(request.error);
+    });
+  });
+}
+
+function readAllListItems(): Promise<ChatListItem[]> {
+  return asyncOperation('readAllListItems', async () => {
+    const db = await openDB();
+    const transaction = db.transaction([STORE_NAME], 'readonly');
+    const store = transaction.objectStore(STORE_NAME);
+    let index: IDBIndex | null = null;
+    try {
+      index = store.index(INDEX_UPDATED_AT);
+    } catch {
+      index = null;
+    }
+
+    return new Promise((resolve, reject) => {
+      if (!index) {
+        const fallbackRequest = store.getAll();
+        fallbackRequest.onsuccess = () => {
+          const chats = (fallbackRequest.result || []) as Chat[];
+          const items = chats
+            .map((chat) => toChatListItem(chat))
+            .filter((chat): chat is ChatListItem => !!chat)
+            .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+          resolve(items);
+        };
+        fallbackRequest.onerror = () => reject(fallbackRequest.error);
+        return;
+      }
+
+      const items: ChatListItem[] = [];
+      const request = index.openCursor(null, 'prev');
+
+      request.onsuccess = () => {
+        const cursor = request.result;
+        if (!cursor) {
+          resolve(items);
+          return;
+        }
+        const item = toChatListItem(cursor.value as Chat);
+        if (item) items.push(item);
+        cursor.continue();
       };
 
       request.onerror = () => reject(request.error);
@@ -351,6 +406,10 @@ function deleteOne(id: string, expectedVersion?: number): Promise<Chat | null> {
  */
 export async function getAllChats(): Promise<Chat[]> {
   return readAll();
+}
+
+export async function getChatListItems(): Promise<ChatListItem[]> {
+  return readAllListItems();
 }
 
 /**

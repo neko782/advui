@@ -5,6 +5,7 @@ import { loadSettings } from './settingsStore.js';
 import { enforceUniqueParents, normalizeNodesActive, validateRootId } from './branching.js';
 import {
   getAllChats as storeGetAll,
+  getChatListItems as storeGetAllListItems,
   getChat as storeGetOne,
   putChatAtomic as storePutAtomic,
   updateChatAtomic as storeUpdateAtomic,
@@ -14,7 +15,7 @@ import { toIntOrNull, toClampedNumber } from './utils/numbers.js';
 import { safeRead, safeWrite } from './utils/localStorageHelper.js';
 import { resolvePreset, DEFAULT_SYSTEM_PROMPT, computeConnectionId } from './utils/presetHelpers.js';
 import { normalizeReasoning, normalizeVerbosity, normalizeReasoningSummary } from './utils/validation.js';
-import type { Chat, ChatNode, ChatSettings, ChatSelection, MessageVariant } from './types/index.js';
+import type { Chat, ChatListItem, ChatNode, ChatSettings, ChatSelection, MessageVariant } from './types/index.js';
 import { hasOwn } from './types/index.js';
 
 export const SELECTED_KEY = 'openai.chats.selected.v1';
@@ -162,6 +163,19 @@ export function setSelected(id: string | null): ChatSelection {
 export async function getChats(): Promise<Chat[]> {
   // Return all chats; sort done by callers if needed
   try { return await storeGetAll(); } catch { return []; }
+}
+
+export function toChatListItem(chat: Chat | null | undefined): ChatListItem | null {
+  if (!chat?.id) return null;
+  return {
+    id: chat.id,
+    title: typeof chat.title === 'string' && chat.title.trim() ? chat.title : 'New Chat',
+    updatedAt: Number(chat.updatedAt) || 0,
+  };
+}
+
+export async function getChatListItems(): Promise<ChatListItem[]> {
+  try { return await storeGetAllListItems(); } catch { return []; }
 }
 
 export async function unlockAllChats(): Promise<void> {

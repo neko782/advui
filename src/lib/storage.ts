@@ -2,7 +2,7 @@
 import * as idbStorage from './storage.indexeddb.js';
 import * as lsStorage from './storage.localStorage.js';
 import { createKeyedPersistenceQueue } from './utils/persistenceQueue.js';
-import type { Chat, StorageListener, StorageBackend } from './types/index.js';
+import type { Chat, ChatListItem, StorageListener, StorageBackend } from './types/index.js';
 
 const BACKEND_KEY = 'storage.backend.v1';
 const CHAT_STORE_QUEUE_KEY = 'chats.v1';
@@ -72,6 +72,15 @@ async function runWithBackendFallback<T>(
 export async function getAllChats(): Promise<Chat[]> {
   return chatStoreQueue.run(CHAT_STORE_QUEUE_KEY, async () => {
     return runWithBackendFallback((backend) => backend.getAllChats());
+  });
+}
+
+/**
+ * Get lightweight chat list items
+ */
+export async function getChatListItems(): Promise<ChatListItem[]> {
+  return chatStoreQueue.run(CHAT_STORE_QUEUE_KEY, async () => {
+    return runWithBackendFallback((backend) => backend.getChatListItems());
   });
 }
 

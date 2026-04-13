@@ -288,6 +288,7 @@ export type StorageListener = (change: StorageChange) => void;
 
 export interface StorageBackend {
   getAllChats(): Promise<Chat[]>;
+  getChatListItems(): Promise<ChatListItem[]>;
   getChat(id: string): Promise<Chat | null>;
   putChat(chat: Chat): Promise<Chat>;
   deleteChat(id: string, expectedVersion?: number): Promise<Chat | null>;

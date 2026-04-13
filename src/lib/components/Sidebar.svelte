@@ -4,11 +4,12 @@
   import ConfirmModal from './ConfirmModal.svelte'
   import EditModal from './EditModal.svelte'
   import { exportChat } from '../utils/exportImport'
-  import type { Chat, Preset } from '../types'
+  import { getChat } from '../chatsStore'
+  import type { Chat, ChatListItem, Preset } from '../types'
 
   interface Props {
     open?: boolean
-    chats?: Chat[]
+    chats?: ChatListItem[]
     selectedId?: string | null
     presets?: Preset[]
     generatingMap?: Record<string, boolean>
@@ -39,7 +40,7 @@
   let deleteModalOpen = $state(false)
   let deleteModalChatId = $state<string | null>(null)
   let editModalOpen = $state(false)
-  let editModalChat = $state<Chat | null>(null)
+  let editModalChat = $state<ChatListItem | null>(null)
 
   // Search state
   let searchQuery = $state('')
@@ -47,7 +48,9 @@
   let searchDebounceTimer: ReturnType<typeof setTimeout> | null = null
 
   // Cache for extracted content to avoid re-processing
-  let contentCache = new Map()
+  const contentCache = new Map<string, string>()
+  let contentSearchMatches = $state<Record<string, boolean>>({})
+  let contentSearchRun = 0
 
   // Virtualization state
   const ITEM_HEIGHT = 40 // Height of each chat row (36px) + gap (4px)
@@ -228,20 +231,21 @@
     searchQuery = ''
   }
 
-  // Extract text content from chat nodes for content search
-  function extractChatContent(chat) {
+  function getContentCacheKey(chat: ChatListItem): string {
+    return `${chat.id}-${chat.updatedAt || 0}`
+  }
+
+  function trimContentCache(): void {
+    if (contentCache.size <= 20) return
+    const keysToDelete = Array.from(contentCache.keys()).slice(0, 5)
+    keysToDelete.forEach(key => contentCache.delete(key))
+  }
+
+  function buildSearchBlob(chat: Chat | null): string {
     if (!chat?.nodes || !Array.isArray(chat.nodes)) return ''
 
-    // Create cache key from chat ID and updatedAt timestamp
-    const cacheKey = `${chat.id}-${chat.updatedAt || 0}`
-
-    // Return cached content if available
-    if (contentCache.has(cacheKey)) {
-      return contentCache.get(cacheKey)
-    }
-
-    let content = []
-    const maxChars = 100000 // Limit to prevent memory issues
+    const parts: string[] = []
+    const maxChars = 100000
     let charCount = 0
 
     for (const node of chat.nodes) {
@@ -253,91 +257,93 @@
         if (variant?.content && typeof variant.content === 'string') {
           const text = variant.content.trim()
           if (text) {
-            content.push(text)
+            parts.push(text)
             charCount += text.length
           }
         }
+        if (variant?.images && Array.isArray(variant.images)) {
+          for (const img of variant.images) {
+            if (img?.id) parts.push(img.id)
+          }
+        }
+        if (variant?.generatedImages && Array.isArray(variant.generatedImages)) {
+          for (const img of variant.generatedImages) {
+            if (img?.id) parts.push(img.id)
+          }
+        }
       }
     }
+    return parts.join(' ')
+  }
 
-    const result = content.join(' ')
+  async function loadChatSearchBlob(chat: ChatListItem): Promise<string> {
+    const cacheKey = getContentCacheKey(chat)
+    const cached = contentCache.get(cacheKey)
+    if (typeof cached === 'string') return cached
 
-    // Cache the result (with size limit to prevent memory issues)
-    if (contentCache.size > 100) {
-      // Remove oldest entries (first 20)
-      const keysToDelete = Array.from(contentCache.keys()).slice(0, 20)
-      keysToDelete.forEach(key => contentCache.delete(key))
-    }
+    const fullChat = await getChat(chat.id)
+    const result = buildSearchBlob(fullChat)
+    trimContentCache()
     contentCache.set(cacheKey, result)
-
     return result
   }
 
-  // Extract all image IDs from chat nodes
-  function extractImageIds(chat) {
-    if (!chat?.nodes || !Array.isArray(chat.nodes)) return []
-
-    const imageIds = []
-    for (const node of chat.nodes) {
-      if (!node?.variants || !Array.isArray(node.variants)) continue
-
-      for (const variant of node.variants) {
-        // Collect uploaded image IDs
-        if (variant?.images && Array.isArray(variant.images)) {
-          for (const img of variant.images) {
-            if (img?.id) imageIds.push(img.id)
-          }
-        }
-        // Collect generated image IDs
-        if (variant?.generatedImages && Array.isArray(variant.generatedImages)) {
-          for (const img of variant.generatedImages) {
-            if (img?.id) imageIds.push(img.id)
-          }
-        }
-      }
-    }
-    return imageIds
-  }
-
-  // Optimized search that handles large data
-  function matchesSearch(chat, query, mode) {
-    if (!query || !query.trim()) return true
-
-    const searchTerm = query.toLowerCase().trim()
-
-    // Always check chat ID silently (regardless of mode)
+  function matchesTitleOrId(chat: ChatListItem, searchTerm: string): boolean {
     const chatId = (chat?.id || '').toLowerCase()
     if (chatId.includes(searchTerm)) return true
-
-    if (mode === 'title') {
-      const title = (chat?.title || '').toLowerCase()
-      return title.includes(searchTerm)
-    } else {
-      // Content search
-      const title = (chat?.title || '').toLowerCase()
-      if (title.includes(searchTerm)) return true
-
-      // Check content first (cached)
-      const content = extractChatContent(chat).toLowerCase()
-      if (content.includes(searchTerm)) return true
-
-      // Check image IDs last (not cached, requires iteration)
-      const imageIds = extractImageIds(chat)
-      for (const imgId of imageIds) {
-        if (imgId.toLowerCase().includes(searchTerm)) return true
-      }
-
-      return false
-    }
+    const title = (chat?.title || '').toLowerCase()
+    return title.includes(searchTerm)
   }
 
-  // Filtered chats based on search
+  $effect(() => {
+    const chats = Array.isArray(props.chats) ? props.chats : []
+    const query = searchQuery.trim().toLowerCase()
+    const mode = searchMode
+    const run = ++contentSearchRun
+
+    if (mode !== 'content' || !query) {
+      contentSearchMatches = {}
+      return () => {
+        if (contentSearchRun === run) contentSearchRun += 1
+      }
+    }
+
+    const initialMatches: Record<string, boolean> = {}
+    for (const chat of chats) {
+      if (matchesTitleOrId(chat, query)) initialMatches[chat.id] = true
+    }
+    contentSearchMatches = initialMatches
+
+    Promise.resolve().then(async () => {
+      for (const chat of chats) {
+        if (contentSearchRun !== run) return
+        if (initialMatches[chat.id]) continue
+        try {
+          const content = await loadChatSearchBlob(chat)
+          if (contentSearchRun !== run) return
+          if (content.toLowerCase().includes(query)) {
+            contentSearchMatches = { ...contentSearchMatches, [chat.id]: true }
+          }
+        } catch {
+          // Ignore content search failures for individual chats.
+        }
+      }
+    }).catch(() => {})
+
+    return () => {
+      if (contentSearchRun === run) contentSearchRun += 1
+    }
+  })
+
   const filteredChats = $derived.by(() => {
-    const query = searchQuery.trim()
+    const query = searchQuery.trim().toLowerCase()
     if (!query) return props.chats || []
 
     const chats = props.chats || []
-    return chats.filter(chat => matchesSearch(chat, query, searchMode))
+    if (searchMode === 'title') {
+      return chats.filter(chat => matchesTitleOrId(chat, query))
+    }
+    return chats.filter(chat => matchesTitleOrId(chat, query) || !!contentSearchMatches[chat.id])
   })
 
   // Virtualization calculations

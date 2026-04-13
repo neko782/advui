@@ -45,12 +45,12 @@
   import { NO_API_KEY_NOTICE_TEXT } from './constants/index'
   import { buildVisible as _buildVisible, buildVisibleUpTo as _buildVisibleUpTo } from './branching'
   import { findNodeByMessageId } from './utils/treeUtils'
-  import type { Node, Message, ChatSettings, AppSettings, ImageRef, Image, MessageRole, VisibleMessage } from './types'
+  import type { Node, Message, Chat as StoredChat, ChatSettings, AppSettings, ImageRef, Image, MessageRole, VisibleMessage } from './types'
 
   interface Props {
     chatId: string
     onNewChat?: (options?: { presetId?: string }) => void
-    onChatUpdated?: () => void
+    onChatUpdated?: (updated?: StoredChat) => void
     settingsVersion?: number
     onGeneratingChange?: (chatId: string, isGenerating: boolean) => void
     appSettings?: AppSettings | null
@@ -146,6 +146,7 @@
   let modelIds = $state<string[]>(loadModelsCache(initialConnectionId).ids || [])
   let persistedSig = ''
   let scheduledPersistSig = ''
+  let persistInFlight = $state(0)
   let persistRetryTimer: ReturnType<typeof setTimeout> | null = null
 
   // Editing state
@@ -390,6 +391,7 @@
   async function persistNow() {
     const cid = props.chatId
     if (!cid || !mounted) return
+    persistInFlight += 1
     try {
       const result = await persistChatContent(cid, nodes, chatSettings, rootId, debug, mounted)
       if (destroyed) return
@@ -417,6 +419,8 @@
       sanitizerNotice = msg ? `Failed to save chat: ${msg}` : 'Failed to save chat.'
       scheduledPersistSig = persistedSig
       schedulePersistRetry()
+    } finally {
+      persistInFlight = Math.max(0, persistInFlight - 1)
     }
   }
 
@@ -1757,9 +1761,13 @@
 	  $effect(() => {
 	    const cid = props.chatId
 	    if (!cid || !ready || !mounted) return
+	    if (persistInFlight > 0) return
+	    const hasTyping = Array.isArray(nodes) && nodes.some(n => (n?.variants || []).some(v => v?.typing))
+	    if (sending || hasTyping) return
 	    try {
 	      const sig = computePersistSig(nodes, chatSettings, rootId)
 	      if (sig === persistedSig || sig === scheduledPersistSig) return
+	      // Streamed responses are persisted explicitly at start/end.
 	      scheduledPersistSig = sig
 	      // Use global throttle to prevent storage write storms across multiple chats
 	      queueGlobalPersist(cid, async () => {
