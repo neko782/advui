@@ -3,7 +3,7 @@
   import MessageMeta from './MessageMeta.svelte'
   import MessageBubble from './MessageBubble.svelte'
   import MessageActions from './MessageActions.svelte'
-  import type { VisibleMessage, MessageRole, MessageActionButton } from '../../types'
+  import type { VisibleMessage, MessageRole, MessageActionButton, EditorActionButton } from '../../types'
 
   interface Props {
     vm: VisibleMessage
@@ -14,6 +14,7 @@
     debug?: boolean
     editingId?: number | null
     editingText?: string
+    isInsertedMessage?: boolean
     hasFollowingAssistant?: boolean
     nextAssistantId?: number
     nextAssistantTyping?: boolean
@@ -22,6 +23,8 @@
     branchesLength?: number
     allowInlineHtml?: boolean
     messageActions?: MessageActionButton[]
+    editorActions?: EditorActionButton[]
+    disableRoleSwitching?: boolean
     onSetRole?: (id: number, role: MessageRole) => void
     onEditInput?: (text: string) => void
     onEditKeydown?: (e: KeyboardEvent) => void
@@ -38,6 +41,7 @@
     onMoveDown?: (id: number) => void
     onMoveUp?: (id: number) => void
     onFork?: (id: number) => void
+    onDeleteInserted?: () => void
     onDebugFuckBranch?: (id: number) => void
     onDebugMessageDeath?: (id: number) => void
   }
@@ -56,7 +60,7 @@
 
 <div class={`row ${m.role}`}>
   <div class={`stack ${m.role} ${isEditing ? 'editing' : ''}`}>
-    <MessageMeta role={m.role} label={formatRole(m.role)} locked={props.locked} debug={props.debug} messageId={m.id} onSetRole={(r) => props.onSetRole?.(m.id, r)} />
+    <MessageMeta role={m.role} label={formatRole(m.role)} locked={props.locked} debug={props.debug} messageId={m.id} disabled={props.disableRoleSwitching} onSetRole={(r) => props.onSetRole?.(m.id, r)} />
     <MessageBubble
       message={m}
       imageCache={props.imageCache}
@@ -81,10 +85,13 @@
       nextAssistantId={props.nextAssistantId}
       nextAssistantTyping={props.nextAssistantTyping}
       messageActions={props.messageActions}
+      editorActions={props.editorActions}
+      isInsertedMessage={props.isInsertedMessage && isEditing}
       onApplyEditSend={props.onApplyEditSend}
       onApplyEditBranch={props.onApplyEditBranch}
       onApplyEditReplace={props.onApplyEditReplace}
       onCancelEdit={props.onCancelEdit}
+      onDeleteInserted={props.onDeleteInserted}
       onChangeVariant={(d) => props.onChangeVariant?.(m.id, d)}
       onRefreshAssistant={props.onRefreshAssistant}
       onRefreshAfterUserIndex={props.onRefreshAfterUserIndex}

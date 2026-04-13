@@ -6,8 +6,8 @@
   import { getThemeState, setThemeMode, subscribeTheme } from './themeStore'
   import { exportAllData, importAllData, importChat } from './utils/exportImport'
   import { onMount } from 'svelte'
-  import type { AppSettings, Preset, Connection, ThemeState, ThemeMode, ReasoningEffort, TextVerbosity, ReasoningSummary, MessageActionButton, DefaultToolSettings } from './types'
-  import { DEFAULT_MESSAGE_ACTIONS, DEFAULT_TOOL_SETTINGS } from './types'
+  import type { AppSettings, Preset, Connection, ThemeState, ThemeMode, ReasoningEffort, TextVerbosity, ReasoningSummary, MessageActionButton, EditorActionButton, DefaultToolSettings } from './types'
+  import { DEFAULT_MESSAGE_ACTIONS, DEFAULT_EDITOR_ACTIONS, DEFAULT_TOOL_SETTINGS } from './types'
 
   interface Props {
     open?: boolean
@@ -194,6 +194,27 @@
 
   function resetMessageActions() {
     local.messageActions = DEFAULT_MESSAGE_ACTIONS.map(a => ({ ...a }))
+    persistSettings()
+  }
+
+  // Editor actions
+  const editorActionsForRender = $derived(() => {
+    return Array.isArray(local?.editorActions) ? local.editorActions : DEFAULT_EDITOR_ACTIONS.map(a => ({ ...a }))
+  })
+
+  function toggleEditorAction(id: string) {
+    const actions = Array.isArray(local?.editorActions)
+      ? local.editorActions.map(a => ({ ...a }))
+      : DEFAULT_EDITOR_ACTIONS.map(a => ({ ...a }))
+    const idx = actions.findIndex(a => a.id === id)
+    if (idx < 0) return
+    actions[idx].enabled = !actions[idx].enabled
+    local.editorActions = actions
+    persistSettings()
+  }
+
+  function resetEditorActions() {
+    local.editorActions = DEFAULT_EDITOR_ACTIONS.map(a => ({ ...a }))
     persistSettings()
   }
   let themeState = $state<ThemeState>({ mode: 'system', theme: 'light' })
@@ -1574,6 +1595,85 @@
                   </div>
                 {/each}
               </div>
+            </section>
+
+            <section class="group">
+              <div class="group-head">
+                <div class="group-title">Editor buttons</div>
+                <button
+                  type="button"
+                  class="reset-btn"
+                  onclick={resetEditorActions}
+                  title="Reset to defaults"
+                  aria-label="Reset editor buttons to defaults"
+                >Reset</button>
+              </div>
+              <p class="hint section-hint">Toggle the action buttons shown when editing a message.</p>
+              <div class="item-list">
+                {#each editorActionsForRender() as action (action.id)}
+                  <div
+                    class="list-item action-item {!action.enabled ? 'disabled-action' : ''}"
+                    data-id={action.id}
+                  >
+                    <span class="action-item-label">{action.label}</span>
+                    <label class="action-toggle" title={action.enabled ? 'Disable' : 'Enable'}>
+                      <input
+                        type="checkbox"
+                        checked={action.enabled}
+                        onchange={() => toggleEditorAction(action.id)}
+                        aria-label={`${action.enabled ? 'Disable' : 'Enable'} ${action.label}`}
+                      />
+                      <span class="switch-ui" aria-hidden="true"></span>
+                    </label>
+                  </div>
+                {/each}
+              </div>
+            </section>
+
+            <section class="group">
+              <div class="group-title">Composer & roles</div>
+              <label class="switch" title="Disable role switching">
+                <input
+                  type="checkbox"
+                  checked={!!local.disableRoleSwitching}
+                  onchange={(event) => {
+                    local.disableRoleSwitching = !!event.currentTarget.checked
+                    persistSettings()
+                  }}
+                  aria-label="Disable role switching"
+                />
+                <span class="switch-ui" aria-hidden="true"></span>
+                <span class="switch-label">Disable role switching on messages</span>
+              </label>
+              <p class="hint">Prevent changing the role of existing messages by clicking the role badge.</p>
+              <label class="switch" title="Disable send role popup">
+                <input
+                  type="checkbox"
+                  checked={!!local.disableSendRolePopup}
+                  onchange={(event) => {
+                    local.disableSendRolePopup = !!event.currentTarget.checked
+                    persistSettings()
+                  }}
+                  aria-label="Disable send role popup"
+                />
+                <span class="switch-ui" aria-hidden="true"></span>
+                <span class="switch-label">Disable send role popup</span>
+              </label>
+              <p class="hint">Hide the role selection popup on the send button. Messages will always send as user.</p>
+              <label class="switch" title="Show add without sending button">
+                <input
+                  type="checkbox"
+                  checked={!!local.showAddWithoutSend}
+                  onchange={(event) => {
+                    local.showAddWithoutSend = !!event.currentTarget.checked
+                    persistSettings()
+                  }}
+                  aria-label="Show add without sending button"
+                />
+                <span class="switch-ui" aria-hidden="true"></span>
+                <span class="switch-label">Add without sending button</span>
+              </label>
+              <p class="hint">Show a button next to send that adds a message to the chat without triggering an API response.</p>
             </section>
 
             <section class="group">

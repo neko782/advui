@@ -152,6 +152,7 @@
   // Editing state
   let editingId = $state<number | null>(null)
   let editingText = $state('')
+  let insertedMessageId = $state<number | null>(null)
 
   // Delete confirmation state (session-only, resets on page refresh)
   let skipDeleteConfirm = $state(false)
@@ -1067,6 +1068,7 @@
     editStateManager.finishEdit(false)
     editingId = null
     editingText = ''
+    insertedMessageId = null
   }
 
   function forkMessage(id) {
@@ -1105,7 +1107,21 @@
     }
     editingId = result.insertedMessageId
     editingText = ''
+    insertedMessageId = result.insertedMessageId
     persistNow()
+  }
+
+  function deleteInsertedMessage() {
+    if (insertedMessageId == null) return
+    const idToDelete = insertedMessageId
+    cancelEdit()
+    insertedMessageId = null
+    // Delete the message
+    const ok = applyChatMutation(`delete inserted ${idToDelete}`, (draft) => {
+      const result = deleteMessage(draft.nodes, draft.rootId, idToDelete)
+      return { ...draft, nodes: result.nodes, rootId: result.rootId ?? draft.rootId }
+    })
+    if (ok) persistNow()
   }
 
   // Send message
@@ -1852,8 +1868,11 @@
     debug={debug}
     editingId={editingId}
     editingText={editingText}
+    insertedMessageId={insertedMessageId}
     allowInlineHtml={settings?.allowInlineHtml}
     messageActions={settings?.messageActions}
+    editorActions={settings?.editorActions}
+    disableRoleSwitching={settings?.disableRoleSwitching}
     followingMap={computeFollowingMap(nodes, rootId)}
     onDismissNotice={dismissNotice}
     onSetRole={(id, role) => handleSetMessageRole(id, role)}
@@ -1872,6 +1891,7 @@
     onMoveDown={(id) => handleMoveDown(id)}
     onMoveUp={(id) => handleMoveUp(id)}
     onFork={(id) => forkMessage(id)}
+    onDeleteInserted={deleteInsertedMessage}
     onDebugFuckBranch={(id) => debugFuckUpBranch(id)}
     onDebugMessageDeath={(id) => debugMessageDeath(id)}
     onInsertBetween={(afterIndex) => handleInsertBetween(afterIndex)}
@@ -1939,6 +1959,8 @@
     onChangeImageGenerationEnabled={(val) => (chatSettings = { ...chatSettings, imageGenerationEnabled: !!val })}
     onChangeImageGenerationModel={(val) => (chatSettings = { ...chatSettings, imageGenerationModel: val || undefined })}
     onSelectPreset={handleSelectPreset}
+    disableSendRolePopup={settings?.disableSendRolePopup}
+    showAddWithoutSend={settings?.showAddWithoutSend}
     onInput={(val) => (input = val)}
     onAdd={(role) => addToChat(role)}
     onStop={() => stopGeneration()}

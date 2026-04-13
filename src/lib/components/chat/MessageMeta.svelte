@@ -6,6 +6,7 @@
     role: MessageRole
     label?: string
     locked?: boolean
+    disabled?: boolean
     debug?: boolean
     messageId?: number
     onSetRole?: (role: MessageRole) => void
@@ -18,7 +19,7 @@
   const menuId = `role-menu-${props.messageId ?? 'unknown'}`
 
   function toggleMenu() {
-    if (props.locked) return
+    if (props.locked || props.disabled) return
     open = !open
   }
 
@@ -73,7 +74,7 @@
   })
 
   $effect(() => {
-    if (props.locked && open) {
+    if ((props.locked || props.disabled) && open) {
       closeMenu()
     }
   })
@@ -94,7 +95,7 @@
       aria-label={`Role: ${props.label || props.role}`}
       aria-expanded={open}
       aria-controls={menuId}
-      disabled={props.locked}
+      disabled={props.locked || props.disabled}
       type="button"
       onclick={toggleMenu}
       bind:this={triggerEl}

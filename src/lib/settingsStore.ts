@@ -15,9 +15,10 @@ import type {
   Keybinds,
   DefaultChatSettings,
   MessageActionButton,
+  EditorActionButton,
   DefaultToolSettings,
 } from './types/index.js';
-import { DEFAULT_MESSAGE_ACTIONS, DEFAULT_TOOL_SETTINGS } from './types/index.js';
+import { DEFAULT_MESSAGE_ACTIONS, DEFAULT_EDITOR_ACTIONS, DEFAULT_TOOL_SETTINGS } from './types/index.js';
 
 export const SETTINGS_KEY = 'openai.settings.v1';
 
@@ -135,6 +136,29 @@ function normalizeMessageActions(raw: unknown): MessageActionButton[] {
   return result;
 }
 
+const VALID_EDITOR_IDS = new Set(DEFAULT_EDITOR_ACTIONS.map(a => a.id));
+
+function normalizeEditorActions(raw: unknown): EditorActionButton[] {
+  if (!Array.isArray(raw)) return DEFAULT_EDITOR_ACTIONS.map(a => ({ ...a }));
+  const seen = new Set<string>();
+  const result: EditorActionButton[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue;
+    const id = typeof (item as Record<string, unknown>).id === 'string' ? (item as Record<string, unknown>).id as string : '';
+    if (!VALID_EDITOR_IDS.has(id) || seen.has(id)) continue;
+    seen.add(id);
+    const label = typeof (item as Record<string, unknown>).label === 'string' ? (item as Record<string, unknown>).label as string : DEFAULT_EDITOR_ACTIONS.find(a => a.id === id)!.label;
+    const enabled = typeof (item as Record<string, unknown>).enabled === 'boolean' ? (item as Record<string, unknown>).enabled as boolean : true;
+    result.push({ id: id as EditorActionButton['id'], label, enabled });
+  }
+  for (const def of DEFAULT_EDITOR_ACTIONS) {
+    if (!seen.has(def.id)) {
+      result.push({ ...def });
+    }
+  }
+  return result;
+}
+
 function normalizeDefaultTools(raw: unknown): DefaultToolSettings {
   if (!raw || typeof raw !== 'object') return { ...DEFAULT_TOOL_SETTINGS };
   const obj = raw as Record<string, unknown>;
@@ -202,7 +226,11 @@ function attachCompatFields(out: Partial<Settings> & Record<string, unknown>): S
   out.fancyEffects = !!out.fancyEffects;
   out.allowInlineHtml = !!out.allowInlineHtml;
   out.messageActions = normalizeMessageActions(out.messageActions);
+  out.editorActions = normalizeEditorActions(out.editorActions);
   out.defaultTools = normalizeDefaultTools(out.defaultTools);
+  out.disableRoleSwitching = !!out.disableRoleSwitching;
+  out.disableSendRolePopup = !!out.disableSendRolePopup;
+  out.showAddWithoutSend = !!out.showAddWithoutSend;
   return out as Settings;
 }
 
@@ -292,7 +320,11 @@ export function loadSettings(): Settings {
     const fancyEffects = !!parsed?.fancyEffects;
     const allowInlineHtml = !!parsed?.allowInlineHtml;
     const messageActions = normalizeMessageActions(parsed?.messageActions);
+    const editorActions = normalizeEditorActions(parsed?.editorActions);
     const defaultTools = normalizeDefaultTools(parsed?.defaultTools);
+    const disableRoleSwitching = !!parsed?.disableRoleSwitching;
+    const disableSendRolePopup = !!parsed?.disableSendRolePopup;
+    const showAddWithoutSend = !!parsed?.showAddWithoutSend;
     return attachCompatFields({
       apiKey,
       apiBaseUrl,
@@ -307,7 +339,11 @@ export function loadSettings(): Settings {
       fancyEffects,
       allowInlineHtml,
       messageActions,
+      editorActions,
       defaultTools,
+      disableRoleSwitching,
+      disableSendRolePopup,
+      showAddWithoutSend,
     });
   } catch (err) {
     console.error('Failed to load settings, falling back to defaults:', err);
@@ -350,7 +386,11 @@ export function saveSettings(next: Partial<Settings>): Settings {
   const fancyEffects = !!next?.fancyEffects;
   const allowInlineHtml = !!next?.allowInlineHtml;
   const messageActions = normalizeMessageActions(next?.messageActions);
+  const editorActions = normalizeEditorActions(next?.editorActions);
   const defaultTools = normalizeDefaultTools(next?.defaultTools);
+  const disableRoleSwitching = !!next?.disableRoleSwitching;
+  const disableSendRolePopup = !!next?.disableSendRolePopup;
+  const showAddWithoutSend = !!next?.showAddWithoutSend;
   const data = attachCompatFields({
     apiKey: typeof next?.apiKey === 'string' ? next.apiKey : '',
     apiBaseUrl: normalizeApiBaseUrl(next?.apiBaseUrl),
@@ -365,7 +405,11 @@ export function saveSettings(next: Partial<Settings>): Settings {
     fancyEffects,
     allowInlineHtml,
     messageActions,
+    editorActions,
     defaultTools,
+    disableRoleSwitching,
+    disableSendRolePopup,
+    showAddWithoutSend,
   });
   const ok = safeWrite(SETTINGS_KEY, data);
   if (!ok) {

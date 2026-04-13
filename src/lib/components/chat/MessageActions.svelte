@@ -1,6 +1,6 @@
 <script lang="ts">
   import { IconSend, IconCallSplit, IconPublishedWithChanges, IconClose, IconChevronLeft, IconChevronRight, IconAutorenew, IconContentCopy, IconDelete, IconEdit, IconArrowDownward, IconArrowUpward, IconDangerous } from '../../icons'
-  import type { Message, MessageActionButton } from '../../types'
+  import type { Message, MessageActionButton, EditorActionButton } from '../../types'
 
   interface Props {
     message: Message
@@ -10,16 +10,19 @@
     locked?: boolean
     debug?: boolean
     isEditing?: boolean
+    isInsertedMessage?: boolean
     branchesLength?: number
     branchIndex?: number
     hasFollowingAssistant?: boolean
     nextAssistantId?: number
     nextAssistantTyping?: boolean
     messageActions?: MessageActionButton[]
+    editorActions?: EditorActionButton[]
     onApplyEditSend?: () => void
     onApplyEditBranch?: () => void
     onApplyEditReplace?: () => void
     onCancelEdit?: () => void
+    onDeleteInserted?: () => void
     onChangeVariant?: (delta: number) => void
     onRefreshAssistant?: (id: number) => void
     onRefreshAfterUserIndex?: (index: number) => void
@@ -89,18 +92,30 @@
 
 <div class={`actions ${m.role}`}>
   {#if props.isEditing}
-    <button class="action-btn" onclick={props.onApplyEditSend} aria-label="Send (branch + reply)" title="Send (branch + reply)" disabled={props.locked}>
-      <IconSend style="font-size: 20px;" />
-    </button>
-    <button class="action-btn" onclick={props.onApplyEditBranch} aria-label="Branch (no reply)" title="Branch (no reply)" disabled={props.locked}>
-      <IconCallSplit style="font-size: 20px;" />
-    </button>
-    <button class="action-btn" onclick={props.onApplyEditReplace} aria-label="Replace in current branch" title="Replace in current branch" disabled={props.locked}>
-      <IconPublishedWithChanges style="font-size: 20px;" />
-    </button>
-    <button class="action-btn" onclick={props.onCancelEdit} aria-label="Cancel edit" title="Cancel" disabled={props.locked}>
-      <IconClose style="font-size: 20px;" />
-    </button>
+    {#if !props.editorActions || props.editorActions.find(a => a.id === 'editSend')?.enabled !== false}
+      <button class="action-btn" onclick={props.onApplyEditSend} aria-label="Send (branch + reply)" title="Send (branch + reply)" disabled={props.locked}>
+        <IconSend style="font-size: 20px;" />
+      </button>
+    {/if}
+    {#if !props.editorActions || props.editorActions.find(a => a.id === 'editBranch')?.enabled !== false}
+      <button class="action-btn" onclick={props.onApplyEditBranch} aria-label="Branch (no reply)" title="Branch (no reply)" disabled={props.locked}>
+        <IconCallSplit style="font-size: 20px;" />
+      </button>
+    {/if}
+    {#if !props.editorActions || props.editorActions.find(a => a.id === 'editReplace')?.enabled !== false}
+      <button class="action-btn" onclick={props.onApplyEditReplace} aria-label="Replace in current branch" title="Replace in current branch" disabled={props.locked}>
+        <IconPublishedWithChanges style="font-size: 20px;" />
+      </button>
+    {/if}
+    {#if props.isInsertedMessage}
+      <button class="action-btn" onclick={props.onDeleteInserted} aria-label="Delete message" title="Delete" disabled={props.locked}>
+        <IconDelete style="font-size: 20px;" />
+      </button>
+    {:else}
+      <button class="action-btn" onclick={props.onCancelEdit} aria-label="Cancel edit" title="Cancel" disabled={props.locked}>
+        <IconClose style="font-size: 20px;" />
+      </button>
+    {/if}
   {:else}
     {#if props.branchesLength > 1}
       <span class="variants">

@@ -1,7 +1,7 @@
 <script lang="ts">
   import MessageItem from './MessageItem.svelte'
   import { IconAdd } from '../../icons'
-  import type { VisibleMessage, MessageRole, MessageActionButton } from '../../types'
+  import type { VisibleMessage, MessageRole, MessageActionButton, EditorActionButton } from '../../types'
 
   interface Props {
     items?: VisibleMessage[]
@@ -13,8 +13,11 @@
     debug?: boolean
     editingId?: number | null
     editingText?: string
+    insertedMessageId?: number | null
     allowInlineHtml?: boolean
     messageActions?: MessageActionButton[]
+    editorActions?: EditorActionButton[]
+    disableRoleSwitching?: boolean
     followingMap?: Record<number, { has: boolean; id?: number; typing?: boolean }>
     onDismissNotice?: () => void
     onSetRole?: (id: number, role: MessageRole) => void
@@ -33,6 +36,7 @@
     onMoveDown?: (id: number) => void
     onMoveUp?: (id: number) => void
     onFork?: (id: number) => void
+    onDeleteInserted?: () => void
     onDebugFuckBranch?: (id: number) => void
     onDebugMessageDeath?: (id: number) => void
     onInsertBetween?: (afterIndex: number) => void
@@ -234,6 +238,9 @@
           branchesLength={(typeof vm?.variantsLength === 'number') ? vm.variantsLength : 1}
           allowInlineHtml={props.allowInlineHtml}
           messageActions={props.messageActions}
+          editorActions={props.editorActions}
+          isInsertedMessage={props.insertedMessageId != null && vm.m.id === props.insertedMessageId}
+          disableRoleSwitching={props.disableRoleSwitching}
           onSetRole={props.onSetRole}
           onEditInput={props.onEditInput}
           onEditKeydown={props.onEditKeydown}
@@ -250,6 +257,7 @@
           onMoveDown={props.onMoveDown}
           onMoveUp={props.onMoveUp}
           onFork={props.onFork}
+          onDeleteInserted={props.onDeleteInserted}
           onDebugFuckBranch={props.onDebugFuckBranch}
           onDebugMessageDeath={props.onDebugMessageDeath}
         />

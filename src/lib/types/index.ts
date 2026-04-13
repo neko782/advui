@@ -245,6 +245,23 @@ export interface MessageActionButton {
   enabled: boolean;
 }
 
+export type EditorActionId =
+  | 'editSend'
+  | 'editBranch'
+  | 'editReplace';
+
+export interface EditorActionButton {
+  id: EditorActionId;
+  label: string;
+  enabled: boolean;
+}
+
+export const DEFAULT_EDITOR_ACTIONS: EditorActionButton[] = [
+  { id: 'editSend', label: 'Send (branch + reply)', enabled: true },
+  { id: 'editBranch', label: 'Branch (no reply)', enabled: true },
+  { id: 'editReplace', label: 'Replace in branch', enabled: true },
+];
+
 export const DEFAULT_MESSAGE_ACTIONS: MessageActionButton[] = [
   { id: 'regenerate', label: 'Regenerate', enabled: true },
   { id: 'copy', label: 'Copy', enabled: true },
@@ -267,10 +284,10 @@ export interface DefaultToolSettings {
 }
 
 export const DEFAULT_TOOL_SETTINGS: DefaultToolSettings = {
-  webSearch: false,
-  codeInterpreter: false,
-  shell: false,
-  imageGeneration: false,
+  webSearch: true,
+  codeInterpreter: true,
+  shell: true,
+  imageGeneration: true,
 };
 
 // ============================================================================
@@ -312,7 +329,11 @@ export interface Settings {
   defaultChat: DefaultChatSettings;
   model: string;
   messageActions?: MessageActionButton[];
+  editorActions?: EditorActionButton[];
   defaultTools?: DefaultToolSettings;
+  disableRoleSwitching?: boolean;
+  disableSendRolePopup?: boolean;
+  showAddWithoutSend?: boolean;
 }
 
 // ============================================================================
