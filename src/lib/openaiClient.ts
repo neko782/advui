@@ -121,6 +121,15 @@ function ensureDataUrl(data: unknown, mimeType: string | undefined): string {
   return `data:${mime};base64,${data}`;
 }
 
+function mcpLabelFromUrl(url: string): string {
+  try {
+    const hostname = new URL(url).hostname;
+    return hostname || url.slice(0, 40) || 'mcp';
+  } catch {
+    return url.slice(0, 40) || 'mcp';
+  }
+}
+
 interface FetchClientConfig {
   apiKey: string;
   baseURL: string;
@@ -698,11 +707,11 @@ export async function respond(options: RespondOptions): Promise<GenerationRespon
   // MCP tools (Responses API only)
   if (!useChatCompletions) {
     const normalizedMcpServers = normalizeMcpServerList(mcpServers)
-      .filter((server) => server.label && server.url);
+      .filter((server) => server.url);
     for (const server of normalizedMcpServers) {
       tools.push({
         type: 'mcp',
-        server_label: server.label,
+        server_label: server.label || mcpLabelFromUrl(server.url),
         server_url: server.url,
         require_approval: 'never',
       });
@@ -1028,6 +1037,43 @@ export async function respond(options: RespondOptions): Promise<GenerationRespon
     let imageGenerationDelivered = false;
     let completedResponseOutput: unknown[] | null = null;
 
+    // Tool activity tracking for reasoning display
+    interface ToolActivityEntry {
+      type: string;
+      label: string;
+      status: string;
+      detail?: string;
+    }
+    const toolActivity = new Map<string, ToolActivityEntry>();
+    const buildToolActivityText = (): string => {
+      if (toolActivity.size === 0) return '';
+      const lines: string[] = [];
+      for (const [, entry] of toolActivity) {
+        let line = `**${entry.label}**`;
+        if (entry.detail) line += ` ${entry.detail}`;
+        line += ` \u2014 *${entry.status}*`;
+        lines.push(line);
+      }
+      return lines.join('\n\n');
+    };
+    const buildCombinedSummary = (): string => {
+      const activity = buildToolActivityText();
+      const reasoning = buildSummary();
+      const parts = [activity, reasoning].filter(Boolean);
+      return parts.join('\n\n---\n\n');
+    };
+    const emitToolActivityDelta = (event: Record<string, unknown>) => {
+      const combined = buildCombinedSummary();
+      if (combined) {
+        try { onReasoningSummaryDelta?.(combined, '', event); } catch { /* ignore */ }
+      }
+    };
+    const resolveToolEventId = (event: Record<string, unknown>): string => {
+      return (typeof event?.item_id === 'string' && event.item_id) ? event.item_id
+        : (typeof event?.id === 'string' && event.id) ? event.id
+        : `tool_${toolActivity.size}`;
+    };
+
     let buffer = '';
     const processEvent = (event: Record<string, unknown>) => {
         try { onEvent?.(event); } catch { /* ignore */ }
@@ -1045,19 +1091,37 @@ export async function respond(options: RespondOptions): Promise<GenerationRespon
         } else if (t === 'response.reasoning_summary_text.delta') {
           const delta = event?.delta || '';
           if (typeof delta === 'string' && delta) {
-            const summary = upsertResponseReasoningSummary(event, delta, 'append');
-            try { onReasoningSummaryDelta?.(summary, delta, event); } catch { /* ignore */ }
+            upsertResponseReasoningSummary(event, delta, 'append');
+            const combined = buildCombinedSummary();
+            try { onReasoningSummaryDelta?.(combined, delta, event); } catch { /* ignore */ }
           }
         } else if (t === 'response.reasoning_summary_text.done') {
           const text = typeof event?.text === 'string' ? event.text : '';
-          const summary = text ? upsertResponseReasoningSummary(event, text, 'replace') : buildSummary();
+          if (text) upsertResponseReasoningSummary(event, text, 'replace');
+          const combined = buildCombinedSummary();
           try {
-            onReasoningSummaryDone?.(summary, event);
+            onReasoningSummaryDone?.(combined, event);
             summaryDelivered = true;
           } catch { /* ignore */ }
+        // ---- Web search streaming events ----
+        } else if (t === 'response.web_search_call.in_progress') {
+          const id = resolveToolEventId(event);
+          toolActivity.set(id, { type: 'web_search', label: 'Web search', status: 'starting' });
+          emitToolActivityDelta(event);
+        } else if (t === 'response.web_search_call.searching') {
+          const id = resolveToolEventId(event);
+          const item = event?.item as Record<string, unknown> | undefined;
+          const action = (item?.action || event?.action) as Record<string, unknown> | undefined;
+          const query = typeof action?.query === 'string' ? action.query : '';
+          toolActivity.set(id, { type: 'web_search', label: 'Web search', status: 'searching', detail: query ? `"${query}"` : '' });
+          emitToolActivityDelta(event);
         } else if (t === 'response.web_search_call.completed' || t === 'web_search_call') {
-          // Handle web search call completion - extract sources from action if available
-          const action = event?.action as Record<string, unknown> | undefined;
+          const id = resolveToolEventId(event);
+          toolActivity.set(id, { type: 'web_search', label: 'Web search', status: 'completed' });
+          emitToolActivityDelta(event);
+          // Extract sources from action
+          const item = event?.item as Record<string, unknown> | undefined;
+          const action = (item?.action || event?.action) as Record<string, unknown> | undefined;
           if (action?.sources && Array.isArray(action.sources)) {
             for (const src of action.sources as Array<Record<string, unknown>>) {
               if (src?.url && typeof src.url === 'string') {
@@ -1069,18 +1133,117 @@ export async function respond(options: RespondOptions): Promise<GenerationRespon
               }
             }
           }
+        // ---- Code interpreter streaming events ----
+        } else if (t === 'response.code_interpreter_call.in_progress') {
+          const id = resolveToolEventId(event);
+          toolActivity.set(id, { type: 'code_interpreter', label: 'Code interpreter', status: 'starting' });
+          emitToolActivityDelta(event);
+        } else if (t === 'response.code_interpreter_call.interpreting') {
+          const id = resolveToolEventId(event);
+          toolActivity.set(id, { type: 'code_interpreter', label: 'Code interpreter', status: 'running' });
+          emitToolActivityDelta(event);
+        } else if (t === 'response.code_interpreter_call.completed') {
+          const id = resolveToolEventId(event);
+          toolActivity.set(id, { type: 'code_interpreter', label: 'Code interpreter', status: 'completed' });
+          emitToolActivityDelta(event);
+        // ---- Shell streaming events ----
+        } else if (t === 'response.shell_call.in_progress') {
+          const id = resolveToolEventId(event);
+          toolActivity.set(id, { type: 'shell', label: 'Shell', status: 'starting' });
+          emitToolActivityDelta(event);
+        } else if (t === 'response.shell_call.executing') {
+          const id = resolveToolEventId(event);
+          toolActivity.set(id, { type: 'shell', label: 'Shell', status: 'executing' });
+          emitToolActivityDelta(event);
+        } else if (t === 'response.shell_call.completed') {
+          const id = resolveToolEventId(event);
+          toolActivity.set(id, { type: 'shell', label: 'Shell', status: 'completed' });
+          emitToolActivityDelta(event);
+        // ---- Image generation streaming events ----
+        } else if (t === 'response.image_generation_call.in_progress') {
+          const id = resolveToolEventId(event);
+          toolActivity.set(id, { type: 'image_generation', label: 'Image generation', status: 'starting' });
+          emitToolActivityDelta(event);
+        } else if (t === 'response.image_generation_call.generating') {
+          const id = resolveToolEventId(event);
+          toolActivity.set(id, { type: 'image_generation', label: 'Image generation', status: 'generating' });
+          emitToolActivityDelta(event);
         } else if (t === 'response.image_generation_call.completed' || t === 'image_generation_call') {
-          // Handle image generation call completion - extract image data
-          const result = event?.result as string | undefined;
-          const id = event?.id as string | undefined;
-          const revisedPrompt = event?.revised_prompt as string | undefined;
+          const id = resolveToolEventId(event);
+          toolActivity.set(id, { type: 'image_generation', label: 'Image generation', status: 'completed' });
+          emitToolActivityDelta(event);
+          // Extract image data
+          const item = event?.item as Record<string, unknown> | undefined;
+          const result = (item?.result || event?.result) as string | undefined;
+          const imgId = (item?.id || event?.id) as string | undefined;
+          const revisedPrompt = (item?.revised_prompt || event?.revised_prompt) as string | undefined;
           if (result && typeof result === 'string') {
             generatedImages.push({
-              id: id || `img_${Date.now()}_${generatedImages.length}`,
+              id: imgId || `img_${Date.now()}_${generatedImages.length}`,
               data: result,
               revisedPrompt: revisedPrompt,
             });
           }
+        // ---- MCP streaming events ----
+        } else if (t === 'response.mcp_list_tools.in_progress') {
+          const id = resolveToolEventId(event);
+          const item = event?.item as Record<string, unknown> | undefined;
+          const serverLabel = typeof (item?.server_label || event?.server_label) === 'string'
+            ? (item?.server_label || event?.server_label) as string : 'MCP';
+          toolActivity.set(id, { type: 'mcp_list_tools', label: `MCP ${serverLabel}`, status: 'discovering tools' });
+          emitToolActivityDelta(event);
+        } else if (t === 'response.mcp_list_tools.completed') {
+          const id = resolveToolEventId(event);
+          const item = event?.item as Record<string, unknown> | undefined;
+          const serverLabel = typeof (item?.server_label || event?.server_label) === 'string'
+            ? (item?.server_label || event?.server_label) as string : 'MCP';
+          const tools = Array.isArray(item?.tools || event?.tools) ? (item?.tools || event?.tools) as unknown[] : [];
+          toolActivity.set(id, { type: 'mcp_list_tools', label: `MCP ${serverLabel}`, status: 'completed', detail: `${tools.length} tools` });
+          emitToolActivityDelta(event);
+        } else if (t === 'response.mcp_call.in_progress') {
+          const id = resolveToolEventId(event);
+          const item = event?.item as Record<string, unknown> | undefined;
+          const serverLabel = typeof (item?.server_label || event?.server_label) === 'string'
+            ? (item?.server_label || event?.server_label) as string : 'MCP';
+          const name = typeof (item?.name || event?.name) === 'string'
+            ? (item?.name || event?.name) as string : '';
+          toolActivity.set(id, { type: 'mcp_call', label: `MCP ${serverLabel}`, status: 'calling', detail: name ? `\`${name}\`` : '' });
+          emitToolActivityDelta(event);
+        } else if (t === 'response.mcp_call_arguments.delta') {
+          // Arguments streaming - update detail with partial args
+          const id = resolveToolEventId(event);
+          const existing = toolActivity.get(id);
+          if (existing) {
+            toolActivity.set(id, { ...existing, status: 'calling' });
+          }
+        } else if (t === 'response.mcp_call_arguments.done') {
+          const id = resolveToolEventId(event);
+          const existing = toolActivity.get(id);
+          if (existing) {
+            toolActivity.set(id, { ...existing, status: 'executing' });
+            emitToolActivityDelta(event);
+          }
+        } else if (t === 'response.mcp_call.completed') {
+          const id = resolveToolEventId(event);
+          const item = event?.item as Record<string, unknown> | undefined;
+          const serverLabel = typeof (item?.server_label || event?.server_label) === 'string'
+            ? (item?.server_label || event?.server_label) as string : 'MCP';
+          const name = typeof (item?.name || event?.name) === 'string'
+            ? (item?.name || event?.name) as string : '';
+          toolActivity.set(id, { type: 'mcp_call', label: `MCP ${serverLabel}`, status: 'completed', detail: name ? `\`${name}\`` : '' });
+          emitToolActivityDelta(event);
+        } else if (t === 'response.mcp_call.failed') {
+          const id = resolveToolEventId(event);
+          const item = event?.item as Record<string, unknown> | undefined;
+          const serverLabel = typeof (item?.server_label || event?.server_label) === 'string'
+            ? (item?.server_label || event?.server_label) as string : 'MCP';
+          const name = typeof (item?.name || event?.name) === 'string'
+            ? (item?.name || event?.name) as string : '';
+          const error = typeof (item?.error || event?.error) === 'string'
+            ? (item?.error || event?.error) as string : '';
+          toolActivity.set(id, { type: 'mcp_call', label: `MCP ${serverLabel}`, status: 'failed', detail: [name ? `\`${name}\`` : '', error].filter(Boolean).join(' ') });
+          emitToolActivityDelta(event);
+        // ---- Response completion ----
         } else if (t === 'response.completed' || t === 'response.text.done' || t === 'response.done') {
           completed = true;
           // Extract citations and sources from completed response
@@ -1161,10 +1324,10 @@ export async function respond(options: RespondOptions): Promise<GenerationRespon
             } catch { /* ignore */ }
           }
           if (!summaryDelivered) {
-            const summary = buildSummary();
-            if (summary) {
+            const combined = buildCombinedSummary();
+            if (combined) {
               try {
-                onReasoningSummaryDone?.(summary, event);
+                onReasoningSummaryDone?.(combined, event);
                 summaryDelivered = true;
               } catch { /* ignore */ }
             }
@@ -1201,10 +1364,10 @@ export async function respond(options: RespondOptions): Promise<GenerationRespon
     } finally {
       reader.releaseLock();
     }
-    const finalSummary = buildSummary();
-    if (!summaryDelivered && finalSummary) {
+    const finalCombined = buildCombinedSummary();
+    if (!summaryDelivered && finalCombined) {
       try {
-        onReasoningSummaryDone?.(finalSummary, null);
+        onReasoningSummaryDone?.(finalCombined, null);
         summaryDelivered = true;
       } catch { /* ignore */ }
     }
@@ -1221,6 +1384,10 @@ export async function respond(options: RespondOptions): Promise<GenerationRespon
       } catch { /* ignore */ }
     }
     const mcpItems = extractMcpItems({ output: completedResponseOutput || [] });
+    // Build final tool activity from completed response output for permanent record
+    const finalToolActivity = buildToolActivityFromOutput(completedResponseOutput || []);
+    const finalReasoning = buildSummary();
+    const finalSummary = [finalToolActivity, finalReasoning].filter(Boolean).join('\n\n---\n\n');
     return {
       text: full,
       reasoningSummary: finalSummary,
@@ -1333,10 +1500,16 @@ export async function respond(options: RespondOptions): Promise<GenerationRespon
 
     const res = await response.json();
     const text = extractOutputText(res);
-    const summary = extractReasoningSummary(res);
+    const reasoning = extractReasoningSummary(res);
     const webSearchResult = extractWebSearchResult(res);
     const generatedImages = extractGeneratedImages(res);
     const mcpItems = extractMcpItems(res);
+    const resObj = res as Record<string, unknown>;
+    const outputArr = Array.isArray(resObj?.output) ? resObj.output as unknown[]
+      : Array.isArray((resObj?.response as Record<string, unknown>)?.output)
+        ? (resObj.response as Record<string, unknown>).output as unknown[] : [];
+    const toolActivity = buildToolActivityFromOutput(outputArr);
+    const summary = [toolActivity, reasoning].filter(Boolean).join('\n\n---\n\n');
     if (summary) {
       try { onReasoningSummaryDone?.(summary, null); } catch { /* ignore */ }
     }
@@ -1701,6 +1874,47 @@ function extractGeneratedImages(res: unknown): GeneratedImage[] | undefined {
 
   if (images.length === 0) return undefined;
   return images;
+}
+
+function buildToolActivityFromOutput(output: unknown[]): string {
+  if (!Array.isArray(output) || !output.length) return '';
+  const lines: string[] = [];
+  for (const item of output as Array<Record<string, unknown>>) {
+    const type = typeof item?.type === 'string' ? item.type : '';
+    if (type === 'web_search_call') {
+      const action = item.action as Record<string, unknown> | undefined;
+      const query = typeof action?.query === 'string' ? action.query : '';
+      const sources = Array.isArray(action?.sources) ? action.sources as unknown[] : [];
+      const status = typeof item.status === 'string' ? item.status : 'completed';
+      let line = `**Web search**`;
+      if (query) line += ` "${query}"`;
+      line += ` \u2014 *${status}*`;
+      if (sources.length) line += ` (${sources.length} sources)`;
+      lines.push(line);
+    } else if (type === 'code_interpreter_call') {
+      const status = typeof item.status === 'string' ? item.status : 'completed';
+      lines.push(`**Code interpreter** \u2014 *${status}*`);
+    } else if (type === 'shell_call') {
+      const status = typeof item.status === 'string' ? item.status : 'completed';
+      lines.push(`**Shell** \u2014 *${status}*`);
+    } else if (type === 'image_generation_call') {
+      const status = typeof item.status === 'string' ? item.status : 'completed';
+      lines.push(`**Image generation** \u2014 *${status}*`);
+    } else if (type === 'mcp_list_tools') {
+      const serverLabel = typeof item.server_label === 'string' ? item.server_label : 'MCP';
+      const tools = Array.isArray(item.tools) ? item.tools : [];
+      lines.push(`**MCP ${serverLabel}** discovered ${tools.length} tools \u2014 *completed*`);
+    } else if (type === 'mcp_call') {
+      const serverLabel = typeof item.server_label === 'string' ? item.server_label : 'MCP';
+      const name = typeof item.name === 'string' ? item.name : '';
+      const status = typeof item.status === 'string' ? item.status : 'completed';
+      const error = typeof item.error === 'string' ? item.error : '';
+      let line = `**MCP ${serverLabel}** \`${name}\` \u2014 *${status}*`;
+      if (error) line += ` (${error})`;
+      lines.push(line);
+    }
+  }
+  return lines.length > 0 ? lines.join('\n\n') : '';
 }
 
 function extractMcpItems(res: unknown): McpResponseItem[] | undefined {

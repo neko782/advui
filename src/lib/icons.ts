@@ -35,4 +35,5 @@ export { default as IconTravelExplore } from '~icons/material-symbols/travel-exp
 export { default as IconCodeBlocks } from '~icons/material-symbols/code-blocks-rounded'
 export { default as IconTerminal } from '~icons/material-symbols/terminal-rounded'
 export { default as IconImagesmode } from '~icons/material-symbols/imagesmode-rounded'
+export { default as IconExtension } from '~icons/material-symbols/extension-rounded'
 

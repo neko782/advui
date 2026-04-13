@@ -167,6 +167,7 @@ function normalizeDefaultTools(raw: unknown): DefaultToolSettings {
     codeInterpreter: typeof obj.codeInterpreter === 'boolean' ? obj.codeInterpreter : DEFAULT_TOOL_SETTINGS.codeInterpreter,
     shell: typeof obj.shell === 'boolean' ? obj.shell : DEFAULT_TOOL_SETTINGS.shell,
     imageGeneration: typeof obj.imageGeneration === 'boolean' ? obj.imageGeneration : DEFAULT_TOOL_SETTINGS.imageGeneration,
+    mcp: typeof obj.mcp === 'boolean' ? obj.mcp : DEFAULT_TOOL_SETTINGS.mcp,
   };
 }
 

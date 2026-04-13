@@ -2,7 +2,7 @@
   import { loadSettings, saveSettings } from './settingsStore'
   import { setModelsCache, loadModelsCache, loadAllModelCaches } from './modelsStore'
   import { listModelsWithKey } from './openaiClient'
-  import { IconClose, IconAdd, IconVisibility, IconVisibilityOff, IconAutorenew, IconDelete, IconDownload, IconUpload, IconDragHandle, IconTravelExplore, IconCodeBlocks, IconTerminal, IconImagesmode } from './icons'
+  import { IconClose, IconAdd, IconVisibility, IconVisibilityOff, IconAutorenew, IconDelete, IconDownload, IconUpload, IconDragHandle, IconTravelExplore, IconCodeBlocks, IconTerminal, IconImagesmode, IconExtension } from './icons'
   import { getThemeState, setThemeMode, subscribeTheme } from './themeStore'
   import { exportAllData, importAllData, importChat } from './utils/exportImport'
   import { onMount } from 'svelte'
@@ -1796,6 +1796,22 @@
                       checked={defaultToolsForRender().imageGeneration}
                       onchange={(event) => updateDefaultTool('imageGeneration', event.currentTarget.checked)}
                       aria-label="Image generation default"
+                    />
+                    <span class="switch-ui" aria-hidden="true"></span>
+                  </div>
+                </label>
+                <label class="tool-card" title="MCP servers">
+                  <div class="tool-card-icon"><IconExtension style="font-size: 24px;" /></div>
+                  <div class="tool-card-info">
+                    <span class="tool-card-name">MCP</span>
+                    <span class="tool-card-desc">Remote tool servers via Model Context Protocol</span>
+                  </div>
+                  <div class="tool-card-toggle">
+                    <input
+                      type="checkbox"
+                      checked={defaultToolsForRender().mcp}
+                      onchange={(event) => updateDefaultTool('mcp', event.currentTarget.checked)}
+                      aria-label="MCP default"
                     />
                     <span class="switch-ui" aria-hidden="true"></span>
                   </div>

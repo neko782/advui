@@ -62,12 +62,18 @@
   let wasOpen = false
   let activeTab = $state<'general' | 'sampling' | 'reasoning'>('general')
   let presetMenuOpen = $state(false)
-  let codeInterpreterSettingsExpanded = $state(false)
-  let shellSettingsExpanded = $state(false)
-  let imageGenModelExpanded = $state(false)
   let presetMenuEl = $state<HTMLDivElement | null>(null)
   let presetButtonEl = $state<HTMLButtonElement | null>(null)
   let presetMenuPosition = $state({ bottom: 0, left: 0 })
+
+  // Tools popup state
+  let toolsPopupOpen = $state(false)
+  let toolsButtonEl = $state<HTMLButtonElement | null>(null)
+  let toolsPopupEl = $state<HTMLDivElement | null>(null)
+  let toolsPopupPosition = $state({ bottom: 0, left: 0 })
+  let codeInterpreterSettingsExpanded = $state(false)
+  let shellSettingsExpanded = $state(false)
+  let imageGenModelExpanded = $state(false)
 
   // Check if current connection supports Responses API features (web search, code interpreter, shell, image generation)
   const supportsResponsesApiFeatures = $derived((() => {
@@ -75,6 +81,18 @@
     const currentConn = conns.find(c => c.id === props.connectionId) || conns[0]
     // Only 'responses' API mode supports Responses tool controls
     return currentConn?.apiMode === 'responses'
+  })())
+
+  // Count enabled tools for the button label
+  const enabledToolCount = $derived((() => {
+    if (!supportsResponsesApiFeatures) return 0
+    let count = 0
+    if (props.webSearchEnabled) count++
+    if (props.codeInterpreterEnabled) count++
+    if (props.shellEnabled) count++
+    if (props.imageGenerationEnabled) count++
+    if (props.mcpServers?.length) count += props.mcpServers.filter(s => s?.url?.trim()).length
+    return count
   })())
 
   function updateMcpServers(transform: (servers: McpServerConfig[]) => McpServerConfig[]) {
@@ -93,9 +111,9 @@
     updateMcpServers((servers) => servers.filter((_, i) => i !== index))
   }
 
-  function updateMcpServer(index: number, field: 'label' | 'url', value: string) {
+  function updateMcpServerUrl(index: number, value: string) {
     updateMcpServers((servers) => servers.map((server, i) => (
-      i === index ? { ...server, [field]: value } : server
+      i === index ? { ...server, url: value } : server
     )))
   }
 
@@ -134,6 +152,28 @@
     props.onSelectPreset?.(preset)
   }
 
+  function toggleToolsPopup() {
+    if (!toolsPopupOpen && toolsButtonEl) {
+      const rect = toolsButtonEl.getBoundingClientRect()
+      const popupWidth = 300
+      const padding = 8
+      let leftPos = rect.left
+      if (leftPos + popupWidth > window.innerWidth - padding) {
+        leftPos = rect.right - popupWidth
+        if (leftPos < padding) leftPos = window.innerWidth - popupWidth - padding
+      }
+      toolsPopupPosition = {
+        bottom: window.innerHeight - rect.top + 4,
+        left: Math.max(padding, leftPos)
+      }
+    }
+    toolsPopupOpen = !toolsPopupOpen
+  }
+
+  function closeToolsPopup() {
+    toolsPopupOpen = false
+  }
+
   // Close when clicking outside or pressing Escape
   $effect(() => {
     function onDocClick(e) {
@@ -141,9 +181,12 @@
         // Check if click is on preset menu (which is rendered outside root)
         const isInPresetMenu = presetMenuEl && presetMenuEl.contains(e.target)
         const isPresetWrapper = e.target.closest('.preset-toggle-wrapper')
+        // Check if click is on tools popup
+        const isInToolsPopup = toolsPopupEl && toolsPopupEl.contains(e.target)
+        const isToolsButton = e.target.closest('.tools-toggle-btn')
 
-        // Close settings if clicked outside, but not if clicking preset menu
-        if (props.open && root && !root.contains(e.target) && !isInPresetMenu && !isPresetWrapper) {
+        // Close settings if clicked outside, but not if clicking preset/tools menus
+        if (props.open && root && !root.contains(e.target) && !isInPresetMenu && !isPresetWrapper && !isInToolsPopup && !isToolsButton) {
           props.onClose?.()
         }
 
@@ -151,11 +194,18 @@
         if (presetMenuOpen && !isInPresetMenu && !isPresetWrapper) {
           closePresetMenu()
         }
+
+        // Close tools popup if clicked outside
+        if (toolsPopupOpen && !isInToolsPopup && !isToolsButton) {
+          closeToolsPopup()
+        }
       } catch {}
     }
     function onKeydown(e) {
       if (e.key === 'Escape') {
-        if (presetMenuOpen) {
+        if (toolsPopupOpen) {
+          closeToolsPopup()
+        } else if (presetMenuOpen) {
           closePresetMenu()
         } else if (props.open) {
           props.onClose?.()
@@ -172,6 +222,13 @@
 
   $effect(() => {
     wasOpen = !!props.open
+  })
+
+  // Close tools popup when parent closes
+  $effect(() => {
+    if (!props.open && toolsPopupOpen) {
+      toolsPopupOpen = false
+    }
   })
 </script>
 
@@ -198,224 +255,22 @@
         </div>
         {#if supportsResponsesApiFeatures}
           <div class="menu-section">
-            <label class="switch" title="Web search (Responses API only)">
-              <input
-                type="checkbox"
-                checked={!!props.webSearchEnabled}
-                disabled={props.disabled}
-                onchange={(e) => (!props.disabled && props.onInputWebSearchEnabled?.(e.currentTarget.checked))}
-                aria-label="Web search"
-              />
-              <span class="switch-ui" aria-hidden="true"></span>
-              <span class="switch-label">Web search</span>
-            </label>
-          </div>
-          <div class="menu-section">
-            <div class="tool-header-row">
-              <label class="switch" title="Code interpreter (Responses API only)">
-                <input
-                  type="checkbox"
-                  checked={!!props.codeInterpreterEnabled}
-                  disabled={props.disabled}
-                  onchange={(e) => (!props.disabled && props.onInputCodeInterpreterEnabled?.(e.currentTarget.checked))}
-                  aria-label="Code interpreter"
-                />
-                <span class="switch-ui" aria-hidden="true"></span>
-                <span class="switch-label">Code interpreter</span>
-              </label>
-              {#if props.codeInterpreterEnabled}
-                <button
-                  type="button"
-                  class="tool-settings-btn"
-                  onclick={() => codeInterpreterSettingsExpanded = !codeInterpreterSettingsExpanded}
-                  disabled={props.disabled}
-                  title={codeInterpreterSettingsExpanded ? 'Hide network settings' : 'Network settings'}
-                  aria-label={codeInterpreterSettingsExpanded ? 'Hide network settings' : 'Network settings'}
-                >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <polyline points={codeInterpreterSettingsExpanded ? "18 15 12 9 6 15" : "6 9 12 15 18 9"}></polyline>
-                  </svg>
-                </button>
-              {/if}
-            </div>
-            {#if props.codeInterpreterEnabled && codeInterpreterSettingsExpanded}
-              <div class="tool-settings-popup">
-                <label class="switch" title="Allow network access">
-                  <input
-                    type="checkbox"
-                    checked={!!props.codeInterpreterNetworkEnabled}
-                    disabled={props.disabled}
-                    onchange={(e) => (!props.disabled && props.onInputCodeInterpreterNetworkEnabled?.(e.currentTarget.checked))}
-                    aria-label="Allow network"
-                  />
-                  <span class="switch-ui" aria-hidden="true"></span>
-                  <span class="switch-label">Allow network</span>
-                </label>
-                {#if props.codeInterpreterNetworkEnabled}
-                  <div class="tool-settings-field">
-                    <div class="tool-settings-label">Allowed domains</div>
-                    <input
-                      type="text"
-                      placeholder="e.g. api.github.com, pypi.org"
-                      value={props.codeInterpreterAllowedDomains || ''}
-                      disabled={props.disabled}
-                      oninput={(e) => (!props.disabled && props.onInputCodeInterpreterAllowedDomains?.(e.currentTarget.value))}
-                      aria-label="Allowed domains for code interpreter"
-                      class="tool-settings-input"
-                    />
-                    <div class="tool-settings-hint">Comma-separated. Leave empty for unrestricted.</div>
-                  </div>
-                {/if}
-              </div>
-            {/if}
-          </div>
-          <div class="menu-section">
-            <div class="tool-header-row">
-              <label class="switch" title="Shell (Responses API only)">
-                <input
-                  type="checkbox"
-                  checked={!!props.shellEnabled}
-                  disabled={props.disabled}
-                  onchange={(e) => (!props.disabled && props.onInputShellEnabled?.(e.currentTarget.checked))}
-                  aria-label="Shell"
-                />
-                <span class="switch-ui" aria-hidden="true"></span>
-                <span class="switch-label">Shell</span>
-              </label>
-              {#if props.shellEnabled}
-                <button
-                  type="button"
-                  class="tool-settings-btn"
-                  onclick={() => shellSettingsExpanded = !shellSettingsExpanded}
-                  disabled={props.disabled}
-                  title={shellSettingsExpanded ? 'Hide network settings' : 'Network settings'}
-                  aria-label={shellSettingsExpanded ? 'Hide network settings' : 'Network settings'}
-                >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <polyline points={shellSettingsExpanded ? "18 15 12 9 6 15" : "6 9 12 15 18 9"}></polyline>
-                  </svg>
-                </button>
-              {/if}
-            </div>
-            {#if props.shellEnabled && shellSettingsExpanded}
-              <div class="tool-settings-popup">
-                <label class="switch" title="Allow network access">
-                  <input
-                    type="checkbox"
-                    checked={!!props.shellNetworkEnabled}
-                    disabled={props.disabled}
-                    onchange={(e) => (!props.disabled && props.onInputShellNetworkEnabled?.(e.currentTarget.checked))}
-                    aria-label="Allow network"
-                  />
-                  <span class="switch-ui" aria-hidden="true"></span>
-                  <span class="switch-label">Allow network</span>
-                </label>
-                {#if props.shellNetworkEnabled}
-                  <div class="tool-settings-field">
-                    <div class="tool-settings-label">Allowed domains</div>
-                    <input
-                      type="text"
-                      placeholder="e.g. api.github.com, registry.npmjs.org"
-                      value={props.shellAllowedDomains || ''}
-                      disabled={props.disabled}
-                      oninput={(e) => (!props.disabled && props.onInputShellAllowedDomains?.(e.currentTarget.value))}
-                      aria-label="Allowed domains for shell"
-                      class="tool-settings-input"
-                    />
-                    <div class="tool-settings-hint">Comma-separated. Leave empty for unrestricted.</div>
-                  </div>
-                {/if}
-              </div>
-            {/if}
-          </div>
-          <div class="menu-section">
-            <div class="image-gen-row">
-              <label class="switch" title="Image generation (Responses API only)">
-                <input
-                  type="checkbox"
-                  checked={!!props.imageGenerationEnabled}
-                  disabled={props.disabled}
-                  onchange={(e) => (!props.disabled && props.onInputImageGenerationEnabled?.(e.currentTarget.checked))}
-                  aria-label="Image generation"
-                />
-                <span class="switch-ui" aria-hidden="true"></span>
-                <span class="switch-label">Image generation</span>
-              </label>
-              {#if props.imageGenerationEnabled}
-                <button
-                  type="button"
-                  class="image-gen-model-btn"
-                  onclick={() => imageGenModelExpanded = !imageGenModelExpanded}
-                  disabled={props.disabled}
-                  title={imageGenModelExpanded ? 'Hide model setting' : 'Set model'}
-                  aria-label={imageGenModelExpanded ? 'Hide model setting' : 'Set model'}
-                >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <polyline points={imageGenModelExpanded ? "18 15 12 9 6 15" : "6 9 12 15 18 9"}></polyline>
-                  </svg>
-                </button>
-              {/if}
-            </div>
-            {#if props.imageGenerationEnabled && imageGenModelExpanded}
-              <input
-                type="text"
-                placeholder="gpt-image-1"
-                value={props.imageGenerationModel || ''}
-                disabled={props.disabled}
-                oninput={(e) => (!props.disabled && props.onInputImageGenerationModel?.(e.currentTarget.value))}
-                aria-label="Image generation model"
-                class="image-gen-model-input"
-              />
-            {/if}
-          </div>
-          <div class="menu-section">
-            <div class="menu-label">MCP servers</div>
-            <div class="mcp-server-list">
-              {#if props.mcpServers?.length}
-                {#each props.mcpServers as server, index (index)}
-                  <div class="mcp-server-card">
-                    <input
-                      type="text"
-                      placeholder="Server label"
-                      value={server?.label || ''}
-                      disabled={props.disabled}
-                      oninput={(e) => updateMcpServer(index, 'label', e.currentTarget.value)}
-                      aria-label={`MCP server label ${index + 1}`}
-                      class="tool-settings-input"
-                    />
-                    <div class="mcp-server-row">
-                      <input
-                        type="text"
-                        placeholder="https://example.com/mcp"
-                        value={server?.url || ''}
-                        disabled={props.disabled}
-                        oninput={(e) => updateMcpServer(index, 'url', e.currentTarget.value)}
-                        aria-label={`MCP server URL ${index + 1}`}
-                        class="tool-settings-input"
-                      />
-                      <button
-                        type="button"
-                        class="mcp-server-remove"
-                        onclick={() => removeMcpServer(index)}
-                        disabled={props.disabled}
-                        aria-label={`Remove MCP server ${index + 1}`}
-                      >
-                        Remove
-                      </button>
-                    </div>
-                  </div>
-                {/each}
-              {:else}
-                <div class="tool-settings-hint">Add remote MCP servers to expose their tools in Responses API chats.</div>
-              {/if}
-            </div>
             <button
               type="button"
-              class="mcp-server-add"
-              onclick={addMcpServer}
+              class="tools-toggle-btn"
+              bind:this={toolsButtonEl}
+              onclick={toggleToolsPopup}
               disabled={props.disabled}
+              aria-label="Tool settings"
+              title="Configure tools"
             >
-              Add server
+              <span class="tools-toggle-label">Tools</span>
+              {#if enabledToolCount > 0}
+                <span class="tools-toggle-badge">{enabledToolCount}</span>
+              {/if}
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points={toolsPopupOpen ? "18 15 12 9 6 15" : "6 9 12 15 18 9"}></polyline>
+              </svg>
             </button>
           </div>
         {/if}
@@ -616,6 +471,233 @@
   </div>
 {/if}
 
+{#if toolsPopupOpen}
+  <div
+    class="tools-popup"
+    bind:this={toolsPopupEl}
+    aria-label="Tool settings"
+    style="bottom: {toolsPopupPosition.bottom}px; left: {toolsPopupPosition.left}px;"
+  >
+    <div class="tools-popup-content">
+      <!-- Web search -->
+      <div class="tool-row">
+        <label class="switch">
+          <input
+            type="checkbox"
+            checked={!!props.webSearchEnabled}
+            disabled={props.disabled}
+            onchange={(e) => (!props.disabled && props.onInputWebSearchEnabled?.(e.currentTarget.checked))}
+            aria-label="Web search"
+          />
+          <span class="switch-ui" aria-hidden="true"></span>
+          <span class="switch-label">Web search</span>
+        </label>
+      </div>
+
+      <!-- Code interpreter -->
+      <div class="tool-row">
+        <div class="tool-header-row">
+          <label class="switch">
+            <input
+              type="checkbox"
+              checked={!!props.codeInterpreterEnabled}
+              disabled={props.disabled}
+              onchange={(e) => (!props.disabled && props.onInputCodeInterpreterEnabled?.(e.currentTarget.checked))}
+              aria-label="Code interpreter"
+            />
+            <span class="switch-ui" aria-hidden="true"></span>
+            <span class="switch-label">Code interpreter</span>
+          </label>
+          {#if props.codeInterpreterEnabled}
+            <button
+              type="button"
+              class="tool-expand-btn"
+              onclick={() => codeInterpreterSettingsExpanded = !codeInterpreterSettingsExpanded}
+              disabled={props.disabled}
+              title="Network settings"
+              aria-label="Network settings"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points={codeInterpreterSettingsExpanded ? "18 15 12 9 6 15" : "6 9 12 15 18 9"}></polyline>
+              </svg>
+            </button>
+          {/if}
+        </div>
+        {#if props.codeInterpreterEnabled && codeInterpreterSettingsExpanded}
+          <div class="tool-sub-settings">
+            <label class="switch">
+              <input
+                type="checkbox"
+                checked={!!props.codeInterpreterNetworkEnabled}
+                disabled={props.disabled}
+                onchange={(e) => (!props.disabled && props.onInputCodeInterpreterNetworkEnabled?.(e.currentTarget.checked))}
+                aria-label="Allow network"
+              />
+              <span class="switch-ui" aria-hidden="true"></span>
+              <span class="switch-label">Allow network</span>
+            </label>
+            {#if props.codeInterpreterNetworkEnabled}
+              <input
+                type="text"
+                placeholder="Allowed domains (comma-separated)"
+                value={props.codeInterpreterAllowedDomains || ''}
+                disabled={props.disabled}
+                oninput={(e) => (!props.disabled && props.onInputCodeInterpreterAllowedDomains?.(e.currentTarget.value))}
+                aria-label="Allowed domains"
+                class="tool-sub-input"
+              />
+            {/if}
+          </div>
+        {/if}
+      </div>
+
+      <!-- Shell -->
+      <div class="tool-row">
+        <div class="tool-header-row">
+          <label class="switch">
+            <input
+              type="checkbox"
+              checked={!!props.shellEnabled}
+              disabled={props.disabled}
+              onchange={(e) => (!props.disabled && props.onInputShellEnabled?.(e.currentTarget.checked))}
+              aria-label="Shell"
+            />
+            <span class="switch-ui" aria-hidden="true"></span>
+            <span class="switch-label">Shell</span>
+          </label>
+          {#if props.shellEnabled}
+            <button
+              type="button"
+              class="tool-expand-btn"
+              onclick={() => shellSettingsExpanded = !shellSettingsExpanded}
+              disabled={props.disabled}
+              title="Network settings"
+              aria-label="Network settings"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points={shellSettingsExpanded ? "18 15 12 9 6 15" : "6 9 12 15 18 9"}></polyline>
+              </svg>
+            </button>
+          {/if}
+        </div>
+        {#if props.shellEnabled && shellSettingsExpanded}
+          <div class="tool-sub-settings">
+            <label class="switch">
+              <input
+                type="checkbox"
+                checked={!!props.shellNetworkEnabled}
+                disabled={props.disabled}
+                onchange={(e) => (!props.disabled && props.onInputShellNetworkEnabled?.(e.currentTarget.checked))}
+                aria-label="Allow network"
+              />
+              <span class="switch-ui" aria-hidden="true"></span>
+              <span class="switch-label">Allow network</span>
+            </label>
+            {#if props.shellNetworkEnabled}
+              <input
+                type="text"
+                placeholder="Allowed domains (comma-separated)"
+                value={props.shellAllowedDomains || ''}
+                disabled={props.disabled}
+                oninput={(e) => (!props.disabled && props.onInputShellAllowedDomains?.(e.currentTarget.value))}
+                aria-label="Allowed domains"
+                class="tool-sub-input"
+              />
+            {/if}
+          </div>
+        {/if}
+      </div>
+
+      <!-- Image generation -->
+      <div class="tool-row">
+        <div class="tool-header-row">
+          <label class="switch">
+            <input
+              type="checkbox"
+              checked={!!props.imageGenerationEnabled}
+              disabled={props.disabled}
+              onchange={(e) => (!props.disabled && props.onInputImageGenerationEnabled?.(e.currentTarget.checked))}
+              aria-label="Image generation"
+            />
+            <span class="switch-ui" aria-hidden="true"></span>
+            <span class="switch-label">Image generation</span>
+          </label>
+          {#if props.imageGenerationEnabled}
+            <button
+              type="button"
+              class="tool-expand-btn"
+              onclick={() => imageGenModelExpanded = !imageGenModelExpanded}
+              disabled={props.disabled}
+              title="Model settings"
+              aria-label="Model settings"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points={imageGenModelExpanded ? "18 15 12 9 6 15" : "6 9 12 15 18 9"}></polyline>
+              </svg>
+            </button>
+          {/if}
+        </div>
+        {#if props.imageGenerationEnabled && imageGenModelExpanded}
+          <div class="tool-sub-settings">
+            <input
+              type="text"
+              placeholder="gpt-image-1"
+              value={props.imageGenerationModel || ''}
+              disabled={props.disabled}
+              oninput={(e) => (!props.disabled && props.onInputImageGenerationModel?.(e.currentTarget.value))}
+              aria-label="Image generation model"
+              class="tool-sub-input"
+            />
+          </div>
+        {/if}
+      </div>
+
+      <!-- MCP servers -->
+      <div class="tool-row mcp-section">
+        <div class="tool-section-label">MCP servers</div>
+        {#if props.mcpServers?.length}
+          {#each props.mcpServers as server, index (index)}
+            <div class="mcp-server-row">
+              <input
+                type="text"
+                placeholder="https://example.com/mcp"
+                value={server?.url || ''}
+                disabled={props.disabled}
+                oninput={(e) => updateMcpServerUrl(index, e.currentTarget.value)}
+                aria-label={`MCP server URL ${index + 1}`}
+                class="tool-sub-input"
+              />
+              <button
+                type="button"
+                class="mcp-remove-btn"
+                onclick={() => removeMcpServer(index)}
+                disabled={props.disabled}
+                aria-label={`Remove server ${index + 1}`}
+                title="Remove server"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                  <line x1="18" y1="6" x2="6" y2="18"></line>
+                  <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+              </button>
+            </div>
+          {/each}
+        {:else}
+          <div class="mcp-hint">No MCP servers configured.</div>
+        {/if}
+        <button
+          type="button"
+          class="mcp-add-btn"
+          onclick={addMcpServer}
+          disabled={props.disabled}
+        >
+          + Add server
+        </button>
+      </div>
+    </div>
+  </div>
+{/if}
+
 <style>
   .icon-btn {
     border: 1px solid var(--border);
@@ -711,7 +793,7 @@
   /* Toggle switch */
   .switch { display: inline-flex; align-items: center; gap: 10px; cursor: pointer; user-select: none; }
   .switch > input { position: absolute; opacity: 0; width: 1px; height: 1px; pointer-events: none; }
-  .switch-ui { width: 38px; height: 22px; border-radius: 999px; background: var(--border); position: relative; transition: background-color .15s ease; box-shadow: inset 0 0 0 1px var(--border); }
+  .switch-ui { width: 38px; height: 22px; border-radius: 999px; background: var(--border); position: relative; transition: background-color .15s ease; box-shadow: inset 0 0 0 1px var(--border); flex-shrink: 0; }
   .switch-ui::after { content: ''; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,0.15); transition: transform .15s ease, background-color .15s ease; }
   :global(:root[data-theme='dark']) .switch-ui { background: #2a2a2a; box-shadow: inset 0 0 0 1px #2f2f2f; }
   :global(:root[data-theme='dark']) .switch-ui::after { background: #e6e6e6; }
@@ -799,10 +881,10 @@
   }
   :global(:root[data-fancy-effects="true"]) .preset-menu {
     box-shadow: 0 8px 18px rgba(0,0,0,0.18);
-    animation: preset-menu-enter 180ms cubic-bezier(0.2, 0.9, 0.3, 1);
+    animation: popup-enter 180ms cubic-bezier(0.2, 0.9, 0.3, 1);
   }
 
-  @keyframes preset-menu-enter {
+  @keyframes popup-enter {
     from {
       opacity: 0;
       transform: scale(0.92) translateY(4px);
@@ -850,16 +932,84 @@
   :global(:root[data-theme='dark']) .preset-menu-item:focus-visible {
     background: color-mix(in oklab, var(--bg), var(--text) 8%);
   }
-  /* Tool settings popup */
+
+  /* Tools toggle button */
+  .tools-toggle-btn {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg);
+    color: var(--text);
+    font: inherit;
+    font-size: .95rem;
+    cursor: pointer;
+    transition: background-color .15s ease, border-color .15s ease, color .15s ease;
+  }
+  .tools-toggle-btn:hover:not(:disabled) {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+  .tools-toggle-btn:disabled {
+    opacity: .5;
+    cursor: not-allowed;
+  }
+  .tools-toggle-label {
+    flex: 1;
+    text-align: left;
+    font-weight: 500;
+  }
+  .tools-toggle-badge {
+    font-size: .75rem;
+    font-weight: 700;
+    background: color-mix(in srgb, var(--accent) 15%, transparent);
+    color: var(--accent);
+    padding: 2px 7px;
+    border-radius: 10px;
+    line-height: 1.3;
+  }
+
+  /* Tools floating popup */
+  .tools-popup {
+    position: fixed;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 12px;
+    display: grid;
+    gap: 0;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.14);
+    z-index: 300;
+    max-height: 420px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    min-width: 280px;
+    max-width: 340px;
+    transform-origin: bottom left;
+  }
+  :global(:root[data-fancy-effects="true"]) .tools-popup {
+    box-shadow: 0 8px 24px rgba(0,0,0,0.2);
+    animation: popup-enter 180ms cubic-bezier(0.2, 0.9, 0.3, 1);
+  }
+  .tools-popup-content {
+    display: grid;
+    gap: 4px;
+  }
+  .tool-row {
+    padding: 6px 4px;
+  }
   .tool-header-row {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 8px;
+    gap: 6px;
   }
-  .tool-settings-btn {
-    width: 28px;
-    height: 28px;
+  .tool-expand-btn {
+    width: 24px;
+    height: 24px;
     display: grid;
     place-items: center;
     border: 1px solid var(--border);
@@ -867,41 +1017,31 @@
     background: var(--bg);
     color: var(--muted);
     cursor: pointer;
-    transition: background-color .15s ease, border-color .15s ease, color .15s ease;
+    transition: background-color .12s ease, border-color .12s ease, color .12s ease;
     flex-shrink: 0;
   }
-  .tool-settings-btn:hover {
-    background: var(--panel);
+  .tool-expand-btn:hover:not(:disabled) {
     border-color: var(--accent);
     color: var(--text);
   }
-  .tool-settings-btn:disabled {
-    opacity: .6;
+  .tool-expand-btn:disabled {
+    opacity: .5;
     cursor: not-allowed;
   }
-  .tool-settings-popup {
+  .tool-sub-settings {
     margin-top: 8px;
-    padding: 10px;
+    padding: 8px 10px;
     border: 1px solid var(--border);
     border-radius: 8px;
     background: var(--bg);
     display: grid;
-    gap: 10px;
+    gap: 8px;
   }
-  .tool-settings-field {
-    display: grid;
-    gap: 4px;
-  }
-  .tool-settings-label {
-    font-size: .8rem;
-    color: var(--muted);
-    font-weight: 500;
-  }
-  .tool-settings-input {
+  .tool-sub-input {
     width: 100%;
     border: 1px solid var(--border);
     border-radius: 6px;
-    padding: 8px 10px;
+    padding: 7px 10px;
     background: var(--panel);
     color: var(--text);
     font: inherit;
@@ -909,94 +1049,79 @@
     box-sizing: border-box;
     transition: border-color .15s ease, box-shadow .15s ease;
   }
-  .tool-settings-input:hover {
+  .tool-sub-input:hover {
     border-color: color-mix(in srgb, var(--border) 70%, var(--accent));
   }
-  .tool-settings-input:focus {
+  .tool-sub-input:focus {
     outline: none;
     border-color: var(--accent);
     box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 15%, transparent);
   }
-  .tool-settings-hint {
-    font-size: .75rem;
+  .tool-section-label {
+    font-size: .8rem;
+    font-weight: 600;
     color: var(--muted);
-    opacity: 0.7;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    margin-bottom: 6px;
+    padding-top: 6px;
+    border-top: 1px solid var(--border);
   }
-  .mcp-server-list {
+  .mcp-section {
     display: grid;
-    gap: 8px;
-  }
-  .mcp-server-card {
-    display: grid;
-    gap: 8px;
-    padding: 10px;
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    background: var(--bg);
+    gap: 6px;
   }
   .mcp-server-row {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    gap: 8px;
+    grid-template-columns: 1fr auto;
+    gap: 4px;
     align-items: center;
   }
-  .mcp-server-add,
-  .mcp-server-remove {
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    background: var(--bg);
-    color: var(--text);
-    font: inherit;
-    cursor: pointer;
-    transition: background-color .15s ease, border-color .15s ease, color .15s ease;
-  }
-  .mcp-server-add {
-    padding: 8px 10px;
-  }
-  .mcp-server-remove {
-    padding: 8px 10px;
-    white-space: nowrap;
-  }
-  .mcp-server-add:hover:not(:disabled),
-  .mcp-server-remove:hover:not(:disabled) {
-    border-color: var(--accent);
-    color: var(--accent);
-  }
-  .mcp-server-add:disabled,
-  .mcp-server-remove:disabled {
-    opacity: .6;
-    cursor: not-allowed;
-  }
-  /* Image generation row */
-  .image-gen-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-  }
-  .image-gen-model-btn {
+  .mcp-remove-btn {
     width: 28px;
     height: 28px;
     display: grid;
     place-items: center;
-    border: 1px solid var(--border);
+    border: 1px solid transparent;
     border-radius: 6px;
-    background: var(--bg);
+    background: transparent;
     color: var(--muted);
     cursor: pointer;
-    transition: background-color .15s ease, border-color .15s ease, color .15s ease;
+    transition: background-color .12s ease, border-color .12s ease, color .12s ease;
     flex-shrink: 0;
   }
-  .image-gen-model-btn:hover {
-    background: var(--panel);
-    border-color: var(--accent);
-    color: var(--text);
+  .mcp-remove-btn:hover:not(:disabled) {
+    background: color-mix(in srgb, #ef4444 10%, transparent);
+    border-color: color-mix(in srgb, #ef4444 30%, transparent);
+    color: #ef4444;
   }
-  .image-gen-model-btn:disabled {
-    opacity: .6;
+  .mcp-remove-btn:disabled {
+    opacity: .4;
     cursor: not-allowed;
   }
-  .image-gen-model-input {
-    margin-top: 8px;
+  .mcp-hint {
+    font-size: .75rem;
+    color: var(--muted);
+    opacity: 0.7;
+  }
+  .mcp-add-btn {
+    padding: 6px 10px;
+    border: 1px dashed var(--border);
+    border-radius: 6px;
+    background: transparent;
+    color: var(--muted);
+    font: inherit;
+    font-size: .85rem;
+    cursor: pointer;
+    transition: border-color .12s ease, color .12s ease, background-color .12s ease;
+  }
+  .mcp-add-btn:hover:not(:disabled) {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 5%, transparent);
+  }
+  .mcp-add-btn:disabled {
+    opacity: .5;
+    cursor: not-allowed;
   }
 </style>

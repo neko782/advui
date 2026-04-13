@@ -296,6 +296,7 @@ export interface DefaultToolSettings {
   codeInterpreter: boolean;
   shell: boolean;
   imageGeneration: boolean;
+  mcp: boolean;
 }
 
 export const DEFAULT_TOOL_SETTINGS: DefaultToolSettings = {
@@ -303,6 +304,7 @@ export const DEFAULT_TOOL_SETTINGS: DefaultToolSettings = {
   codeInterpreter: true,
   shell: true,
   imageGeneration: true,
+  mcp: true,
 };
 
 // ============================================================================
