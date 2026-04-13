@@ -111,8 +111,12 @@ export interface ChatSettings {
   webSearchCacheOnly?: boolean;
   // Code Interpreter settings (Responses API only)
   codeInterpreterEnabled?: boolean;
+  codeInterpreterNetworkEnabled?: boolean;
+  codeInterpreterAllowedDomains?: string;  // Comma-separated list of allowed domains
   // Shell settings (Responses API only)
   shellEnabled?: boolean;
+  shellNetworkEnabled?: boolean;
+  shellAllowedDomains?: string;  // Comma-separated list of allowed domains
   // Image Generation settings (Responses API only)
   imageGenerationEnabled?: boolean;
   imageGenerationModel?: string;
@@ -189,8 +193,12 @@ export interface Preset {
   webSearchCacheOnly?: boolean;  // external_web_access = false
   // Code Interpreter settings (Responses API only)
   codeInterpreterEnabled?: boolean;
+  codeInterpreterNetworkEnabled?: boolean;
+  codeInterpreterAllowedDomains?: string;
   // Shell settings (Responses API only)
   shellEnabled?: boolean;
+  shellNetworkEnabled?: boolean;
+  shellAllowedDomains?: string;
   // Image Generation settings (Responses API only)
   imageGenerationEnabled?: boolean;
   imageGenerationModel?: string;  // Model for image generation tool (e.g., gpt-image-1)
@@ -219,8 +227,12 @@ export interface PresetFields {
   webSearchCacheOnly?: boolean;
   // Code Interpreter settings (Responses API only)
   codeInterpreterEnabled?: boolean;
+  codeInterpreterNetworkEnabled?: boolean;
+  codeInterpreterAllowedDomains?: string;
   // Shell settings (Responses API only)
   shellEnabled?: boolean;
+  shellNetworkEnabled?: boolean;
+  shellAllowedDomains?: string;
   // Image Generation settings (Responses API only)
   imageGenerationEnabled?: boolean;
   imageGenerationModel?: string;
@@ -589,12 +601,19 @@ export interface WebSearchOptions {
   external_web_access?: boolean;  // Default true, set false for cache-only mode
 }
 
+export interface ContainerNetworkPolicy {
+  type: 'disabled' | 'allowlist';
+  allowed_domains?: string[];
+}
+
 export interface CodeInterpreterOptions {
   enabled?: boolean;
+  network_policy?: ContainerNetworkPolicy;
 }
 
 export interface ShellOptions {
   enabled?: boolean;
+  network_policy?: ContainerNetworkPolicy;
 }
 
 export interface WebSearchCitation {

@@ -19,7 +19,8 @@ import type {
   WebSearchOptions,
   CodeInterpreterOptions,
   ShellOptions,
-  ImageGenerationOptions
+  ImageGenerationOptions,
+  ContainerNetworkPolicy,
 } from '../../types/index.js';
 
 /**
@@ -453,6 +454,13 @@ export async function generateResponse(options: GenerateResponseOptions): Promis
   const codeInterpreter: CodeInterpreterOptions | undefined = chatSettings.codeInterpreterEnabled
     ? {
         enabled: true,
+        network_policy: (() => {
+          if (!chatSettings.codeInterpreterNetworkEnabled) return { type: 'disabled' as const };
+          const domains = chatSettings.codeInterpreterAllowedDomains
+            ?.split(',').map(d => d.trim()).filter(Boolean);
+          if (domains?.length) return { type: 'allowlist' as const, allowed_domains: domains };
+          return undefined;  // No policy = unrestricted (OpenAI default)
+        })(),
       }
     : undefined;
 
@@ -460,6 +468,13 @@ export async function generateResponse(options: GenerateResponseOptions): Promis
   const shell: ShellOptions | undefined = chatSettings.shellEnabled
     ? {
         enabled: true,
+        network_policy: (() => {
+          if (!chatSettings.shellNetworkEnabled) return { type: 'disabled' as const };
+          const domains = chatSettings.shellAllowedDomains
+            ?.split(',').map(d => d.trim()).filter(Boolean);
+          if (domains?.length) return { type: 'allowlist' as const, allowed_domains: domains };
+          return undefined;  // No policy = unrestricted (OpenAI default)
+        })(),
       }
     : undefined;
 

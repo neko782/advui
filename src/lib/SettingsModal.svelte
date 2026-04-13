@@ -433,7 +433,11 @@
       webSearchTimezone: base?.webSearchTimezone,
       webSearchCacheOnly: !!base?.webSearchCacheOnly,
       codeInterpreterEnabled: !!base?.codeInterpreterEnabled,
+      codeInterpreterNetworkEnabled: !!base?.codeInterpreterNetworkEnabled,
+      codeInterpreterAllowedDomains: base?.codeInterpreterAllowedDomains,
       shellEnabled: !!base?.shellEnabled,
+      shellNetworkEnabled: !!base?.shellNetworkEnabled,
+      shellAllowedDomains: base?.shellAllowedDomains,
       imageGenerationEnabled: !!base?.imageGenerationEnabled,
       imageGenerationModel: base?.imageGenerationModel,
       systemPrompt: typeof base?.systemPrompt === 'string' ? base.systemPrompt : DEFAULT_SYSTEM_PROMPT,
@@ -1336,6 +1340,32 @@
                       <span class="switch-ui" aria-hidden="true"></span>
                       <span class="switch-label">Code interpreter</span>
                     </label>
+                    {#if activePreset.codeInterpreterEnabled}
+                      <div class="tool-network-settings">
+                        <label class="switch" title="Allow network access for code interpreter">
+                          <input
+                            type="checkbox"
+                            checked={!!activePreset.codeInterpreterNetworkEnabled}
+                            onchange={(event) => updateActivePreset({ codeInterpreterNetworkEnabled: !!event.currentTarget.checked })}
+                            aria-label="Code interpreter network access"
+                          />
+                          <span class="switch-ui" aria-hidden="true"></span>
+                          <span class="switch-label">Allow network</span>
+                        </label>
+                        {#if activePreset.codeInterpreterNetworkEnabled}
+                          <label class="field">
+                            <span>Allowed domains</span>
+                            <input
+                              type="text"
+                              placeholder="e.g. api.github.com, pypi.org"
+                              value={activePreset.codeInterpreterAllowedDomains || ''}
+                              oninput={(event) => updateActivePreset({ codeInterpreterAllowedDomains: event.currentTarget.value || undefined })}
+                              aria-label="Code interpreter allowed domains"
+                            />
+                          </label>
+                        {/if}
+                      </div>
+                    {/if}
                     <label class="switch" title="Shell (Responses API only)">
                       <input
                         type="checkbox"
@@ -1346,6 +1376,32 @@
                       <span class="switch-ui" aria-hidden="true"></span>
                       <span class="switch-label">Shell</span>
                     </label>
+                    {#if activePreset.shellEnabled}
+                      <div class="tool-network-settings">
+                        <label class="switch" title="Allow network access for shell">
+                          <input
+                            type="checkbox"
+                            checked={!!activePreset.shellNetworkEnabled}
+                            onchange={(event) => updateActivePreset({ shellNetworkEnabled: !!event.currentTarget.checked })}
+                            aria-label="Shell network access"
+                          />
+                          <span class="switch-ui" aria-hidden="true"></span>
+                          <span class="switch-label">Allow network</span>
+                        </label>
+                        {#if activePreset.shellNetworkEnabled}
+                          <label class="field">
+                            <span>Allowed domains</span>
+                            <input
+                              type="text"
+                              placeholder="e.g. api.github.com, registry.npmjs.org"
+                              value={activePreset.shellAllowedDomains || ''}
+                              oninput={(event) => updateActivePreset({ shellAllowedDomains: event.currentTarget.value || undefined })}
+                              aria-label="Shell allowed domains"
+                            />
+                          </label>
+                        {/if}
+                      </div>
+                    {/if}
                     <label class="switch" title="Image generation (Responses API only)">
                       <input
                         type="checkbox"
@@ -1888,6 +1944,13 @@
     transform: translateY(0);
   }
   .icon-btn:disabled { opacity: .5; cursor: not-allowed; }
+  .tool-network-settings {
+    display: grid;
+    gap: 10px;
+    padding: 10px 12px;
+    margin-left: 12px;
+    border-left: 2px solid var(--border);
+  }
   .field { display: grid; gap: 6px; }
   .field > span {
     font-size: .875rem;

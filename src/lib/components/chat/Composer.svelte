@@ -22,7 +22,11 @@
     chatThinkingBudgetTokens?: number | null
     chatWebSearchEnabled?: boolean
     chatCodeInterpreterEnabled?: boolean
+    chatCodeInterpreterNetworkEnabled?: boolean
+    chatCodeInterpreterAllowedDomains?: string
     chatShellEnabled?: boolean
+    chatShellNetworkEnabled?: boolean
+    chatShellAllowedDomains?: string
     chatImageGenerationEnabled?: boolean
     chatImageGenerationModel?: string
     modelIds?: string[]
@@ -47,7 +51,11 @@
     onChangeThinkingBudgetTokens?: (val: string) => void
     onChangeWebSearchEnabled?: (val: boolean) => void
     onChangeCodeInterpreterEnabled?: (val: boolean) => void
+    onChangeCodeInterpreterNetworkEnabled?: (val: boolean) => void
+    onChangeCodeInterpreterAllowedDomains?: (val: string) => void
     onChangeShellEnabled?: (val: boolean) => void
+    onChangeShellNetworkEnabled?: (val: boolean) => void
+    onChangeShellAllowedDomains?: (val: string) => void
     onChangeImageGenerationEnabled?: (val: boolean) => void
     onChangeImageGenerationModel?: (val: string) => void
     onSelectPreset?: (preset: Preset) => void
@@ -309,7 +317,11 @@
         thinkingBudgetTokens={props.chatThinkingBudgetTokens}
         webSearchEnabled={props.chatWebSearchEnabled}
         codeInterpreterEnabled={props.chatCodeInterpreterEnabled}
+        codeInterpreterNetworkEnabled={props.chatCodeInterpreterNetworkEnabled}
+        codeInterpreterAllowedDomains={props.chatCodeInterpreterAllowedDomains}
         shellEnabled={props.chatShellEnabled}
+        shellNetworkEnabled={props.chatShellNetworkEnabled}
+        shellAllowedDomains={props.chatShellAllowedDomains}
         imageGenerationEnabled={props.chatImageGenerationEnabled}
         imageGenerationModel={props.chatImageGenerationModel}
         modelIds={props.modelIds}
@@ -332,7 +344,11 @@
         onInputThinkingBudgetTokens={props.onChangeThinkingBudgetTokens}
         onInputWebSearchEnabled={props.onChangeWebSearchEnabled}
         onInputCodeInterpreterEnabled={props.onChangeCodeInterpreterEnabled}
+        onInputCodeInterpreterNetworkEnabled={props.onChangeCodeInterpreterNetworkEnabled}
+        onInputCodeInterpreterAllowedDomains={props.onChangeCodeInterpreterAllowedDomains}
         onInputShellEnabled={props.onChangeShellEnabled}
+        onInputShellNetworkEnabled={props.onChangeShellNetworkEnabled}
+        onInputShellAllowedDomains={props.onChangeShellAllowedDomains}
         onInputImageGenerationEnabled={props.onChangeImageGenerationEnabled}
         onInputImageGenerationModel={props.onChangeImageGenerationModel}
         onSelectPreset={props.onSelectPreset}

@@ -1661,8 +1661,12 @@
       webSearchCacheOnly: typeof preset.webSearchCacheOnly === 'boolean' ? preset.webSearchCacheOnly : chatSettings.webSearchCacheOnly,
       // Code Interpreter settings
       codeInterpreterEnabled: typeof preset.codeInterpreterEnabled === 'boolean' ? preset.codeInterpreterEnabled : chatSettings.codeInterpreterEnabled,
+      codeInterpreterNetworkEnabled: typeof preset.codeInterpreterNetworkEnabled === 'boolean' ? preset.codeInterpreterNetworkEnabled : chatSettings.codeInterpreterNetworkEnabled,
+      codeInterpreterAllowedDomains: preset.codeInterpreterAllowedDomains ?? chatSettings.codeInterpreterAllowedDomains,
       // Shell settings
       shellEnabled: typeof preset.shellEnabled === 'boolean' ? preset.shellEnabled : chatSettings.shellEnabled,
+      shellNetworkEnabled: typeof preset.shellNetworkEnabled === 'boolean' ? preset.shellNetworkEnabled : chatSettings.shellNetworkEnabled,
+      shellAllowedDomains: preset.shellAllowedDomains ?? chatSettings.shellAllowedDomains,
       // Image Generation settings
       imageGenerationEnabled: typeof preset.imageGenerationEnabled === 'boolean' ? preset.imageGenerationEnabled : chatSettings.imageGenerationEnabled,
       imageGenerationModel: preset.imageGenerationModel ?? chatSettings.imageGenerationModel,
@@ -1914,7 +1918,11 @@
     chatThinkingBudgetTokens={chatSettings.thinkingBudgetTokens}
     chatWebSearchEnabled={chatSettings.webSearchEnabled}
     chatCodeInterpreterEnabled={chatSettings.codeInterpreterEnabled}
+    chatCodeInterpreterNetworkEnabled={chatSettings.codeInterpreterNetworkEnabled}
+    chatCodeInterpreterAllowedDomains={chatSettings.codeInterpreterAllowedDomains}
     chatShellEnabled={chatSettings.shellEnabled}
+    chatShellNetworkEnabled={chatSettings.shellNetworkEnabled}
+    chatShellAllowedDomains={chatSettings.shellAllowedDomains}
     chatImageGenerationEnabled={chatSettings.imageGenerationEnabled}
     chatImageGenerationModel={chatSettings.imageGenerationModel}
     modelIds={modelIds}
@@ -1955,7 +1963,11 @@
     onChangeThinkingBudgetTokens={(val) => (chatSettings = { ...chatSettings, thinkingBudgetTokens: toIntOrNull(val) })}
     onChangeWebSearchEnabled={(val) => (chatSettings = { ...chatSettings, webSearchEnabled: !!val })}
     onChangeCodeInterpreterEnabled={(val) => (chatSettings = { ...chatSettings, codeInterpreterEnabled: !!val })}
+    onChangeCodeInterpreterNetworkEnabled={(val) => (chatSettings = { ...chatSettings, codeInterpreterNetworkEnabled: !!val })}
+    onChangeCodeInterpreterAllowedDomains={(val) => (chatSettings = { ...chatSettings, codeInterpreterAllowedDomains: val || undefined })}
     onChangeShellEnabled={(val) => (chatSettings = { ...chatSettings, shellEnabled: !!val })}
+    onChangeShellNetworkEnabled={(val) => (chatSettings = { ...chatSettings, shellNetworkEnabled: !!val })}
+    onChangeShellAllowedDomains={(val) => (chatSettings = { ...chatSettings, shellAllowedDomains: val || undefined })}
     onChangeImageGenerationEnabled={(val) => (chatSettings = { ...chatSettings, imageGenerationEnabled: !!val })}
     onChangeImageGenerationModel={(val) => (chatSettings = { ...chatSettings, imageGenerationModel: val || undefined })}
     onSelectPreset={handleSelectPreset}

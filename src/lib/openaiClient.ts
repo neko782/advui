@@ -17,7 +17,8 @@ import type {
   WebSearchCitation,
   WebSearchSource,
   ImageGenerationOptions,
-  GeneratedImage
+  GeneratedImage,
+  ContainerNetworkPolicy,
 } from './types/index.js';
 
 function resolveConnection(options: {
@@ -630,18 +631,46 @@ export async function respond(options: RespondOptions): Promise<GenerationRespon
 
   // Code Interpreter tool (Responses API only)
   if (codeInterpreter?.enabled && !useChatCompletions) {
+    const container: Record<string, unknown> = { type: 'auto' };
+
+    // Add network_policy if specified
+    if (codeInterpreter.network_policy) {
+      if (codeInterpreter.network_policy.type === 'allowlist' && codeInterpreter.network_policy.allowed_domains?.length) {
+        container.network_policy = {
+          type: 'allowlist',
+          allowed_domains: codeInterpreter.network_policy.allowed_domains,
+        };
+      } else if (codeInterpreter.network_policy.type === 'disabled') {
+        container.network_policy = { type: 'disabled' };
+      }
+    }
+
     const codeInterpreterTool: Record<string, unknown> = {
       type: 'code_interpreter',
-      container: { type: 'auto' },
+      container,
     };
     tools.push(codeInterpreterTool);
   }
 
   // Shell tool (Responses API only)
   if (shell?.enabled && !useChatCompletions) {
+    const environment: Record<string, unknown> = { type: 'container_auto' };
+
+    // Add network_policy if specified
+    if (shell.network_policy) {
+      if (shell.network_policy.type === 'allowlist' && shell.network_policy.allowed_domains?.length) {
+        environment.network_policy = {
+          type: 'allowlist',
+          allowed_domains: shell.network_policy.allowed_domains,
+        };
+      } else if (shell.network_policy.type === 'disabled') {
+        environment.network_policy = { type: 'disabled' };
+      }
+    }
+
     const shellTool: Record<string, unknown> = {
       type: 'shell',
-      environment: { type: 'container_auto' },
+      environment,
     };
     tools.push(shellTool);
   }

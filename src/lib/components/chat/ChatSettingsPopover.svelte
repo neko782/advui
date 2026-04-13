@@ -17,7 +17,11 @@
     thinkingBudgetTokens?: number | null
     webSearchEnabled?: boolean
     codeInterpreterEnabled?: boolean
+    codeInterpreterNetworkEnabled?: boolean
+    codeInterpreterAllowedDomains?: string
     shellEnabled?: boolean
+    shellNetworkEnabled?: boolean
+    shellAllowedDomains?: string
     imageGenerationEnabled?: boolean
     imageGenerationModel?: string
     modelIds?: string[]
@@ -40,7 +44,11 @@
     onInputThinkingBudgetTokens?: (val: string) => void
     onInputWebSearchEnabled?: (val: boolean) => void
     onInputCodeInterpreterEnabled?: (val: boolean) => void
+    onInputCodeInterpreterNetworkEnabled?: (val: boolean) => void
+    onInputCodeInterpreterAllowedDomains?: (val: string) => void
     onInputShellEnabled?: (val: boolean) => void
+    onInputShellNetworkEnabled?: (val: boolean) => void
+    onInputShellAllowedDomains?: (val: string) => void
     onInputImageGenerationEnabled?: (val: boolean) => void
     onInputImageGenerationModel?: (val: string) => void
     onSelectPreset?: (preset: Preset) => void
@@ -52,6 +60,8 @@
   let wasOpen = false
   let activeTab = $state<'general' | 'sampling' | 'reasoning'>('general')
   let presetMenuOpen = $state(false)
+  let codeInterpreterSettingsExpanded = $state(false)
+  let shellSettingsExpanded = $state(false)
   let imageGenModelExpanded = $state(false)
   let presetMenuEl = $state<HTMLDivElement | null>(null)
   let presetButtonEl = $state<HTMLButtonElement | null>(null)
@@ -177,30 +187,122 @@
             </label>
           </div>
           <div class="menu-section">
-            <label class="switch" title="Code interpreter (Responses API only)">
-              <input
-                type="checkbox"
-                checked={!!props.codeInterpreterEnabled}
-                disabled={props.disabled}
-                onchange={(e) => (!props.disabled && props.onInputCodeInterpreterEnabled?.(e.currentTarget.checked))}
-                aria-label="Code interpreter"
-              />
-              <span class="switch-ui" aria-hidden="true"></span>
-              <span class="switch-label">Code interpreter</span>
-            </label>
+            <div class="tool-header-row">
+              <label class="switch" title="Code interpreter (Responses API only)">
+                <input
+                  type="checkbox"
+                  checked={!!props.codeInterpreterEnabled}
+                  disabled={props.disabled}
+                  onchange={(e) => (!props.disabled && props.onInputCodeInterpreterEnabled?.(e.currentTarget.checked))}
+                  aria-label="Code interpreter"
+                />
+                <span class="switch-ui" aria-hidden="true"></span>
+                <span class="switch-label">Code interpreter</span>
+              </label>
+              {#if props.codeInterpreterEnabled}
+                <button
+                  type="button"
+                  class="tool-settings-btn"
+                  onclick={() => codeInterpreterSettingsExpanded = !codeInterpreterSettingsExpanded}
+                  disabled={props.disabled}
+                  title={codeInterpreterSettingsExpanded ? 'Hide network settings' : 'Network settings'}
+                  aria-label={codeInterpreterSettingsExpanded ? 'Hide network settings' : 'Network settings'}
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points={codeInterpreterSettingsExpanded ? "18 15 12 9 6 15" : "6 9 12 15 18 9"}></polyline>
+                  </svg>
+                </button>
+              {/if}
+            </div>
+            {#if props.codeInterpreterEnabled && codeInterpreterSettingsExpanded}
+              <div class="tool-settings-popup">
+                <label class="switch" title="Allow network access">
+                  <input
+                    type="checkbox"
+                    checked={!!props.codeInterpreterNetworkEnabled}
+                    disabled={props.disabled}
+                    onchange={(e) => (!props.disabled && props.onInputCodeInterpreterNetworkEnabled?.(e.currentTarget.checked))}
+                    aria-label="Allow network"
+                  />
+                  <span class="switch-ui" aria-hidden="true"></span>
+                  <span class="switch-label">Allow network</span>
+                </label>
+                {#if props.codeInterpreterNetworkEnabled}
+                  <div class="tool-settings-field">
+                    <div class="tool-settings-label">Allowed domains</div>
+                    <input
+                      type="text"
+                      placeholder="e.g. api.github.com, pypi.org"
+                      value={props.codeInterpreterAllowedDomains || ''}
+                      disabled={props.disabled}
+                      oninput={(e) => (!props.disabled && props.onInputCodeInterpreterAllowedDomains?.(e.currentTarget.value))}
+                      aria-label="Allowed domains for code interpreter"
+                      class="tool-settings-input"
+                    />
+                    <div class="tool-settings-hint">Comma-separated. Leave empty for unrestricted.</div>
+                  </div>
+                {/if}
+              </div>
+            {/if}
           </div>
           <div class="menu-section">
-            <label class="switch" title="Shell (Responses API only)">
-              <input
-                type="checkbox"
-                checked={!!props.shellEnabled}
-                disabled={props.disabled}
-                onchange={(e) => (!props.disabled && props.onInputShellEnabled?.(e.currentTarget.checked))}
-                aria-label="Shell"
-              />
-              <span class="switch-ui" aria-hidden="true"></span>
-              <span class="switch-label">Shell</span>
-            </label>
+            <div class="tool-header-row">
+              <label class="switch" title="Shell (Responses API only)">
+                <input
+                  type="checkbox"
+                  checked={!!props.shellEnabled}
+                  disabled={props.disabled}
+                  onchange={(e) => (!props.disabled && props.onInputShellEnabled?.(e.currentTarget.checked))}
+                  aria-label="Shell"
+                />
+                <span class="switch-ui" aria-hidden="true"></span>
+                <span class="switch-label">Shell</span>
+              </label>
+              {#if props.shellEnabled}
+                <button
+                  type="button"
+                  class="tool-settings-btn"
+                  onclick={() => shellSettingsExpanded = !shellSettingsExpanded}
+                  disabled={props.disabled}
+                  title={shellSettingsExpanded ? 'Hide network settings' : 'Network settings'}
+                  aria-label={shellSettingsExpanded ? 'Hide network settings' : 'Network settings'}
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points={shellSettingsExpanded ? "18 15 12 9 6 15" : "6 9 12 15 18 9"}></polyline>
+                  </svg>
+                </button>
+              {/if}
+            </div>
+            {#if props.shellEnabled && shellSettingsExpanded}
+              <div class="tool-settings-popup">
+                <label class="switch" title="Allow network access">
+                  <input
+                    type="checkbox"
+                    checked={!!props.shellNetworkEnabled}
+                    disabled={props.disabled}
+                    onchange={(e) => (!props.disabled && props.onInputShellNetworkEnabled?.(e.currentTarget.checked))}
+                    aria-label="Allow network"
+                  />
+                  <span class="switch-ui" aria-hidden="true"></span>
+                  <span class="switch-label">Allow network</span>
+                </label>
+                {#if props.shellNetworkEnabled}
+                  <div class="tool-settings-field">
+                    <div class="tool-settings-label">Allowed domains</div>
+                    <input
+                      type="text"
+                      placeholder="e.g. api.github.com, registry.npmjs.org"
+                      value={props.shellAllowedDomains || ''}
+                      disabled={props.disabled}
+                      oninput={(e) => (!props.disabled && props.onInputShellAllowedDomains?.(e.currentTarget.value))}
+                      aria-label="Allowed domains for shell"
+                      class="tool-settings-input"
+                    />
+                    <div class="tool-settings-hint">Comma-separated. Leave empty for unrestricted.</div>
+                  </div>
+                {/if}
+              </div>
+            {/if}
           </div>
           <div class="menu-section">
             <div class="image-gen-row">
@@ -673,6 +775,78 @@
   :global(:root[data-theme='dark']) .preset-menu-item:hover,
   :global(:root[data-theme='dark']) .preset-menu-item:focus-visible {
     background: color-mix(in oklab, var(--bg), var(--text) 8%);
+  }
+  /* Tool settings popup */
+  .tool-header-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .tool-settings-btn {
+    width: 28px;
+    height: 28px;
+    display: grid;
+    place-items: center;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--bg);
+    color: var(--muted);
+    cursor: pointer;
+    transition: background-color .15s ease, border-color .15s ease, color .15s ease;
+    flex-shrink: 0;
+  }
+  .tool-settings-btn:hover {
+    background: var(--panel);
+    border-color: var(--accent);
+    color: var(--text);
+  }
+  .tool-settings-btn:disabled {
+    opacity: .6;
+    cursor: not-allowed;
+  }
+  .tool-settings-popup {
+    margin-top: 8px;
+    padding: 10px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg);
+    display: grid;
+    gap: 10px;
+  }
+  .tool-settings-field {
+    display: grid;
+    gap: 4px;
+  }
+  .tool-settings-label {
+    font-size: .8rem;
+    color: var(--muted);
+    font-weight: 500;
+  }
+  .tool-settings-input {
+    width: 100%;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 10px;
+    background: var(--panel);
+    color: var(--text);
+    font: inherit;
+    font-size: .85rem;
+    box-sizing: border-box;
+    transition: border-color .15s ease, box-shadow .15s ease;
+  }
+  .tool-settings-input:hover {
+    border-color: color-mix(in srgb, var(--border) 70%, var(--accent));
+  }
+  .tool-settings-input:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 15%, transparent);
+  }
+  .tool-settings-hint {
+    font-size: .75rem;
+    color: var(--muted);
+    opacity: 0.7;
   }
   /* Image generation row */
   .image-gen-row {
