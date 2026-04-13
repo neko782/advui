@@ -394,57 +394,59 @@
       ></textarea>
     </div>
 
-    <!-- Send group (single send button shows the menu on hover/focus) -->
-    {#if props.sending}
-      <div class="send-group" title="Stop response">
-        <button class="float-btn stop-btn" onclick={() => props.onStop?.()} aria-label="Stop response" disabled={!props.onStop}>
-          <IconStop style="font-size: 22px;" />
-        </button>
-      </div>
-    {:else}
-      {#if props.showAddWithoutSend}
-        <div class="send-group" data-side="top" aria-haspopup="menu" title="Add without sending">
-          <button class="float-btn add-btn" onclick={() => props.onAdd?.('user')} disabled={props.locked} aria-label="Add without sending">
-            <IconEditSquare style="font-size: 22px;" />
+    <!-- Send area -->
+    <div class="send-area" class:hide-on-mobile-focus={hideAuxControls && props.showAddWithoutSend}>
+      {#if props.sending}
+        <div class="send-group" title="Stop response">
+          <button class="float-btn stop-btn" onclick={() => props.onStop?.()} aria-label="Stop response" disabled={!props.onStop}>
+            <IconStop style="font-size: 22px;" />
           </button>
-          <div class="send-menu" role="menu" aria-label="Add as">
-            <button role="menuitem" class="menu-item" onclick={() => props.onAdd?.('user')} disabled={props.locked} aria-label="Add as user">
-              <IconEditSquare style="font-size: 18px;" />
-              User
-            </button>
-            <button role="menuitem" class="menu-item" onclick={() => props.onAdd?.('assistant')} disabled={props.locked} aria-label="Add as assistant">
-              <IconEditSquare style="font-size: 18px;" />
-              Assistant
-            </button>
-            <button role="menuitem" class="menu-item" onclick={() => props.onAdd?.('system')} disabled={props.locked} aria-label="Add as system">
-              <IconEditSquare style="font-size: 18px;" />
-              System
-            </button>
-          </div>
         </div>
-      {/if}
-      <div class="send-group" data-side={props.disableSendRolePopup ? undefined : 'top'} aria-haspopup={props.disableSendRolePopup ? undefined : 'menu'} title={props.disableSendRolePopup ? 'Send' : 'Send as'}>
-        <button class="float-btn" onclick={() => props.onSend?.('user')} disabled={props.locked} aria-label="Send">
-          <IconSend style="font-size: 22px;" />
-        </button>
-        {#if !props.disableSendRolePopup}
-          <div class="send-menu" role="menu" aria-label="Send as">
-            <button role="menuitem" class="menu-item" onclick={() => props.onSend?.('user')} disabled={props.locked} aria-label="Send as user">
-              <IconSend style="font-size: 18px;" />
-              User
+      {:else}
+        {#if props.showAddWithoutSend}
+          <div class="send-group add-group" data-side="top" aria-haspopup="menu" title="Add without sending">
+            <button class="float-btn add-btn" onclick={() => props.onAdd?.('user')} disabled={props.locked} aria-label="Add without sending">
+              <IconEditSquare style="font-size: 20px;" />
             </button>
-            <button role="menuitem" class="menu-item" onclick={() => props.onSend?.('assistant')} disabled={props.locked} aria-label="Send as assistant">
-              <IconSend style="font-size: 18px;" />
-              Assistant
-            </button>
-            <button role="menuitem" class="menu-item" onclick={() => props.onSend?.('system')} disabled={props.locked} aria-label="Send as system">
-              <IconSend style="font-size: 18px;" />
-              System
-            </button>
+            <div class="send-menu" role="menu" aria-label="Add as">
+              <button role="menuitem" class="menu-item" onclick={() => props.onAdd?.('user')} disabled={props.locked} aria-label="Add as user">
+                <IconEditSquare style="font-size: 18px;" />
+                User
+              </button>
+              <button role="menuitem" class="menu-item" onclick={() => props.onAdd?.('assistant')} disabled={props.locked} aria-label="Add as assistant">
+                <IconEditSquare style="font-size: 18px;" />
+                Assistant
+              </button>
+              <button role="menuitem" class="menu-item" onclick={() => props.onAdd?.('system')} disabled={props.locked} aria-label="Add as system">
+                <IconEditSquare style="font-size: 18px;" />
+                System
+              </button>
+            </div>
           </div>
         {/if}
-      </div>
-    {/if}
+        <div class="send-group" data-side={props.disableSendRolePopup ? undefined : 'top'} aria-haspopup={props.disableSendRolePopup ? undefined : 'menu'} title={props.disableSendRolePopup ? 'Send' : 'Send as'}>
+          <button class="float-btn" onclick={() => props.onSend?.('user')} disabled={props.locked} aria-label="Send">
+            <IconSend style="font-size: 22px;" />
+          </button>
+          {#if !props.disableSendRolePopup}
+            <div class="send-menu" role="menu" aria-label="Send as">
+              <button role="menuitem" class="menu-item" onclick={() => props.onSend?.('user')} disabled={props.locked} aria-label="Send as user">
+                <IconSend style="font-size: 18px;" />
+                User
+              </button>
+              <button role="menuitem" class="menu-item" onclick={() => props.onSend?.('assistant')} disabled={props.locked} aria-label="Send as assistant">
+                <IconSend style="font-size: 18px;" />
+                Assistant
+              </button>
+              <button role="menuitem" class="menu-item" onclick={() => props.onSend?.('system')} disabled={props.locked} aria-label="Send as system">
+                <IconSend style="font-size: 18px;" />
+                System
+              </button>
+            </div>
+          {/if}
+        </div>
+      {/if}
+    </div>
   </div>
 </footer>
 
@@ -668,8 +670,27 @@
   .stop-btn { background: #ef4444; border-color: #ef4444; color: #fff; box-shadow: 0 2px 8px rgba(239, 68, 68, 0.3); }
   .stop-btn:hover:not(:disabled) { background: #dc2626; border-color: #dc2626; box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4); }
   .stop-btn:active:not(:disabled) { box-shadow: 0 1px 4px rgba(239, 68, 68, 0.25); }
-  .add-btn { background: var(--panel); border-color: var(--border); color: var(--text); }
-  .add-btn:hover:not(:disabled) { background: var(--bg); border-color: var(--accent); color: var(--accent); box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+  .send-area { display: flex; align-items: end; gap: 8px; }
+  .float-btn.add-btn {
+    background: var(--panel);
+    border-color: var(--border);
+    color: var(--muted);
+    box-shadow: none;
+  }
+  .float-btn.add-btn:hover:not(:disabled) {
+    background: var(--bg);
+    border-color: color-mix(in srgb, var(--border) 60%, var(--text) 30%);
+    color: var(--text);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+  }
+  .float-btn.add-btn:active:not(:disabled) {
+    box-shadow: none;
+  }
+  .float-btn.add-btn:focus-visible {
+    outline: none;
+    border-color: color-mix(in srgb, var(--border) 60%, var(--text) 30%);
+    color: var(--text);
+  }
   .send-group { position: relative; display: grid; place-items: center; z-index: 0; }
   .send-group::before { content: ''; position: absolute; left: 50%; transform: translateX(-50%); width: max(100%, 44px); height: 16px; pointer-events: none; }
   .send-group:not([data-side])::before { display: none; }
@@ -735,6 +756,9 @@
       display: none;
     }
     .composer-inner.mobile-input-focused .chat-settings-group {
+      display: none;
+    }
+    .composer-inner.mobile-input-focused .add-group {
       display: none;
     }
     .composer-input::placeholder {
