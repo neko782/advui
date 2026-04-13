@@ -256,8 +256,8 @@
     generationState.reset()
   }
 
-  function registerAbortHandler(fn) {
-    generationState.registerAbortHandler(fn)
+  function registerAbortHandler(sequence: number, fn: (() => void) | null) {
+    generationState.registerAbortHandler(sequence, fn)
   }
 
   function finishGeneration() {
@@ -1026,7 +1026,7 @@
         connectionId,
         streaming: chatSettings.streaming,
         typingVariantId,
-        onAbort: registerAbortHandler,
+        onAbort: (fn) => registerAbortHandler(genSeq, fn),
         onTextDelta: (full) => {
           if (generationState.getGenerationSequence() === genSeq) {
             updateVariant(typingVariantId, (prev) => ({ ...prev, content: full }))
@@ -1288,7 +1288,7 @@
         connectionId,
         streaming: chatSettings.streaming,
         typingVariantId,
-        onAbort: registerAbortHandler,
+        onAbort: (fn) => registerAbortHandler(genSeq, fn),
         onTextDelta: (full) => {
           if (generationState.getGenerationSequence() === genSeq) {
             updateVariant(typingVariantId, (prev) => ({ ...prev, content: full }))
@@ -1345,8 +1345,8 @@
 
   function stopGeneration() {
     if (!sending) return
-    generationState.requestAbort()
     const typingId = generationState.getTypingVariantId()
+    generationState.forceStopGeneration()
     if (typingId != null) {
       updateVariant(typingId, (prev) => ({
         ...prev,
@@ -1476,7 +1476,7 @@
         connectionId,
         streaming: chatSettings.streaming,
         typingVariantId,
-        onAbort: registerAbortHandler,
+        onAbort: (fn) => registerAbortHandler(genSeq, fn),
         onTextDelta: (full) => {
           if (generationState.getGenerationSequence() === genSeq) {
             updateVariant(typingVariantId, (prev) => ({ ...prev, content: full }))
@@ -1577,7 +1577,7 @@
         connectionId,
         streaming: chatSettings.streaming,
         typingVariantId,
-        onAbort: registerAbortHandler,
+        onAbort: (fn) => registerAbortHandler(genSeq, fn),
         onTextDelta: (full) => {
           if (generationState.getGenerationSequence() === genSeq) {
             updateVariant(typingVariantId, (prev) => ({ ...prev, content: full }))
@@ -1833,7 +1833,7 @@
     const chatId = props.chatId
     // Abort any in-flight generation to prevent orphaned HTTP requests
     if (generationState.isGenerationActive()) {
-      generationState.requestAbort()
+      generationState.forceStopGeneration()
     }
     if (!chatId) return
     try { props.onGeneratingChange?.(chatId, false) } catch {}

@@ -15,11 +15,13 @@ export interface GenerationStateSnapshot {
  */
 export function createGenerationStateManager(): GenerationStateManager {
   let inFlightAbort: (() => void) | null = null;
+  let inFlightAbortSequence: number | null = null;
   let inFlightTypingVariantId: number | null = null;
   let abortRequested = false;
   let abortExecuted = false;
   let generationActive = false;
   let generationSequence = 0;
+  const abortedSequences = new Set<number>();
   // Track expected nodes state version to detect mutations
   let stateVersion = 0;
 
@@ -28,6 +30,7 @@ export function createGenerationStateManager(): GenerationStateManager {
    */
   function reset(): void {
     inFlightAbort = null;
+    inFlightAbortSequence = null;
     inFlightTypingVariantId = null;
     abortRequested = false;
     abortExecuted = false;
@@ -41,6 +44,8 @@ export function createGenerationStateManager(): GenerationStateManager {
     generationActive = true;
     generationSequence++;
     stateVersion++;
+    inFlightAbort = null;
+    inFlightAbortSequence = null;
     abortRequested = false;
     abortExecuted = false;
     return generationSequence;
@@ -116,8 +121,25 @@ export function createGenerationStateManager(): GenerationStateManager {
   /**
    * Registers an abort handler function
    */
-  function registerAbortHandler(fn: (() => void) | null): boolean {
+  function registerAbortHandler(sequence: number, fn: (() => void) | null): boolean {
+    if (abortedSequences.has(sequence)) {
+      if (typeof fn === 'function') {
+        abortedSequences.delete(sequence);
+        try {
+          fn();
+        } catch {
+          // Ignore abort handler errors
+        }
+      }
+      return true;
+    }
+
+    if (sequence !== generationSequence) {
+      return false;
+    }
+
     inFlightAbort = (typeof fn === 'function') ? fn : null;
+    inFlightAbortSequence = inFlightAbort ? sequence : null;
 
     // If abort was already requested and not yet executed, trigger it immediately
     if (abortRequested && !abortExecuted && typeof inFlightAbort === 'function') {
@@ -145,7 +167,7 @@ export function createGenerationStateManager(): GenerationStateManager {
       return false;
     }
 
-    if (typeof inFlightAbort === 'function') {
+    if (typeof inFlightAbort === 'function' && inFlightAbortSequence === generationSequence) {
       abortExecuted = true;
       try {
         inFlightAbort();
@@ -156,6 +178,30 @@ export function createGenerationStateManager(): GenerationStateManager {
     }
 
     return false;
+  }
+
+  /**
+   * Immediately invalidates the current generation so the UI can unlock while
+   * still aborting a fetch that registers its abort handler slightly later.
+   */
+  function forceStopGeneration(): boolean {
+    const stoppedSequence = generationSequence;
+    const didAbort = requestAbort();
+
+    if (stoppedSequence > 0) {
+      abortedSequences.add(stoppedSequence);
+    }
+
+    generationActive = false;
+    generationSequence++;
+    stateVersion++;
+    inFlightAbort = null;
+    inFlightAbortSequence = null;
+    inFlightTypingVariantId = null;
+    abortRequested = false;
+    abortExecuted = false;
+
+    return didAbort || stoppedSequence > 0;
   }
 
   /**
@@ -204,6 +250,7 @@ export function createGenerationStateManager(): GenerationStateManager {
     isSequenceValid,
     registerAbortHandler,
     requestAbort,
+    forceStopGeneration,
     setTypingVariantId,
     getTypingVariantId,
     isAbortRequested,
@@ -211,4 +258,3 @@ export function createGenerationStateManager(): GenerationStateManager {
     incrementStateVersion,
   };
 }
-

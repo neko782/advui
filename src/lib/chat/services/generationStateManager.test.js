@@ -145,33 +145,55 @@ describe('GenerationStateManager', () => {
 
   describe('abort handling', () => {
     it('should execute abort handler immediately', () => {
-      manager.startGeneration()
+      const seq = manager.startGeneration()
       let aborted = false
-      manager.registerAbortHandler(() => { aborted = true })
+      manager.registerAbortHandler(seq, () => { aborted = true })
       
       expect(manager.requestAbort()).toBe(true)
       expect(aborted).toBe(true)
     })
 
     it('should execute abort handler on register if already requested', () => {
-      manager.startGeneration()
+      const seq = manager.startGeneration()
       manager.requestAbort()
 
       let aborted = false
-      manager.registerAbortHandler(() => { aborted = true })
+      manager.registerAbortHandler(seq, () => { aborted = true })
       
       expect(aborted).toBe(true)
     })
 
     it('should only execute abort handler once', () => {
-      manager.startGeneration()
+      const seq = manager.startGeneration()
       let count = 0
-      manager.registerAbortHandler(() => { count++ })
+      manager.registerAbortHandler(seq, () => { count++ })
       
       manager.requestAbort()
       manager.requestAbort() // second call
       
       expect(count).toBe(1)
+    })
+
+    it('should abort a late handler after force stop', () => {
+      const seq = manager.startGeneration()
+
+      expect(manager.forceStopGeneration()).toBe(true)
+
+      let aborted = false
+      expect(manager.registerAbortHandler(seq, () => { aborted = true })).toBe(true)
+      expect(aborted).toBe(true)
+    })
+
+    it('should invalidate the stopped sequence immediately', () => {
+      const seq = manager.startGeneration()
+      manager.setTypingVariantId(42)
+
+      manager.forceStopGeneration()
+
+      expect(manager.isGenerationActive()).toBe(false)
+      expect(manager.getGenerationSequence()).toBeGreaterThan(seq)
+      expect(manager.isSequenceValid(seq)).toBe(false)
+      expect(manager.getTypingVariantId()).toBe(null)
     })
 
     it('should increment state version on abort', () => {
