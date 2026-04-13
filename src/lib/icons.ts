@@ -31,4 +31,8 @@ export { default as IconDownload } from '~icons/material-symbols/download-rounde
 export { default as IconUpload } from '~icons/material-symbols/upload-rounded'
 export { default as IconLayers } from '~icons/material-symbols/layers-rounded'
 export { default as IconDragHandle } from '~icons/material-symbols/drag-indicator'
+export { default as IconTravelExplore } from '~icons/material-symbols/travel-explore-rounded'
+export { default as IconCodeBlocks } from '~icons/material-symbols/code-blocks-rounded'
+export { default as IconTerminal } from '~icons/material-symbols/terminal-rounded'
+export { default as IconImagesmode } from '~icons/material-symbols/imagesmode-rounded'
 

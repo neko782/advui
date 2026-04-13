@@ -227,6 +227,53 @@ export interface PresetFields {
 }
 
 // ============================================================================
+// Message Action Button Types
+// ============================================================================
+
+export type MessageActionId =
+  | 'regenerate'
+  | 'copy'
+  | 'delete'
+  | 'edit'
+  | 'fork'
+  | 'moveDown'
+  | 'moveUp';
+
+export interface MessageActionButton {
+  id: MessageActionId;
+  label: string;
+  enabled: boolean;
+}
+
+export const DEFAULT_MESSAGE_ACTIONS: MessageActionButton[] = [
+  { id: 'regenerate', label: 'Regenerate', enabled: true },
+  { id: 'copy', label: 'Copy', enabled: true },
+  { id: 'delete', label: 'Delete', enabled: true },
+  { id: 'edit', label: 'Edit', enabled: true },
+  { id: 'fork', label: 'Fork', enabled: true },
+  { id: 'moveDown', label: 'Move down', enabled: true },
+  { id: 'moveUp', label: 'Move up', enabled: true },
+];
+
+// ============================================================================
+// Default Tool Settings (Responses API)
+// ============================================================================
+
+export interface DefaultToolSettings {
+  webSearch: boolean;
+  codeInterpreter: boolean;
+  shell: boolean;
+  imageGeneration: boolean;
+}
+
+export const DEFAULT_TOOL_SETTINGS: DefaultToolSettings = {
+  webSearch: false,
+  codeInterpreter: false,
+  shell: false,
+  imageGeneration: false,
+};
+
+// ============================================================================
 // Settings Types
 // ============================================================================
 
@@ -264,6 +311,8 @@ export interface Settings {
   allowInlineHtml: boolean;
   defaultChat: DefaultChatSettings;
   model: string;
+  messageActions?: MessageActionButton[];
+  defaultTools?: DefaultToolSettings;
 }
 
 // ============================================================================

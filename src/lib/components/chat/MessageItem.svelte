@@ -3,7 +3,7 @@
   import MessageMeta from './MessageMeta.svelte'
   import MessageBubble from './MessageBubble.svelte'
   import MessageActions from './MessageActions.svelte'
-  import type { VisibleMessage, MessageRole } from '../../types'
+  import type { VisibleMessage, MessageRole, MessageActionButton } from '../../types'
 
   interface Props {
     vm: VisibleMessage
@@ -21,6 +21,7 @@
     branchIndex?: number
     branchesLength?: number
     allowInlineHtml?: boolean
+    messageActions?: MessageActionButton[]
     onSetRole?: (id: number, role: MessageRole) => void
     onEditInput?: (text: string) => void
     onEditKeydown?: (e: KeyboardEvent) => void
@@ -79,6 +80,7 @@
       hasFollowingAssistant={props.hasFollowingAssistant}
       nextAssistantId={props.nextAssistantId}
       nextAssistantTyping={props.nextAssistantTyping}
+      messageActions={props.messageActions}
       onApplyEditSend={props.onApplyEditSend}
       onApplyEditBranch={props.onApplyEditBranch}
       onApplyEditReplace={props.onApplyEditReplace}

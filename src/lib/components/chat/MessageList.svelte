@@ -1,7 +1,7 @@
 <script lang="ts">
   import MessageItem from './MessageItem.svelte'
   import { IconAdd } from '../../icons'
-  import type { VisibleMessage, MessageRole } from '../../types'
+  import type { VisibleMessage, MessageRole, MessageActionButton } from '../../types'
 
   interface Props {
     items?: VisibleMessage[]
@@ -14,6 +14,7 @@
     editingId?: number | null
     editingText?: string
     allowInlineHtml?: boolean
+    messageActions?: MessageActionButton[]
     followingMap?: Record<number, { has: boolean; id?: number; typing?: boolean }>
     onDismissNotice?: () => void
     onSetRole?: (id: number, role: MessageRole) => void
@@ -232,6 +233,7 @@
           branchIndex={(typeof vm?.variantIndex === 'number') ? vm.variantIndex : 0}
           branchesLength={(typeof vm?.variantsLength === 'number') ? vm.variantsLength : 1}
           allowInlineHtml={props.allowInlineHtml}
+          messageActions={props.messageActions}
           onSetRole={props.onSetRole}
           onEditInput={props.onEditInput}
           onEditKeydown={props.onEditKeydown}

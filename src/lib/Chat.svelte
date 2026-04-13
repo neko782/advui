@@ -1853,6 +1853,7 @@
     editingId={editingId}
     editingText={editingText}
     allowInlineHtml={settings?.allowInlineHtml}
+    messageActions={settings?.messageActions}
     followingMap={computeFollowingMap(nodes, rootId)}
     onDismissNotice={dismissNotice}
     onSetRole={(id, role) => handleSetMessageRole(id, role)}

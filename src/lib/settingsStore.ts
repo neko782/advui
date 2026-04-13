@@ -13,8 +13,11 @@ import type {
   Preset,
   ApiMode,
   Keybinds,
-  DefaultChatSettings
+  DefaultChatSettings,
+  MessageActionButton,
+  DefaultToolSettings,
 } from './types/index.js';
+import { DEFAULT_MESSAGE_ACTIONS, DEFAULT_TOOL_SETTINGS } from './types/index.js';
 
 export const SETTINGS_KEY = 'openai.settings.v1';
 
@@ -107,6 +110,42 @@ function ensureConnectionList(list: unknown, fallback: FallbackOptions = {}): Co
   });
 }
 
+const VALID_ACTION_IDS = new Set(DEFAULT_MESSAGE_ACTIONS.map(a => a.id));
+
+function normalizeMessageActions(raw: unknown): MessageActionButton[] {
+  if (!Array.isArray(raw)) return DEFAULT_MESSAGE_ACTIONS.map(a => ({ ...a }));
+  const seen = new Set<string>();
+  const result: MessageActionButton[] = [];
+  // First pass: keep valid items in the order they appear
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue;
+    const id = typeof (item as Record<string, unknown>).id === 'string' ? (item as Record<string, unknown>).id as string : '';
+    if (!VALID_ACTION_IDS.has(id) || seen.has(id)) continue;
+    seen.add(id);
+    const label = typeof (item as Record<string, unknown>).label === 'string' ? (item as Record<string, unknown>).label as string : DEFAULT_MESSAGE_ACTIONS.find(a => a.id === id)!.label;
+    const enabled = typeof (item as Record<string, unknown>).enabled === 'boolean' ? (item as Record<string, unknown>).enabled as boolean : true;
+    result.push({ id: id as MessageActionButton['id'], label, enabled });
+  }
+  // Second pass: add any missing actions at the end
+  for (const def of DEFAULT_MESSAGE_ACTIONS) {
+    if (!seen.has(def.id)) {
+      result.push({ ...def });
+    }
+  }
+  return result;
+}
+
+function normalizeDefaultTools(raw: unknown): DefaultToolSettings {
+  if (!raw || typeof raw !== 'object') return { ...DEFAULT_TOOL_SETTINGS };
+  const obj = raw as Record<string, unknown>;
+  return {
+    webSearch: typeof obj.webSearch === 'boolean' ? obj.webSearch : DEFAULT_TOOL_SETTINGS.webSearch,
+    codeInterpreter: typeof obj.codeInterpreter === 'boolean' ? obj.codeInterpreter : DEFAULT_TOOL_SETTINGS.codeInterpreter,
+    shell: typeof obj.shell === 'boolean' ? obj.shell : DEFAULT_TOOL_SETTINGS.shell,
+    imageGeneration: typeof obj.imageGeneration === 'boolean' ? obj.imageGeneration : DEFAULT_TOOL_SETTINGS.imageGeneration,
+  };
+}
+
 function attachCompatFields(out: Partial<Settings> & Record<string, unknown>): Settings {
   const fallbackMode: ApiMode = API_MODE_VALUES.has(out?.apiMode as string || '') ? out.apiMode as ApiMode : 'responses';
   const connections = ensureConnectionList(out.connections, {
@@ -162,6 +201,8 @@ function attachCompatFields(out: Partial<Settings> & Record<string, unknown>): S
   out.showThinkingSettings = !!out.showThinkingSettings;
   out.fancyEffects = !!out.fancyEffects;
   out.allowInlineHtml = !!out.allowInlineHtml;
+  out.messageActions = normalizeMessageActions(out.messageActions);
+  out.defaultTools = normalizeDefaultTools(out.defaultTools);
   return out as Settings;
 }
 
@@ -250,6 +291,8 @@ export function loadSettings(): Settings {
     const showThinkingSettings = !!parsed?.showThinkingSettings;
     const fancyEffects = !!parsed?.fancyEffects;
     const allowInlineHtml = !!parsed?.allowInlineHtml;
+    const messageActions = normalizeMessageActions(parsed?.messageActions);
+    const defaultTools = normalizeDefaultTools(parsed?.defaultTools);
     return attachCompatFields({
       apiKey,
       apiBaseUrl,
@@ -263,6 +306,8 @@ export function loadSettings(): Settings {
       showThinkingSettings,
       fancyEffects,
       allowInlineHtml,
+      messageActions,
+      defaultTools,
     });
   } catch (err) {
     console.error('Failed to load settings, falling back to defaults:', err);
@@ -304,6 +349,8 @@ export function saveSettings(next: Partial<Settings>): Settings {
   const showThinkingSettings = !!next?.showThinkingSettings;
   const fancyEffects = !!next?.fancyEffects;
   const allowInlineHtml = !!next?.allowInlineHtml;
+  const messageActions = normalizeMessageActions(next?.messageActions);
+  const defaultTools = normalizeDefaultTools(next?.defaultTools);
   const data = attachCompatFields({
     apiKey: typeof next?.apiKey === 'string' ? next.apiKey : '',
     apiBaseUrl: normalizeApiBaseUrl(next?.apiBaseUrl),
@@ -317,6 +364,8 @@ export function saveSettings(next: Partial<Settings>): Settings {
     showThinkingSettings,
     fancyEffects,
     allowInlineHtml,
+    messageActions,
+    defaultTools,
   });
   const ok = safeWrite(SETTINGS_KEY, data);
   if (!ok) {

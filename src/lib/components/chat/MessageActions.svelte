@@ -1,6 +1,6 @@
 <script lang="ts">
   import { IconSend, IconCallSplit, IconPublishedWithChanges, IconClose, IconChevronLeft, IconChevronRight, IconAutorenew, IconContentCopy, IconDelete, IconEdit, IconArrowDownward, IconArrowUpward, IconDangerous } from '../../icons'
-  import type { Message } from '../../types'
+  import type { Message, MessageActionButton } from '../../types'
 
   interface Props {
     message: Message
@@ -15,6 +15,7 @@
     hasFollowingAssistant?: boolean
     nextAssistantId?: number
     nextAssistantTyping?: boolean
+    messageActions?: MessageActionButton[]
     onApplyEditSend?: () => void
     onApplyEditBranch?: () => void
     onApplyEditReplace?: () => void
@@ -35,6 +36,55 @@
   const props: Props = $props()
   // Ensure message reference stays reactive with Svelte 5 runes
   const m = $derived(props.message)
+
+  // Build a set of enabled action IDs and their order from settings
+  const enabledActions = $derived((() => {
+    const actions = props.messageActions
+    if (!Array.isArray(actions) || actions.length === 0) return null
+    const enabled = new Set<string>()
+    for (const a of actions) {
+      if (a.enabled) enabled.add(a.id)
+    }
+    return enabled
+  })())
+
+  // Order from settings (action id -> position)
+  const actionOrder = $derived((() => {
+    const actions = props.messageActions
+    if (!Array.isArray(actions) || actions.length === 0) return null
+    const order = new Map<string, number>()
+    actions.forEach((a, i) => order.set(a.id, i))
+    return order
+  })())
+
+  function isEnabled(id: string): boolean {
+    return enabledActions === null || enabledActions.has(id)
+  }
+
+  // Build ordered actions list, respecting enabled state and custom order
+  const orderedActions = $derived((() => {
+    const items: { id: string; render: string }[] = []
+    if (isEnabled('regenerate')) {
+      if (m.role === 'assistant') {
+        items.push({ id: 'regenerate', render: 'regenerate-assistant' })
+      } else if (m.role === 'user' && props.hasFollowingAssistant) {
+        items.push({ id: 'regenerate', render: 'regenerate-following' })
+      } else if (m.role === 'user') {
+        items.push({ id: 'regenerate', render: 'regenerate-after-user' })
+      }
+    }
+    if (isEnabled('copy')) items.push({ id: 'copy', render: 'copy' })
+    if (isEnabled('delete')) items.push({ id: 'delete', render: 'delete' })
+    if (isEnabled('edit')) items.push({ id: 'edit', render: 'edit' })
+    if (isEnabled('fork') && m.role !== 'assistant') items.push({ id: 'fork', render: 'fork' })
+    if (isEnabled('moveDown')) items.push({ id: 'moveDown', render: 'moveDown' })
+    if (isEnabled('moveUp')) items.push({ id: 'moveUp', render: 'moveUp' })
+
+    if (actionOrder) {
+      items.sort((a, b) => (actionOrder.get(a.id) ?? 99) - (actionOrder.get(b.id) ?? 99))
+    }
+    return items
+  })())
 </script>
 
 <div class={`actions ${m.role}`}>
@@ -64,40 +114,46 @@
       </span>
     {/if}
 
-    {#if m.role === 'assistant'}
-      <button class="action-btn" onclick={() => props.onRefreshAssistant?.(m.id)} aria-label="Regenerate response" title="Regenerate" disabled={props.locked || m.typing}>
-        <IconAutorenew style="font-size: 20px;" />
-      </button>
-    {:else if m.role === 'user' && props.hasFollowingAssistant}
-      <button class="action-btn" onclick={() => props.onRefreshAssistant?.(props.nextAssistantId)} aria-label="Regenerate following response" title="Regenerate following response" disabled={props.locked || props.nextAssistantTyping}>
-        <IconAutorenew style="font-size: 20px;" />
-      </button>
-    {:else if m.role === 'user'}
-      <button class="action-btn" onclick={() => props.onRefreshAfterUserIndex?.(props.index)} aria-label="Generate following response" title="Generate following response" disabled={props.locked}>
-        <IconAutorenew style="font-size: 20px;" />
-      </button>
-    {/if}
+    {#each orderedActions as action (action.id)}
+      {#if action.render === 'regenerate-assistant'}
+        <button class="action-btn" onclick={() => props.onRefreshAssistant?.(m.id)} aria-label="Regenerate response" title="Regenerate" disabled={props.locked || m.typing}>
+          <IconAutorenew style="font-size: 20px;" />
+        </button>
+      {:else if action.render === 'regenerate-following'}
+        <button class="action-btn" onclick={() => props.onRefreshAssistant?.(props.nextAssistantId)} aria-label="Regenerate following response" title="Regenerate following response" disabled={props.locked || props.nextAssistantTyping}>
+          <IconAutorenew style="font-size: 20px;" />
+        </button>
+      {:else if action.render === 'regenerate-after-user'}
+        <button class="action-btn" onclick={() => props.onRefreshAfterUserIndex?.(props.index)} aria-label="Generate following response" title="Generate following response" disabled={props.locked}>
+          <IconAutorenew style="font-size: 20px;" />
+        </button>
+      {:else if action.render === 'copy'}
+        <button class="action-btn" onclick={() => props.onCopy?.(m.content)} aria-label="Copy message" title="Copy" disabled={m.typing}>
+          <IconContentCopy style="font-size: 20px;" />
+        </button>
+      {:else if action.render === 'delete'}
+        <button class="action-btn" onclick={() => props.onDelete?.(m.id)} aria-label="Delete message" title="Delete" disabled={props.locked || m.typing}>
+          <IconDelete style="font-size: 20px;" />
+        </button>
+      {:else if action.render === 'edit'}
+        <button class="action-btn" onclick={() => props.onEdit?.(m.id)} aria-label="Edit message" title="Edit" disabled={props.locked || m.typing}>
+          <IconEdit style="font-size: 20px;" />
+        </button>
+      {:else if action.render === 'fork'}
+        <button class="action-btn" onclick={() => props.onFork?.(m.id)} aria-label="Fork message" title="Fork" disabled={props.locked || m.typing}>
+          <IconCallSplit style="font-size: 20px;" />
+        </button>
+      {:else if action.render === 'moveDown'}
+        <button class="action-btn" onclick={() => props.onMoveDown?.(m.id)} aria-label="Move down" title="Down" disabled={props.locked || m.typing || props.index === ((props.visibleCount || props.total || 1) - 1)}>
+          <IconArrowDownward style="font-size: 20px;" />
+        </button>
+      {:else if action.render === 'moveUp'}
+        <button class="action-btn" onclick={() => props.onMoveUp?.(m.id)} aria-label="Move up" title="Up" disabled={props.locked || m.typing || props.index === 0}>
+          <IconArrowUpward style="font-size: 20px;" />
+        </button>
+      {/if}
+    {/each}
 
-    <button class="action-btn" onclick={() => props.onCopy?.(m.content)} aria-label="Copy message" title="Copy" disabled={m.typing}>
-      <IconContentCopy style="font-size: 20px;" />
-    </button>
-    <button class="action-btn" onclick={() => props.onDelete?.(m.id)} aria-label="Delete message" title="Delete" disabled={props.locked || m.typing}>
-      <IconDelete style="font-size: 20px;" />
-    </button>
-    <button class="action-btn" onclick={() => props.onEdit?.(m.id)} aria-label="Edit message" title="Edit" disabled={props.locked || m.typing}>
-      <IconEdit style="font-size: 20px;" />
-    </button>
-    {#if m.role !== 'assistant'}
-      <button class="action-btn" onclick={() => props.onFork?.(m.id)} aria-label="Fork message" title="Fork" disabled={props.locked || m.typing}>
-        <IconCallSplit style="font-size: 20px;" />
-      </button>
-    {/if}
-    <button class="action-btn" onclick={() => props.onMoveDown?.(m.id)} aria-label="Move down" title="Down" disabled={props.locked || m.typing || props.index === ((props.visibleCount || props.total || 1) - 1)}>
-      <IconArrowDownward style="font-size: 20px;" />
-    </button>
-    <button class="action-btn" onclick={() => props.onMoveUp?.(m.id)} aria-label="Move up" title="Up" disabled={props.locked || m.typing || props.index === 0}>
-      <IconArrowUpward style="font-size: 20px;" />
-    </button>
     {#if props.debug}
       <button class="action-btn debug" onclick={() => props.onDebugFuckBranch?.(m.id)} aria-label="Fuck up branching" title="Fuck up branching" disabled={props.locked || m.typing}>
         <IconDangerous style="font-size: 20px;" />

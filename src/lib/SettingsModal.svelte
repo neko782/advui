@@ -2,11 +2,12 @@
   import { loadSettings, saveSettings } from './settingsStore'
   import { setModelsCache, loadModelsCache, loadAllModelCaches } from './modelsStore'
   import { listModelsWithKey } from './openaiClient'
-  import { IconClose, IconAdd, IconVisibility, IconVisibilityOff, IconAutorenew, IconDelete, IconDownload, IconUpload, IconDragHandle } from './icons'
+  import { IconClose, IconAdd, IconVisibility, IconVisibilityOff, IconAutorenew, IconDelete, IconDownload, IconUpload, IconDragHandle, IconTravelExplore, IconCodeBlocks, IconTerminal, IconImagesmode } from './icons'
   import { getThemeState, setThemeMode, subscribeTheme } from './themeStore'
   import { exportAllData, importAllData, importChat } from './utils/exportImport'
   import { onMount } from 'svelte'
-  import type { AppSettings, Preset, Connection, ThemeState, ThemeMode, ReasoningEffort, TextVerbosity, ReasoningSummary } from './types'
+  import type { AppSettings, Preset, Connection, ThemeState, ThemeMode, ReasoningEffort, TextVerbosity, ReasoningSummary, MessageActionButton, DefaultToolSettings } from './types'
+  import { DEFAULT_MESSAGE_ACTIONS, DEFAULT_TOOL_SETTINGS } from './types'
 
   interface Props {
     open?: boolean
@@ -76,8 +77,125 @@
     { id: 'general', label: 'General' },
     { id: 'connection', label: 'Connections' },
     { id: 'presets', label: 'Presets' },
+    { id: 'features', label: 'Features' },
   ]
-  let activeTab = $state<'general' | 'connection' | 'presets'>('general')
+  let activeTab = $state<'general' | 'connection' | 'presets' | 'features'>('general')
+
+  // Message actions drag state
+  let draggedActionId = $state<string | null>(null)
+  let dragOverActionId = $state<string | null>(null)
+
+  // Getter for current message actions
+  const messageActionsForRender = $derived(() => {
+    return Array.isArray(local?.messageActions) ? local.messageActions : DEFAULT_MESSAGE_ACTIONS.map(a => ({ ...a }))
+  })
+
+  // Getter for current default tools
+  const defaultToolsForRender = $derived(() => {
+    return local?.defaultTools ?? { ...DEFAULT_TOOL_SETTINGS }
+  })
+
+  function toggleMessageAction(id: string) {
+    const actions = Array.isArray(local?.messageActions)
+      ? local.messageActions.map(a => ({ ...a }))
+      : DEFAULT_MESSAGE_ACTIONS.map(a => ({ ...a }))
+    const idx = actions.findIndex(a => a.id === id)
+    if (idx < 0) return
+    actions[idx].enabled = !actions[idx].enabled
+    local.messageActions = actions
+    persistSettings()
+  }
+
+  function reorderMessageActions(fromId: string, toId: string) {
+    if (fromId === toId) return
+    const actions = Array.isArray(local?.messageActions)
+      ? local.messageActions.map(a => ({ ...a }))
+      : DEFAULT_MESSAGE_ACTIONS.map(a => ({ ...a }))
+    const fromIndex = actions.findIndex(a => a.id === fromId)
+    const toIndex = actions.findIndex(a => a.id === toId)
+    if (fromIndex < 0 || toIndex < 0) return
+    const [moved] = actions.splice(fromIndex, 1)
+    actions.splice(toIndex, 0, moved)
+    local.messageActions = actions
+    persistSettings()
+  }
+
+  function handleActionDragStart(e: DragEvent, id: string) {
+    draggedActionId = id
+    e.dataTransfer!.effectAllowed = 'move'
+    e.dataTransfer!.setData('text/plain', id)
+  }
+
+  function handleActionDragOver(e: DragEvent, id: string) {
+    e.preventDefault()
+    e.dataTransfer!.dropEffect = 'move'
+    if (!draggedActionId || draggedActionId === id) return
+    dragOverActionId = id
+  }
+
+  function handleActionDrop(e: DragEvent) {
+    e.preventDefault()
+    if (draggedActionId && dragOverActionId && draggedActionId !== dragOverActionId) {
+      reorderMessageActions(draggedActionId, dragOverActionId)
+    }
+    draggedActionId = null
+    dragOverActionId = null
+  }
+
+  function handleActionDragEnd() {
+    draggedActionId = null
+    dragOverActionId = null
+  }
+
+  // Touch drag for message actions
+  let touchActionDragId = $state<string | null>(null)
+  let touchActionListRef = $state<HTMLElement | null>(null)
+
+  function handleActionTouchStart(e: TouchEvent, id: string) {
+    touchActionDragId = id
+    draggedActionId = id
+    const listEl = (e.currentTarget as HTMLElement).closest('.item-list')
+    if (listEl) touchActionListRef = listEl as HTMLElement
+  }
+
+  function handleActionTouchMove(e: TouchEvent) {
+    if (!touchActionDragId || !touchActionListRef) return
+    e.preventDefault()
+    const touchY = e.touches[0].clientY
+    const items = touchActionListRef.querySelectorAll('.list-item')
+    for (const item of items) {
+      const id = item.getAttribute('data-id')
+      if (id && id !== touchActionDragId) {
+        const rect = item.getBoundingClientRect()
+        if (touchY >= rect.top && touchY <= rect.bottom) {
+          dragOverActionId = id
+          return
+        }
+      }
+    }
+  }
+
+  function handleActionTouchEnd() {
+    if (touchActionDragId && dragOverActionId) {
+      reorderMessageActions(touchActionDragId, dragOverActionId)
+    }
+    touchActionDragId = null
+    touchActionListRef = null
+    draggedActionId = null
+    dragOverActionId = null
+  }
+
+  function updateDefaultTool(key: keyof DefaultToolSettings, value: boolean) {
+    const tools = local?.defaultTools ? { ...local.defaultTools } : { ...DEFAULT_TOOL_SETTINGS }
+    tools[key] = value
+    local.defaultTools = tools
+    persistSettings()
+  }
+
+  function resetMessageActions() {
+    local.messageActions = DEFAULT_MESSAGE_ACTIONS.map(a => ({ ...a }))
+    persistSettings()
+  }
   let themeState = $state<ThemeState>({ mode: 'system', theme: 'light' })
 
   function togglePresetGroup(group) {
@@ -856,51 +974,6 @@
               <p class="hint">Configure keyboard shortcuts for actions in the composer. Does not apply on mobile devices.</p>
             </section>
             <section class="group">
-              <div class="group-title">Features</div>
-              <label class="switch" title="Show thinking controls">
-                <input
-                  type="checkbox"
-                  checked={!!local.showThinkingSettings}
-                  onchange={(event) => {
-                    local.showThinkingSettings = !!event.currentTarget.checked
-                    persistSettings()
-                  }}
-                  aria-label="Show thinking controls"
-                />
-                <span class="switch-ui" aria-hidden="true"></span>
-                <span class="switch-label">Anthropic thinking controls</span>
-              </label>
-              <p class="hint">Enable control of Anthropic-style thinking parameters in chat settings.</p>
-              <label class="switch" title="Fancy effects">
-                <input
-                  type="checkbox"
-                  checked={!!local.fancyEffects}
-                  onchange={(event) => {
-                    local.fancyEffects = !!event.currentTarget.checked
-                    persistSettings()
-                  }}
-                  aria-label="Fancy effects"
-                />
-                <span class="switch-ui" aria-hidden="true"></span>
-                <span class="switch-label">Fancy effects</span>
-              </label>
-              <p class="hint">Enable blur effects, shadows, and animations. Disable for better performance on slower devices.</p>
-              <label class="switch" title="Allow inline HTML">
-                <input
-                  type="checkbox"
-                  checked={!!local.allowInlineHtml}
-                  onchange={(event) => {
-                    local.allowInlineHtml = !!event.currentTarget.checked
-                    persistSettings()
-                  }}
-                  aria-label="Allow inline HTML"
-                />
-                <span class="switch-ui" aria-hidden="true"></span>
-                <span class="switch-label">Allow inline HTML</span>
-              </label>
-              <p class="hint">Allow HTML tags in markdown messages. Disabled by default for security.</p>
-            </section>
-            <section class="group">
               <div class="group-title">Data</div>
               <div class="data-actions">
                 <button
@@ -1404,6 +1477,174 @@
                 {/if}
                 </div>
               {/if}
+            </section>
+          {:else if activeTab === 'features'}
+            <section class="group">
+              <div class="group-title">General</div>
+              <label class="switch" title="Show thinking controls">
+                <input
+                  type="checkbox"
+                  checked={!!local.showThinkingSettings}
+                  onchange={(event) => {
+                    local.showThinkingSettings = !!event.currentTarget.checked
+                    persistSettings()
+                  }}
+                  aria-label="Show thinking controls"
+                />
+                <span class="switch-ui" aria-hidden="true"></span>
+                <span class="switch-label">Anthropic thinking controls</span>
+              </label>
+              <p class="hint">Enable control of Anthropic-style thinking parameters in chat settings.</p>
+              <label class="switch" title="Fancy effects">
+                <input
+                  type="checkbox"
+                  checked={!!local.fancyEffects}
+                  onchange={(event) => {
+                    local.fancyEffects = !!event.currentTarget.checked
+                    persistSettings()
+                  }}
+                  aria-label="Fancy effects"
+                />
+                <span class="switch-ui" aria-hidden="true"></span>
+                <span class="switch-label">Fancy effects</span>
+              </label>
+              <p class="hint">Enable blur effects, shadows, and animations. Disable for better performance on slower devices.</p>
+              <label class="switch" title="Allow inline HTML">
+                <input
+                  type="checkbox"
+                  checked={!!local.allowInlineHtml}
+                  onchange={(event) => {
+                    local.allowInlineHtml = !!event.currentTarget.checked
+                    persistSettings()
+                  }}
+                  aria-label="Allow inline HTML"
+                />
+                <span class="switch-ui" aria-hidden="true"></span>
+                <span class="switch-label">Allow inline HTML</span>
+              </label>
+              <p class="hint">Allow HTML tags in markdown messages. Disabled by default for security.</p>
+            </section>
+
+            <section class="group">
+              <div class="group-head">
+                <div class="group-title">Message buttons</div>
+                <button
+                  type="button"
+                  class="reset-btn"
+                  onclick={resetMessageActions}
+                  title="Reset to defaults"
+                  aria-label="Reset message buttons to defaults"
+                >Reset</button>
+              </div>
+              <p class="hint section-hint">Toggle and reorder the action buttons shown on chat messages. Drag to change order.</p>
+              <div class="item-list reorder-list">
+                {#each messageActionsForRender() as action (action.id)}
+                  {@const isDragging = draggedActionId === action.id}
+                  {@const isDragOver = dragOverActionId === action.id && draggedActionId !== action.id}
+                  <div
+                    class="list-item action-item {isDragging ? 'dragging' : ''} {isDragOver ? 'drag-over' : ''} {!action.enabled ? 'disabled-action' : ''}"
+                    data-id={action.id}
+                    draggable="true"
+                    ondragstart={(e) => handleActionDragStart(e, action.id)}
+                    ondragover={(e) => handleActionDragOver(e, action.id)}
+                    ondrop={handleActionDrop}
+                    ondragend={handleActionDragEnd}
+                    role="listitem"
+                  >
+                    <div
+                      class="drag-handle"
+                      aria-label="Drag to reorder"
+                      ontouchstart={(e) => handleActionTouchStart(e, action.id)}
+                      ontouchmove={handleActionTouchMove}
+                      ontouchend={handleActionTouchEnd}
+                      ontouchcancel={() => { touchActionDragId = null; touchActionListRef = null; draggedActionId = null; dragOverActionId = null }}
+                    >
+                      <IconDragHandle style="font-size: 20px;" />
+                    </div>
+                    <span class="action-item-label">{action.label}</span>
+                    <label class="action-toggle" title={action.enabled ? 'Disable' : 'Enable'}>
+                      <input
+                        type="checkbox"
+                        checked={action.enabled}
+                        onchange={() => toggleMessageAction(action.id)}
+                        aria-label={`${action.enabled ? 'Disable' : 'Enable'} ${action.label}`}
+                      />
+                      <span class="switch-ui" aria-hidden="true"></span>
+                    </label>
+                  </div>
+                {/each}
+              </div>
+            </section>
+
+            <section class="group">
+              <div class="group-title">Default tools</div>
+              <p class="hint section-hint">Set default tool availability for new presets. Only applies to Responses API connections.</p>
+              <div class="tools-grid">
+                <label class="tool-card" title="Web search">
+                  <div class="tool-card-icon"><IconTravelExplore style="font-size: 24px;" /></div>
+                  <div class="tool-card-info">
+                    <span class="tool-card-name">Web search</span>
+                    <span class="tool-card-desc">Search the web for up-to-date information</span>
+                  </div>
+                  <div class="tool-card-toggle">
+                    <input
+                      type="checkbox"
+                      checked={defaultToolsForRender().webSearch}
+                      onchange={(event) => updateDefaultTool('webSearch', event.currentTarget.checked)}
+                      aria-label="Web search default"
+                    />
+                    <span class="switch-ui" aria-hidden="true"></span>
+                  </div>
+                </label>
+                <label class="tool-card" title="Code interpreter">
+                  <div class="tool-card-icon"><IconCodeBlocks style="font-size: 24px;" /></div>
+                  <div class="tool-card-info">
+                    <span class="tool-card-name">Code interpreter</span>
+                    <span class="tool-card-desc">Run Python code in a sandboxed environment</span>
+                  </div>
+                  <div class="tool-card-toggle">
+                    <input
+                      type="checkbox"
+                      checked={defaultToolsForRender().codeInterpreter}
+                      onchange={(event) => updateDefaultTool('codeInterpreter', event.currentTarget.checked)}
+                      aria-label="Code interpreter default"
+                    />
+                    <span class="switch-ui" aria-hidden="true"></span>
+                  </div>
+                </label>
+                <label class="tool-card" title="Shell">
+                  <div class="tool-card-icon"><IconTerminal style="font-size: 24px;" /></div>
+                  <div class="tool-card-info">
+                    <span class="tool-card-name">Shell</span>
+                    <span class="tool-card-desc">Execute shell commands on the server</span>
+                  </div>
+                  <div class="tool-card-toggle">
+                    <input
+                      type="checkbox"
+                      checked={defaultToolsForRender().shell}
+                      onchange={(event) => updateDefaultTool('shell', event.currentTarget.checked)}
+                      aria-label="Shell default"
+                    />
+                    <span class="switch-ui" aria-hidden="true"></span>
+                  </div>
+                </label>
+                <label class="tool-card" title="Image generation">
+                  <div class="tool-card-icon"><IconImagesmode style="font-size: 24px;" /></div>
+                  <div class="tool-card-info">
+                    <span class="tool-card-name">Image generation</span>
+                    <span class="tool-card-desc">Generate images from text descriptions</span>
+                  </div>
+                  <div class="tool-card-toggle">
+                    <input
+                      type="checkbox"
+                      checked={defaultToolsForRender().imageGeneration}
+                      onchange={(event) => updateDefaultTool('imageGeneration', event.currentTarget.checked)}
+                      aria-label="Image generation default"
+                    />
+                    <span class="switch-ui" aria-hidden="true"></span>
+                  </div>
+                </label>
+              </div>
             </section>
           {/if}
         </div>
@@ -1986,5 +2227,198 @@
   }
   .modal-scroller::-webkit-scrollbar-thumb:hover {
     background: var(--muted);
+  }
+
+  /* Reset button */
+  .reset-btn {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--panel);
+    color: var(--muted);
+    font: inherit;
+    font-size: 0.8rem;
+    font-weight: 500;
+    padding: 6px 12px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .reset-btn:hover {
+    color: var(--text);
+    border-color: color-mix(in srgb, var(--border) 60%, var(--text) 30%);
+    background: var(--bg);
+  }
+
+  /* Action item in message buttons list */
+  .action-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 6px;
+  }
+  .action-item-label {
+    flex: 1;
+    font-size: 0.95rem;
+    font-weight: 500;
+    color: var(--text);
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    padding: 8px 4px;
+  }
+  .action-item.disabled-action .action-item-label {
+    color: var(--muted);
+    text-decoration: line-through;
+    text-decoration-color: color-mix(in srgb, var(--muted) 50%, transparent);
+  }
+  .action-item.disabled-action {
+    opacity: 0.7;
+    background: color-mix(in srgb, var(--bg) 90%, var(--muted) 10%);
+  }
+  .action-toggle {
+    display: inline-flex;
+    align-items: center;
+    cursor: pointer;
+    flex-shrink: 0;
+    user-select: none;
+  }
+  .action-toggle > input {
+    position: absolute;
+    opacity: 0;
+    width: 1px;
+    height: 1px;
+    pointer-events: none;
+  }
+  .action-toggle .switch-ui {
+    width: 40px;
+    height: 22px;
+  }
+  .action-toggle .switch-ui::after {
+    width: 16px;
+    height: 16px;
+  }
+  .action-toggle > input:checked + .switch-ui {
+    background: var(--accent);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 20%, transparent);
+  }
+  .action-toggle > input:checked + .switch-ui::after {
+    transform: translateX(18px);
+  }
+  .action-toggle:hover .switch-ui {
+    background: color-mix(in srgb, var(--border) 60%, var(--muted) 40%);
+  }
+  .action-toggle > input:checked + .switch-ui {
+    background: var(--accent);
+  }
+  :global(:root[data-theme='dark']) .action-toggle .switch-ui {
+    background: #2a2a2a;
+  }
+
+  /* Tools grid */
+  .tools-grid {
+    display: grid;
+    gap: 8px;
+  }
+  .tool-card {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 14px 16px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    user-select: none;
+  }
+  .tool-card:hover {
+    border-color: color-mix(in srgb, var(--border) 60%, var(--accent) 40%);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+  }
+  .tool-card-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 42px;
+    height: 42px;
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--accent) 10%, var(--panel) 90%);
+    color: var(--accent);
+    flex-shrink: 0;
+    transition: background 0.15s ease;
+  }
+  .tool-card:hover .tool-card-icon {
+    background: color-mix(in srgb, var(--accent) 16%, var(--panel) 84%);
+  }
+  .tool-card-info {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+  .tool-card-name {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--text);
+  }
+  .tool-card-desc {
+    font-size: 0.8rem;
+    color: var(--muted);
+    line-height: 1.3;
+  }
+  .tool-card-toggle {
+    display: inline-flex;
+    align-items: center;
+    flex-shrink: 0;
+  }
+  .tool-card-toggle > input {
+    position: absolute;
+    opacity: 0;
+    width: 1px;
+    height: 1px;
+    pointer-events: none;
+  }
+  .tool-card-toggle .switch-ui {
+    width: 46px;
+    height: 26px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--border) 80%, var(--muted) 20%);
+    position: relative;
+    transition: background-color .2s ease, box-shadow .2s ease;
+    box-shadow: inset 0 1px 3px rgba(0,0,0,0.1);
+  }
+  .tool-card-toggle .switch-ui::after {
+    content: '';
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2), 0 2px 6px rgba(0,0,0,0.1);
+    transition: transform .2s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  .tool-card:hover .tool-card-toggle .switch-ui {
+    background: color-mix(in srgb, var(--border) 60%, var(--muted) 40%);
+  }
+  :global(:root[data-theme='dark']) .tool-card-toggle .switch-ui {
+    background: #2a2a2a;
+    box-shadow: inset 0 1px 3px rgba(0,0,0,0.3);
+  }
+  :global(:root[data-theme='dark']) .tool-card-toggle .switch-ui::after {
+    background: #e6e6e6;
+  }
+  .tool-card-toggle > input:checked + .switch-ui {
+    background: var(--accent);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 20%, transparent);
+  }
+  .tool-card-toggle > input:checked + .switch-ui::after {
+    transform: translateX(20px);
+  }
+  .tool-card:has(.tool-card-toggle > input:checked) {
+    border-color: color-mix(in srgb, var(--accent) 30%, var(--border) 70%);
+    background: color-mix(in srgb, var(--accent) 4%, var(--bg) 96%);
   }
 </style>
