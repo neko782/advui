@@ -447,26 +447,7 @@
   //   5. openaiClient.ts: isVideoMimeType(), isAudioMimeType(), content conversion logic
   // ============================================================================
   function isSupportedAttachment(file) {
-    if (!file) return false
-    const type = typeof file.type === 'string' ? file.type : ''
-    if (type.startsWith('image/')) return true
-    if (type.startsWith('video/')) return true
-    if (type.startsWith('audio/')) return true
-    if (type === 'application/pdf') return true
-    if (!type && typeof file.name === 'string') {
-      const lower = file.name.toLowerCase()
-      if (lower.endsWith('.pdf')) return true
-      if (/\.(png|jpe?g|gif|webp)$/i.test(lower)) return true
-      if (/\.(mp4|webm|mov|avi)$/i.test(lower)) return true
-      if (/\.(mp3|wav|ogg|m4a)$/i.test(lower)) return true
-    }
-    if (type === 'application/octet-stream' && typeof file.name === 'string') {
-      const lower = file.name.toLowerCase()
-      if (lower.endsWith('.pdf')) return true
-      if (/\.(mp4|webm|mov|avi)$/i.test(lower)) return true
-      if (/\.(mp3|wav|ogg|m4a)$/i.test(lower)) return true
-    }
-    return false
+    return !!file
   }
 
   function inferMimeType(file) {

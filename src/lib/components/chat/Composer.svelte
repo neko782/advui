@@ -103,25 +103,7 @@
   // See Chat.svelte "ATTACHMENT SYSTEM" comment for full list of locations
   // ============================================================================
   function isSupportedAttachment(file) {
-    if (!file) return false
-    const type = typeof file.type === 'string' ? file.type : ''
-    if (type.startsWith('image/')) return true
-    if (type.startsWith('video/')) return true
-    if (type.startsWith('audio/')) return true
-    if (type === 'application/pdf') return true
-    if (!type && typeof file.name === 'string') {
-      const name = file.name.toLowerCase()
-      return name.endsWith('.pdf') || 
-             name.endsWith('.mp4') || name.endsWith('.webm') || name.endsWith('.mov') || name.endsWith('.avi') ||
-             name.endsWith('.mp3') || name.endsWith('.wav') || name.endsWith('.ogg') || name.endsWith('.m4a')
-    }
-    if (type === 'application/octet-stream' && typeof file.name === 'string') {
-      const name = file.name.toLowerCase()
-      return name.endsWith('.pdf') || 
-             name.endsWith('.mp4') || name.endsWith('.webm') || name.endsWith('.mov') || name.endsWith('.avi') ||
-             name.endsWith('.mp3') || name.endsWith('.wav') || name.endsWith('.ogg') || name.endsWith('.m4a')
-    }
-    return false
+    return !!file
   }
 
   function isImageAttachment(attachment) {
@@ -292,10 +274,9 @@
 </script>
 
 <footer class="composer" class:dragging={isDragging} ondragover={handleDragOver} ondragleave={handleDragLeave} ondrop={handleDrop}>
-  <!-- File input accept attribute: keep in sync with isSupportedAttachment() above -->
   <input
     type="file"
-    accept="image/png,image/jpeg,image/jpg,image/webp,image/gif,application/pdf,video/mp4,video/webm,video/quicktime,video/x-msvideo,audio/mpeg,audio/wav,audio/ogg,audio/webm,audio/mp4"
+    accept="*/*"
     multiple
     style="display: none"
     onchange={handleFileSelect}
