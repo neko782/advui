@@ -1,6 +1,6 @@
 <script lang="ts">
   import { IconTune, IconLayers } from '../../icons'
-  import type { Preset, ReasoningEffort, TextVerbosity, ReasoningSummary, ConnectionOption, ApiMode } from '../../types'
+  import type { Preset, ReasoningEffort, TextVerbosity, ReasoningSummary, ConnectionOption, ApiMode, McpServerConfig } from '../../types'
 
   interface Props {
     open?: boolean
@@ -24,6 +24,7 @@
     shellAllowedDomains?: string
     imageGenerationEnabled?: boolean
     imageGenerationModel?: string
+    mcpServers?: McpServerConfig[]
     modelIds?: string[]
     connections?: ConnectionOption[]
     connectionId?: string | null
@@ -51,6 +52,7 @@
     onInputShellAllowedDomains?: (val: string) => void
     onInputImageGenerationEnabled?: (val: boolean) => void
     onInputImageGenerationModel?: (val: string) => void
+    onChangeMcpServers?: (servers: McpServerConfig[]) => void
     onSelectPreset?: (preset: Preset) => void
   }
 
@@ -74,6 +76,28 @@
     // Only 'responses' API mode supports Responses tool controls
     return currentConn?.apiMode === 'responses'
   })())
+
+  function updateMcpServers(transform: (servers: McpServerConfig[]) => McpServerConfig[]) {
+    if (props.disabled) return
+    const current = Array.isArray(props.mcpServers)
+      ? props.mcpServers.map((server) => ({ label: server?.label || '', url: server?.url || '' }))
+      : []
+    props.onChangeMcpServers?.(transform(current))
+  }
+
+  function addMcpServer() {
+    updateMcpServers((servers) => [...servers, { label: '', url: '' }])
+  }
+
+  function removeMcpServer(index: number) {
+    updateMcpServers((servers) => servers.filter((_, i) => i !== index))
+  }
+
+  function updateMcpServer(index: number, field: 'label' | 'url', value: string) {
+    updateMcpServers((servers) => servers.map((server, i) => (
+      i === index ? { ...server, [field]: value } : server
+    )))
+  }
 
   function togglePresetMenu() {
     if (!presetMenuOpen && presetButtonEl) {
@@ -343,6 +367,56 @@
                 class="image-gen-model-input"
               />
             {/if}
+          </div>
+          <div class="menu-section">
+            <div class="menu-label">MCP servers</div>
+            <div class="mcp-server-list">
+              {#if props.mcpServers?.length}
+                {#each props.mcpServers as server, index (index)}
+                  <div class="mcp-server-card">
+                    <input
+                      type="text"
+                      placeholder="Server label"
+                      value={server?.label || ''}
+                      disabled={props.disabled}
+                      oninput={(e) => updateMcpServer(index, 'label', e.currentTarget.value)}
+                      aria-label={`MCP server label ${index + 1}`}
+                      class="tool-settings-input"
+                    />
+                    <div class="mcp-server-row">
+                      <input
+                        type="text"
+                        placeholder="https://example.com/mcp"
+                        value={server?.url || ''}
+                        disabled={props.disabled}
+                        oninput={(e) => updateMcpServer(index, 'url', e.currentTarget.value)}
+                        aria-label={`MCP server URL ${index + 1}`}
+                        class="tool-settings-input"
+                      />
+                      <button
+                        type="button"
+                        class="mcp-server-remove"
+                        onclick={() => removeMcpServer(index)}
+                        disabled={props.disabled}
+                        aria-label={`Remove MCP server ${index + 1}`}
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+                {/each}
+              {:else}
+                <div class="tool-settings-hint">Add remote MCP servers to expose their tools in Responses API chats.</div>
+              {/if}
+            </div>
+            <button
+              type="button"
+              class="mcp-server-add"
+              onclick={addMcpServer}
+              disabled={props.disabled}
+            >
+              Add server
+            </button>
           </div>
         {/if}
         <div class="menu-section">
@@ -847,6 +921,51 @@
     font-size: .75rem;
     color: var(--muted);
     opacity: 0.7;
+  }
+  .mcp-server-list {
+    display: grid;
+    gap: 8px;
+  }
+  .mcp-server-card {
+    display: grid;
+    gap: 8px;
+    padding: 10px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg);
+  }
+  .mcp-server-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+    align-items: center;
+  }
+  .mcp-server-add,
+  .mcp-server-remove {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg);
+    color: var(--text);
+    font: inherit;
+    cursor: pointer;
+    transition: background-color .15s ease, border-color .15s ease, color .15s ease;
+  }
+  .mcp-server-add {
+    padding: 8px 10px;
+  }
+  .mcp-server-remove {
+    padding: 8px 10px;
+    white-space: nowrap;
+  }
+  .mcp-server-add:hover:not(:disabled),
+  .mcp-server-remove:hover:not(:disabled) {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+  .mcp-server-add:disabled,
+  .mcp-server-remove:disabled {
+    opacity: .6;
+    cursor: not-allowed;
   }
   /* Image generation row */
   .image-gen-row {

@@ -2,6 +2,7 @@
 import { respond } from '../../openaiClient.js';
 import { buildVisible as _buildVisible, buildVisibleUpTo as _buildVisibleUpTo } from '../../branching.js';
 import { isAbortError } from '../../utils/errors.js';
+import { normalizeMcpServerList } from '../../types/index.js';
 import { updateVariantById } from './variantActions.js';
 import { findNodeByMessageId } from '../../utils/treeUtils.js';
 import type {
@@ -486,6 +487,9 @@ export async function generateResponse(options: GenerateResponseOptions): Promis
       }
     : undefined;
 
+  const mcpServers = normalizeMcpServerList(chatSettings.mcpServers)
+    .filter(server => server.label && server.url);
+
   const responseOptions = {
     messages: history,
     model: chatSettings.model,
@@ -502,6 +506,7 @@ export async function generateResponse(options: GenerateResponseOptions): Promis
     codeInterpreter,
     shell,
     imageGeneration,
+    mcpServers,
   };
 
   if (streaming && typingVariantId != null) {
@@ -541,6 +546,9 @@ export function handleGenerationSuccess(
   const replyImages = (reply && typeof reply === 'object' && Array.isArray(reply.generatedImages))
     ? reply.generatedImages
     : undefined;
+  const replyMcpItems = (reply && typeof reply === 'object' && Array.isArray(reply.mcpItems))
+    ? reply.mcpItems
+    : undefined;
 
   return updateVariantById(nodes, typingVariantId, (prev) => ({
     ...prev,
@@ -550,6 +558,7 @@ export function handleGenerationSuccess(
     reasoningSummary: replySummary || '',
     reasoningSummaryLoading: false,
     generatedImages: replyImages,
+    mcpItems: replyMcpItems,
   }));
 }
 

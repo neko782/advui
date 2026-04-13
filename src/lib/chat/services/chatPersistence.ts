@@ -159,6 +159,29 @@ function hashGeneratedImages(images: unknown): number {
   return hash >>> 0;
 }
 
+function hashMcpItems(items: unknown): number {
+  const list = Array.isArray(items) ? items : [];
+  let hash = 5381;
+  for (const entry of list) {
+    if (!entry || typeof entry !== 'object') continue;
+    const obj = entry as Record<string, unknown>;
+    hash = mixHash(hash, hashMaybeString(obj.type));
+    hash = mixHash(hash, hashMaybeString(obj.id));
+    hash = mixHash(hash, hashMaybeString(obj.serverLabel));
+    hash = mixHash(hash, hashMaybeString(obj.name));
+    hash = mixHash(hash, hashMaybeString(obj.arguments));
+    hash = mixHash(hash, hashMaybeString(obj.output));
+    hash = mixHash(hash, hashMaybeString(obj.error));
+    hash = mixHash(hash, hashMaybeString(obj.status));
+    if (Array.isArray(obj.tools)) {
+      for (const tool of obj.tools as Array<Record<string, unknown>>) {
+        hash = mixHash(hash, hashString(`${typeof tool?.name === 'string' ? tool.name : ''}|${typeof tool?.description === 'string' ? tool.description : ''}`));
+      }
+    }
+  }
+  return hash >>> 0;
+}
+
 function hashVariant(variant: unknown): number {
   if (!variant || typeof variant !== 'object') return 0;
   const v = variant as Record<string, unknown>;
@@ -173,6 +196,7 @@ function hashVariant(variant: unknown): number {
   hash = mixHash(hash, v.reasoningSummaryLoading === true ? 1 : 0);
   hash = mixHash(hash, hashImages(v.images));
   hash = mixHash(hash, hashGeneratedImages(v.generatedImages));
+  hash = mixHash(hash, hashMcpItems(v.mcpItems));
   return hash >>> 0;
 }
 
@@ -227,6 +251,8 @@ export function computePersistSig(nodes: ChatNode[], chatSettings: ChatSettings,
         // Image Generation settings
         imageGenerationEnabled: !!chatSettings?.imageGenerationEnabled,
         imageGenerationModel: chatSettings?.imageGenerationModel || '',
+        // MCP settings
+        mcpServers: JSON.stringify(Array.isArray(chatSettings?.mcpServers) ? chatSettings.mcpServers : []),
       },
       rootId,
     });

@@ -16,7 +16,7 @@ import { safeRead, safeWrite } from './utils/localStorageHelper.js';
 import { resolvePreset, DEFAULT_SYSTEM_PROMPT, computeConnectionId } from './utils/presetHelpers.js';
 import { normalizeReasoning, normalizeVerbosity, normalizeReasoningSummary } from './utils/validation.js';
 import type { Chat, ChatListItem, ChatNode, ChatSettings, ChatSelection, MessageVariant } from './types/index.js';
-import { hasOwn } from './types/index.js';
+import { hasOwn, normalizeMcpServerList } from './types/index.js';
 
 export const SELECTED_KEY = 'openai.chats.selected.v1';
 
@@ -306,6 +306,8 @@ export async function saveChatContent(
         // Image Generation settings
         imageGenerationEnabled: !!pickSetting('imageGenerationEnabled'),
         imageGenerationModel: pickSetting('imageGenerationModel') || undefined,
+        // MCP settings
+        mcpServers: normalizeMcpServerList(pickSetting('mcpServers')),
       };
       const nextNodesCandidate = Array.isArray(nodes) ? nodes : (existing?.nodes || []);
       const hasNodes = nextNodesCandidate.length > 0;

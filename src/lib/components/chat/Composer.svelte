@@ -3,7 +3,7 @@
   import { autoGrow } from '../../utils/dom'
   import ChatSettingsPopover from './ChatSettingsPopover.svelte'
   import { onMount } from 'svelte'
-  import type { Image, Preset, Connection, ConnectionOption, Keybinds, ReasoningEffort, TextVerbosity, ReasoningSummary, MessageRole, ApiMode } from '../../types'
+  import type { Image, Preset, Connection, ConnectionOption, Keybinds, ReasoningEffort, TextVerbosity, ReasoningSummary, MessageRole, ApiMode, McpServerConfig } from '../../types'
 
   interface Props {
     input?: string
@@ -29,6 +29,7 @@
     chatShellAllowedDomains?: string
     chatImageGenerationEnabled?: boolean
     chatImageGenerationModel?: string
+    chatMcpServers?: McpServerConfig[]
     modelIds?: string[]
     connections?: ConnectionOption[]
     chatConnectionId?: string | null
@@ -58,6 +59,7 @@
     onChangeShellAllowedDomains?: (val: string) => void
     onChangeImageGenerationEnabled?: (val: boolean) => void
     onChangeImageGenerationModel?: (val: string) => void
+    onChangeMcpServers?: (servers: McpServerConfig[]) => void
     onSelectPreset?: (preset: Preset) => void
     onInput?: (val: string) => void
     disableSendRolePopup?: boolean
@@ -305,6 +307,7 @@
         shellAllowedDomains={props.chatShellAllowedDomains}
         imageGenerationEnabled={props.chatImageGenerationEnabled}
         imageGenerationModel={props.chatImageGenerationModel}
+        mcpServers={props.chatMcpServers}
         modelIds={props.modelIds}
         connections={props.connections}
         connectionId={props.chatConnectionId}
@@ -332,6 +335,7 @@
         onInputShellAllowedDomains={props.onChangeShellAllowedDomains}
         onInputImageGenerationEnabled={props.onChangeImageGenerationEnabled}
         onInputImageGenerationModel={props.onChangeImageGenerationModel}
+        onChangeMcpServers={props.onChangeMcpServers}
         onSelectPreset={props.onSelectPreset}
       />
     </div>

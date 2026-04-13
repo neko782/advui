@@ -144,6 +144,36 @@ const resolvedAttachments = $derived.by(() => {
   return attachments.map((attachment) => resolveAttachment(attachment, props.imageCache)).filter(Boolean)
 })
 
+const mcpItems = $derived(Array.isArray(props.message?.mcpItems) ? props.message.mcpItems : [])
+
+  function formatMcpPayload(value) {
+    if (typeof value !== 'string') return ''
+    const trimmed = value.trim()
+    if (!trimmed) return ''
+    try {
+      return JSON.stringify(JSON.parse(trimmed), null, 2)
+    } catch {
+      return value
+    }
+  }
+
+  function mcpItemKey(item, index) {
+    if (!item || typeof item !== 'object') return `mcp-${index}`
+    return `${item.type || 'mcp'}:${item.id || index}`
+  }
+
+  function mcpItemStatus(item) {
+    if (!item || typeof item !== 'object') return ''
+    if (item.type === 'mcp_call') {
+      if (typeof item.status === 'string' && item.status) return item.status
+      if (typeof item.error === 'string' && item.error) return 'failed'
+      return 'completed'
+    }
+    if (item.type === 'mcp_approval_request') return 'approval'
+    if (item.type === 'mcp_list_tools') return typeof item.error === 'string' && item.error ? 'failed' : 'listed'
+    return ''
+  }
+
   function extractReasoningSummary(msg) {
     const raw = msg?.reasoningSummary
     if (typeof raw === 'string') return raw
@@ -303,7 +333,7 @@ const resolvedAttachments = $derived.by(() => {
         <span class="dots"><i></i><i></i><i></i></span>
       {/if}
     </div>
-  {:else if props.message.content || resolvedAttachments.length > 0 || (props.message.generatedImages && props.message.generatedImages.length > 0)}
+  {:else if props.message.content || resolvedAttachments.length > 0 || mcpItems.length > 0 || (props.message.generatedImages && props.message.generatedImages.length > 0)}
     {#if resolvedAttachments.length > 0}
       <div class={`message-images ${props.message.role}`}>
         {#each resolvedAttachments as attachment (attachment.id)}
@@ -383,6 +413,52 @@ const resolvedAttachments = $derived.by(() => {
     <!-- svelte-ignore a11y_click_events_have_key_events -->
     <div class={`bubble ${props.message.role}`} onclick={handleBubbleClick} role="button" tabindex="0">
         {@html renderMarkdown(props.message.content, { allowInlineHtml: props.allowInlineHtml })}
+      </div>
+    {/if}
+    {#if mcpItems.length > 0}
+      <div class={`mcp-items ${props.message.role}`}>
+        <div class="mcp-title">MCP</div>
+        {#each mcpItems as item, index (mcpItemKey(item, index))}
+          <div class="mcp-card">
+            <div class="mcp-card-header">
+              <div class="mcp-card-title-row">
+                <span class="mcp-card-title">{item.serverLabel || 'MCP server'}</span>
+                {#if item.type === 'mcp_call' || item.type === 'mcp_approval_request'}
+                  <span class="mcp-card-name">{item.name || 'tool'}</span>
+                {:else if item.type === 'mcp_list_tools'}
+                  <span class="mcp-card-name">tools</span>
+                {/if}
+              </div>
+              <span class={`mcp-status ${mcpItemStatus(item)}`}>{mcpItemStatus(item)}</span>
+            </div>
+
+            {#if item.type === 'mcp_list_tools'}
+              {#if item.tools?.length}
+                <div class="mcp-tool-list">
+                  {#each item.tools as tool (`${tool.name}:${tool.description || ''}`)}
+                    <div class="mcp-tool-chip" title={tool.description || tool.name}>{tool.name}</div>
+                  {/each}
+                </div>
+              {/if}
+              {#if item.error}
+                <pre class="mcp-block error">{item.error}</pre>
+              {/if}
+            {:else}
+              {#if item.arguments}
+                <div class="mcp-block-label">Arguments</div>
+                <pre class="mcp-block">{formatMcpPayload(item.arguments)}</pre>
+              {/if}
+              {#if item.type === 'mcp_call' && item.output}
+                <div class="mcp-block-label">Output</div>
+                <pre class="mcp-block">{formatMcpPayload(item.output)}</pre>
+              {/if}
+              {#if item.type === 'mcp_call' && item.error}
+                <div class="mcp-block-label">Error</div>
+                <pre class="mcp-block error">{item.error}</pre>
+              {/if}
+            {/if}
+          </div>
+        {/each}
       </div>
     {/if}
     {#if props.message.generatedImages && props.message.generatedImages.length > 0}
@@ -738,6 +814,109 @@ const resolvedAttachments = $derived.by(() => {
     color: var(--muted);
     text-transform: uppercase;
     letter-spacing: 0.05em;
+  }
+  .mcp-items {
+    display: grid;
+    gap: 10px;
+    margin-top: 8px;
+  }
+  .mcp-title {
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  .mcp-card {
+    display: grid;
+    gap: 8px;
+    padding: 10px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--panel), #ffffff 4%);
+  }
+  .mcp-card-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
+  }
+  .mcp-card-title-row {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+  }
+  .mcp-card-title {
+    font-weight: 600;
+    line-height: 1.2;
+  }
+  .mcp-card-name {
+    font-size: 0.8rem;
+    color: var(--muted);
+    word-break: break-word;
+  }
+  .mcp-status {
+    flex-shrink: 0;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 2px 8px;
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--muted);
+  }
+  .mcp-status.completed,
+  .mcp-status.listed {
+    color: #15803d;
+    border-color: color-mix(in srgb, #16a34a 35%, var(--border));
+  }
+  .mcp-status.failed {
+    color: #b91c1c;
+    border-color: color-mix(in srgb, #ef4444 35%, var(--border));
+  }
+  .mcp-status.approval,
+  .mcp-status.in_progress,
+  .mcp-status.calling,
+  .mcp-status.incomplete {
+    color: #a16207;
+    border-color: color-mix(in srgb, #f59e0b 35%, var(--border));
+  }
+  .mcp-tool-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .mcp-tool-chip {
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 4px 8px;
+    font-size: 0.78rem;
+    background: var(--bg);
+  }
+  .mcp-block-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .mcp-block {
+    margin: 0;
+    padding: 10px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--text);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    max-height: 220px;
+    overflow: auto;
+    font-size: 0.82rem;
+    line-height: 1.35;
+  }
+  .mcp-block.error {
+    border-color: color-mix(in srgb, #ef4444 35%, var(--border));
+    color: #b91c1c;
   }
   /* Generated images */
   .generated-images {

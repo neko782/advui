@@ -19,7 +19,9 @@ import type {
   ImageGenerationOptions,
   GeneratedImage,
   ContainerNetworkPolicy,
+  McpResponseItem,
 } from './types/index.js';
+import { normalizeMcpServerList } from './types/index.js';
 
 function resolveConnection(options: {
   connectionId?: string | null;
@@ -398,6 +400,7 @@ export async function respond(options: RespondOptions): Promise<GenerationRespon
     shell,
     imageGeneration,
     onImageGenerated,
+    mcpServers,
   } = options;
 
   const settings = loadSettings();
@@ -690,6 +693,20 @@ export async function respond(options: RespondOptions): Promise<GenerationRespon
     }
 
     tools.push(imageGenTool);
+  }
+
+  // MCP tools (Responses API only)
+  if (!useChatCompletions) {
+    const normalizedMcpServers = normalizeMcpServerList(mcpServers)
+      .filter((server) => server.label && server.url);
+    for (const server of normalizedMcpServers) {
+      tools.push({
+        type: 'mcp',
+        server_label: server.label,
+        server_url: server.url,
+        require_approval: 'never',
+      });
+    }
   }
 
   // Add tools to request if any are enabled
@@ -1009,6 +1026,7 @@ export async function respond(options: RespondOptions): Promise<GenerationRespon
     // Image generation tracking
     const generatedImages: GeneratedImage[] = [];
     let imageGenerationDelivered = false;
+    let completedResponseOutput: unknown[] | null = null;
 
     let buffer = '';
     const processEvent = (event: Record<string, unknown>) => {
@@ -1068,6 +1086,7 @@ export async function respond(options: RespondOptions): Promise<GenerationRespon
           // Extract citations and sources from completed response
           const response = event?.response as Record<string, unknown> | undefined;
           const output = response?.output as Array<Record<string, unknown>> | undefined;
+          completedResponseOutput = Array.isArray(output) ? output : null;
           if (Array.isArray(output)) {
             for (const item of output) {
               // Extract citations from message content annotations
@@ -1201,6 +1220,7 @@ export async function respond(options: RespondOptions): Promise<GenerationRespon
         onImageGenerated?.(generatedImages);
       } catch { /* ignore */ }
     }
+    const mcpItems = extractMcpItems({ output: completedResponseOutput || [] });
     return {
       text: full,
       reasoningSummary: finalSummary,
@@ -1208,6 +1228,7 @@ export async function respond(options: RespondOptions): Promise<GenerationRespon
         ? { citations: webSearchCitations, sources: webSearchSources }
         : undefined,
       generatedImages: generatedImages.length > 0 ? generatedImages : undefined,
+      mcpItems,
     };
   } else {
     // Gemini non-streaming
@@ -1315,6 +1336,7 @@ export async function respond(options: RespondOptions): Promise<GenerationRespon
     const summary = extractReasoningSummary(res);
     const webSearchResult = extractWebSearchResult(res);
     const generatedImages = extractGeneratedImages(res);
+    const mcpItems = extractMcpItems(res);
     if (summary) {
       try { onReasoningSummaryDone?.(summary, null); } catch { /* ignore */ }
     }
@@ -1324,7 +1346,7 @@ export async function respond(options: RespondOptions): Promise<GenerationRespon
     if (generatedImages && generatedImages.length > 0) {
       try { onImageGenerated?.(generatedImages); } catch { /* ignore */ }
     }
-    return { text, reasoningSummary: summary, webSearchResult, generatedImages };
+    return { text, reasoningSummary: summary, webSearchResult, generatedImages, mcpItems };
   }
 }
 
@@ -1679,6 +1701,89 @@ function extractGeneratedImages(res: unknown): GeneratedImage[] | undefined {
 
   if (images.length === 0) return undefined;
   return images;
+}
+
+function extractMcpItems(res: unknown): McpResponseItem[] | undefined {
+  const items: McpResponseItem[] = [];
+  const seen = new Set<string>();
+
+  const push = (item: McpResponseItem): void => {
+    const key = `${item.type}:${item.id}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    items.push(item);
+  };
+
+  const processOutput = (output: unknown): void => {
+    if (!Array.isArray(output)) return;
+    for (const entry of output as Array<Record<string, unknown>>) {
+      const type = typeof entry?.type === 'string' ? entry.type : '';
+      if (type === 'mcp_call') {
+        const id = typeof entry.id === 'string' ? entry.id : '';
+        if (!id) continue;
+        push({
+          id,
+          type: 'mcp_call',
+          serverLabel: typeof entry.server_label === 'string' ? entry.server_label : '',
+          name: typeof entry.name === 'string' ? entry.name : '',
+          arguments: typeof entry.arguments === 'string' ? entry.arguments : null,
+          output: typeof entry.output === 'string' ? entry.output : null,
+          error: typeof entry.error === 'string' ? entry.error : null,
+          status: typeof entry.status === 'string'
+            ? entry.status as 'in_progress' | 'completed' | 'incomplete' | 'calling' | 'failed'
+            : undefined,
+          approvalRequestId: typeof entry.approval_request_id === 'string' ? entry.approval_request_id : null,
+        });
+        continue;
+      }
+
+      if (type === 'mcp_list_tools') {
+        const id = typeof entry.id === 'string' ? entry.id : '';
+        if (!id) continue;
+        const tools = Array.isArray(entry.tools)
+          ? entry.tools
+              .filter((tool): tool is Record<string, unknown> => !!tool && typeof tool === 'object')
+              .map((tool) => ({
+                name: typeof tool.name === 'string' ? tool.name : '',
+                description: typeof tool.description === 'string' ? tool.description : null,
+                annotations: tool.annotations,
+                inputSchema: tool.input_schema,
+              }))
+              .filter((tool) => tool.name)
+          : [];
+        push({
+          id,
+          type: 'mcp_list_tools',
+          serverLabel: typeof entry.server_label === 'string' ? entry.server_label : '',
+          tools,
+          error: typeof entry.error === 'string' ? entry.error : null,
+        });
+        continue;
+      }
+
+      if (type === 'mcp_approval_request') {
+        const id = typeof entry.id === 'string' ? entry.id : '';
+        if (!id) continue;
+        push({
+          id,
+          type: 'mcp_approval_request',
+          serverLabel: typeof entry.server_label === 'string' ? entry.server_label : '',
+          name: typeof entry.name === 'string' ? entry.name : '',
+          arguments: typeof entry.arguments === 'string' ? entry.arguments : null,
+        });
+      }
+    }
+  };
+
+  const resObj = res as Record<string, unknown>;
+  try {
+    processOutput(resObj?.output);
+  } catch { /* ignore */ }
+  try {
+    processOutput((resObj?.response as Record<string, unknown>)?.output);
+  } catch { /* ignore */ }
+
+  return items.length > 0 ? items : undefined;
 }
 
 function extractChatReasoningSummary(res: unknown): string {

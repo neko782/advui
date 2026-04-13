@@ -140,6 +140,7 @@
     thinkingEnabled: initialPreset.thinkingEnabled,
     thinkingBudgetTokens: initialPreset.thinkingBudgetTokens,
     connectionId: initialConnectionId,
+    mcpServers: [],
   })
 
   let chatSettingsOpen = $state(false)
@@ -1955,6 +1956,7 @@
     chatShellAllowedDomains={chatSettings.shellAllowedDomains}
     chatImageGenerationEnabled={chatSettings.imageGenerationEnabled}
     chatImageGenerationModel={chatSettings.imageGenerationModel}
+    chatMcpServers={chatSettings.mcpServers}
     modelIds={modelIds}
     connections={connectionOptions}
     chatConnectionId={chatSettings.connectionId}
@@ -2000,6 +2002,7 @@
     onChangeShellAllowedDomains={(val) => (chatSettings = { ...chatSettings, shellAllowedDomains: val || undefined })}
     onChangeImageGenerationEnabled={(val) => (chatSettings = { ...chatSettings, imageGenerationEnabled: !!val })}
     onChangeImageGenerationModel={(val) => (chatSettings = { ...chatSettings, imageGenerationModel: val || undefined })}
+    onChangeMcpServers={(servers) => (chatSettings = { ...chatSettings, mcpServers: servers })}
     onSelectPreset={handleSelectPreset}
     disableSendRolePopup={settings?.disableSendRolePopup}
     showAddWithoutSend={settings?.showAddWithoutSend}

@@ -234,4 +234,96 @@ describe('respond stream errors', () => {
     const body = JSON.parse(init.body as string)
     expect(body.tools).toBeUndefined()
   })
+
+  it('adds MCP servers to Responses API tools', async () => {
+    configureConnection('responses')
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ output_text: 'ok' }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await respond({
+      model: 'gpt-5.4',
+      prompt: 'hi',
+      connectionId,
+      mcpServers: [
+        { label: 'deepwiki', url: 'https://example.com/mcp' },
+      ],
+    })
+
+    const [, init] = fetchMock.mock.calls[0]
+    const body = JSON.parse(init.body as string)
+    expect(body.tools).toEqual([
+      {
+        type: 'mcp',
+        server_label: 'deepwiki',
+        server_url: 'https://example.com/mcp',
+        require_approval: 'never',
+      },
+    ])
+  })
+
+  it('extracts MCP output items from Responses API responses', async () => {
+    configureConnection('responses')
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      output_text: 'done',
+      output: [
+        {
+          id: 'mcp_list_1',
+          type: 'mcp_list_tools',
+          server_label: 'deepwiki',
+          tools: [
+            { name: 'search_docs', description: 'Search docs', input_schema: { type: 'object' } },
+          ],
+        },
+        {
+          id: 'mcp_call_1',
+          type: 'mcp_call',
+          server_label: 'deepwiki',
+          name: 'search_docs',
+          arguments: '{"query":"mcp"}',
+          output: '{"hits":1}',
+          status: 'completed',
+        },
+      ],
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    })))
+
+    const response = await respond({
+      model: 'gpt-5.4',
+      prompt: 'hi',
+      connectionId,
+    })
+
+    expect(response.mcpItems).toEqual([
+      {
+        id: 'mcp_list_1',
+        type: 'mcp_list_tools',
+        serverLabel: 'deepwiki',
+        tools: [
+          {
+            name: 'search_docs',
+            description: 'Search docs',
+            annotations: undefined,
+            inputSchema: { type: 'object' },
+          },
+        ],
+        error: null,
+      },
+      {
+        id: 'mcp_call_1',
+        type: 'mcp_call',
+        serverLabel: 'deepwiki',
+        name: 'search_docs',
+        arguments: '{"query":"mcp"}',
+        output: '{"hits":1}',
+        error: null,
+        status: 'completed',
+        approvalRequestId: null,
+      },
+    ])
+  })
 })

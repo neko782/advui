@@ -59,6 +59,7 @@ export interface MessageVariant {
   next: number | null;
   images?: ImageReference[];
   generatedImages?: GeneratedImage[];
+  mcpItems?: McpResponseItem[];
   reasoningSummary?: string;
   reasoningSummaryLoading?: boolean;
   locked?: boolean;
@@ -120,6 +121,8 @@ export interface ChatSettings {
   // Image Generation settings (Responses API only)
   imageGenerationEnabled?: boolean;
   imageGenerationModel?: string;
+  // MCP settings (Responses API only)
+  mcpServers?: McpServerConfig[];
 }
 
 export interface Chat {
@@ -444,6 +447,7 @@ export interface GenerationResponse {
   reasoningSummary?: string;
   webSearchResult?: WebSearchResult;
   generatedImages?: GeneratedImage[];
+  mcpItems?: McpResponseItem[];
 }
 
 export interface GenerationOptions {
@@ -654,6 +658,48 @@ export interface GeneratedImage {
   revisedPrompt?: string;
 }
 
+export interface McpServerConfig {
+  label: string;
+  url: string;
+}
+
+export interface McpListedTool {
+  name: string;
+  description?: string | null;
+  annotations?: unknown | null;
+  inputSchema?: unknown;
+}
+
+export interface McpCallItem {
+  id: string;
+  type: 'mcp_call';
+  serverLabel: string;
+  name: string;
+  arguments?: string | null;
+  output?: string | null;
+  error?: string | null;
+  status?: 'in_progress' | 'completed' | 'incomplete' | 'calling' | 'failed';
+  approvalRequestId?: string | null;
+}
+
+export interface McpListToolsItem {
+  id: string;
+  type: 'mcp_list_tools';
+  serverLabel: string;
+  tools: McpListedTool[];
+  error?: string | null;
+}
+
+export interface McpApprovalRequestItem {
+  id: string;
+  type: 'mcp_approval_request';
+  serverLabel: string;
+  name: string;
+  arguments?: string | null;
+}
+
+export type McpResponseItem = McpCallItem | McpListToolsItem | McpApprovalRequestItem;
+
 export interface RespondOptions {
   prompt?: string;
   messages?: HistoryMessage[];
@@ -683,6 +729,8 @@ export interface RespondOptions {
   // Image Generation options (Responses API only)
   imageGeneration?: ImageGenerationOptions;
   onImageGenerated?: (images: GeneratedImage[]) => void;
+  // MCP server tools (Responses API only)
+  mcpServers?: McpServerConfig[];
 }
 
 export interface ResolvedConnection {
@@ -811,4 +859,18 @@ export function isPlainObject(value: unknown): value is Record<string, unknown> 
 
 export function hasOwn<T extends object>(obj: T | null | undefined, key: PropertyKey): boolean {
   return Object.prototype.hasOwnProperty.call(obj ?? {}, key);
+}
+
+export function normalizeMcpServerList(value: unknown): McpServerConfig[] {
+  if (!Array.isArray(value)) return [];
+  const normalized: McpServerConfig[] = [];
+  for (const entry of value) {
+    if (!entry || typeof entry !== 'object') continue;
+    const item = entry as Record<string, unknown>;
+    const label = typeof item.label === 'string' ? item.label.trim() : '';
+    const url = typeof item.url === 'string' ? item.url.trim() : '';
+    if (!label && !url) continue;
+    normalized.push({ label, url });
+  }
+  return normalized;
 }

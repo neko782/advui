@@ -16,7 +16,7 @@ import type {
   TextVerbosity,
   ReasoningSummary
 } from '../types/index.js';
-import { isPlainObject } from '../types/index.js';
+import { isPlainObject, normalizeMcpServerList } from '../types/index.js';
 
 export const DEFAULT_SYSTEM_PROMPT = 'You are a helpful assistant.';
 
@@ -375,6 +375,8 @@ export function buildChatSettings(preset: Preset, settings: Partial<Settings> | 
     // Image Generation settings
     imageGenerationEnabled: !!preset.imageGenerationEnabled,
     imageGenerationModel: preset.imageGenerationModel,
+    // MCP settings
+    mcpServers: [],
   };
 }
 
@@ -433,5 +435,7 @@ export function loadChatSettings(
     // Image Generation settings
     imageGenerationEnabled: has('imageGenerationEnabled') ? !!s.imageGenerationEnabled : !!preset.imageGenerationEnabled,
     imageGenerationModel: has('imageGenerationModel') ? s.imageGenerationModel : preset.imageGenerationModel,
+    // MCP settings
+    mcpServers: normalizeMcpServerList(has('mcpServers') ? s.mcpServers : []),
   };
 }
