@@ -16,6 +16,7 @@
     thinkingEnabled?: boolean
     thinkingBudgetTokens?: number | null
     webSearchEnabled?: boolean
+    codeInterpreterEnabled?: boolean
     imageGenerationEnabled?: boolean
     imageGenerationModel?: string
     modelIds?: string[]
@@ -37,6 +38,7 @@
     onInputThinkingEnabled?: (val: boolean) => void
     onInputThinkingBudgetTokens?: (val: string) => void
     onInputWebSearchEnabled?: (val: boolean) => void
+    onInputCodeInterpreterEnabled?: (val: boolean) => void
     onInputImageGenerationEnabled?: (val: boolean) => void
     onInputImageGenerationModel?: (val: string) => void
     onSelectPreset?: (preset: Preset) => void
@@ -53,11 +55,11 @@
   let presetButtonEl = $state<HTMLButtonElement | null>(null)
   let presetMenuPosition = $state({ bottom: 0, left: 0 })
 
-  // Check if current connection supports Responses API features (web search, image generation)
+  // Check if current connection supports Responses API features (web search, code interpreter, image generation)
   const supportsResponsesApiFeatures = $derived((() => {
     const conns = props.connections || []
     const currentConn = conns.find(c => c.id === props.connectionId) || conns[0]
-    // Only 'responses' API mode supports web search and image generation
+    // Only 'responses' API mode supports Responses tool controls
     return currentConn?.apiMode === 'responses'
   })())
 
@@ -170,6 +172,19 @@
               />
               <span class="switch-ui" aria-hidden="true"></span>
               <span class="switch-label">Web search</span>
+            </label>
+          </div>
+          <div class="menu-section">
+            <label class="switch" title="Code interpreter (Responses API only)">
+              <input
+                type="checkbox"
+                checked={!!props.codeInterpreterEnabled}
+                disabled={props.disabled}
+                onchange={(e) => (!props.disabled && props.onInputCodeInterpreterEnabled?.(e.currentTarget.checked))}
+                aria-label="Code interpreter"
+              />
+              <span class="switch-ui" aria-hidden="true"></span>
+              <span class="switch-label">Code interpreter</span>
             </label>
           </div>
           <div class="menu-section">

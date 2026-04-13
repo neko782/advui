@@ -17,6 +17,7 @@ import type {
   ImageReference,
   ImageData,
   WebSearchOptions,
+  CodeInterpreterOptions,
   ImageGenerationOptions
 } from '../../types/index.js';
 
@@ -447,6 +448,13 @@ export async function generateResponse(options: GenerateResponseOptions): Promis
       }
     : undefined;
 
+  // Build code interpreter options if enabled
+  const codeInterpreter: CodeInterpreterOptions | undefined = chatSettings.codeInterpreterEnabled
+    ? {
+        enabled: true,
+      }
+    : undefined;
+
   // Build image generation options if enabled
   const imageGeneration: ImageGenerationOptions | undefined = chatSettings.imageGenerationEnabled
     ? {
@@ -468,6 +476,7 @@ export async function generateResponse(options: GenerateResponseOptions): Promis
     thinkingBudgetTokens: chatSettings.thinkingBudgetTokens,
     connectionId,
     webSearch,
+    codeInterpreter,
     imageGeneration,
   };
 

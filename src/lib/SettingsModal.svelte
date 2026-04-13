@@ -237,7 +237,7 @@
     return Array.isArray(entry?.ids) ? entry.ids : []
   })())
 
-  // Check if active preset's connection supports Responses API features (web search, image generation)
+  // Check if active preset's connection supports Responses API features (web search, code interpreter, image generation)
   const activePresetSupportsResponsesApiFeatures = $derived((() => {
     const connectionId = activePreset?.connectionId
     if (!connectionId) return false
@@ -286,6 +286,16 @@
       textVerbosity: base?.textVerbosity || 'medium',
       reasoningSummary: base?.reasoningSummary || 'auto',
       connectionId: base?.connectionId || local?.selectedConnectionId || activeConnectionId || (local?.connections?.[0]?.id || ''),
+      webSearchEnabled: !!base?.webSearchEnabled,
+      webSearchDomains: base?.webSearchDomains,
+      webSearchCountry: base?.webSearchCountry,
+      webSearchCity: base?.webSearchCity,
+      webSearchRegion: base?.webSearchRegion,
+      webSearchTimezone: base?.webSearchTimezone,
+      webSearchCacheOnly: !!base?.webSearchCacheOnly,
+      codeInterpreterEnabled: !!base?.codeInterpreterEnabled,
+      imageGenerationEnabled: !!base?.imageGenerationEnabled,
+      imageGenerationModel: base?.imageGenerationModel,
       systemPrompt: typeof base?.systemPrompt === 'string' ? base.systemPrompt : DEFAULT_SYSTEM_PROMPT,
     }
     local.presets = [...list, preset]
@@ -307,6 +317,7 @@
       if (newConnection?.apiMode !== 'responses') {
         // Clear responses API features when switching to non-responses API connection
         updatedPatch.webSearchEnabled = false
+        updatedPatch.codeInterpreterEnabled = false
         updatedPatch.imageGenerationEnabled = false
       }
     }
@@ -386,6 +397,7 @@
             return {
               ...p,
               webSearchEnabled: false,
+              codeInterpreterEnabled: false,
               imageGenerationEnabled: false,
             }
           }
@@ -1216,6 +1228,16 @@
                       />
                       <span class="switch-ui" aria-hidden="true"></span>
                       <span class="switch-label">Web search</span>
+                    </label>
+                    <label class="switch" title="Code interpreter (Responses API only)">
+                      <input
+                        type="checkbox"
+                        checked={!!activePreset.codeInterpreterEnabled}
+                        onchange={(event) => updateActivePreset({ codeInterpreterEnabled: !!event.currentTarget.checked })}
+                        aria-label="Code interpreter"
+                      />
+                      <span class="switch-ui" aria-hidden="true"></span>
+                      <span class="switch-label">Code interpreter</span>
                     </label>
                     <label class="switch" title="Image generation (Responses API only)">
                       <input

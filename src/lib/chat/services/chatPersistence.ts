@@ -220,6 +220,8 @@ export function computePersistSig(nodes: ChatNode[], chatSettings: ChatSettings,
         webSearchRegion: chatSettings?.webSearchRegion || '',
         webSearchTimezone: chatSettings?.webSearchTimezone || '',
         webSearchCacheOnly: !!chatSettings?.webSearchCacheOnly,
+        // Code Interpreter settings
+        codeInterpreterEnabled: !!chatSettings?.codeInterpreterEnabled,
         // Image Generation settings
         imageGenerationEnabled: !!chatSettings?.imageGenerationEnabled,
         imageGenerationModel: chatSettings?.imageGenerationModel || '',

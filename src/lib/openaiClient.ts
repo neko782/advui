@@ -393,6 +393,7 @@ export async function respond(options: RespondOptions): Promise<GenerationRespon
     onAbort,
     webSearch,
     onWebSearchResult,
+    codeInterpreter,
     imageGeneration,
     onImageGenerated,
   } = options;
@@ -624,6 +625,15 @@ export async function respond(options: RespondOptions): Promise<GenerationRespon
     }
 
     tools.push(webSearchTool);
+  }
+
+  // Code Interpreter tool (Responses API only)
+  if (codeInterpreter?.enabled && !useChatCompletions) {
+    const codeInterpreterTool: Record<string, unknown> = {
+      type: 'code_interpreter',
+      container: { type: 'auto' },
+    };
+    tools.push(codeInterpreterTool);
   }
 
   // Image Generation tool (Responses API only)

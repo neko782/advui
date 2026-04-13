@@ -299,6 +299,8 @@ export async function saveChatContent(
         webSearchRegion: pickSetting('webSearchRegion') || undefined,
         webSearchTimezone: pickSetting('webSearchTimezone') || undefined,
         webSearchCacheOnly: !!pickSetting('webSearchCacheOnly'),
+        // Code Interpreter settings
+        codeInterpreterEnabled: !!pickSetting('codeInterpreterEnabled'),
         // Image Generation settings
         imageGenerationEnabled: !!pickSetting('imageGenerationEnabled'),
         imageGenerationModel: pickSetting('imageGenerationModel') || undefined,
@@ -487,6 +489,8 @@ export async function createChat(initial: CreateChatOptions = {}): Promise<{ id:
       webSearchRegion: (hasOwn(initial?.settings || {}, 'webSearchRegion') ? initial.settings!.webSearchRegion : preferredPreset.webSearchRegion) || undefined,
       webSearchTimezone: (hasOwn(initial?.settings || {}, 'webSearchTimezone') ? initial.settings!.webSearchTimezone : preferredPreset.webSearchTimezone) || undefined,
       webSearchCacheOnly: hasOwn(initial?.settings || {}, 'webSearchCacheOnly') ? !!initial.settings!.webSearchCacheOnly : !!preferredPreset.webSearchCacheOnly,
+      // Code Interpreter settings
+      codeInterpreterEnabled: hasOwn(initial?.settings || {}, 'codeInterpreterEnabled') ? !!initial.settings!.codeInterpreterEnabled : !!preferredPreset.codeInterpreterEnabled,
       // Image Generation settings
       imageGenerationEnabled: hasOwn(initial?.settings || {}, 'imageGenerationEnabled') ? !!initial.settings!.imageGenerationEnabled : !!preferredPreset.imageGenerationEnabled,
       imageGenerationModel: (hasOwn(initial?.settings || {}, 'imageGenerationModel') ? initial.settings!.imageGenerationModel : preferredPreset.imageGenerationModel) || undefined,

@@ -41,6 +41,8 @@ export const DEFAULT_PRESET_FIELDS: PresetFields = {
   webSearchRegion: undefined,
   webSearchTimezone: undefined,
   webSearchCacheOnly: false,
+  // Code Interpreter defaults
+  codeInterpreterEnabled: false,
   // Image Generation defaults
   imageGenerationEnabled: false,
   imageGenerationModel: undefined,
@@ -123,6 +125,9 @@ export function normalizePreset(
   const webSearchTimezone = typeof base.webSearchTimezone === 'string' ? base.webSearchTimezone : undefined;
   const webSearchCacheOnly = typeof base.webSearchCacheOnly === 'boolean' ? base.webSearchCacheOnly : false;
 
+  // Code Interpreter settings
+  const codeInterpreterEnabled = typeof base.codeInterpreterEnabled === 'boolean' ? base.codeInterpreterEnabled : false;
+
   // Image Generation settings
   const imageGenerationEnabled = typeof base.imageGenerationEnabled === 'boolean' ? base.imageGenerationEnabled : false;
   const imageGenerationModel = typeof base.imageGenerationModel === 'string' ? base.imageGenerationModel : undefined;
@@ -149,6 +154,8 @@ export function normalizePreset(
     webSearchRegion,
     webSearchTimezone,
     webSearchCacheOnly,
+    // Code Interpreter settings
+    codeInterpreterEnabled,
     // Image Generation settings
     imageGenerationEnabled,
     imageGenerationModel,
@@ -338,6 +345,8 @@ export function buildChatSettings(preset: Preset, settings: Partial<Settings> | 
     webSearchRegion: preset.webSearchRegion,
     webSearchTimezone: preset.webSearchTimezone,
     webSearchCacheOnly: !!preset.webSearchCacheOnly,
+    // Code Interpreter settings
+    codeInterpreterEnabled: !!preset.codeInterpreterEnabled,
     // Image Generation settings
     imageGenerationEnabled: !!preset.imageGenerationEnabled,
     imageGenerationModel: preset.imageGenerationModel,
@@ -388,9 +397,10 @@ export function loadChatSettings(
     webSearchRegion: has('webSearchRegion') ? s.webSearchRegion : preset.webSearchRegion,
     webSearchTimezone: has('webSearchTimezone') ? s.webSearchTimezone : preset.webSearchTimezone,
     webSearchCacheOnly: has('webSearchCacheOnly') ? !!s.webSearchCacheOnly : !!preset.webSearchCacheOnly,
+    // Code Interpreter settings
+    codeInterpreterEnabled: has('codeInterpreterEnabled') ? !!s.codeInterpreterEnabled : !!preset.codeInterpreterEnabled,
     // Image Generation settings
     imageGenerationEnabled: has('imageGenerationEnabled') ? !!s.imageGenerationEnabled : !!preset.imageGenerationEnabled,
     imageGenerationModel: has('imageGenerationModel') ? s.imageGenerationModel : preset.imageGenerationModel,
   };
 }
-

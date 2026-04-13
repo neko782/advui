@@ -1643,6 +1643,8 @@
       webSearchRegion: preset.webSearchRegion ?? chatSettings.webSearchRegion,
       webSearchTimezone: preset.webSearchTimezone ?? chatSettings.webSearchTimezone,
       webSearchCacheOnly: typeof preset.webSearchCacheOnly === 'boolean' ? preset.webSearchCacheOnly : chatSettings.webSearchCacheOnly,
+      // Code Interpreter settings
+      codeInterpreterEnabled: typeof preset.codeInterpreterEnabled === 'boolean' ? preset.codeInterpreterEnabled : chatSettings.codeInterpreterEnabled,
       // Image Generation settings
       imageGenerationEnabled: typeof preset.imageGenerationEnabled === 'boolean' ? preset.imageGenerationEnabled : chatSettings.imageGenerationEnabled,
       imageGenerationModel: preset.imageGenerationModel ?? chatSettings.imageGenerationModel,
@@ -1888,6 +1890,7 @@
     chatThinkingEnabled={chatSettings.thinkingEnabled}
     chatThinkingBudgetTokens={chatSettings.thinkingBudgetTokens}
     chatWebSearchEnabled={chatSettings.webSearchEnabled}
+    chatCodeInterpreterEnabled={chatSettings.codeInterpreterEnabled}
     chatImageGenerationEnabled={chatSettings.imageGenerationEnabled}
     chatImageGenerationModel={chatSettings.imageGenerationModel}
     modelIds={modelIds}
@@ -1904,7 +1907,13 @@
       const newConnection = connectionOptions.find(c => c.id === newConnectionId)
       // Clear responses-API-only features when switching to non-responses API connection
       if (newConnection?.apiMode !== 'responses') {
-        chatSettings = { ...chatSettings, connectionId: newConnectionId, webSearchEnabled: false, imageGenerationEnabled: false }
+        chatSettings = {
+          ...chatSettings,
+          connectionId: newConnectionId,
+          webSearchEnabled: false,
+          codeInterpreterEnabled: false,
+          imageGenerationEnabled: false,
+        }
       } else {
         chatSettings = { ...chatSettings, connectionId: newConnectionId }
       }
@@ -1920,6 +1929,7 @@
     onChangeThinkingEnabled={(val) => (chatSettings = { ...chatSettings, thinkingEnabled: !!val })}
     onChangeThinkingBudgetTokens={(val) => (chatSettings = { ...chatSettings, thinkingBudgetTokens: toIntOrNull(val) })}
     onChangeWebSearchEnabled={(val) => (chatSettings = { ...chatSettings, webSearchEnabled: !!val })}
+    onChangeCodeInterpreterEnabled={(val) => (chatSettings = { ...chatSettings, codeInterpreterEnabled: !!val })}
     onChangeImageGenerationEnabled={(val) => (chatSettings = { ...chatSettings, imageGenerationEnabled: !!val })}
     onChangeImageGenerationModel={(val) => (chatSettings = { ...chatSettings, imageGenerationModel: val || undefined })}
     onSelectPreset={handleSelectPreset}

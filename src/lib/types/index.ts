@@ -109,6 +109,8 @@ export interface ChatSettings {
   webSearchRegion?: string;
   webSearchTimezone?: string;
   webSearchCacheOnly?: boolean;
+  // Code Interpreter settings (Responses API only)
+  codeInterpreterEnabled?: boolean;
   // Image Generation settings (Responses API only)
   imageGenerationEnabled?: boolean;
   imageGenerationModel?: string;
@@ -183,6 +185,8 @@ export interface Preset {
   webSearchRegion?: string;
   webSearchTimezone?: string; // IANA timezone
   webSearchCacheOnly?: boolean;  // external_web_access = false
+  // Code Interpreter settings (Responses API only)
+  codeInterpreterEnabled?: boolean;
   // Image Generation settings (Responses API only)
   imageGenerationEnabled?: boolean;
   imageGenerationModel?: string;  // Model for image generation tool (e.g., gpt-image-1)
@@ -209,6 +213,8 @@ export interface PresetFields {
   webSearchRegion?: string;
   webSearchTimezone?: string;
   webSearchCacheOnly?: boolean;
+  // Code Interpreter settings (Responses API only)
+  codeInterpreterEnabled?: boolean;
   // Image Generation settings (Responses API only)
   imageGenerationEnabled?: boolean;
   imageGenerationModel?: string;
@@ -507,6 +513,10 @@ export interface WebSearchOptions {
   external_web_access?: boolean;  // Default true, set false for cache-only mode
 }
 
+export interface CodeInterpreterOptions {
+  enabled?: boolean;
+}
+
 export interface WebSearchCitation {
   type: 'url_citation';
   start_index: number;
@@ -567,6 +577,8 @@ export interface RespondOptions {
   // Web Search options (Responses API only)
   webSearch?: WebSearchOptions;
   onWebSearchResult?: (result: WebSearchResult) => void;
+  // Code Interpreter options (Responses API only)
+  codeInterpreter?: CodeInterpreterOptions;
   // Image Generation options (Responses API only)
   imageGeneration?: ImageGenerationOptions;
   onImageGenerated?: (images: GeneratedImage[]) => void;

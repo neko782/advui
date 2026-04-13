@@ -144,4 +144,50 @@ describe('respond stream errors', () => {
     ])
     expect(response.reasoningSummary).toBe('First pass\n\n\nSecond pass')
   })
+
+  it('adds code interpreter to Responses API tools', async () => {
+    configureConnection('responses')
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ output_text: 'ok' }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await respond({
+      model: 'gpt-5.4',
+      prompt: 'hi',
+      connectionId,
+      webSearch: { enabled: true },
+      codeInterpreter: { enabled: true },
+    })
+
+    const [, init] = fetchMock.mock.calls[0]
+    const body = JSON.parse(init.body as string)
+    expect(body.tools).toEqual([
+      { type: 'web_search' },
+      { type: 'code_interpreter', container: { type: 'auto' } },
+    ])
+  })
+
+  it('does not add code interpreter to Chat Completions requests', async () => {
+    configureConnection('chat_completions')
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      choices: [{ message: { content: 'ok' } }],
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await respond({
+      model: 'gpt-4o-mini',
+      prompt: 'hi',
+      connectionId,
+      codeInterpreter: { enabled: true },
+    })
+
+    const [, init] = fetchMock.mock.calls[0]
+    const body = JSON.parse(init.body as string)
+    expect(body.tools).toBeUndefined()
+  })
 })
