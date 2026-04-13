@@ -458,11 +458,16 @@ export async function respond(options: RespondOptions): Promise<GenerationRespon
           for (const img of images as ImageData[]) {
             if (img && typeof img.id === 'string' && typeof img.data === 'string') {
               const mimeType = normalizeMimeType(img.mimeType) || '';
-              if (isImageMimeType(mimeType) || (!mimeType && typeof img.data === 'string')) {
-                const safeMime = mimeType || 'image/jpeg';
+              if (isImageMimeType(mimeType)) {
                 contentArray.push({
                   type: 'input_image',
-                  image_url: `data:${safeMime};base64,${img.data}`,
+                  image_url: `data:${mimeType};base64,${img.data}`,
+                });
+              } else if (!mimeType && typeof img.data === 'string' && (!img.name || /\.(png|jpe?g|gif|webp|bmp|ico|svg|tiff?)$/i.test(img.name))) {
+                // Legacy image data without mimeType - only assume image if name looks like one or is absent
+                contentArray.push({
+                  type: 'input_image',
+                  image_url: `data:image/jpeg;base64,${img.data}`,
                 });
               } else if (isVideoMimeType(mimeType)) {
                 // Video attachments - supported by Gemini API
