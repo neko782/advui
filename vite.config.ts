@@ -5,10 +5,10 @@ import { viteSingleFile } from 'vite-plugin-singlefile';
 import { visualizer } from 'rollup-plugin-visualizer';
 import { execSync } from 'child_process';
 
-// Get git commit hash (first 4 characters)
+// Get exactly the first 4 characters of the git commit hash
 const getGitHash = (): string => {
   try {
-    return execSync('git rev-parse --short=4 HEAD').toString().trim();
+    return execSync('git rev-parse HEAD').toString().trim().slice(0, 4);
   } catch {
     return 'dev';
   }
