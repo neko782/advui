@@ -75,9 +75,9 @@
   
   const TABS = [
     { id: 'general', label: 'General' },
+    { id: 'features', label: 'Features' },
     { id: 'connection', label: 'Connections' },
     { id: 'presets', label: 'Presets' },
-    { id: 'features', label: 'Features' },
   ]
   let activeTab = $state<'general' | 'connection' | 'presets' | 'features'>('general')
 
@@ -2298,19 +2298,16 @@
     height: 16px;
   }
   .action-toggle > input:checked + .switch-ui {
-    background: var(--accent);
+    background: var(--accent) !important;
     box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 20%, transparent);
   }
   .action-toggle > input:checked + .switch-ui::after {
     transform: translateX(18px);
   }
-  .action-toggle:hover .switch-ui {
+  .action-toggle:hover > input:not(:checked) + .switch-ui {
     background: color-mix(in srgb, var(--border) 60%, var(--muted) 40%);
   }
-  .action-toggle > input:checked + .switch-ui {
-    background: var(--accent);
-  }
-  :global(:root[data-theme='dark']) .action-toggle .switch-ui {
+  :global(:root[data-theme='dark']) .action-toggle > input:not(:checked) + .switch-ui {
     background: #2a2a2a;
   }
 
@@ -2400,10 +2397,10 @@
     box-shadow: 0 1px 3px rgba(0,0,0,0.2), 0 2px 6px rgba(0,0,0,0.1);
     transition: transform .2s cubic-bezier(0.34, 1.56, 0.64, 1);
   }
-  .tool-card:hover .tool-card-toggle .switch-ui {
+  .tool-card:hover .tool-card-toggle > input:not(:checked) + .switch-ui {
     background: color-mix(in srgb, var(--border) 60%, var(--muted) 40%);
   }
-  :global(:root[data-theme='dark']) .tool-card-toggle .switch-ui {
+  :global(:root[data-theme='dark']) .tool-card-toggle > input:not(:checked) + .switch-ui {
     background: #2a2a2a;
     box-shadow: inset 0 1px 3px rgba(0,0,0,0.3);
   }
@@ -2411,7 +2408,7 @@
     background: #e6e6e6;
   }
   .tool-card-toggle > input:checked + .switch-ui {
-    background: var(--accent);
+    background: var(--accent) !important;
     box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 20%, transparent);
   }
   .tool-card-toggle > input:checked + .switch-ui::after {
