@@ -7,6 +7,7 @@
 
   interface Props {
     vm: VisibleMessage
+    imageCache?: Record<string, { data: string; mimeType?: string; name?: string }>
     total?: number
     visibleCount?: number
     locked?: boolean
@@ -57,6 +58,7 @@
     <MessageMeta role={m.role} label={formatRole(m.role)} locked={props.locked} debug={props.debug} messageId={m.id} onSetRole={(r) => props.onSetRole?.(m.id, r)} />
     <MessageBubble
       message={m}
+      imageCache={props.imageCache}
       isEditing={isEditing}
       editingText={props.editingText}
       allowInlineHtml={props.allowInlineHtml}

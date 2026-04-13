@@ -178,9 +178,11 @@ marked.use({
 // LRU cache for rendered markdown (keyed by content + html setting)
 const cache = new Map<string, string>();
 const MAX_CACHE_SIZE = 200;
+const MAX_CACHEABLE_CHARS = 12000;
 
 export interface RenderMarkdownOptions {
   allowInlineHtml?: boolean;
+  cache?: boolean;
 }
 
 function wrapTables(html: string): string {
@@ -196,6 +198,12 @@ function wrapTables(html: string): string {
 export function renderMarkdown(src: string, options: RenderMarkdownOptions = {}): string {
   allowHtml = !!options.allowInlineHtml;
   const text = String(src || '');
+  const useCache = options.cache !== false && text.length <= MAX_CACHEABLE_CHARS;
+
+  if (!useCache) {
+    return wrapTables(marked.parse(text) as string);
+  }
+
   const key = `${allowHtml ? '1' : '0'}:${text}`;
 
   // Return cached result if available

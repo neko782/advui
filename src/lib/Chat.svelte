@@ -265,6 +265,19 @@
     resetGenerationState()
   }
 
+  function finalizeGeneration(sequence: number): boolean {
+    const isCurrentGen = generationState.getGenerationSequence() === sequence
+    if (isCurrentGen) {
+      generationState.completeGeneration(sequence)
+    }
+    if (!(isCurrentGen || !generationState.isGenerationActive())) {
+      return false
+    }
+    finishGeneration()
+    logGenerationEvent(debug, 'Generation finished', { sequence, wasCurrentGen: isCurrentGen })
+    return true
+  }
+
   function applyDebugLockToVariants(list) {
     if (!Array.isArray(list)) return list
     return list.map((variant) => {
@@ -582,23 +595,6 @@
     if (tasks.length) Promise.allSettled(tasks).catch(() => {})
   }
 
-  function resolveImagesForMessage(images) {
-    const refs = buildImageRefs(images)
-    if (!refs.length) return []
-    return refs.map(ref => {
-      const cached = imageCache[ref.id]
-      if (cached?.data) {
-        return {
-          ...ref,
-          data: cached.data,
-          mimeType: ref.mimeType || cached.mimeType,
-          name: ref.name ?? cached.name,
-        }
-      }
-      return ref
-    })
-  }
-
   function sanitizeNodesImageData(nodesInput) {
     if (!Array.isArray(nodesInput)) return nodesInput
     let mutated = false
@@ -694,16 +690,7 @@
     }, 100) // Debounce for 100ms
   })
 
-  const visibleMessages = $derived((() => {
-    const base = buildVisible()
-    return base.map(vm => {
-      const msg = vm.m
-      if (!msg) return vm
-      if (!Array.isArray(msg.images) || !msg.images.length) return vm
-      const resolved = resolveImagesForMessage(msg.images)
-      return { ...vm, m: { ...msg, images: resolved } }
-    })
-  })())
+  const visibleMessages = $derived(buildVisible())
 
   function withImageData(nodesInput) {
     if (!Array.isArray(nodesInput)) return nodesInput
@@ -1015,6 +1002,7 @@
     generationState.setTypingVariantId(typingVariantId)
     persistNow()
 
+    let generationFinalized = false
     try {
       let summaryBuffer = ''
       const requestNodes = withImageData(nodes)
@@ -1057,22 +1045,17 @@
       if (generationState.getGenerationSequence() === genSeq) {
         nodes = handleGenerationSuccess(nodes, typingVariantId, reply, summaryBuffer)
       }
+      generationFinalized = finalizeGeneration(genSeq)
       await persistNow()
     } catch (err) {
       logGenerationEvent(debug, 'Generation error', { error: err?.message, typingVariantId })
       if (generationState.getGenerationSequence() === genSeq) {
         nodes = handleGenerationError(nodes, typingVariantId, err)
       }
+      generationFinalized = finalizeGeneration(genSeq)
       await persistNow()
     } finally {
-      const isCurrentGen = generationState.getGenerationSequence() === genSeq
-      if (isCurrentGen) {
-        generationState.completeGeneration(genSeq)
-      }
-      if (isCurrentGen || !generationState.isGenerationActive()) {
-        finishGeneration()
-        logGenerationEvent(debug, 'Generation finished', { sequence: genSeq, wasCurrentGen: isCurrentGen })
-      }
+      if (!generationFinalized) finalizeGeneration(genSeq)
     }
   }
 
@@ -1276,6 +1259,7 @@
 
     if (!(apiKey && typingVariantId != null && genSeq != null)) return
 
+    let generationFinalized = false
     try {
       let reply = null
       let summaryBuffer = ''
@@ -1320,24 +1304,17 @@
       if (generationState.getGenerationSequence() === genSeq) {
         nodes = handleGenerationSuccess(nodes, typingVariantId, reply, summaryBuffer)
       }
+      generationFinalized = finalizeGeneration(genSeq)
       await persistNow()
     } catch (err) {
       logGenerationEvent(debug, 'Generation error', { error: err?.message, typingVariantId, role })
       if (generationState.getGenerationSequence() === genSeq) {
         nodes = handleGenerationError(nodes, typingVariantId, err)
       }
+      generationFinalized = finalizeGeneration(genSeq)
       await persistNow()
     } finally {
-      const isCurrentGen = generationState.getGenerationSequence() === genSeq
-      if (isCurrentGen) {
-        generationState.completeGeneration(genSeq)
-      }
-      // Always clean up if we're the current gen, or if no generation is active
-      // (handles case where a newer generation already started and finished)
-      if (isCurrentGen || !generationState.isGenerationActive()) {
-        finishGeneration()
-        logGenerationEvent(debug, 'Generation finished', { sequence: genSeq, wasCurrentGen: isCurrentGen })
-      }
+      if (!generationFinalized) finalizeGeneration(genSeq)
     }
   }
 
@@ -1465,6 +1442,7 @@
     generationState.setTypingVariantId(typingVariantId)
     persistNow()
 
+    let generationFinalized = false
     try {
       let summaryBuffer = ''
       const requestNodes = withImageData(nodes)
@@ -1507,22 +1485,17 @@
       if (generationState.getGenerationSequence() === genSeq) {
         nodes = handleGenerationSuccess(nodes, typingVariantId, reply, summaryBuffer)
       }
+      generationFinalized = finalizeGeneration(genSeq)
       await persistNow()
     } catch (err) {
       logGenerationEvent(debug, 'Generation error', { error: err?.message, typingVariantId })
       if (generationState.getGenerationSequence() === genSeq) {
         nodes = handleGenerationError(nodes, typingVariantId, err)
       }
+      generationFinalized = finalizeGeneration(genSeq)
       await persistNow()
     } finally {
-      const isCurrentGen = generationState.getGenerationSequence() === genSeq
-      if (isCurrentGen) {
-        generationState.completeGeneration(genSeq)
-      }
-      if (isCurrentGen || !generationState.isGenerationActive()) {
-        finishGeneration()
-        logGenerationEvent(debug, 'Generation finished', { sequence: genSeq, wasCurrentGen: isCurrentGen })
-      }
+      if (!generationFinalized) finalizeGeneration(genSeq)
     }
   }
 
@@ -1566,6 +1539,7 @@
     generationState.setTypingVariantId(typingVariantId)
     persistNow()
 
+    let generationFinalized = false
     try {
       let summaryBuffer = ''
       const requestNodes = withImageData(nodes)
@@ -1608,22 +1582,17 @@
       if (generationState.getGenerationSequence() === genSeq) {
         nodes = handleGenerationSuccess(nodes, typingVariantId, reply, summaryBuffer)
       }
+      generationFinalized = finalizeGeneration(genSeq)
       await persistNow()
     } catch (err) {
       logGenerationEvent(debug, 'Generation error', { error: err?.message, typingVariantId })
       if (generationState.getGenerationSequence() === genSeq) {
         nodes = handleGenerationError(nodes, typingVariantId, err)
       }
+      generationFinalized = finalizeGeneration(genSeq)
       await persistNow()
     } finally {
-      const isCurrentGen = generationState.getGenerationSequence() === genSeq
-      if (isCurrentGen) {
-        generationState.completeGeneration(genSeq)
-      }
-      if (isCurrentGen || !generationState.isGenerationActive()) {
-        finishGeneration()
-        logGenerationEvent(debug, 'Generation finished', { sequence: genSeq, wasCurrentGen: isCurrentGen })
-      }
+      if (!generationFinalized) finalizeGeneration(genSeq)
     }
   }
 
@@ -1863,6 +1832,7 @@
   <MessageList
     bind:this={listCmp}
     items={visibleMessages}
+    imageCache={imageCache}
     chatId={props.chatId}
     notice={visibleNotice}
     total={nodes.length}

@@ -1,10 +1,11 @@
 <script lang="ts">
   import { autoGrow } from '../../utils/dom'
   import { renderMarkdown } from '../../utils/markdown'
-  import type { Message, Image, GeneratedImage } from '../../types'
+  import type { Message } from '../../types'
 
   interface Props {
     message: Message
+    imageCache?: Record<string, { data: string; mimeType?: string; name?: string }>
     isEditing?: boolean
     editingText?: string
     allowInlineHtml?: boolean
@@ -112,6 +113,36 @@ function attachmentMimeLabel(attachment) {
   if (parts.length === 2 && parts[1]) return parts[1].toUpperCase()
   return mime.toUpperCase()
 }
+
+function resolveAttachment(attachment, imageCache) {
+  if (attachment == null) return null
+  if (typeof attachment === 'string') {
+    const id = attachment.trim()
+    if (!id) return null
+    const cached = imageCache?.[id]
+    return cached?.data
+      ? { id, data: cached.data, mimeType: cached.mimeType, name: cached.name }
+      : { id }
+  }
+  if (typeof attachment !== 'object') return null
+  if (typeof attachment.data === 'string' && attachment.data) return attachment
+  const id = typeof attachment.id === 'string' && attachment.id.trim() ? attachment.id.trim() : null
+  if (!id) return attachment
+  const cached = imageCache?.[id]
+  if (!cached?.data) return attachment
+  return {
+    ...attachment,
+    data: cached.data,
+    mimeType: attachment.mimeType || cached.mimeType,
+    name: attachment.name ?? cached.name,
+  }
+}
+
+const resolvedAttachments = $derived.by(() => {
+  const attachments = Array.isArray(props.message?.images) ? props.message.images : []
+  if (!attachments.length) return []
+  return attachments.map((attachment) => resolveAttachment(attachment, props.imageCache)).filter(Boolean)
+})
 
   function extractReasoningSummary(msg) {
     const raw = msg?.reasoningSummary
@@ -255,7 +286,10 @@ function attachmentMimeLabel(attachment) {
       </button>
       {#if reasoningOpen}
         <div class="reasoning-body">
-          {@html renderMarkdown(reasoningSummaryText, { allowInlineHtml: props.allowInlineHtml })}
+          {@html renderMarkdown(reasoningSummaryText, {
+            allowInlineHtml: props.allowInlineHtml,
+            cache: !props.message.reasoningSummaryLoading,
+          })}
         </div>
       {/if}
     </div>
@@ -264,15 +298,15 @@ function attachmentMimeLabel(attachment) {
     <!-- svelte-ignore a11y_click_events_have_key_events -->
     <div class={`bubble ${props.message.role}`} data-typing={true} onclick={handleBubbleClick} role="button" tabindex="0">
       {#if props.message.content && props.message.content !== 'typing'}
-          {@html renderMarkdown(props.message.content, { allowInlineHtml: props.allowInlineHtml })}
+          {@html renderMarkdown(props.message.content, { allowInlineHtml: props.allowInlineHtml, cache: false })}
       {:else}
         <span class="dots"><i></i><i></i><i></i></span>
       {/if}
     </div>
-  {:else if props.message.content || (props.message.images && props.message.images.length > 0) || (props.message.generatedImages && props.message.generatedImages.length > 0)}
-    {#if props.message.images && props.message.images.length > 0}
+  {:else if props.message.content || resolvedAttachments.length > 0 || (props.message.generatedImages && props.message.generatedImages.length > 0)}
+    {#if resolvedAttachments.length > 0}
       <div class={`message-images ${props.message.role}`}>
-        {#each props.message.images as attachment (attachment.id)}
+        {#each resolvedAttachments as attachment (attachment.id)}
           {#if isImageAttachment(attachment)}
             {#if attachment?.data}
               <img

@@ -17,4 +17,9 @@ describe('renderMarkdown link sanitization', () => {
     const html = renderMarkdown('[relative](/docs/page)')
     expect(html).toContain('href="/docs/page"')
   })
+
+  it('renders when cache is disabled', () => {
+    const html = renderMarkdown('**hello**', { cache: false })
+    expect(html).toContain('<strong>hello</strong>')
+  })
 })

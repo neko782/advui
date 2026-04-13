@@ -5,6 +5,7 @@
 
   interface Props {
     items?: VisibleMessage[]
+    imageCache?: Record<string, { data: string; mimeType?: string; name?: string }>
     chatId?: string
     notice?: string
     total?: number
@@ -217,6 +218,7 @@
         {/if}
         <MessageItem
           vm={vm}
+          imageCache={props.imageCache}
           total={props.total}
           visibleCount={(props.items?.length || 0)}
           locked={props.locked}
