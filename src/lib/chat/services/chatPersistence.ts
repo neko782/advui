@@ -222,6 +222,8 @@ export function computePersistSig(nodes: ChatNode[], chatSettings: ChatSettings,
         webSearchCacheOnly: !!chatSettings?.webSearchCacheOnly,
         // Code Interpreter settings
         codeInterpreterEnabled: !!chatSettings?.codeInterpreterEnabled,
+        // Shell settings
+        shellEnabled: !!chatSettings?.shellEnabled,
         // Image Generation settings
         imageGenerationEnabled: !!chatSettings?.imageGenerationEnabled,
         imageGenerationModel: chatSettings?.imageGenerationModel || '',

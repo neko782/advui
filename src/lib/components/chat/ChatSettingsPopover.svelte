@@ -17,6 +17,7 @@
     thinkingBudgetTokens?: number | null
     webSearchEnabled?: boolean
     codeInterpreterEnabled?: boolean
+    shellEnabled?: boolean
     imageGenerationEnabled?: boolean
     imageGenerationModel?: string
     modelIds?: string[]
@@ -39,6 +40,7 @@
     onInputThinkingBudgetTokens?: (val: string) => void
     onInputWebSearchEnabled?: (val: boolean) => void
     onInputCodeInterpreterEnabled?: (val: boolean) => void
+    onInputShellEnabled?: (val: boolean) => void
     onInputImageGenerationEnabled?: (val: boolean) => void
     onInputImageGenerationModel?: (val: string) => void
     onSelectPreset?: (preset: Preset) => void
@@ -55,7 +57,7 @@
   let presetButtonEl = $state<HTMLButtonElement | null>(null)
   let presetMenuPosition = $state({ bottom: 0, left: 0 })
 
-  // Check if current connection supports Responses API features (web search, code interpreter, image generation)
+  // Check if current connection supports Responses API features (web search, code interpreter, shell, image generation)
   const supportsResponsesApiFeatures = $derived((() => {
     const conns = props.connections || []
     const currentConn = conns.find(c => c.id === props.connectionId) || conns[0]
@@ -185,6 +187,19 @@
               />
               <span class="switch-ui" aria-hidden="true"></span>
               <span class="switch-label">Code interpreter</span>
+            </label>
+          </div>
+          <div class="menu-section">
+            <label class="switch" title="Shell (Responses API only)">
+              <input
+                type="checkbox"
+                checked={!!props.shellEnabled}
+                disabled={props.disabled}
+                onchange={(e) => (!props.disabled && props.onInputShellEnabled?.(e.currentTarget.checked))}
+                aria-label="Shell"
+              />
+              <span class="switch-ui" aria-hidden="true"></span>
+              <span class="switch-label">Shell</span>
             </label>
           </div>
           <div class="menu-section">

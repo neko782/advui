@@ -1645,6 +1645,8 @@
       webSearchCacheOnly: typeof preset.webSearchCacheOnly === 'boolean' ? preset.webSearchCacheOnly : chatSettings.webSearchCacheOnly,
       // Code Interpreter settings
       codeInterpreterEnabled: typeof preset.codeInterpreterEnabled === 'boolean' ? preset.codeInterpreterEnabled : chatSettings.codeInterpreterEnabled,
+      // Shell settings
+      shellEnabled: typeof preset.shellEnabled === 'boolean' ? preset.shellEnabled : chatSettings.shellEnabled,
       // Image Generation settings
       imageGenerationEnabled: typeof preset.imageGenerationEnabled === 'boolean' ? preset.imageGenerationEnabled : chatSettings.imageGenerationEnabled,
       imageGenerationModel: preset.imageGenerationModel ?? chatSettings.imageGenerationModel,
@@ -1891,6 +1893,7 @@
     chatThinkingBudgetTokens={chatSettings.thinkingBudgetTokens}
     chatWebSearchEnabled={chatSettings.webSearchEnabled}
     chatCodeInterpreterEnabled={chatSettings.codeInterpreterEnabled}
+    chatShellEnabled={chatSettings.shellEnabled}
     chatImageGenerationEnabled={chatSettings.imageGenerationEnabled}
     chatImageGenerationModel={chatSettings.imageGenerationModel}
     modelIds={modelIds}
@@ -1912,6 +1915,7 @@
           connectionId: newConnectionId,
           webSearchEnabled: false,
           codeInterpreterEnabled: false,
+          shellEnabled: false,
           imageGenerationEnabled: false,
         }
       } else {
@@ -1930,6 +1934,7 @@
     onChangeThinkingBudgetTokens={(val) => (chatSettings = { ...chatSettings, thinkingBudgetTokens: toIntOrNull(val) })}
     onChangeWebSearchEnabled={(val) => (chatSettings = { ...chatSettings, webSearchEnabled: !!val })}
     onChangeCodeInterpreterEnabled={(val) => (chatSettings = { ...chatSettings, codeInterpreterEnabled: !!val })}
+    onChangeShellEnabled={(val) => (chatSettings = { ...chatSettings, shellEnabled: !!val })}
     onChangeImageGenerationEnabled={(val) => (chatSettings = { ...chatSettings, imageGenerationEnabled: !!val })}
     onChangeImageGenerationModel={(val) => (chatSettings = { ...chatSettings, imageGenerationModel: val || undefined })}
     onSelectPreset={handleSelectPreset}

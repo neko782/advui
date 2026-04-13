@@ -22,6 +22,7 @@
     chatThinkingBudgetTokens?: number | null
     chatWebSearchEnabled?: boolean
     chatCodeInterpreterEnabled?: boolean
+    chatShellEnabled?: boolean
     chatImageGenerationEnabled?: boolean
     chatImageGenerationModel?: string
     modelIds?: string[]
@@ -46,6 +47,7 @@
     onChangeThinkingBudgetTokens?: (val: string) => void
     onChangeWebSearchEnabled?: (val: boolean) => void
     onChangeCodeInterpreterEnabled?: (val: boolean) => void
+    onChangeShellEnabled?: (val: boolean) => void
     onChangeImageGenerationEnabled?: (val: boolean) => void
     onChangeImageGenerationModel?: (val: string) => void
     onSelectPreset?: (preset: Preset) => void
@@ -305,6 +307,7 @@
         thinkingBudgetTokens={props.chatThinkingBudgetTokens}
         webSearchEnabled={props.chatWebSearchEnabled}
         codeInterpreterEnabled={props.chatCodeInterpreterEnabled}
+        shellEnabled={props.chatShellEnabled}
         imageGenerationEnabled={props.chatImageGenerationEnabled}
         imageGenerationModel={props.chatImageGenerationModel}
         modelIds={props.modelIds}
@@ -327,6 +330,7 @@
         onInputThinkingBudgetTokens={props.onChangeThinkingBudgetTokens}
         onInputWebSearchEnabled={props.onChangeWebSearchEnabled}
         onInputCodeInterpreterEnabled={props.onChangeCodeInterpreterEnabled}
+        onInputShellEnabled={props.onChangeShellEnabled}
         onInputImageGenerationEnabled={props.onChangeImageGenerationEnabled}
         onInputImageGenerationModel={props.onChangeImageGenerationModel}
         onSelectPreset={props.onSelectPreset}

@@ -111,6 +111,8 @@ export interface ChatSettings {
   webSearchCacheOnly?: boolean;
   // Code Interpreter settings (Responses API only)
   codeInterpreterEnabled?: boolean;
+  // Shell settings (Responses API only)
+  shellEnabled?: boolean;
   // Image Generation settings (Responses API only)
   imageGenerationEnabled?: boolean;
   imageGenerationModel?: string;
@@ -187,6 +189,8 @@ export interface Preset {
   webSearchCacheOnly?: boolean;  // external_web_access = false
   // Code Interpreter settings (Responses API only)
   codeInterpreterEnabled?: boolean;
+  // Shell settings (Responses API only)
+  shellEnabled?: boolean;
   // Image Generation settings (Responses API only)
   imageGenerationEnabled?: boolean;
   imageGenerationModel?: string;  // Model for image generation tool (e.g., gpt-image-1)
@@ -215,6 +219,8 @@ export interface PresetFields {
   webSearchCacheOnly?: boolean;
   // Code Interpreter settings (Responses API only)
   codeInterpreterEnabled?: boolean;
+  // Shell settings (Responses API only)
+  shellEnabled?: boolean;
   // Image Generation settings (Responses API only)
   imageGenerationEnabled?: boolean;
   imageGenerationModel?: string;
@@ -517,6 +523,10 @@ export interface CodeInterpreterOptions {
   enabled?: boolean;
 }
 
+export interface ShellOptions {
+  enabled?: boolean;
+}
+
 export interface WebSearchCitation {
   type: 'url_citation';
   start_index: number;
@@ -579,6 +589,8 @@ export interface RespondOptions {
   onWebSearchResult?: (result: WebSearchResult) => void;
   // Code Interpreter options (Responses API only)
   codeInterpreter?: CodeInterpreterOptions;
+  // Shell options (Responses API only)
+  shell?: ShellOptions;
   // Image Generation options (Responses API only)
   imageGeneration?: ImageGenerationOptions;
   onImageGenerated?: (images: GeneratedImage[]) => void;

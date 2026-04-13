@@ -190,4 +190,48 @@ describe('respond stream errors', () => {
     const body = JSON.parse(init.body as string)
     expect(body.tools).toBeUndefined()
   })
+
+  it('adds shell to Responses API tools', async () => {
+    configureConnection('responses')
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ output_text: 'ok' }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await respond({
+      model: 'gpt-5.4',
+      prompt: 'hi',
+      connectionId,
+      shell: { enabled: true },
+    })
+
+    const [, init] = fetchMock.mock.calls[0]
+    const body = JSON.parse(init.body as string)
+    expect(body.tools).toEqual([
+      { type: 'shell', environment: { type: 'container_auto' } },
+    ])
+  })
+
+  it('does not add shell to Chat Completions requests', async () => {
+    configureConnection('chat_completions')
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      choices: [{ message: { content: 'ok' } }],
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await respond({
+      model: 'gpt-4o-mini',
+      prompt: 'hi',
+      connectionId,
+      shell: { enabled: true },
+    })
+
+    const [, init] = fetchMock.mock.calls[0]
+    const body = JSON.parse(init.body as string)
+    expect(body.tools).toBeUndefined()
+  })
 })

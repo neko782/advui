@@ -394,6 +394,7 @@ export async function respond(options: RespondOptions): Promise<GenerationRespon
     webSearch,
     onWebSearchResult,
     codeInterpreter,
+    shell,
     imageGeneration,
     onImageGenerated,
   } = options;
@@ -634,6 +635,15 @@ export async function respond(options: RespondOptions): Promise<GenerationRespon
       container: { type: 'auto' },
     };
     tools.push(codeInterpreterTool);
+  }
+
+  // Shell tool (Responses API only)
+  if (shell?.enabled && !useChatCompletions) {
+    const shellTool: Record<string, unknown> = {
+      type: 'shell',
+      environment: { type: 'container_auto' },
+    };
+    tools.push(shellTool);
   }
 
   // Image Generation tool (Responses API only)

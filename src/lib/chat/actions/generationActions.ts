@@ -18,6 +18,7 @@ import type {
   ImageData,
   WebSearchOptions,
   CodeInterpreterOptions,
+  ShellOptions,
   ImageGenerationOptions
 } from '../../types/index.js';
 
@@ -455,6 +456,13 @@ export async function generateResponse(options: GenerateResponseOptions): Promis
       }
     : undefined;
 
+  // Build shell options if enabled
+  const shell: ShellOptions | undefined = chatSettings.shellEnabled
+    ? {
+        enabled: true,
+      }
+    : undefined;
+
   // Build image generation options if enabled
   const imageGeneration: ImageGenerationOptions | undefined = chatSettings.imageGenerationEnabled
     ? {
@@ -477,6 +485,7 @@ export async function generateResponse(options: GenerateResponseOptions): Promis
     connectionId,
     webSearch,
     codeInterpreter,
+    shell,
     imageGeneration,
   };
 

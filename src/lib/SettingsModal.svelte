@@ -237,7 +237,7 @@
     return Array.isArray(entry?.ids) ? entry.ids : []
   })())
 
-  // Check if active preset's connection supports Responses API features (web search, code interpreter, image generation)
+  // Check if active preset's connection supports Responses API features (web search, code interpreter, shell, image generation)
   const activePresetSupportsResponsesApiFeatures = $derived((() => {
     const connectionId = activePreset?.connectionId
     if (!connectionId) return false
@@ -294,6 +294,7 @@
       webSearchTimezone: base?.webSearchTimezone,
       webSearchCacheOnly: !!base?.webSearchCacheOnly,
       codeInterpreterEnabled: !!base?.codeInterpreterEnabled,
+      shellEnabled: !!base?.shellEnabled,
       imageGenerationEnabled: !!base?.imageGenerationEnabled,
       imageGenerationModel: base?.imageGenerationModel,
       systemPrompt: typeof base?.systemPrompt === 'string' ? base.systemPrompt : DEFAULT_SYSTEM_PROMPT,
@@ -318,6 +319,7 @@
         // Clear responses API features when switching to non-responses API connection
         updatedPatch.webSearchEnabled = false
         updatedPatch.codeInterpreterEnabled = false
+        updatedPatch.shellEnabled = false
         updatedPatch.imageGenerationEnabled = false
       }
     }
@@ -398,6 +400,7 @@
               ...p,
               webSearchEnabled: false,
               codeInterpreterEnabled: false,
+              shellEnabled: false,
               imageGenerationEnabled: false,
             }
           }
@@ -1238,6 +1241,16 @@
                       />
                       <span class="switch-ui" aria-hidden="true"></span>
                       <span class="switch-label">Code interpreter</span>
+                    </label>
+                    <label class="switch" title="Shell (Responses API only)">
+                      <input
+                        type="checkbox"
+                        checked={!!activePreset.shellEnabled}
+                        onchange={(event) => updateActivePreset({ shellEnabled: !!event.currentTarget.checked })}
+                        aria-label="Shell"
+                      />
+                      <span class="switch-ui" aria-hidden="true"></span>
+                      <span class="switch-label">Shell</span>
                     </label>
                     <label class="switch" title="Image generation (Responses API only)">
                       <input

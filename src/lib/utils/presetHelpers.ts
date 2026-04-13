@@ -43,6 +43,8 @@ export const DEFAULT_PRESET_FIELDS: PresetFields = {
   webSearchCacheOnly: false,
   // Code Interpreter defaults
   codeInterpreterEnabled: false,
+  // Shell defaults
+  shellEnabled: false,
   // Image Generation defaults
   imageGenerationEnabled: false,
   imageGenerationModel: undefined,
@@ -128,6 +130,9 @@ export function normalizePreset(
   // Code Interpreter settings
   const codeInterpreterEnabled = typeof base.codeInterpreterEnabled === 'boolean' ? base.codeInterpreterEnabled : false;
 
+  // Shell settings
+  const shellEnabled = typeof base.shellEnabled === 'boolean' ? base.shellEnabled : false;
+
   // Image Generation settings
   const imageGenerationEnabled = typeof base.imageGenerationEnabled === 'boolean' ? base.imageGenerationEnabled : false;
   const imageGenerationModel = typeof base.imageGenerationModel === 'string' ? base.imageGenerationModel : undefined;
@@ -156,6 +161,8 @@ export function normalizePreset(
     webSearchCacheOnly,
     // Code Interpreter settings
     codeInterpreterEnabled,
+    // Shell settings
+    shellEnabled,
     // Image Generation settings
     imageGenerationEnabled,
     imageGenerationModel,
@@ -347,6 +354,8 @@ export function buildChatSettings(preset: Preset, settings: Partial<Settings> | 
     webSearchCacheOnly: !!preset.webSearchCacheOnly,
     // Code Interpreter settings
     codeInterpreterEnabled: !!preset.codeInterpreterEnabled,
+    // Shell settings
+    shellEnabled: !!preset.shellEnabled,
     // Image Generation settings
     imageGenerationEnabled: !!preset.imageGenerationEnabled,
     imageGenerationModel: preset.imageGenerationModel,
@@ -399,6 +408,8 @@ export function loadChatSettings(
     webSearchCacheOnly: has('webSearchCacheOnly') ? !!s.webSearchCacheOnly : !!preset.webSearchCacheOnly,
     // Code Interpreter settings
     codeInterpreterEnabled: has('codeInterpreterEnabled') ? !!s.codeInterpreterEnabled : !!preset.codeInterpreterEnabled,
+    // Shell settings
+    shellEnabled: has('shellEnabled') ? !!s.shellEnabled : !!preset.shellEnabled,
     // Image Generation settings
     imageGenerationEnabled: has('imageGenerationEnabled') ? !!s.imageGenerationEnabled : !!preset.imageGenerationEnabled,
     imageGenerationModel: has('imageGenerationModel') ? s.imageGenerationModel : preset.imageGenerationModel,
