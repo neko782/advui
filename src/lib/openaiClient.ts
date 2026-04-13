@@ -891,12 +891,57 @@ export async function respond(options: RespondOptions): Promise<GenerationRespon
     if (!reader) throw new Error('No response body');
     const decoder = new TextDecoder();
     let full = '';
-    const summaryByIndex = new Map<number, string>();
+    type ResponseReasoningSummaryPart = {
+      key: string;
+      itemId: string;
+      outputIndex: number | null;
+      summaryIndex: number;
+      order: number;
+      text: string;
+    };
+    const summaryByKey = new Map<string, ResponseReasoningSummaryPart>();
+    let nextSummaryOrder = 0;
     let summaryDelivered = false;
+    const getResponseReasoningSummaryPart = (event: Record<string, unknown>) => {
+      const summaryIndex = Number.isFinite(Number(event?.summary_index)) ? Number(event.summary_index) : 0;
+      const outputIndex = Number.isFinite(Number(event?.output_index)) ? Number(event.output_index) : null;
+      const eventItemId = typeof event?.item_id === 'string' && event.item_id.trim()
+        ? event.item_id.trim()
+        : '';
+      const itemObj = event?.item && typeof event.item === 'object'
+        ? event.item as Record<string, unknown>
+        : null;
+      const itemId = eventItemId || (typeof itemObj?.id === 'string' && itemObj.id.trim() ? itemObj.id.trim() : '');
+      const key = `${outputIndex != null ? `output:${outputIndex}` : 'output:?'}:${itemId || 'item:?'}:summary:${summaryIndex}`;
+      return { key, itemId, outputIndex, summaryIndex };
+    };
+    const upsertResponseReasoningSummary = (
+      event: Record<string, unknown>,
+      text: string,
+      mode: 'append' | 'replace'
+    ): string => {
+      const part = getResponseReasoningSummaryPart(event);
+      const existing = summaryByKey.get(part.key);
+      const nextText = mode === 'append'
+        ? `${existing?.text || ''}${text}`
+        : (text || existing?.text || '');
+      summaryByKey.set(part.key, {
+        ...part,
+        order: existing?.order ?? nextSummaryOrder++,
+        text: nextText,
+      });
+      return buildSummary();
+    };
     const buildSummary = (): string => {
-      const ordered = Array.from(summaryByIndex.entries())
-        .sort((a, b) => a[0] - b[0])
-        .map(([, text]) => (typeof text === 'string' ? text : ''))
+      const ordered = Array.from(summaryByKey.values())
+        .sort((a, b) => {
+          const aOutput = a.outputIndex ?? Number.MAX_SAFE_INTEGER;
+          const bOutput = b.outputIndex ?? Number.MAX_SAFE_INTEGER;
+          if (aOutput !== bOutput) return aOutput - bOutput;
+          if (a.summaryIndex !== b.summaryIndex) return a.summaryIndex - b.summaryIndex;
+          return a.order - b.order;
+        })
+        .map((part) => (typeof part.text === 'string' ? part.text : ''))
         .filter(Boolean);
       if (!ordered.length) return '';
       const combined = ordered.join('\n\n\n');
@@ -927,19 +972,13 @@ export async function respond(options: RespondOptions): Promise<GenerationRespon
           }
         } else if (t === 'response.reasoning_summary_text.delta') {
           const delta = event?.delta || '';
-          const idx = Number.isFinite(Number(event?.summary_index)) ? Number(event.summary_index) : 0;
-          const prev = summaryByIndex.get(idx) || '';
-          const next = typeof delta === 'string' && delta ? prev + delta : prev;
-          summaryByIndex.set(idx, next);
-          const summary = buildSummary();
-          try { onReasoningSummaryDelta?.(summary, typeof delta === 'string' ? delta : '', event); } catch { /* ignore */ }
+          if (typeof delta === 'string' && delta) {
+            const summary = upsertResponseReasoningSummary(event, delta, 'append');
+            try { onReasoningSummaryDelta?.(summary, delta, event); } catch { /* ignore */ }
+          }
         } else if (t === 'response.reasoning_summary_text.done') {
-          const idx = Number.isFinite(Number(event?.summary_index)) ? Number(event.summary_index) : 0;
           const text = typeof event?.text === 'string' ? event.text : '';
-          const existing = summaryByIndex.get(idx) || '';
-          const finalText = text || existing;
-          if (finalText) summaryByIndex.set(idx, finalText);
-          const summary = buildSummary();
+          const summary = text ? upsertResponseReasoningSummary(event, text, 'replace') : buildSummary();
           try {
             onReasoningSummaryDone?.(summary, event);
             summaryDelivered = true;

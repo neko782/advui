@@ -105,4 +105,43 @@ describe('respond stream errors', () => {
       stream: true,
     })).rejects.toThrow('Overloaded')
   })
+
+  it('keeps reasoning summary segments from separate output items around web search', async () => {
+    configureConnection('responses')
+    const reasoningDeltas: string[] = []
+    const reasoningDone: string[] = []
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(makeSseResponse([
+      'event: response.reasoning_summary_text.delta\n',
+      'data: {"type":"response.reasoning_summary_text.delta","item_id":"rs_1","output_index":0,"summary_index":0,"delta":"First pass"}\n\n',
+      'event: response.reasoning_summary_text.done\n',
+      'data: {"type":"response.reasoning_summary_text.done","item_id":"rs_1","output_index":0,"summary_index":0,"text":"First pass"}\n\n',
+      'event: response.web_search_call.completed\n',
+      'data: {"type":"response.web_search_call.completed","item_id":"ws_1","output_index":1,"action":{"type":"search","sources":[{"type":"url","url":"https://example.com"}]}}\n\n',
+      'event: response.reasoning_summary_text.delta\n',
+      'data: {"type":"response.reasoning_summary_text.delta","item_id":"rs_2","output_index":2,"summary_index":0,"delta":"Second pass"}\n\n',
+      'event: response.reasoning_summary_text.done\n',
+      'data: {"type":"response.reasoning_summary_text.done","item_id":"rs_2","output_index":2,"summary_index":0,"text":"Second pass"}\n\n',
+      'event: response.completed\n',
+      'data: {"type":"response.completed","response":{"output":[]}}\n\n',
+    ])))
+
+    const response = await respond({
+      model: 'gpt-5.4',
+      prompt: 'hi',
+      connectionId,
+      stream: true,
+      onReasoningSummaryDelta: (fullSummary) => reasoningDeltas.push(fullSummary),
+      onReasoningSummaryDone: (fullSummary) => reasoningDone.push(fullSummary),
+    })
+
+    expect(reasoningDeltas).toEqual([
+      'First pass',
+      'First pass\n\n\nSecond pass',
+    ])
+    expect(reasoningDone).toEqual([
+      'First pass',
+      'First pass\n\n\nSecond pass',
+    ])
+    expect(response.reasoningSummary).toBe('First pass\n\n\nSecond pass')
+  })
 })
