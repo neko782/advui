@@ -1088,6 +1088,20 @@ export async function respond(options: RespondOptions): Promise<GenerationRespon
       if (!serverLabel || serverLabel.toLowerCase() === 'mcp') return 'MCP';
       return serverLabel;
     };
+    // Cache item details from output_item.added (streaming events often lack them)
+    const itemCache = new Map<string, { serverLabel: string; name: string }>();
+    const getItemDetails = (event: Record<string, unknown>): { serverLabel: string; name: string } => {
+      const itemId = (typeof event?.item_id === 'string' && event.item_id) ? event.item_id : '';
+      const item = event?.item as Record<string, unknown> | undefined;
+      // Try item first, then event, then cache
+      const sl = typeof item?.server_label === 'string' ? item.server_label
+        : typeof event?.server_label === 'string' ? event.server_label
+        : itemCache.get(itemId)?.serverLabel || '';
+      const name = typeof item?.name === 'string' ? item.name
+        : typeof event?.name === 'string' ? event.name
+        : itemCache.get(itemId)?.name || '';
+      return { serverLabel: sl, name };
+    };
 
     let buffer = '';
     const processEvent = (event: Record<string, unknown>) => {
@@ -1118,6 +1132,15 @@ export async function respond(options: RespondOptions): Promise<GenerationRespon
             onReasoningSummaryDone?.(combined, event);
             summaryDelivered = true;
           } catch { /* ignore */ }
+        // ---- Cache item details when output items are added ----
+        } else if (t === 'response.output_item.added') {
+          const item = event?.item as Record<string, unknown> | undefined;
+          const itemId = typeof item?.id === 'string' ? item.id : '';
+          if (itemId && item) {
+            const sl = typeof item.server_label === 'string' ? item.server_label : '';
+            const nm = typeof item.name === 'string' ? item.name : '';
+            if (sl || nm) itemCache.set(itemId, { serverLabel: sl, name: nm });
+          }
         // ---- Web search streaming events ----
         } else if (t === 'response.web_search_call.in_progress') {
           upsertToolActivity(event, `**Web search** \u2014 *starting*`);
@@ -1179,42 +1202,34 @@ export async function respond(options: RespondOptions): Promise<GenerationRespon
           }
         // ---- MCP streaming events ----
         } else if (t === 'response.mcp_list_tools.in_progress') {
-          const item = event?.item as Record<string, unknown> | undefined;
-          const sl = formatMcpLabel(typeof (item?.server_label ?? event?.server_label) === 'string' ? (item?.server_label ?? event?.server_label) as string : '');
-          upsertToolActivity(event, `**${sl}** \u2014 *discovering tools*`);
+          const d = getItemDetails(event);
+          upsertToolActivity(event, `**${formatMcpLabel(d.serverLabel)}** \u2014 *discovering tools*`);
           emitToolActivityDelta(event);
         } else if (t === 'response.mcp_list_tools.completed') {
+          const d = getItemDetails(event);
           const item = event?.item as Record<string, unknown> | undefined;
-          const sl = formatMcpLabel(typeof (item?.server_label ?? event?.server_label) === 'string' ? (item?.server_label ?? event?.server_label) as string : '');
           const toolCount = Array.isArray(item?.tools ?? event?.tools) ? (item?.tools ?? event?.tools as unknown[]).length : 0;
-          upsertToolActivity(event, `**${sl}** discovered ${toolCount} tools \u2014 *completed*`);
+          upsertToolActivity(event, `**${formatMcpLabel(d.serverLabel)}** discovered ${toolCount} tools \u2014 *completed*`);
           emitToolActivityDelta(event);
         } else if (t === 'response.mcp_call.in_progress') {
-          const item = event?.item as Record<string, unknown> | undefined;
-          const sl = formatMcpLabel(typeof (item?.server_label ?? event?.server_label) === 'string' ? (item?.server_label ?? event?.server_label) as string : '');
-          const name = typeof (item?.name ?? event?.name) === 'string' ? (item?.name ?? event?.name) as string : '';
-          upsertToolActivity(event, `**${sl}** ${name ? `\`${name}\`` : ''} \u2014 *calling*`);
+          const d = getItemDetails(event);
+          upsertToolActivity(event, `**${formatMcpLabel(d.serverLabel)}** ${d.name ? `\`${d.name}\`` : ''} \u2014 *calling*`);
           emitToolActivityDelta(event);
         } else if (t === 'response.mcp_call_arguments.delta') {
           // no-op for args streaming
         } else if (t === 'response.mcp_call_arguments.done') {
-          const item = event?.item as Record<string, unknown> | undefined;
-          const sl = formatMcpLabel(typeof (item?.server_label ?? event?.server_label) === 'string' ? (item?.server_label ?? event?.server_label) as string : '');
-          const name = typeof (item?.name ?? event?.name) === 'string' ? (item?.name ?? event?.name) as string : '';
-          upsertToolActivity(event, `**${sl}** ${name ? `\`${name}\`` : ''} \u2014 *executing*`);
+          const d = getItemDetails(event);
+          upsertToolActivity(event, `**${formatMcpLabel(d.serverLabel)}** ${d.name ? `\`${d.name}\`` : ''} \u2014 *executing*`);
           emitToolActivityDelta(event);
         } else if (t === 'response.mcp_call.completed') {
-          const item = event?.item as Record<string, unknown> | undefined;
-          const sl = formatMcpLabel(typeof (item?.server_label ?? event?.server_label) === 'string' ? (item?.server_label ?? event?.server_label) as string : '');
-          const name = typeof (item?.name ?? event?.name) === 'string' ? (item?.name ?? event?.name) as string : '';
-          upsertToolActivity(event, `**${sl}** ${name ? `\`${name}\`` : ''} \u2014 *completed*`);
+          const d = getItemDetails(event);
+          upsertToolActivity(event, `**${formatMcpLabel(d.serverLabel)}** ${d.name ? `\`${d.name}\`` : ''} \u2014 *completed*`);
           emitToolActivityDelta(event);
         } else if (t === 'response.mcp_call.failed') {
+          const d = getItemDetails(event);
           const item = event?.item as Record<string, unknown> | undefined;
-          const sl = formatMcpLabel(typeof (item?.server_label ?? event?.server_label) === 'string' ? (item?.server_label ?? event?.server_label) as string : '');
-          const name = typeof (item?.name ?? event?.name) === 'string' ? (item?.name ?? event?.name) as string : '';
           const error = typeof (item?.error ?? event?.error) === 'string' ? (item?.error ?? event?.error) as string : '';
-          upsertToolActivity(event, `**${sl}** ${name ? `\`${name}\`` : ''} \u2014 *failed*${error ? ` (${error})` : ''}`);
+          upsertToolActivity(event, `**${formatMcpLabel(d.serverLabel)}** ${d.name ? `\`${d.name}\`` : ''} \u2014 *failed*${error ? ` (${error})` : ''}`);
           emitToolActivityDelta(event);
         // ---- Response completion ----
         } else if (t === 'response.completed' || t === 'response.text.done' || t === 'response.done') {
@@ -1279,6 +1294,47 @@ export async function respond(options: RespondOptions): Promise<GenerationRespon
                     });
                   }
                 }
+              }
+            }
+          }
+          // Update tool activity with final details from completed output
+          if (Array.isArray(output)) {
+            for (let idx = 0; idx < output.length; idx++) {
+              const outItem = output[idx];
+              const outType = typeof outItem?.type === 'string' ? outItem.type : '';
+              const outId = typeof outItem?.id === 'string' ? outItem.id : '';
+              if (!outId) continue;
+              if (outType === 'mcp_list_tools') {
+                const sl = formatMcpLabel(typeof outItem.server_label === 'string' ? outItem.server_label : '');
+                const tools = Array.isArray(outItem.tools) ? outItem.tools : [];
+                const existing = toolActivityByKey.get(outId);
+                toolActivityByKey.set(outId, { key: outId, outputIndex: idx, order: existing?.order ?? nextToolOrder++, text: `**${sl}** discovered ${tools.length} tools \u2014 *completed*` });
+              } else if (outType === 'mcp_call') {
+                const sl = formatMcpLabel(typeof outItem.server_label === 'string' ? outItem.server_label : '');
+                const name = typeof outItem.name === 'string' ? outItem.name : '';
+                const status = typeof outItem.status === 'string' ? outItem.status : 'completed';
+                const error = typeof outItem.error === 'string' ? outItem.error : '';
+                const existing = toolActivityByKey.get(outId);
+                let text = `**${sl}** ${name ? `\`${name}\`` : ''} \u2014 *${status}*`;
+                if (error) text += ` (${error})`;
+                toolActivityByKey.set(outId, { key: outId, outputIndex: idx, order: existing?.order ?? nextToolOrder++, text });
+              } else if (outType === 'web_search_call') {
+                const action = outItem.action as Record<string, unknown> | undefined;
+                const query = typeof action?.query === 'string' ? action.query : '';
+                const sources = Array.isArray(action?.sources) ? action.sources as unknown[] : [];
+                const existing = toolActivityByKey.get(outId);
+                let text = `**Web search** ${query ? `"${query}"` : ''} \u2014 *completed*`;
+                if (sources.length) text += ` (${sources.length} sources)`;
+                toolActivityByKey.set(outId, { key: outId, outputIndex: idx, order: existing?.order ?? nextToolOrder++, text });
+              } else if (outType === 'code_interpreter_call') {
+                const existing = toolActivityByKey.get(outId);
+                toolActivityByKey.set(outId, { key: outId, outputIndex: idx, order: existing?.order ?? nextToolOrder++, text: `**Code interpreter** \u2014 *completed*` });
+              } else if (outType === 'shell_call') {
+                const existing = toolActivityByKey.get(outId);
+                toolActivityByKey.set(outId, { key: outId, outputIndex: idx, order: existing?.order ?? nextToolOrder++, text: `**Shell** \u2014 *completed*` });
+              } else if (outType === 'image_generation_call') {
+                const existing = toolActivityByKey.get(outId);
+                toolActivityByKey.set(outId, { key: outId, outputIndex: idx, order: existing?.order ?? nextToolOrder++, text: `**Image generation** \u2014 *completed*` });
               }
             }
           }
@@ -1357,13 +1413,9 @@ export async function respond(options: RespondOptions): Promise<GenerationRespon
       } catch { /* ignore */ }
     }
     const mcpItems = extractMcpItems({ output: completedResponseOutput || [] });
-    // Build final tool activity from completed response output for permanent record
-    const finalToolActivity = buildToolActivityFromOutput(completedResponseOutput || []);
-    const finalReasoning = buildSummary();
-    const finalSummary = [finalToolActivity, finalReasoning].filter(Boolean).join('\n\n---\n\n');
     return {
       text: full,
-      reasoningSummary: finalSummary,
+      reasoningSummary: buildCombinedSummary(),
       webSearchResult: (webSearchCitations.length > 0 || webSearchSources.length > 0)
         ? { citations: webSearchCitations, sources: webSearchSources }
         : undefined,
@@ -1473,7 +1525,6 @@ export async function respond(options: RespondOptions): Promise<GenerationRespon
 
     const res = await response.json();
     const text = extractOutputText(res);
-    const reasoning = extractReasoningSummary(res);
     const webSearchResult = extractWebSearchResult(res);
     const generatedImages = extractGeneratedImages(res);
     const mcpItems = extractMcpItems(res);
@@ -1481,8 +1532,7 @@ export async function respond(options: RespondOptions): Promise<GenerationRespon
     const outputArr = Array.isArray(resObj?.output) ? resObj.output as unknown[]
       : Array.isArray((resObj?.response as Record<string, unknown>)?.output)
         ? (resObj.response as Record<string, unknown>).output as unknown[] : [];
-    const toolActivity = buildToolActivityFromOutput(outputArr);
-    const summary = [toolActivity, reasoning].filter(Boolean).join('\n\n---\n\n');
+    const summary = buildInterleavedFromOutput(outputArr);
     if (summary) {
       try { onReasoningSummaryDone?.(summary, null); } catch { /* ignore */ }
     }
@@ -1852,6 +1902,57 @@ function extractGeneratedImages(res: unknown): GeneratedImage[] | undefined {
 function formatMcpLabelStatic(serverLabel: string): string {
   if (!serverLabel || serverLabel.toLowerCase() === 'mcp') return 'MCP';
   return serverLabel;
+}
+
+function buildInterleavedFromOutput(output: unknown[]): string {
+  if (!Array.isArray(output) || !output.length) return '';
+  const parts: string[] = [];
+  for (const item of output as Array<Record<string, unknown>>) {
+    const type = typeof item?.type === 'string' ? item.type : '';
+    if (type === 'reasoning') {
+      const summaries = Array.isArray(item.summary) ? item.summary : [];
+      for (const part of summaries as Array<Record<string, unknown>>) {
+        if (part && typeof part.text === 'string' && part.text) parts.push(part.text);
+      }
+    } else {
+      const line = buildToolLineFromItem(item);
+      if (line) parts.push(line);
+    }
+  }
+  if (!parts.length) return '';
+  return normalizeReasoningText(parts.join('\n\n'));
+}
+
+function buildToolLineFromItem(item: Record<string, unknown>): string {
+  const type = typeof item?.type === 'string' ? item.type : '';
+  if (type === 'web_search_call') {
+    const action = item.action as Record<string, unknown> | undefined;
+    const query = typeof action?.query === 'string' ? action.query : '';
+    const sources = Array.isArray(action?.sources) ? action.sources as unknown[] : [];
+    const status = typeof item.status === 'string' ? item.status : 'completed';
+    let line = `**Web search** ${query ? `"${query}"` : ''} \u2014 *${status}*`;
+    if (sources.length) line += ` (${sources.length} sources)`;
+    return line;
+  } else if (type === 'code_interpreter_call') {
+    return `**Code interpreter** \u2014 *${typeof item.status === 'string' ? item.status : 'completed'}*`;
+  } else if (type === 'shell_call') {
+    return `**Shell** \u2014 *${typeof item.status === 'string' ? item.status : 'completed'}*`;
+  } else if (type === 'image_generation_call') {
+    return `**Image generation** \u2014 *${typeof item.status === 'string' ? item.status : 'completed'}*`;
+  } else if (type === 'mcp_list_tools') {
+    const sl = formatMcpLabelStatic(typeof item.server_label === 'string' ? item.server_label : '');
+    const tools = Array.isArray(item.tools) ? item.tools : [];
+    return `**${sl}** discovered ${tools.length} tools \u2014 *completed*`;
+  } else if (type === 'mcp_call') {
+    const sl = formatMcpLabelStatic(typeof item.server_label === 'string' ? item.server_label : '');
+    const name = typeof item.name === 'string' ? item.name : '';
+    const status = typeof item.status === 'string' ? item.status : 'completed';
+    const error = typeof item.error === 'string' ? item.error : '';
+    let line = `**${sl}** ${name ? `\`${name}\`` : ''} \u2014 *${status}*`;
+    if (error) line += ` (${error})`;
+    return line;
+  }
+  return '';
 }
 
 function buildToolActivityFromOutput(output: unknown[]): string {

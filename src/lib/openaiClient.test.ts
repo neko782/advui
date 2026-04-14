@@ -144,8 +144,8 @@ describe('respond stream errors', () => {
       'First pass',
       'First pass\n\n**Web search** \u2014 *completed*\n\nSecond pass',
     ])
-    // Final response uses output-based tool activity (empty output = no tool activity prefix)
-    expect(response.reasoningSummary).toBe('First pass\n\n\nSecond pass')
+    // Final response preserves tool activity interleaved with reasoning
+    expect(response.reasoningSummary).toBe('First pass\n\n**Web search** \u2014 *completed*\n\nSecond pass')
   })
 
   it('adds code interpreter to Responses API tools', async () => {
