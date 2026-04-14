@@ -1208,8 +1208,9 @@ export async function respond(options: RespondOptions): Promise<GenerationRespon
         } else if (t === 'response.mcp_list_tools.completed') {
           const d = getItemDetails(event);
           const item = event?.item as Record<string, unknown> | undefined;
-          const toolCount = Array.isArray(item?.tools ?? event?.tools) ? (item?.tools ?? event?.tools as unknown[]).length : 0;
-          upsertToolActivity(event, `**${formatMcpLabel(d.serverLabel)}** discovered ${toolCount} tools \u2014 *completed*`);
+          const toolsArr = item?.tools ?? event?.tools;
+          const hasCount = Array.isArray(toolsArr) && toolsArr.length > 0;
+          upsertToolActivity(event, `**${formatMcpLabel(d.serverLabel)}** ${hasCount ? `discovered ${toolsArr.length} tools` : 'tools discovered'} \u2014 *completed*`);
           emitToolActivityDelta(event);
         } else if (t === 'response.mcp_call.in_progress') {
           const d = getItemDetails(event);
