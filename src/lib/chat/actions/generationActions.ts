@@ -487,7 +487,7 @@ export async function generateResponse(options: GenerateResponseOptions): Promis
       }
     : undefined;
 
-  const mcpServers = chatSettings.mcpEnabled !== false
+  const mcpServers = !!chatSettings.mcpEnabled
     ? normalizeMcpServerList(chatSettings.mcpServers).filter(server => server.url)
     : [];
 

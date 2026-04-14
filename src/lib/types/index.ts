@@ -206,6 +206,9 @@ export interface Preset {
   // Image Generation settings (Responses API only)
   imageGenerationEnabled?: boolean;
   imageGenerationModel?: string;  // Model for image generation tool (e.g., gpt-image-1)
+  // MCP settings (Responses API only)
+  mcpEnabled?: boolean;
+  mcpServers?: McpServerConfig[];
 }
 
 export interface PresetFields {
@@ -240,6 +243,9 @@ export interface PresetFields {
   // Image Generation settings (Responses API only)
   imageGenerationEnabled?: boolean;
   imageGenerationModel?: string;
+  // MCP settings (Responses API only)
+  mcpEnabled?: boolean;
+  mcpServers?: McpServerConfig[];
 }
 
 // ============================================================================
@@ -305,7 +311,7 @@ export const DEFAULT_TOOL_SETTINGS: DefaultToolSettings = {
   codeInterpreter: true,
   shell: true,
   imageGeneration: true,
-  mcp: true,
+  mcp: false,
 };
 
 // ============================================================================

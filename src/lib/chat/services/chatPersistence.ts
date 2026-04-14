@@ -252,6 +252,7 @@ export function computePersistSig(nodes: ChatNode[], chatSettings: ChatSettings,
         imageGenerationEnabled: !!chatSettings?.imageGenerationEnabled,
         imageGenerationModel: chatSettings?.imageGenerationModel || '',
         // MCP settings
+        mcpEnabled: !!chatSettings?.mcpEnabled,
         mcpServers: JSON.stringify(Array.isArray(chatSettings?.mcpServers) ? chatSettings.mcpServers : []),
       },
       rootId,

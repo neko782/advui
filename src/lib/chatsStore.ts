@@ -307,6 +307,7 @@ export async function saveChatContent(
         imageGenerationEnabled: !!pickSetting('imageGenerationEnabled'),
         imageGenerationModel: pickSetting('imageGenerationModel') || undefined,
         // MCP settings
+        mcpEnabled: !!pickSetting('mcpEnabled'),
         mcpServers: normalizeMcpServerList(pickSetting('mcpServers')),
       };
       const nextNodesCandidate = Array.isArray(nodes) ? nodes : (existing?.nodes || []);
@@ -500,6 +501,9 @@ export async function createChat(initial: CreateChatOptions = {}): Promise<{ id:
       // Image Generation settings
       imageGenerationEnabled: hasOwn(initial?.settings || {}, 'imageGenerationEnabled') ? !!initial.settings!.imageGenerationEnabled : !!preferredPreset.imageGenerationEnabled,
       imageGenerationModel: (hasOwn(initial?.settings || {}, 'imageGenerationModel') ? initial.settings!.imageGenerationModel : preferredPreset.imageGenerationModel) || undefined,
+      // MCP settings
+      mcpEnabled: hasOwn(initial?.settings || {}, 'mcpEnabled') ? !!initial.settings!.mcpEnabled : !!preferredPreset.mcpEnabled,
+      mcpServers: normalizeMcpServerList(hasOwn(initial?.settings || {}, 'mcpServers') ? initial.settings!.mcpServers : preferredPreset.mcpServers),
     },
     nodes: baseNodes,
     rootId,

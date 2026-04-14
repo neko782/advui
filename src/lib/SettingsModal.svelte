@@ -440,6 +440,8 @@
       shellAllowedDomains: base?.shellAllowedDomains,
       imageGenerationEnabled: !!base?.imageGenerationEnabled,
       imageGenerationModel: base?.imageGenerationModel,
+      mcpEnabled: !!base?.mcpEnabled,
+      mcpServers: Array.isArray(base?.mcpServers) ? base.mcpServers.map(server => ({ label: server?.label || '', url: server?.url || '' })) : [],
       systemPrompt: typeof base?.systemPrompt === 'string' ? base.systemPrompt : DEFAULT_SYSTEM_PROMPT,
     }
     local.presets = [...list, preset]
@@ -464,6 +466,7 @@
         updatedPatch.codeInterpreterEnabled = false
         updatedPatch.shellEnabled = false
         updatedPatch.imageGenerationEnabled = false
+        updatedPatch.mcpEnabled = false
       }
     }
     
@@ -545,6 +548,7 @@
               codeInterpreterEnabled: false,
               shellEnabled: false,
               imageGenerationEnabled: false,
+              mcpEnabled: false,
             }
           }
           return p
@@ -1424,6 +1428,61 @@
                         />
                       </label>
                     {/if}
+                    <label class="switch" title="MCP (Responses API only)">
+                      <input
+                        type="checkbox"
+                        checked={!!activePreset.mcpEnabled}
+                        onchange={(event) => updateActivePreset({ mcpEnabled: !!event.currentTarget.checked })}
+                        aria-label="MCP"
+                      />
+                      <span class="switch-ui" aria-hidden="true"></span>
+                      <span class="switch-label">MCP</span>
+                    </label>
+                    {#if activePreset.mcpEnabled}
+                      <div class="tool-network-settings mcp-settings">
+                        {#if activePreset.mcpServers?.length}
+                          {#each activePreset.mcpServers as server, index (index)}
+                            <div class="mcp-server-row">
+                              <input
+                                type="text"
+                                placeholder="https://example.com/mcp"
+                                value={server?.url || ''}
+                                oninput={(event) => updateActivePreset({
+                                  mcpServers: (activePreset.mcpServers || []).map((entry, entryIndex) => (
+                                    entryIndex === index
+                                      ? { ...entry, url: event.currentTarget.value }
+                                      : entry
+                                  )),
+                                })}
+                                aria-label={`MCP server URL ${index + 1}`}
+                              />
+                              <button
+                                type="button"
+                                class="mcp-remove-btn"
+                                onclick={() => updateActivePreset({
+                                  mcpServers: (activePreset.mcpServers || []).filter((_, entryIndex) => entryIndex !== index),
+                                })}
+                                aria-label={`Remove MCP server ${index + 1}`}
+                                title="Remove MCP server"
+                              >
+                                <IconDelete style="font-size: 14px;" />
+                              </button>
+                            </div>
+                          {/each}
+                        {:else}
+                          <div class="field-hint">No servers configured.</div>
+                        {/if}
+                        <button
+                          type="button"
+                          class="reset-btn mcp-add-btn"
+                          onclick={() => updateActivePreset({
+                            mcpServers: [...(activePreset.mcpServers || []), { label: '', url: '' }],
+                          })}
+                        >
+                          Add MCP server
+                        </button>
+                      </div>
+                    {/if}
                   {/if}
                   <label class="field">
                     <span>Text verbosity</span>
@@ -1966,6 +2025,41 @@
     padding: 10px 12px;
     margin-left: 12px;
     border-left: 2px solid var(--border);
+  }
+  .mcp-settings {
+    gap: 8px;
+  }
+  .mcp-server-row {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 8px;
+    align-items: center;
+  }
+  .mcp-remove-btn {
+    width: 36px;
+    height: 36px;
+    display: grid;
+    place-items: center;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--panel);
+    color: #d64545;
+    cursor: pointer;
+    transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+  }
+  .mcp-remove-btn:hover {
+    background: color-mix(in srgb, #d64545 8%, var(--panel));
+    border-color: color-mix(in srgb, #d64545 35%, var(--border));
+  }
+  .mcp-remove-btn:active {
+    transform: scale(0.96);
+  }
+  .mcp-add-btn {
+    width: fit-content;
+  }
+  .field-hint {
+    color: var(--muted);
+    font-size: 0.85rem;
   }
   .field { display: grid; gap: 6px; }
   .field > span {

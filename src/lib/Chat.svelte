@@ -140,7 +140,8 @@
     thinkingEnabled: initialPreset.thinkingEnabled,
     thinkingBudgetTokens: initialPreset.thinkingBudgetTokens,
     connectionId: initialConnectionId,
-    mcpServers: [],
+    mcpEnabled: !!initialPreset.mcpEnabled,
+    mcpServers: initialPreset.mcpServers || [],
   })
 
   let chatSettingsOpen = $state(false)
@@ -1701,6 +1702,9 @@
       // Image Generation settings
       imageGenerationEnabled: typeof preset.imageGenerationEnabled === 'boolean' ? preset.imageGenerationEnabled : chatSettings.imageGenerationEnabled,
       imageGenerationModel: preset.imageGenerationModel ?? chatSettings.imageGenerationModel,
+      // MCP settings
+      mcpEnabled: typeof preset.mcpEnabled === 'boolean' ? preset.mcpEnabled : chatSettings.mcpEnabled,
+      mcpServers: preset.mcpServers ?? chatSettings.mcpServers,
     }
     persistNow()
   }
@@ -1979,6 +1983,7 @@
           codeInterpreterEnabled: false,
           shellEnabled: false,
           imageGenerationEnabled: false,
+          mcpEnabled: false,
         }
       } else {
         chatSettings = { ...chatSettings, connectionId: newConnectionId }

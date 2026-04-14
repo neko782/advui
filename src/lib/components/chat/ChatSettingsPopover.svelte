@@ -260,12 +260,12 @@
           <div class="menu-section">
             <div class="tool-header-row">
               <label class="switch">
-                <input type="checkbox" checked={props.mcpEnabled !== false} disabled={props.disabled}
+                <input type="checkbox" checked={!!props.mcpEnabled} disabled={props.disabled}
                   onchange={(e) => (!props.disabled && props.onInputMcpEnabled?.(e.currentTarget.checked))} aria-label="MCP" />
                 <span class="switch-ui" aria-hidden="true"></span>
                 <span class="switch-label">MCP</span>
               </label>
-              {#if props.mcpEnabled !== false}
+              {#if props.mcpEnabled}
                 <button type="button" class="tool-settings-btn"
                   bind:this={toolPopupBtnEls['mcp']}
                   onclick={() => toggleToolPopup('mcp', toolPopupBtnEls['mcp'])}

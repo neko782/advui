@@ -52,6 +52,9 @@ export const DEFAULT_PRESET_FIELDS: PresetFields = {
   // Image Generation defaults
   imageGenerationEnabled: false,
   imageGenerationModel: undefined,
+  // MCP defaults
+  mcpEnabled: false,
+  mcpServers: [],
 };
 
 export function generatePresetId(): string {
@@ -145,6 +148,10 @@ export function normalizePreset(
   const imageGenerationEnabled = typeof base.imageGenerationEnabled === 'boolean' ? base.imageGenerationEnabled : false;
   const imageGenerationModel = typeof base.imageGenerationModel === 'string' ? base.imageGenerationModel : undefined;
 
+  // MCP settings
+  const mcpEnabled = typeof base.mcpEnabled === 'boolean' ? base.mcpEnabled : false;
+  const mcpServers = normalizeMcpServerList(base.mcpServers);
+
   const result: Preset = {
     id,
     model,
@@ -178,6 +185,9 @@ export function normalizePreset(
     // Image Generation settings
     imageGenerationEnabled,
     imageGenerationModel,
+    // MCP settings
+    mcpEnabled,
+    mcpServers,
   };
 
   // Only include name if it was explicitly provided or if generating for a list
@@ -376,7 +386,8 @@ export function buildChatSettings(preset: Preset, settings: Partial<Settings> | 
     imageGenerationEnabled: !!preset.imageGenerationEnabled,
     imageGenerationModel: preset.imageGenerationModel,
     // MCP settings
-    mcpServers: [],
+    mcpEnabled: !!preset.mcpEnabled,
+    mcpServers: normalizeMcpServerList(preset.mcpServers),
   };
 }
 
@@ -436,6 +447,7 @@ export function loadChatSettings(
     imageGenerationEnabled: has('imageGenerationEnabled') ? !!s.imageGenerationEnabled : !!preset.imageGenerationEnabled,
     imageGenerationModel: has('imageGenerationModel') ? s.imageGenerationModel : preset.imageGenerationModel,
     // MCP settings
-    mcpServers: normalizeMcpServerList(has('mcpServers') ? s.mcpServers : []),
+    mcpEnabled: has('mcpEnabled') ? !!s.mcpEnabled : !!preset.mcpEnabled,
+    mcpServers: normalizeMcpServerList(has('mcpServers') ? s.mcpServers : preset.mcpServers),
   };
 }
