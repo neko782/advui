@@ -3,6 +3,7 @@
 
 import { loadSettings, findConnection } from './settingsStore.js';
 import { toIntOrNull, toClampedNumber } from './utils/numbers.js';
+import { DEFAULT_MODEL } from './utils/presetHelpers.js';
 import type {
   Settings,
   Connection,
@@ -164,11 +165,11 @@ export async function getClient(options: {
 function pickActivePreset(settings: Settings | null): { model: string; streaming: boolean; connectionId: string | null } {
   const list = Array.isArray(settings?.presets) ? settings.presets : [];
   const fallbackConnectionId = typeof settings?.selectedConnectionId === 'string' ? settings.selectedConnectionId : null;
-  if (!list.length) return { model: 'gpt-5', streaming: true, connectionId: fallbackConnectionId };
+  if (!list.length) return { model: DEFAULT_MODEL, streaming: true, connectionId: fallbackConnectionId };
   const selected = typeof settings?.selectedPresetId === 'string'
     ? list.find(p => p?.id === settings.selectedPresetId)
     : null;
-  return selected || list[0] || { model: 'gpt-5', streaming: true, connectionId: fallbackConnectionId };
+  return selected || list[0] || { model: DEFAULT_MODEL, streaming: true, connectionId: fallbackConnectionId };
 }
 
 type ContentPart = 
@@ -420,7 +421,7 @@ export async function respond(options: RespondOptions): Promise<GenerationRespon
 
   const settings = loadSettings();
   const preset = pickActivePreset(settings);
-  const useModel = optModel || preset?.model || 'gpt-5';
+  const useModel = optModel || preset?.model || DEFAULT_MODEL;
   const preferredConnectionId = typeof connectionId === 'string' && connectionId.trim()
     ? connectionId.trim()
     : (typeof preset?.connectionId === 'string' && preset.connectionId.trim()

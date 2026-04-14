@@ -13,7 +13,7 @@ import {
 } from './storage.js';
 import { toIntOrNull, toClampedNumber } from './utils/numbers.js';
 import { safeRead, safeWrite } from './utils/localStorageHelper.js';
-import { resolvePreset, DEFAULT_SYSTEM_PROMPT, computeConnectionId } from './utils/presetHelpers.js';
+import { resolvePreset, DEFAULT_MODEL, DEFAULT_SYSTEM_PROMPT, computeConnectionId } from './utils/presetHelpers.js';
 import { normalizeReasoning, normalizeVerbosity, normalizeReasoningSummary } from './utils/validation.js';
 import type { Chat, ChatListItem, ChatNode, ChatSettings, ChatSelection, MessageVariant } from './types/index.js';
 import { hasOwn, normalizeMcpServerList } from './types/index.js';
@@ -276,7 +276,7 @@ export async function saveChatContent(
         settings: defaults,
       });
       const baseSettings: ChatSettings = {
-        model: (settings?.model || existing?.settings?.model || basePreset.model || 'gpt-5'),
+        model: (settings?.model || existing?.settings?.model || basePreset.model || DEFAULT_MODEL),
         streaming: (typeof settings?.streaming === 'boolean')
           ? settings.streaming
           : (typeof existing?.settings?.streaming === 'boolean'
@@ -468,7 +468,7 @@ export async function createChat(initial: CreateChatOptions = {}): Promise<{ id:
     title: initial?.title || computeTitleFromNodes(baseNodes, rootId),
     updatedAt: initial?.updatedAt || Date.now(),
     settings: {
-      model: initial?.settings?.model || initial?.model || preferredPreset.model || 'gpt-5',
+      model: initial?.settings?.model || initial?.model || preferredPreset.model || DEFAULT_MODEL,
       streaming: (typeof initial?.settings?.streaming === 'boolean')
         ? initial.settings.streaming
         : (typeof preferredPreset.streaming === 'boolean' ? preferredPreset.streaming : true),

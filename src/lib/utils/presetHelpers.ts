@@ -19,9 +19,10 @@ import type {
 import { isPlainObject, normalizeMcpServerList } from '../types/index.js';
 
 export const DEFAULT_SYSTEM_PROMPT = 'You are a helpful assistant.';
+export const DEFAULT_MODEL = 'gpt-5.4';
 
 export const DEFAULT_PRESET_FIELDS: PresetFields = {
-  model: 'gpt-5.1',
+  model: DEFAULT_MODEL,
   streaming: true,
   maxOutputTokens: null,
   topP: null,
@@ -405,7 +406,7 @@ export function loadChatSettings(
   const has = <K extends keyof ChatSettings>(key: K): boolean => isPlainObject(s) && key in s;
 
   return {
-    model: s.model || preset.model || 'gpt-5',
+    model: s.model || preset.model || DEFAULT_MODEL,
     streaming: typeof s.streaming === 'boolean' ? s.streaming : preset.streaming,
     presetId: (typeof loaded?.presetId === 'string') ? loaded.presetId : preset.id,
     maxOutputTokens: parseMaxTokens(has('maxOutputTokens') ? s.maxOutputTokens : preset.maxOutputTokens),

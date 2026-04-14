@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { loadChat } from './chatLoader.js'
 import * as chatsStore from '../../chatsStore.js'
 import * as settingsStore from '../../settingsStore.js'
+import { DEFAULT_MODEL } from '../../utils/presetHelpers.js'
 
 vi.mock('../../chatsStore.js', () => ({
   getChat: vi.fn(),
@@ -20,7 +21,7 @@ describe('loadChat', () => {
       presets: [
         {
           id: 'default-preset',
-          model: 'gpt-5',
+          model: DEFAULT_MODEL,
           streaming: true,
           maxOutputTokens: 1000,
           topP: 0.9,
@@ -46,7 +47,7 @@ describe('loadChat', () => {
     expect(result.rootId).toBe(1)
     expect(result.nextId).toBe(1)
     expect(result.nextNodeId).toBe(1)
-    expect(result.chatSettings.model).toBe('gpt-5')
+    expect(result.chatSettings.model).toBe(DEFAULT_MODEL)
   })
 
   it('should load chat with nodes', async () => {
@@ -208,7 +209,7 @@ describe('loadChat', () => {
         { id: 1, active: 0, variants: [{ id: 1, role: 'user', content: 'test', next: null }] }
       ],
       rootId: 1,
-      settings: { model: 'gpt-5', streaming: true }
+      settings: { model: DEFAULT_MODEL, streaming: true }
     }
     chatsStore.getChat.mockResolvedValue(loadedChat)
 
@@ -332,7 +333,7 @@ describe('loadChat', () => {
 
     const result = await loadChat(null)
 
-    expect(result.chatSettings.model).toBe('gpt-5.1')
+    expect(result.chatSettings.model).toBe(DEFAULT_MODEL)
     expect(result.chatSettings.streaming).toBe(true)
   })
 })

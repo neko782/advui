@@ -5,6 +5,7 @@
   import { IconClose, IconAdd, IconVisibility, IconVisibilityOff, IconAutorenew, IconDelete, IconDownload, IconUpload, IconDragHandle, IconTravelExplore, IconCodeBlocks, IconTerminal, IconImagesmode, IconExtension } from './icons'
   import { getThemeState, setThemeMode, subscribeTheme } from './themeStore'
   import { exportAllData, importAllData, importChat } from './utils/exportImport'
+  import { DEFAULT_MODEL, DEFAULT_SYSTEM_PROMPT } from './utils/presetHelpers'
   import { onMount } from 'svelte'
   import type { AppSettings, Preset, Connection, ThemeState, ThemeMode, ReasoningEffort, TextVerbosity, ReasoningSummary, MessageActionButton, EditorActionButton, DefaultToolSettings } from './types'
   import { DEFAULT_MESSAGE_ACTIONS, DEFAULT_EDITOR_ACTIONS, DEFAULT_TOOL_SETTINGS } from './types'
@@ -240,7 +241,6 @@
   const REASONING_OPTIONS = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh']
   const TEXT_VERBOSITY_OPTIONS = ['none', 'low', 'medium', 'high']
   const REASONING_SUMMARY_OPTIONS = ['none', 'auto', 'concise', 'detailed']
-  const DEFAULT_SYSTEM_PROMPT = 'You are a helpful assistant.'
   const SOURCE_CODE_URL = (import.meta.env.VITE_SOURCE_CODE_URL || 'https://github.com/neko782/advui').trim()
 
   function parseMaxTokens(value) {
@@ -324,7 +324,7 @@
       local.presets = [{
         id: genPresetId(),
         name: 'Preset 1',
-        model: 'gpt-5',
+        model: DEFAULT_MODEL,
       streaming: true,
       maxOutputTokens: null,
       topP: null,
@@ -406,7 +406,7 @@
 
   function addPreset() {
     const list = Array.isArray(local?.presets) ? local.presets.slice() : []
-    const base = activePreset || list[list.length - 1] || { model: 'gpt-5', streaming: true }
+    const base = activePreset || list[list.length - 1] || { model: DEFAULT_MODEL, streaming: true }
     const count = list.length + 1
     let name = `Preset ${count}`
     const names = new Set(list.map(p => p?.name).filter(Boolean))
@@ -416,7 +416,7 @@
     const preset = {
       id: genPresetId(),
       name,
-      model: base?.model || 'gpt-5',
+      model: base?.model || DEFAULT_MODEL,
       streaming: typeof base?.streaming === 'boolean' ? base.streaming : true,
       maxOutputTokens: base?.maxOutputTokens ?? null,
       topP: base?.topP ?? null,
@@ -1289,7 +1289,7 @@
                     <span>Model</span>
                     <input
                       type="text"
-                      placeholder="gpt-5"
+                      placeholder={DEFAULT_MODEL}
                       value={activePreset.model || ''}
                       oninput={(event) => updateActivePreset({ model: event.currentTarget.value })}
                       list="preset-model-suggestions"
