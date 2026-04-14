@@ -1,4 +1,4 @@
-import { Marked } from 'marked';
+import { Marked, type Token, type Tokens } from 'marked';
 import hljs from 'highlight.js/lib/core';
 
 // 25 most common languages
@@ -93,54 +93,79 @@ function sanitizeLinkHref(href: unknown): string {
   return '#';
 }
 
+function normalizeLanguageClass(label: string): string {
+  const normalized = label.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, '-');
+  return normalized || 'text';
+}
+
+interface HighlightedCodeBlock {
+  codeHtml: string;
+  langLabel: string;
+  langClass: string;
+}
+
+function highlightCodeBlock(rawCode: string, specifiedLang = ''): HighlightedCodeBlock {
+  const requestedLang = specifiedLang.trim();
+  const skipHighlight = (
+    rawCode.length > MAX_HIGHLIGHT_CHARS ||
+    rawCode.split(/\r?\n/).length > MAX_HIGHLIGHT_LINES
+  );
+
+  let codeHtml = rawCode;
+  let langLabel = requestedLang;
+
+  if (!skipHighlight) {
+    if (requestedLang && hljs.getLanguage(requestedLang)) {
+      try {
+        codeHtml = hljs.highlight(rawCode, { language: requestedLang, ignoreIllegals: true }).value;
+      } catch {
+        codeHtml = escapeHtml(rawCode);
+      }
+    } else if (!requestedLang) {
+      try {
+        const result = hljs.highlightAuto(rawCode);
+        codeHtml = result.value;
+        langLabel = result.language || 'text';
+      } catch {
+        codeHtml = escapeHtml(rawCode);
+        langLabel = 'text';
+      }
+    } else {
+      codeHtml = escapeHtml(rawCode);
+    }
+  } else {
+    codeHtml = escapeHtml(rawCode);
+  }
+
+  if (!langLabel) {
+    langLabel = 'text';
+  }
+
+  return {
+    codeHtml,
+    langLabel,
+    langClass: normalizeLanguageClass(langLabel),
+  };
+}
+
+function renderCodeBlockHtml(rawCode: string, specifiedLang = ''): string {
+  const highlighted = highlightCodeBlock(rawCode, specifiedLang);
+
+  return `<div class="code-block-wrapper">
+<div class="code-block-header">
+<span class="code-lang">${escapeHtml(highlighted.langLabel)}</span>
+<button type="button" class="code-copy-btn" aria-label="Copy code">Copy</button>
+</div>
+<pre><code class="hljs language-${escapeHtml(highlighted.langClass)}">${highlighted.codeHtml}</code></pre>
+</div>`;
+}
+
 // Custom renderer shared between instances
 const customRenderer = {
   renderer: {
     code(token: { text?: string; lang?: string }) {
       const rawCode = typeof token.text === 'string' ? token.text : '';
-      const specifiedLang = token.lang || '';
-      const skipHighlight = (
-        rawCode.length > MAX_HIGHLIGHT_CHARS ||
-        rawCode.split(/\r?\n/).length > MAX_HIGHLIGHT_LINES
-      );
-
-      let code = rawCode;
-      let langLabel = specifiedLang;
-
-      if (!skipHighlight) {
-        if (specifiedLang && hljs.getLanguage(specifiedLang)) {
-          try {
-            code = hljs.highlight(rawCode, { language: specifiedLang, ignoreIllegals: true }).value;
-          } catch {
-            code = escapeHtml(rawCode);
-          }
-        } else if (!specifiedLang) {
-          try {
-            const result = hljs.highlightAuto(rawCode);
-            code = result.value;
-            langLabel = result.language || 'text';
-          } catch {
-            code = escapeHtml(rawCode);
-            langLabel = 'text';
-          }
-        } else {
-          code = escapeHtml(rawCode);
-          langLabel = specifiedLang;
-        }
-      } else {
-        code = escapeHtml(rawCode);
-        if (!langLabel) {
-          langLabel = 'text';
-        }
-      }
-
-      return `<div class="code-block-wrapper">
-<div class="code-block-header">
-<span class="code-lang">${escapeHtml(langLabel)}</span>
-<button type="button" class="code-copy-btn" aria-label="Copy code">Copy</button>
-</div>
-<pre><code class="hljs language-${escapeHtml(langLabel)}">${code}</code></pre>
-</div>`;
+      return renderCodeBlockHtml(rawCode, token.lang || '');
     },
 
     link(
@@ -185,6 +210,137 @@ export interface RenderMarkdownOptions {
   cache?: boolean;
 }
 
+export interface MarkdownTableCell {
+  html: string;
+  align: Tokens.TableCell['align'];
+}
+
+export interface MarkdownHtmlBlock {
+  kind: 'html';
+  key: string;
+  html: string;
+}
+
+export interface MarkdownCodeBlock {
+  kind: 'code';
+  key: string;
+  codeHtml: string;
+  codeText: string;
+  langLabel: string;
+  langClass: string;
+}
+
+export interface MarkdownTableBlock {
+  kind: 'table';
+  key: string;
+  header: MarkdownTableCell[];
+  rows: MarkdownTableCell[][];
+}
+
+export type MarkdownBlock = MarkdownHtmlBlock | MarkdownCodeBlock | MarkdownTableBlock;
+
+export interface BuildMarkdownBlocksOptions extends RenderMarkdownOptions {
+  streaming?: boolean;
+}
+
+function withAllowHtml<T>(value: boolean, fn: () => T): T {
+  const previous = allowHtml;
+  allowHtml = value;
+  try {
+    return fn();
+  } finally {
+    allowHtml = previous;
+  }
+}
+
+function renderTokens(tokens: Token[], allowInlineHtmlValue: boolean): string {
+  return withAllowHtml(allowInlineHtmlValue, () => marked.parser(tokens) as string);
+}
+
+function renderInlineTokens(tokens: Token[], allowInlineHtmlValue: boolean): string {
+  if (!tokens.length) {
+    return '';
+  }
+
+  return withAllowHtml(
+    allowInlineHtmlValue,
+    () => marked.Parser.parseInline(tokens, marked.defaults)
+  );
+}
+
+function isRenderableToken(token: Token): boolean {
+  return token.type !== 'space' && token.type !== 'def';
+}
+
+function findLastRenderableTokenIndex(tokens: Token[]): number {
+  for (let i = tokens.length - 1; i >= 0; i -= 1) {
+    if (isRenderableToken(tokens[i])) {
+      return i;
+    }
+  }
+
+  return -1;
+}
+
+export function buildMarkdownBlocks(src: string, options: BuildMarkdownBlocksOptions = {}): MarkdownBlock[] {
+  const text = String(src || '');
+  if (!text) {
+    return [];
+  }
+
+  const tokens = marked.lexer(text);
+  const lastRenderableIndex = options.streaming ? findLastRenderableTokenIndex(tokens) : -1;
+  const blocks: MarkdownBlock[] = [];
+  let renderableIndex = 0;
+
+  for (let i = 0; i < tokens.length; i += 1) {
+    const token = tokens[i];
+    if (!isRenderableToken(token)) {
+      continue;
+    }
+
+    const key = `${renderableIndex}:${token.type}`;
+    renderableIndex += 1;
+    const allowBlockHtml = !!options.allowInlineHtml && i !== lastRenderableIndex;
+
+    if (token.type === 'code') {
+      const highlighted = highlightCodeBlock(token.text, token.lang || '');
+      blocks.push({
+        kind: 'code',
+        key,
+        codeHtml: highlighted.codeHtml,
+        codeText: token.text,
+        langLabel: highlighted.langLabel,
+        langClass: highlighted.langClass,
+      });
+      continue;
+    }
+
+    if (token.type === 'table') {
+      blocks.push({
+        kind: 'table',
+        key,
+        header: token.header.map((cell) => ({
+          html: renderInlineTokens(cell.tokens, allowBlockHtml),
+          align: cell.align,
+        })),
+        rows: token.rows.map((row) => row.map((cell) => ({
+          html: renderInlineTokens(cell.tokens, allowBlockHtml),
+          align: cell.align,
+        }))),
+      });
+      continue;
+    }
+
+    const html = renderTokens([token], allowBlockHtml);
+    if (html) {
+      blocks.push({ kind: 'html', key, html });
+    }
+  }
+
+  return blocks;
+}
+
 function wrapTables(html: string): string {
   if (!html || !html.includes('<table')) {
     return html;
@@ -196,15 +352,15 @@ function wrapTables(html: string): string {
 }
 
 export function renderMarkdown(src: string, options: RenderMarkdownOptions = {}): string {
-  allowHtml = !!options.allowInlineHtml;
   const text = String(src || '');
   const useCache = options.cache !== false && text.length <= MAX_CACHEABLE_CHARS;
+  const allowInlineHtml = !!options.allowInlineHtml;
 
   if (!useCache) {
-    return wrapTables(marked.parse(text) as string);
+    return withAllowHtml(allowInlineHtml, () => wrapTables(marked.parse(text) as string));
   }
 
-  const key = `${allowHtml ? '1' : '0'}:${text}`;
+  const key = `${allowInlineHtml ? '1' : '0'}:${text}`;
 
   // Return cached result if available
   if (cache.has(key)) {
@@ -216,7 +372,7 @@ export function renderMarkdown(src: string, options: RenderMarkdownOptions = {})
   }
 
   // Render and cache
-  const result = wrapTables(marked.parse(text) as string);
+  const result = withAllowHtml(allowInlineHtml, () => wrapTables(marked.parse(text) as string));
   cache.set(key, result);
 
   // Evict oldest entry if cache is full

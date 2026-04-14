@@ -1,7 +1,7 @@
 <script lang="ts">
   import { autoGrow } from '../../utils/dom'
-  import { renderMarkdown } from '../../utils/markdown'
   import type { Message } from '../../types'
+  import MarkdownContent from './MarkdownContent.svelte'
 
   interface Props {
     message: Message
@@ -22,24 +22,6 @@
   let showReasoning = $state(false)
   let lastSyncedEditingId = $state<number | null>(null)
   const EDIT_GROW_OPTS = { maxHeight: Number.POSITIVE_INFINITY, minHeight: 32 }
-
-  function handleBubbleClick(e: MouseEvent) {
-    const target = e.target as HTMLElement
-    if (target.classList.contains('code-copy-btn')) {
-      const wrapper = target.closest('.code-block-wrapper')
-      const codeEl = wrapper?.querySelector('pre code')
-      if (codeEl) {
-        const code = codeEl.textContent || ''
-        navigator.clipboard.writeText(code).then(() => {
-          target.textContent = 'Copied!'
-          setTimeout(() => { target.textContent = 'Copy' }, 1500)
-        }).catch(() => {
-          target.textContent = 'Failed'
-          setTimeout(() => { target.textContent = 'Copy' }, 1500)
-        })
-      }
-    }
-  }
 
 // ============================================================================
 // ATTACHMENT TYPE DETECTION & DISPLAY
@@ -286,19 +268,23 @@ const resolvedAttachments = $derived.by(() => {
       </button>
       {#if reasoningOpen}
         <div class="reasoning-body">
-          {@html renderMarkdown(reasoningSummaryText, {
-            allowInlineHtml: props.allowInlineHtml,
-            cache: !props.message.reasoningSummaryLoading,
-          })}
+          <MarkdownContent
+            content={reasoningSummaryText}
+            allowInlineHtml={props.allowInlineHtml}
+            streaming={props.message.reasoningSummaryLoading}
+          />
         </div>
       {/if}
     </div>
   {/if}
   {#if props.message.typing}
-    <!-- svelte-ignore a11y_click_events_have_key_events -->
-    <div class={`bubble ${props.message.role}`} data-typing={true} onclick={handleBubbleClick} role="button" tabindex="0">
+    <div class={`bubble ${props.message.role}`} data-typing={true}>
       {#if props.message.content && props.message.content !== 'typing'}
-          {@html renderMarkdown(props.message.content, { allowInlineHtml: props.allowInlineHtml, cache: false })}
+        <MarkdownContent
+          content={props.message.content}
+          allowInlineHtml={props.allowInlineHtml}
+          streaming={true}
+        />
       {:else}
         <span class="dots"><i></i><i></i><i></i></span>
       {/if}
@@ -380,9 +366,11 @@ const resolvedAttachments = $derived.by(() => {
       </div>
     {/if}
     {#if props.message.content}
-    <!-- svelte-ignore a11y_click_events_have_key_events -->
-    <div class={`bubble ${props.message.role}`} onclick={handleBubbleClick} role="button" tabindex="0">
-        {@html renderMarkdown(props.message.content, { allowInlineHtml: props.allowInlineHtml })}
+      <div class={`bubble ${props.message.role}`}>
+        <MarkdownContent
+          content={props.message.content}
+          allowInlineHtml={props.allowInlineHtml}
+        />
       </div>
     {/if}
     {#if props.message.generatedImages && props.message.generatedImages.length > 0}
