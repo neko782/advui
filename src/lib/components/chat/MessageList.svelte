@@ -18,6 +18,7 @@
     messageActions?: MessageActionButton[]
     editorActions?: EditorActionButton[]
     disableRoleSwitching?: boolean
+    showInsertButtons?: boolean
     followingMap?: Record<number, { has: boolean; id?: number; typing?: boolean }>
     onDismissNotice?: () => void
     onSetRole?: (id: number, role: MessageRole) => void
@@ -214,7 +215,7 @@
         style={allItemsMeasured ? `transform: translateY(${offsetY}px);` : ''}
         use:measureItem={vm.m.id}
       >
-        {#if idx > 0}
+        {#if idx > 0 && props.showInsertButtons !== false}
           <div class="insert-zone" class:disabled={props.locked} role="button" tabindex={props.locked ? -1 : 0} aria-label="Insert message here" aria-disabled={props.locked} onclick={() => !props.locked && props.onInsertBetween?.(idx - 1)} onkeydown={(e) => !props.locked && (e.key === 'Enter' || e.key === ' ') && props.onInsertBetween?.(idx - 1)}>
             <div class="insert-line"></div>
             <span class="insert-btn" aria-hidden="true"><IconAdd style="font-size: 18px;" /></span>

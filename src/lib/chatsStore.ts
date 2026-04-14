@@ -13,6 +13,7 @@ import {
 } from './storage.js';
 import { toIntOrNull, toClampedNumber } from './utils/numbers.js';
 import { safeRead, safeWrite } from './utils/localStorageHelper.js';
+import { deepClone } from './utils/immutable.js';
 import { resolvePreset, DEFAULT_MODEL, DEFAULT_SYSTEM_PROMPT, computeConnectionId } from './utils/presetHelpers.js';
 import { normalizeReasoning, normalizeVerbosity, normalizeReasoningSummary } from './utils/validation.js';
 import type { Chat, ChatListItem, ChatNode, ChatSettings, ChatSelection, MessageVariant } from './types/index.js';
@@ -373,6 +374,20 @@ export async function renameChat(id: string, title: string): Promise<Chat | null
       title: nextTitle,
       updatedAt: Date.now(),
     };
+  });
+}
+
+export async function duplicateChat(id: string): Promise<{ id: string; chat: Chat } | null> {
+  if (!id) return null;
+  const original = await getChat(id);
+  if (!original) return null;
+  const baseTitle = typeof original.title === 'string' && original.title.trim() ? original.title.trim() : 'New Chat';
+  return await createChat({
+    nodes: deepClone(original.nodes || []),
+    rootId: original.rootId,
+    settings: deepClone(original.settings || {}),
+    presetId: original.presetId || undefined,
+    title: `${baseTitle} (copy)`,
   });
 }
 

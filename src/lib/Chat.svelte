@@ -1148,11 +1148,14 @@
     const idToDelete = insertedMessageId
     cancelEdit()
     insertedMessageId = null
-    // Delete the message
-    const ok = applyChatMutation(`delete inserted ${idToDelete}`, (draft) => {
-      const result = deleteMessage(draft.nodes, draft.rootId, idToDelete)
-      return { ...draft, nodes: result.nodes, rootId: result.rootId ?? draft.rootId }
-    })
+    const ok = applyChatMutation(
+      `delete inserted ${idToDelete}`,
+      (draft) => {
+        const result = deleteMessage(draft.nodes, draft.rootId, idToDelete)
+        return { ...draft, nodes: result.nodes, rootId: result.rootId ?? draft.rootId }
+      },
+      { allowDelete: true }
+    )
     if (ok) persistNow()
   }
 
@@ -1912,6 +1915,7 @@
     messageActions={settings?.messageActions}
     editorActions={settings?.editorActions}
     disableRoleSwitching={settings?.disableRoleSwitching}
+    showInsertButtons={settings?.showInsertButtons !== false}
     followingMap={computeFollowingMap(nodes, rootId)}
     onDismissNotice={dismissNotice}
     onSetRole={(id, role) => handleSetMessageRole(id, role)}

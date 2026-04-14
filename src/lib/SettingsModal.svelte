@@ -1789,6 +1789,20 @@
                 <span class="switch-label">Add without sending button</span>
               </label>
               <p class="hint">Show a button next to send that adds a message to the chat without triggering an API response.</p>
+              <label class="switch" title="Show insert buttons between messages">
+                <input
+                  type="checkbox"
+                  checked={local.showInsertButtons !== false}
+                  onchange={(event) => {
+                    local.showInsertButtons = !!event.currentTarget.checked
+                    persistSettings()
+                  }}
+                  aria-label="Show insert buttons between messages"
+                />
+                <span class="switch-ui" aria-hidden="true"></span>
+                <span class="switch-label">Insert buttons between messages</span>
+              </label>
+              <p class="hint">Show the inline insert controls between existing messages.</p>
             </section>
 
             <section class="group">

@@ -232,6 +232,7 @@ function attachCompatFields(out: Partial<Settings> & Record<string, unknown>): S
   out.disableRoleSwitching = !!out.disableRoleSwitching;
   out.disableSendRolePopup = !!out.disableSendRolePopup;
   out.showAddWithoutSend = !!out.showAddWithoutSend;
+  out.showInsertButtons = out.showInsertButtons !== false;
   return out as Settings;
 }
 
@@ -282,6 +283,7 @@ export function loadSettings(): Settings {
     showThinkingSettings: false,
     fancyEffects: false,
     allowInlineHtml: false,
+    showInsertButtons: true,
   });
   const parsed = safeRead<Record<string, unknown> | null>(SETTINGS_KEY, null, (value) => (value && typeof value === 'object' ? value as Record<string, unknown> : null));
   if (!parsed) return defaults;
@@ -326,6 +328,7 @@ export function loadSettings(): Settings {
     const disableRoleSwitching = !!parsed?.disableRoleSwitching;
     const disableSendRolePopup = !!parsed?.disableSendRolePopup;
     const showAddWithoutSend = !!parsed?.showAddWithoutSend;
+    const showInsertButtons = parsed?.showInsertButtons !== false;
     return attachCompatFields({
       apiKey,
       apiBaseUrl,
@@ -345,6 +348,7 @@ export function loadSettings(): Settings {
       disableRoleSwitching,
       disableSendRolePopup,
       showAddWithoutSend,
+      showInsertButtons,
     });
   } catch (err) {
     console.error('Failed to load settings, falling back to defaults:', err);
@@ -392,6 +396,7 @@ export function saveSettings(next: Partial<Settings>): Settings {
   const disableRoleSwitching = !!next?.disableRoleSwitching;
   const disableSendRolePopup = !!next?.disableSendRolePopup;
   const showAddWithoutSend = !!next?.showAddWithoutSend;
+  const showInsertButtons = next?.showInsertButtons !== false;
   const data = attachCompatFields({
     apiKey: typeof next?.apiKey === 'string' ? next.apiKey : '',
     apiBaseUrl: normalizeApiBaseUrl(next?.apiBaseUrl),
@@ -411,6 +416,7 @@ export function saveSettings(next: Partial<Settings>): Settings {
     disableRoleSwitching,
     disableSendRolePopup,
     showAddWithoutSend,
+    showInsertButtons,
   });
   const ok = safeWrite(SETTINGS_KEY, data);
   if (!ok) {
@@ -418,4 +424,3 @@ export function saveSettings(next: Partial<Settings>): Settings {
   }
   return data;
 }
-

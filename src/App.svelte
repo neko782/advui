@@ -2,7 +2,7 @@
   import Chat from './lib/Chat.svelte'
   import Sidebar from './lib/components/Sidebar.svelte'
   import SettingsModal from './lib/SettingsModal.svelte'
-  import { loadAll, getChatListItems, createChat, setSelected, getChat, deleteChat, renameChat, toChatListItem, unlockAllChats } from './lib/chatsStore'
+  import { loadAll, getChatListItems, createChat, setSelected, getChat, deleteChat, renameChat, duplicateChat, toChatListItem, unlockAllChats } from './lib/chatsStore'
   import { loadSettings } from './lib/settingsStore'
   import { ensureModels } from './lib/modelsStore'
   import { initTheme } from './lib/themeStore'
@@ -285,6 +285,17 @@
     await renameChat(id, title)
     await refresh()
   }
+
+  async function onDuplicateChat(id) {
+    if (!id) return
+    const duplicated = await duplicateChat(id)
+    if (!duplicated) return
+    if (selectedId) previousSelectedId = selectedId
+    selectedId = duplicated.id
+    const summary = toChatListItem(duplicated.chat)
+    if (summary) chats = sortChats([summary, ...chats])
+    else await refresh()
+  }
 </script>
 
 <div class="app-shell">
@@ -297,6 +308,7 @@
     onSelect={onSelectChat}
     onNewChat={onNewChat}
     onDeleteChat={onDeleteChat}
+    onDuplicateChat={onDuplicateChat}
     onRenameChat={onRenameChat}
     onToggle={toggleSidebar}
     onOpenSettings={onOpenSettings}

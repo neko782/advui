@@ -289,7 +289,7 @@ export const DEFAULT_MESSAGE_ACTIONS: MessageActionButton[] = [
   { id: 'copy', label: 'Copy', enabled: true },
   { id: 'delete', label: 'Delete', enabled: true },
   { id: 'edit', label: 'Edit', enabled: true },
-  { id: 'fork', label: 'Fork', enabled: true },
+  { id: 'fork', label: 'Fork', enabled: false },
   { id: 'moveDown', label: 'Move down', enabled: true },
   { id: 'moveUp', label: 'Move up', enabled: true },
 ];
@@ -358,6 +358,7 @@ export interface Settings {
   disableRoleSwitching?: boolean;
   disableSendRolePopup?: boolean;
   showAddWithoutSend?: boolean;
+  showInsertButtons?: boolean;
 }
 
 // ============================================================================

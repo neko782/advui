@@ -1,6 +1,6 @@
 <script lang="ts">
   import { tick, onMount, onDestroy } from 'svelte'
-  import { IconMenu, IconEditSquare, IconClose, IconCheck, IconEdit, IconDelete, IconSettings, IconSearch, IconDescription, IconMoreVert, IconDownload } from '../icons'
+  import { IconMenu, IconEditSquare, IconClose, IconCheck, IconEdit, IconDelete, IconSettings, IconSearch, IconDescription, IconMoreVert, IconDownload, IconContentCopy } from '../icons'
   import ConfirmModal from './ConfirmModal.svelte'
   import EditModal from './EditModal.svelte'
   import { exportChat } from '../utils/exportImport'
@@ -16,6 +16,7 @@
     onSelect?: (id: string) => void
     onNewChat?: (options?: { presetId?: string }) => void
     onDeleteChat?: (id: string) => Promise<void>
+    onDuplicateChat?: (id: string) => Promise<void>
     onRenameChat?: (id: string, title: string) => Promise<void>
     onToggle?: () => void
     onOpenSettings?: () => void
@@ -160,6 +161,17 @@
     } catch (err) {
       console.error('Failed to export chat:', err)
       alert('Failed to export chat. Please try again.')
+    }
+  }
+
+  async function handleMenuDuplicate(chatId, event) {
+    event?.stopPropagation()
+    closeChatMenu()
+    try {
+      await props.onDuplicateChat?.(chatId)
+    } catch (err) {
+      console.error('Failed to duplicate chat:', err)
+      alert('Failed to duplicate chat. Please try again.')
     }
   }
 
@@ -629,6 +641,14 @@
                             >
                               <IconEdit style="font-size: 18px;" />
                               <span>Edit</span>
+                            </button>
+                            <button
+                              type="button"
+                              class="chat-menu-item"
+                              onclick={(e) => handleMenuDuplicate(c.id, e)}
+                            >
+                              <IconContentCopy style="font-size: 18px;" />
+                              <span>Duplicate</span>
                             </button>
                             <button
                               type="button"
