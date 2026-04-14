@@ -121,12 +121,18 @@ function ensureDataUrl(data: unknown, mimeType: string | undefined): string {
   return `data:${mime};base64,${data}`;
 }
 
+function sanitizeMcpLabel(raw: string): string {
+  // OpenAI requires: ^[A-Za-z][A-Za-z0-9_-]*$
+  const cleaned = raw.replace(/[^A-Za-z0-9_-]/g, '-').replace(/^[^A-Za-z]+/, '');
+  return cleaned || 'mcp-server';
+}
+
 function mcpLabelFromUrl(url: string): string {
   try {
     const hostname = new URL(url).hostname;
-    return hostname || url.slice(0, 40) || 'mcp';
+    return sanitizeMcpLabel(hostname || url.slice(0, 40) || 'mcp-server');
   } catch {
-    return url.slice(0, 40) || 'mcp';
+    return sanitizeMcpLabel(url.slice(0, 40) || 'mcp-server');
   }
 }
 
@@ -711,7 +717,7 @@ export async function respond(options: RespondOptions): Promise<GenerationRespon
     for (const server of normalizedMcpServers) {
       tools.push({
         type: 'mcp',
-        server_label: server.label || mcpLabelFromUrl(server.url),
+        server_label: server.label ? sanitizeMcpLabel(server.label) : mcpLabelFromUrl(server.url),
         server_url: server.url,
         require_approval: 'never',
       });
