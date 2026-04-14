@@ -134,15 +134,15 @@ describe('respond stream errors', () => {
       onReasoningSummaryDone: (fullSummary) => reasoningDone.push(fullSummary),
     })
 
-    // Reasoning deltas now include tool activity from web search events
+    // Reasoning deltas now include tool activity interleaved by output_index
     expect(reasoningDeltas).toEqual([
       'First pass',
-      '**Web search** \u2014 *completed*\n\n---\n\nFirst pass',
-      '**Web search** \u2014 *completed*\n\n---\n\nFirst pass\n\n\nSecond pass',
+      'First pass\n\n**Web search** \u2014 *completed*',
+      'First pass\n\n**Web search** \u2014 *completed*\n\nSecond pass',
     ])
     expect(reasoningDone).toEqual([
       'First pass',
-      '**Web search** \u2014 *completed*\n\n---\n\nFirst pass\n\n\nSecond pass',
+      'First pass\n\n**Web search** \u2014 *completed*\n\nSecond pass',
     ])
     // Final response uses output-based tool activity (empty output = no tool activity prefix)
     expect(response.reasoningSummary).toBe('First pass\n\n\nSecond pass')

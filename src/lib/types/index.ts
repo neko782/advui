@@ -122,6 +122,7 @@ export interface ChatSettings {
   imageGenerationEnabled?: boolean;
   imageGenerationModel?: string;
   // MCP settings (Responses API only)
+  mcpEnabled?: boolean;
   mcpServers?: McpServerConfig[];
 }
 

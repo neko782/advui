@@ -1037,30 +1037,40 @@ export async function respond(options: RespondOptions): Promise<GenerationRespon
     let imageGenerationDelivered = false;
     let completedResponseOutput: unknown[] | null = null;
 
-    // Tool activity tracking for reasoning display
+    // Tool activity tracking - interleaved with reasoning by outputIndex
     interface ToolActivityEntry {
-      type: string;
-      label: string;
-      status: string;
-      detail?: string;
+      key: string;
+      outputIndex: number | null;
+      order: number;
+      text: string;
     }
-    const toolActivity = new Map<string, ToolActivityEntry>();
-    const buildToolActivityText = (): string => {
-      if (toolActivity.size === 0) return '';
-      const lines: string[] = [];
-      for (const [, entry] of toolActivity) {
-        let line = `**${entry.label}**`;
-        if (entry.detail) line += ` ${entry.detail}`;
-        line += ` \u2014 *${entry.status}*`;
-        lines.push(line);
-      }
-      return lines.join('\n\n');
-    };
+    const toolActivityByKey = new Map<string, ToolActivityEntry>();
+    let nextToolOrder = 0;
     const buildCombinedSummary = (): string => {
-      const activity = buildToolActivityText();
-      const reasoning = buildSummary();
-      const parts = [activity, reasoning].filter(Boolean);
-      return parts.join('\n\n---\n\n');
+      const allParts: { outputIndex: number | null; order: number; text: string }[] = [];
+      for (const part of summaryByKey.values()) {
+        allParts.push({ outputIndex: part.outputIndex, order: part.order, text: part.text });
+      }
+      for (const entry of toolActivityByKey.values()) {
+        allParts.push({ outputIndex: entry.outputIndex, order: entry.order, text: entry.text });
+      }
+      allParts.sort((a, b) => {
+        const aOut = a.outputIndex ?? Number.MAX_SAFE_INTEGER;
+        const bOut = b.outputIndex ?? Number.MAX_SAFE_INTEGER;
+        if (aOut !== bOut) return aOut - bOut;
+        return a.order - b.order;
+      });
+      const texts = allParts.map(p => p.text).filter(Boolean);
+      if (!texts.length) return '';
+      return normalizeReasoningText(texts.join('\n\n'));
+    };
+    const upsertToolActivity = (event: Record<string, unknown>, text: string) => {
+      const id = (typeof event?.item_id === 'string' && event.item_id) ? event.item_id
+        : (typeof event?.id === 'string' && event.id) ? event.id
+        : `tool_${toolActivityByKey.size}`;
+      const outputIndex = Number.isFinite(Number(event?.output_index)) ? Number(event.output_index) : null;
+      const existing = toolActivityByKey.get(id);
+      toolActivityByKey.set(id, { key: id, outputIndex: existing?.outputIndex ?? outputIndex, order: existing?.order ?? nextToolOrder++, text });
     };
     const emitToolActivityDelta = (event: Record<string, unknown>) => {
       const combined = buildCombinedSummary();
@@ -1068,10 +1078,9 @@ export async function respond(options: RespondOptions): Promise<GenerationRespon
         try { onReasoningSummaryDelta?.(combined, '', event); } catch { /* ignore */ }
       }
     };
-    const resolveToolEventId = (event: Record<string, unknown>): string => {
-      return (typeof event?.item_id === 'string' && event.item_id) ? event.item_id
-        : (typeof event?.id === 'string' && event.id) ? event.id
-        : `tool_${toolActivity.size}`;
+    const formatMcpLabel = (serverLabel: string): string => {
+      if (!serverLabel || serverLabel.toLowerCase() === 'mcp') return 'MCP';
+      return serverLabel;
     };
 
     let buffer = '';
@@ -1105,143 +1114,101 @@ export async function respond(options: RespondOptions): Promise<GenerationRespon
           } catch { /* ignore */ }
         // ---- Web search streaming events ----
         } else if (t === 'response.web_search_call.in_progress') {
-          const id = resolveToolEventId(event);
-          toolActivity.set(id, { type: 'web_search', label: 'Web search', status: 'starting' });
+          upsertToolActivity(event, `**Web search** \u2014 *starting*`);
           emitToolActivityDelta(event);
         } else if (t === 'response.web_search_call.searching') {
-          const id = resolveToolEventId(event);
           const item = event?.item as Record<string, unknown> | undefined;
           const action = (item?.action || event?.action) as Record<string, unknown> | undefined;
           const query = typeof action?.query === 'string' ? action.query : '';
-          toolActivity.set(id, { type: 'web_search', label: 'Web search', status: 'searching', detail: query ? `"${query}"` : '' });
+          upsertToolActivity(event, `**Web search** ${query ? `"${query}"` : ''} \u2014 *searching*`);
           emitToolActivityDelta(event);
         } else if (t === 'response.web_search_call.completed' || t === 'web_search_call') {
-          const id = resolveToolEventId(event);
-          toolActivity.set(id, { type: 'web_search', label: 'Web search', status: 'completed' });
+          upsertToolActivity(event, `**Web search** \u2014 *completed*`);
           emitToolActivityDelta(event);
-          // Extract sources from action
           const item = event?.item as Record<string, unknown> | undefined;
           const action = (item?.action || event?.action) as Record<string, unknown> | undefined;
           if (action?.sources && Array.isArray(action.sources)) {
             for (const src of action.sources as Array<Record<string, unknown>>) {
               if (src?.url && typeof src.url === 'string') {
-                webSearchSources.push({
-                  url: src.url,
-                  title: typeof src.title === 'string' ? src.title : undefined,
-                  type: typeof src.type === 'string' ? src.type : undefined,
-                });
+                webSearchSources.push({ url: src.url, title: typeof src.title === 'string' ? src.title : undefined, type: typeof src.type === 'string' ? src.type : undefined });
               }
             }
           }
         // ---- Code interpreter streaming events ----
         } else if (t === 'response.code_interpreter_call.in_progress') {
-          const id = resolveToolEventId(event);
-          toolActivity.set(id, { type: 'code_interpreter', label: 'Code interpreter', status: 'starting' });
+          upsertToolActivity(event, `**Code interpreter** \u2014 *starting*`);
           emitToolActivityDelta(event);
         } else if (t === 'response.code_interpreter_call.interpreting') {
-          const id = resolveToolEventId(event);
-          toolActivity.set(id, { type: 'code_interpreter', label: 'Code interpreter', status: 'running' });
+          upsertToolActivity(event, `**Code interpreter** \u2014 *running*`);
           emitToolActivityDelta(event);
         } else if (t === 'response.code_interpreter_call.completed') {
-          const id = resolveToolEventId(event);
-          toolActivity.set(id, { type: 'code_interpreter', label: 'Code interpreter', status: 'completed' });
+          upsertToolActivity(event, `**Code interpreter** \u2014 *completed*`);
           emitToolActivityDelta(event);
         // ---- Shell streaming events ----
         } else if (t === 'response.shell_call.in_progress') {
-          const id = resolveToolEventId(event);
-          toolActivity.set(id, { type: 'shell', label: 'Shell', status: 'starting' });
+          upsertToolActivity(event, `**Shell** \u2014 *starting*`);
           emitToolActivityDelta(event);
         } else if (t === 'response.shell_call.executing') {
-          const id = resolveToolEventId(event);
-          toolActivity.set(id, { type: 'shell', label: 'Shell', status: 'executing' });
+          upsertToolActivity(event, `**Shell** \u2014 *executing*`);
           emitToolActivityDelta(event);
         } else if (t === 'response.shell_call.completed') {
-          const id = resolveToolEventId(event);
-          toolActivity.set(id, { type: 'shell', label: 'Shell', status: 'completed' });
+          upsertToolActivity(event, `**Shell** \u2014 *completed*`);
           emitToolActivityDelta(event);
         // ---- Image generation streaming events ----
         } else if (t === 'response.image_generation_call.in_progress') {
-          const id = resolveToolEventId(event);
-          toolActivity.set(id, { type: 'image_generation', label: 'Image generation', status: 'starting' });
+          upsertToolActivity(event, `**Image generation** \u2014 *starting*`);
           emitToolActivityDelta(event);
         } else if (t === 'response.image_generation_call.generating') {
-          const id = resolveToolEventId(event);
-          toolActivity.set(id, { type: 'image_generation', label: 'Image generation', status: 'generating' });
+          upsertToolActivity(event, `**Image generation** \u2014 *generating*`);
           emitToolActivityDelta(event);
         } else if (t === 'response.image_generation_call.completed' || t === 'image_generation_call') {
-          const id = resolveToolEventId(event);
-          toolActivity.set(id, { type: 'image_generation', label: 'Image generation', status: 'completed' });
+          upsertToolActivity(event, `**Image generation** \u2014 *completed*`);
           emitToolActivityDelta(event);
-          // Extract image data
           const item = event?.item as Record<string, unknown> | undefined;
           const result = (item?.result || event?.result) as string | undefined;
           const imgId = (item?.id || event?.id) as string | undefined;
           const revisedPrompt = (item?.revised_prompt || event?.revised_prompt) as string | undefined;
           if (result && typeof result === 'string') {
-            generatedImages.push({
-              id: imgId || `img_${Date.now()}_${generatedImages.length}`,
-              data: result,
-              revisedPrompt: revisedPrompt,
-            });
+            generatedImages.push({ id: imgId || `img_${Date.now()}_${generatedImages.length}`, data: result, revisedPrompt });
           }
         // ---- MCP streaming events ----
         } else if (t === 'response.mcp_list_tools.in_progress') {
-          const id = resolveToolEventId(event);
           const item = event?.item as Record<string, unknown> | undefined;
-          const serverLabel = typeof (item?.server_label || event?.server_label) === 'string'
-            ? (item?.server_label || event?.server_label) as string : 'MCP';
-          toolActivity.set(id, { type: 'mcp_list_tools', label: `MCP ${serverLabel}`, status: 'discovering tools' });
+          const sl = formatMcpLabel(typeof (item?.server_label ?? event?.server_label) === 'string' ? (item?.server_label ?? event?.server_label) as string : '');
+          upsertToolActivity(event, `**${sl}** \u2014 *discovering tools*`);
           emitToolActivityDelta(event);
         } else if (t === 'response.mcp_list_tools.completed') {
-          const id = resolveToolEventId(event);
           const item = event?.item as Record<string, unknown> | undefined;
-          const serverLabel = typeof (item?.server_label || event?.server_label) === 'string'
-            ? (item?.server_label || event?.server_label) as string : 'MCP';
-          const tools = Array.isArray(item?.tools || event?.tools) ? (item?.tools || event?.tools) as unknown[] : [];
-          toolActivity.set(id, { type: 'mcp_list_tools', label: `MCP ${serverLabel}`, status: 'completed', detail: `${tools.length} tools` });
+          const sl = formatMcpLabel(typeof (item?.server_label ?? event?.server_label) === 'string' ? (item?.server_label ?? event?.server_label) as string : '');
+          const toolCount = Array.isArray(item?.tools ?? event?.tools) ? (item?.tools ?? event?.tools as unknown[]).length : 0;
+          upsertToolActivity(event, `**${sl}** discovered ${toolCount} tools \u2014 *completed*`);
           emitToolActivityDelta(event);
         } else if (t === 'response.mcp_call.in_progress') {
-          const id = resolveToolEventId(event);
           const item = event?.item as Record<string, unknown> | undefined;
-          const serverLabel = typeof (item?.server_label || event?.server_label) === 'string'
-            ? (item?.server_label || event?.server_label) as string : 'MCP';
-          const name = typeof (item?.name || event?.name) === 'string'
-            ? (item?.name || event?.name) as string : '';
-          toolActivity.set(id, { type: 'mcp_call', label: `MCP ${serverLabel}`, status: 'calling', detail: name ? `\`${name}\`` : '' });
+          const sl = formatMcpLabel(typeof (item?.server_label ?? event?.server_label) === 'string' ? (item?.server_label ?? event?.server_label) as string : '');
+          const name = typeof (item?.name ?? event?.name) === 'string' ? (item?.name ?? event?.name) as string : '';
+          upsertToolActivity(event, `**${sl}** ${name ? `\`${name}\`` : ''} \u2014 *calling*`);
           emitToolActivityDelta(event);
         } else if (t === 'response.mcp_call_arguments.delta') {
-          // Arguments streaming - update detail with partial args
-          const id = resolveToolEventId(event);
-          const existing = toolActivity.get(id);
-          if (existing) {
-            toolActivity.set(id, { ...existing, status: 'calling' });
-          }
+          // no-op for args streaming
         } else if (t === 'response.mcp_call_arguments.done') {
-          const id = resolveToolEventId(event);
-          const existing = toolActivity.get(id);
-          if (existing) {
-            toolActivity.set(id, { ...existing, status: 'executing' });
-            emitToolActivityDelta(event);
-          }
-        } else if (t === 'response.mcp_call.completed') {
-          const id = resolveToolEventId(event);
           const item = event?.item as Record<string, unknown> | undefined;
-          const serverLabel = typeof (item?.server_label || event?.server_label) === 'string'
-            ? (item?.server_label || event?.server_label) as string : 'MCP';
-          const name = typeof (item?.name || event?.name) === 'string'
-            ? (item?.name || event?.name) as string : '';
-          toolActivity.set(id, { type: 'mcp_call', label: `MCP ${serverLabel}`, status: 'completed', detail: name ? `\`${name}\`` : '' });
+          const sl = formatMcpLabel(typeof (item?.server_label ?? event?.server_label) === 'string' ? (item?.server_label ?? event?.server_label) as string : '');
+          const name = typeof (item?.name ?? event?.name) === 'string' ? (item?.name ?? event?.name) as string : '';
+          upsertToolActivity(event, `**${sl}** ${name ? `\`${name}\`` : ''} \u2014 *executing*`);
+          emitToolActivityDelta(event);
+        } else if (t === 'response.mcp_call.completed') {
+          const item = event?.item as Record<string, unknown> | undefined;
+          const sl = formatMcpLabel(typeof (item?.server_label ?? event?.server_label) === 'string' ? (item?.server_label ?? event?.server_label) as string : '');
+          const name = typeof (item?.name ?? event?.name) === 'string' ? (item?.name ?? event?.name) as string : '';
+          upsertToolActivity(event, `**${sl}** ${name ? `\`${name}\`` : ''} \u2014 *completed*`);
           emitToolActivityDelta(event);
         } else if (t === 'response.mcp_call.failed') {
-          const id = resolveToolEventId(event);
           const item = event?.item as Record<string, unknown> | undefined;
-          const serverLabel = typeof (item?.server_label || event?.server_label) === 'string'
-            ? (item?.server_label || event?.server_label) as string : 'MCP';
-          const name = typeof (item?.name || event?.name) === 'string'
-            ? (item?.name || event?.name) as string : '';
-          const error = typeof (item?.error || event?.error) === 'string'
-            ? (item?.error || event?.error) as string : '';
-          toolActivity.set(id, { type: 'mcp_call', label: `MCP ${serverLabel}`, status: 'failed', detail: [name ? `\`${name}\`` : '', error].filter(Boolean).join(' ') });
+          const sl = formatMcpLabel(typeof (item?.server_label ?? event?.server_label) === 'string' ? (item?.server_label ?? event?.server_label) as string : '');
+          const name = typeof (item?.name ?? event?.name) === 'string' ? (item?.name ?? event?.name) as string : '';
+          const error = typeof (item?.error ?? event?.error) === 'string' ? (item?.error ?? event?.error) as string : '';
+          upsertToolActivity(event, `**${sl}** ${name ? `\`${name}\`` : ''} \u2014 *failed*${error ? ` (${error})` : ''}`);
           emitToolActivityDelta(event);
         // ---- Response completion ----
         } else if (t === 'response.completed' || t === 'response.text.done' || t === 'response.done') {
@@ -1876,6 +1843,11 @@ function extractGeneratedImages(res: unknown): GeneratedImage[] | undefined {
   return images;
 }
 
+function formatMcpLabelStatic(serverLabel: string): string {
+  if (!serverLabel || serverLabel.toLowerCase() === 'mcp') return 'MCP';
+  return serverLabel;
+}
+
 function buildToolActivityFromOutput(output: unknown[]): string {
   if (!Array.isArray(output) || !output.length) return '';
   const lines: string[] = [];
@@ -1901,15 +1873,15 @@ function buildToolActivityFromOutput(output: unknown[]): string {
       const status = typeof item.status === 'string' ? item.status : 'completed';
       lines.push(`**Image generation** \u2014 *${status}*`);
     } else if (type === 'mcp_list_tools') {
-      const serverLabel = typeof item.server_label === 'string' ? item.server_label : 'MCP';
+      const sl = formatMcpLabelStatic(typeof item.server_label === 'string' ? item.server_label : '');
       const tools = Array.isArray(item.tools) ? item.tools : [];
-      lines.push(`**MCP ${serverLabel}** discovered ${tools.length} tools \u2014 *completed*`);
+      lines.push(`**${sl}** discovered ${tools.length} tools \u2014 *completed*`);
     } else if (type === 'mcp_call') {
-      const serverLabel = typeof item.server_label === 'string' ? item.server_label : 'MCP';
+      const sl = formatMcpLabelStatic(typeof item.server_label === 'string' ? item.server_label : '');
       const name = typeof item.name === 'string' ? item.name : '';
       const status = typeof item.status === 'string' ? item.status : 'completed';
       const error = typeof item.error === 'string' ? item.error : '';
-      let line = `**MCP ${serverLabel}** \`${name}\` \u2014 *${status}*`;
+      let line = `**${sl}** ${name ? `\`${name}\`` : ''} \u2014 *${status}*`;
       if (error) line += ` (${error})`;
       lines.push(line);
     }

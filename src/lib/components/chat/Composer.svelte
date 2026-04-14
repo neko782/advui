@@ -29,6 +29,7 @@
     chatShellAllowedDomains?: string
     chatImageGenerationEnabled?: boolean
     chatImageGenerationModel?: string
+    chatMcpEnabled?: boolean
     chatMcpServers?: McpServerConfig[]
     modelIds?: string[]
     connections?: ConnectionOption[]
@@ -59,6 +60,7 @@
     onChangeShellAllowedDomains?: (val: string) => void
     onChangeImageGenerationEnabled?: (val: boolean) => void
     onChangeImageGenerationModel?: (val: string) => void
+    onChangeMcpEnabled?: (val: boolean) => void
     onChangeMcpServers?: (servers: McpServerConfig[]) => void
     onSelectPreset?: (preset: Preset) => void
     onInput?: (val: string) => void
@@ -307,6 +309,7 @@
         shellAllowedDomains={props.chatShellAllowedDomains}
         imageGenerationEnabled={props.chatImageGenerationEnabled}
         imageGenerationModel={props.chatImageGenerationModel}
+        mcpEnabled={props.chatMcpEnabled}
         mcpServers={props.chatMcpServers}
         modelIds={props.modelIds}
         connections={props.connections}
@@ -335,6 +338,7 @@
         onInputShellAllowedDomains={props.onChangeShellAllowedDomains}
         onInputImageGenerationEnabled={props.onChangeImageGenerationEnabled}
         onInputImageGenerationModel={props.onChangeImageGenerationModel}
+        onInputMcpEnabled={props.onChangeMcpEnabled}
         onChangeMcpServers={props.onChangeMcpServers}
         onSelectPreset={props.onSelectPreset}
       />

@@ -1956,6 +1956,7 @@
     chatShellAllowedDomains={chatSettings.shellAllowedDomains}
     chatImageGenerationEnabled={chatSettings.imageGenerationEnabled}
     chatImageGenerationModel={chatSettings.imageGenerationModel}
+    chatMcpEnabled={chatSettings.mcpEnabled}
     chatMcpServers={chatSettings.mcpServers}
     modelIds={modelIds}
     connections={connectionOptions}
@@ -2002,6 +2003,7 @@
     onChangeShellAllowedDomains={(val) => (chatSettings = { ...chatSettings, shellAllowedDomains: val || undefined })}
     onChangeImageGenerationEnabled={(val) => (chatSettings = { ...chatSettings, imageGenerationEnabled: !!val })}
     onChangeImageGenerationModel={(val) => (chatSettings = { ...chatSettings, imageGenerationModel: val || undefined })}
+    onChangeMcpEnabled={(val) => (chatSettings = { ...chatSettings, mcpEnabled: !!val })}
     onChangeMcpServers={(servers) => (chatSettings = { ...chatSettings, mcpServers: servers })}
     onSelectPreset={handleSelectPreset}
     disableSendRolePopup={settings?.disableSendRolePopup}
