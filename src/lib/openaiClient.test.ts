@@ -19,7 +19,7 @@ const localStorageMock = (() => {
 
 Object.defineProperty(globalThis, 'localStorage', { value: localStorageMock, writable: true })
 
-function configureConnection(apiMode: 'responses' | 'chat_completions') {
+function configureConnection(apiMode: 'responses' | 'chat_completions' | 'gemini') {
   saveSettings({
     connections: [
       {
@@ -236,6 +236,81 @@ describe('respond stream errors', () => {
     const [, init] = fetchMock.mock.calls[0]
     const body = JSON.parse(init.body as string)
     expect(body.tools).toBeUndefined()
+  })
+
+  it('routes Gemini thought parts into reasoning summaries', async () => {
+    configureConnection('gemini')
+    const reasoningDone: string[] = []
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      candidates: [
+        {
+          content: {
+            parts: [
+              {
+                text: 'The user said "test".\nFriendly and lighthearted assistant.\n',
+                thought: true,
+              },
+              {
+                text: 'test',
+              },
+            ],
+            role: 'model',
+          },
+          index: 0,
+        },
+      ],
+      usageMetadata: {
+        promptTokenCount: 10,
+        totalTokenCount: 24,
+        thoughtsTokenCount: 14,
+      },
+      modelVersion: 'gemma-4-31b-it',
+      responseId: '773faZb1I-KU-8YPrMTFoQw',
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    })))
+
+    const response = await respond({
+      model: 'gemma-4-31b-it',
+      prompt: 'test',
+      connectionId,
+      onReasoningSummaryDone: (fullSummary) => reasoningDone.push(fullSummary),
+    })
+
+    expect(response.text).toBe('test')
+    expect(response.reasoningSummary).toBe('The user said "test".\nFriendly and lighthearted assistant.\n')
+    expect(reasoningDone).toEqual(['The user said "test".\nFriendly and lighthearted assistant.\n'])
+  })
+
+  it('streams Gemini thought parts as reasoning summary deltas', async () => {
+    configureConnection('gemini')
+    const reasoningDeltas: string[] = []
+    const reasoningDone: string[] = []
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(makeSseResponse([
+      'data: {"candidates":[{"content":{"parts":[{"text":"The user said \\\"test\\\".\\n","thought":true}]},"index":0}]}' + '\n\n',
+      'data: {"candidates":[{"content":{"parts":[{"text":"Friendly and lighthearted assistant.\\n","thought":true}]},"index":0}]}' + '\n\n',
+      'data: {"candidates":[{"content":{"parts":[{"text":"test"}]},"index":0}]}' + '\n\n',
+    ])))
+
+    const response = await respond({
+      model: 'gemma-4-31b-it',
+      prompt: 'test',
+      connectionId,
+      stream: true,
+      onReasoningSummaryDelta: (fullSummary) => reasoningDeltas.push(fullSummary),
+      onReasoningSummaryDone: (fullSummary) => reasoningDone.push(fullSummary),
+    })
+
+    expect(response.text).toBe('test')
+    expect(response.reasoningSummary).toBe('The user said "test".\nFriendly and lighthearted assistant.\n')
+    expect(reasoningDeltas).toEqual([
+      'The user said "test".\n',
+      'The user said "test".\nFriendly and lighthearted assistant.\n',
+    ])
+    expect(reasoningDone).toEqual([
+      'The user said "test".\nFriendly and lighthearted assistant.\n',
+    ])
   })
 
   it('adds MCP servers to Responses API tools', async () => {

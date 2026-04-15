@@ -186,7 +186,7 @@ type ChatContentPart =
 
 // Gemini API types
 type GeminiPart = 
-  | { text: string }
+  | { text: string; thought?: boolean }
   | { inlineData: { mimeType: string; data: string } };
 
 interface GeminiContent {
@@ -310,42 +310,48 @@ function convertToGeminiFormat(
   return { contents, systemInstruction };
 }
 
-// Extract text from Gemini response
-function extractGeminiText(res: unknown): string {
-  const resObj = res as Record<string, unknown>;
+function extractGeminiParts(source: unknown): { text: string; reasoningSummary: string } {
+  const sourceObj = source as Record<string, unknown>;
+  let text = '';
+  let reasoningSummary = '';
+
   try {
-    const candidates = resObj?.candidates as Array<Record<string, unknown>> | undefined;
+    const candidates = sourceObj?.candidates as Array<Record<string, unknown>> | undefined;
     if (Array.isArray(candidates) && candidates.length > 0) {
       const content = candidates[0]?.content as Record<string, unknown> | undefined;
       const parts = content?.parts as Array<Record<string, unknown>> | undefined;
       if (Array.isArray(parts)) {
-        return parts
-          .filter(p => typeof p?.text === 'string')
-          .map(p => p.text as string)
-          .join('');
+        for (const part of parts) {
+          if (typeof part?.text !== 'string') continue;
+          if (part?.thought === true) {
+            reasoningSummary += part.text;
+            continue;
+          }
+          text += part.text;
+        }
       }
     }
   } catch { /* ignore */ }
-  return '';
+
+  return { text, reasoningSummary };
+}
+
+// Extract text from Gemini response
+function extractGeminiText(res: unknown): string {
+  return extractGeminiParts(res).text;
+}
+
+function extractGeminiReasoningSummary(res: unknown): string {
+  return extractGeminiParts(res).reasoningSummary;
 }
 
 // Extract text delta from Gemini streaming chunk
 function extractGeminiStreamDelta(chunk: unknown): string {
-  const chunkObj = chunk as Record<string, unknown>;
-  try {
-    const candidates = chunkObj?.candidates as Array<Record<string, unknown>> | undefined;
-    if (Array.isArray(candidates) && candidates.length > 0) {
-      const content = candidates[0]?.content as Record<string, unknown> | undefined;
-      const parts = content?.parts as Array<Record<string, unknown>> | undefined;
-      if (Array.isArray(parts)) {
-        return parts
-          .filter(p => typeof p?.text === 'string')
-          .map(p => p.text as string)
-          .join('');
-      }
-    }
-  } catch { /* ignore */ }
-  return '';
+  return extractGeminiParts(chunk).text;
+}
+
+function extractGeminiStreamReasoningDelta(chunk: unknown): string {
+  return extractGeminiParts(chunk).reasoningSummary;
 }
 
 function extractStreamError(event: unknown): { code: string; message: string } | null {
@@ -783,6 +789,7 @@ export async function respond(options: RespondOptions): Promise<GenerationRespon
       const decoder = new TextDecoder();
 
       let full = '';
+      let summary = '';
       let buffer = '';
 
       try {
@@ -803,6 +810,12 @@ export async function respond(options: RespondOptions): Promise<GenerationRespon
               const chunk = JSON.parse(trimmed.slice(6));
               try { onEvent?.(chunk); } catch { /* ignore */ }
 
+              const reasoningDelta = extractGeminiStreamReasoningDelta(chunk);
+              if (reasoningDelta) {
+                summary += reasoningDelta;
+                try { onReasoningSummaryDelta?.(summary, reasoningDelta, chunk); } catch { /* ignore */ }
+              }
+
               const delta = extractGeminiStreamDelta(chunk);
               if (delta) {
                 full += delta;
@@ -815,7 +828,8 @@ export async function respond(options: RespondOptions): Promise<GenerationRespon
         reader.releaseLock();
       }
 
-      return { text: full, reasoningSummary: '' };
+      try { onReasoningSummaryDone?.(summary || '', null); } catch { /* ignore */ }
+      return { text: full, reasoningSummary: summary };
     }
 
     if (useChatCompletions) {
@@ -1474,7 +1488,9 @@ export async function respond(options: RespondOptions): Promise<GenerationRespon
 
       const res = await response.json();
       const text = extractGeminiText(res);
-      return { text, reasoningSummary: '' };
+      const summary = extractGeminiReasoningSummary(res);
+      try { onReasoningSummaryDone?.(summary || '', res); } catch { /* ignore */ }
+      return { text, reasoningSummary: summary };
     }
 
     if (useChatCompletions) {
