@@ -319,7 +319,7 @@ describe('loadChat', () => {
     expect(result.chatSettings.maxOutputTokens).toBe(null)
     expect(result.chatSettings.topP).toBe(1)
     expect(result.chatSettings.temperature).toBe(0)
-    expect(result.chatSettings.reasoningEffort).toBe('none')
+    expect(result.chatSettings.reasoningEffort).toBe('default')
     expect(result.chatSettings.textVerbosity).toBe('medium')
     expect(result.chatSettings.reasoningSummary).toBe('auto')
   })

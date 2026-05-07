@@ -19,7 +19,7 @@ import type {
 import { isPlainObject, normalizeMcpServerList } from '../types/index.js';
 
 export const DEFAULT_SYSTEM_PROMPT = 'You are a helpful assistant.';
-export const DEFAULT_MODEL = 'gpt-5.4';
+export const DEFAULT_MODEL = 'gpt-5.5';
 
 export const DEFAULT_PRESET_FIELDS: PresetFields = {
   model: DEFAULT_MODEL,
@@ -27,7 +27,7 @@ export const DEFAULT_PRESET_FIELDS: PresetFields = {
   maxOutputTokens: null,
   topP: null,
   temperature: null,
-  reasoningEffort: 'medium',
+  reasoningEffort: 'default',
   textVerbosity: 'medium',
   reasoningSummary: 'auto',
   thinkingEnabled: false,

@@ -150,10 +150,10 @@ describe('respond stream errors', () => {
 
   it('adds code interpreter to Responses API tools', async () => {
     configureConnection('responses')
-    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ output_text: 'ok' }), {
+    const fetchMock = vi.fn().mockImplementation(() => Promise.resolve(new Response(JSON.stringify({ output_text: 'ok' }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
-    }))
+    })))
     vi.stubGlobal('fetch', fetchMock)
 
     await respond({
@@ -170,6 +170,36 @@ describe('respond stream errors', () => {
       { type: 'web_search' },
       { type: 'code_interpreter', container: { type: 'auto' } },
     ])
+  })
+
+  it('omits default reasoning effort and sends none explicitly', async () => {
+    configureConnection('responses')
+    const fetchMock = vi.fn().mockImplementation(() => Promise.resolve(new Response(JSON.stringify({ output_text: 'ok' }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    })))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await respond({
+      model: 'gpt-5.5',
+      prompt: 'hi',
+      connectionId,
+      reasoningEffort: 'default',
+      reasoningSummary: 'none',
+    })
+
+    await respond({
+      model: 'gpt-5.5',
+      prompt: 'hi',
+      connectionId,
+      reasoningEffort: 'none',
+      reasoningSummary: 'none',
+    })
+
+    const defaultBody = JSON.parse(fetchMock.mock.calls[0][1].body as string)
+    const noneBody = JSON.parse(fetchMock.mock.calls[1][1].body as string)
+    expect(defaultBody.reasoning).toBeUndefined()
+    expect(noneBody.reasoning).toEqual({ effort: 'none' })
   })
 
   it('does not add code interpreter to Chat Completions requests', async () => {

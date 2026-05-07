@@ -61,7 +61,12 @@
   })())
 
   function isEnabled(id: string): boolean {
-    return enabledActions === null || enabledActions.has(id)
+    if (enabledActions !== null && !enabledActions.has(id)) return false
+    const role = m.role
+    if (role !== 'user' && role !== 'assistant' && role !== 'system') return false
+    const action = props.messageActions?.find(a => a.id === id)
+    if (!action?.roles) return true
+    return action.roles[role] !== false
   }
 
   // Build ordered actions list, respecting enabled state and custom order

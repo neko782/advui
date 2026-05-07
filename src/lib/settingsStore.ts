@@ -15,6 +15,8 @@ import type {
   Keybinds,
   DefaultChatSettings,
   MessageActionButton,
+  MessageActionRole,
+  MessageActionRoles,
   EditorActionButton,
   DefaultToolSettings,
 } from './types/index.js';
@@ -112,6 +114,22 @@ function ensureConnectionList(list: unknown, fallback: FallbackOptions = {}): Co
 }
 
 const VALID_ACTION_IDS = new Set(DEFAULT_MESSAGE_ACTIONS.map(a => a.id));
+const MESSAGE_ACTION_ROLES: MessageActionRole[] = ['user', 'assistant', 'system'];
+
+function getDefaultMessageAction(id: string): MessageActionButton {
+  return DEFAULT_MESSAGE_ACTIONS.find(a => a.id === id)!;
+}
+
+function normalizeMessageActionRoles(id: string, raw: unknown): MessageActionRoles {
+  const defaults = getDefaultMessageAction(id).roles || { user: true, assistant: true, system: true };
+  const source = raw && typeof raw === 'object' ? raw as Record<string, unknown> : {};
+  const roles = MESSAGE_ACTION_ROLES.reduce((acc, role) => {
+    acc[role] = typeof source[role] === 'boolean' ? source[role] as boolean : defaults[role];
+    return acc;
+  }, {} as MessageActionRoles);
+  if (id === 'fork') roles.assistant = false;
+  return roles;
+}
 
 function normalizeMessageActions(raw: unknown): MessageActionButton[] {
   if (!Array.isArray(raw)) return DEFAULT_MESSAGE_ACTIONS.map(a => ({ ...a }));
@@ -123,9 +141,9 @@ function normalizeMessageActions(raw: unknown): MessageActionButton[] {
     const id = typeof (item as Record<string, unknown>).id === 'string' ? (item as Record<string, unknown>).id as string : '';
     if (!VALID_ACTION_IDS.has(id) || seen.has(id)) continue;
     seen.add(id);
-    const label = typeof (item as Record<string, unknown>).label === 'string' ? (item as Record<string, unknown>).label as string : DEFAULT_MESSAGE_ACTIONS.find(a => a.id === id)!.label;
-    const enabled = typeof (item as Record<string, unknown>).enabled === 'boolean' ? (item as Record<string, unknown>).enabled as boolean : true;
-    result.push({ id: id as MessageActionButton['id'], label, enabled });
+    const label = typeof (item as Record<string, unknown>).label === 'string' ? (item as Record<string, unknown>).label as string : getDefaultMessageAction(id).label;
+    const enabled = typeof (item as Record<string, unknown>).enabled === 'boolean' ? (item as Record<string, unknown>).enabled as boolean : getDefaultMessageAction(id).enabled;
+    result.push({ id: id as MessageActionButton['id'], label, enabled, roles: normalizeMessageActionRoles(id, (item as Record<string, unknown>).roles) });
   }
   // Second pass: add any missing actions at the end
   for (const def of DEFAULT_MESSAGE_ACTIONS) {
@@ -208,7 +226,7 @@ function attachCompatFields(out: Partial<Settings> & Record<string, unknown>): S
     maxOutputTokens: active.maxOutputTokens ?? null,
     topP: active.topP ?? null,
     temperature: active.temperature ?? null,
-    reasoningEffort: active.reasoningEffort || 'none',
+    reasoningEffort: active.reasoningEffort || 'default',
     textVerbosity: active.textVerbosity || 'medium',
     reasoningSummary: active.reasoningSummary || 'auto',
     thinkingEnabled: !!active.thinkingEnabled,

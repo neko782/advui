@@ -7,7 +7,7 @@
   import { exportAllData, importAllData, importChat } from './utils/exportImport'
   import { DEFAULT_MODEL, DEFAULT_SYSTEM_PROMPT } from './utils/presetHelpers'
   import { onMount } from 'svelte'
-  import type { AppSettings, Preset, Connection, ThemeState, ThemeMode, ReasoningEffort, TextVerbosity, ReasoningSummary, MessageActionButton, EditorActionButton, DefaultToolSettings } from './types'
+  import type { AppSettings, Preset, Connection, ThemeState, ThemeMode, ReasoningEffort, TextVerbosity, ReasoningSummary, MessageActionButton, MessageActionRole, EditorActionButton, DefaultToolSettings } from './types'
   import { DEFAULT_MESSAGE_ACTIONS, DEFAULT_EDITOR_ACTIONS, DEFAULT_TOOL_SETTINGS } from './types'
 
   interface Props {
@@ -87,9 +87,18 @@
   let dragOverActionId = $state<string | null>(null)
 
   // Getter for current message actions
-  const messageActionsForRender = $derived(() => {
-    return Array.isArray(local?.messageActions) ? local.messageActions : DEFAULT_MESSAGE_ACTIONS.map(a => ({ ...a }))
-  })
+  const MESSAGE_ACTION_ROLES: { id: MessageActionRole, label: string }[] = [
+    { id: 'user', label: 'User' },
+    { id: 'assistant', label: 'Assistant' },
+    { id: 'system', label: 'System' },
+  ]
+
+  function cloneMessageActions(actions?: MessageActionButton[]): MessageActionButton[] {
+    const source = Array.isArray(actions) ? actions : DEFAULT_MESSAGE_ACTIONS
+    return source.map(a => ({ ...a, roles: a.roles ? { ...a.roles } : undefined }))
+  }
+
+  const messageActionsForRender = $derived(() => cloneMessageActions(local?.messageActions))
 
   // Getter for current default tools
   const defaultToolsForRender = $derived(() => {
@@ -97,9 +106,7 @@
   })
 
   function toggleMessageAction(id: string) {
-    const actions = Array.isArray(local?.messageActions)
-      ? local.messageActions.map(a => ({ ...a }))
-      : DEFAULT_MESSAGE_ACTIONS.map(a => ({ ...a }))
+    const actions = cloneMessageActions(local?.messageActions)
     const idx = actions.findIndex(a => a.id === id)
     if (idx < 0) return
     actions[idx].enabled = !actions[idx].enabled
@@ -107,11 +114,21 @@
     persistSettings()
   }
 
+  function toggleMessageActionRole(id: string, role: MessageActionRole) {
+    if (id === 'fork' && role === 'assistant') return
+    const actions = cloneMessageActions(local?.messageActions)
+    const idx = actions.findIndex(a => a.id === id)
+    if (idx < 0) return
+    const defaults = DEFAULT_MESSAGE_ACTIONS.find(a => a.id === id)?.roles || { user: true, assistant: true, system: true }
+    actions[idx].roles = { ...defaults, ...actions[idx].roles, [role]: !(actions[idx].roles?.[role] ?? defaults[role]) }
+    if (id === 'fork') actions[idx].roles.assistant = false
+    local.messageActions = actions
+    persistSettings()
+  }
+
   function reorderMessageActions(fromId: string, toId: string) {
     if (fromId === toId) return
-    const actions = Array.isArray(local?.messageActions)
-      ? local.messageActions.map(a => ({ ...a }))
-      : DEFAULT_MESSAGE_ACTIONS.map(a => ({ ...a }))
+    const actions = cloneMessageActions(local?.messageActions)
     const fromIndex = actions.findIndex(a => a.id === fromId)
     const toIndex = actions.findIndex(a => a.id === toId)
     if (fromIndex < 0 || toIndex < 0) return
@@ -194,7 +211,7 @@
   }
 
   function resetMessageActions() {
-    local.messageActions = DEFAULT_MESSAGE_ACTIONS.map(a => ({ ...a }))
+    local.messageActions = cloneMessageActions(DEFAULT_MESSAGE_ACTIONS)
     persistSettings()
   }
 
@@ -238,7 +255,7 @@
     }
   })
 
-  const REASONING_OPTIONS = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh']
+  const REASONING_OPTIONS = ['default', 'none', 'minimal', 'low', 'medium', 'high', 'xhigh']
   const TEXT_VERBOSITY_OPTIONS = ['none', 'low', 'medium', 'high']
   const REASONING_SUMMARY_OPTIONS = ['none', 'auto', 'concise', 'detailed']
   const SOURCE_CODE_URL = (import.meta.env.VITE_SOURCE_CODE_URL || 'https://github.com/neko782/advui').trim()
@@ -266,7 +283,7 @@
   }
 
   function parseReasoning(value) {
-    return REASONING_OPTIONS.includes(value) ? value : 'none'
+    return REASONING_OPTIONS.includes(value) ? value : 'default'
   }
 
   function parseVerbosity(value) {
@@ -329,7 +346,7 @@
       maxOutputTokens: null,
       topP: null,
       temperature: null,
-      reasoningEffort: 'none',
+      reasoningEffort: 'default',
       textVerbosity: 'medium',
       reasoningSummary: 'auto',
       connectionId: local?.selectedConnectionId || activeConnectionId || (local?.connections?.[0]?.id || ''),
@@ -421,7 +438,7 @@
       maxOutputTokens: base?.maxOutputTokens ?? null,
       topP: base?.topP ?? null,
       temperature: base?.temperature ?? null,
-      reasoningEffort: base?.reasoningEffort || 'none',
+      reasoningEffort: base?.reasoningEffort || 'default',
       textVerbosity: base?.textVerbosity || 'medium',
       reasoningSummary: base?.reasoningSummary || 'auto',
       connectionId: base?.connectionId || local?.selectedConnectionId || activeConnectionId || (local?.connections?.[0]?.id || ''),
@@ -1560,10 +1577,11 @@
                   <label class="field">
                     <span>Reasoning effort</span>
                     <select
-                      value={activePreset.reasoningEffort || 'none'}
+                      value={activePreset.reasoningEffort || 'default'}
                       onchange={(event) => updateActivePreset({ reasoningEffort: parseReasoning(event.currentTarget.value) })}
                       aria-label="Reasoning effort"
                     >
+                      <option value="default">Default</option>
                       <option value="none">none</option>
                       <option value="minimal">minimal</option>
                       <option value="low">low</option>
@@ -1698,6 +1716,22 @@
                       <IconDragHandle style="font-size: 20px;" />
                     </div>
                     <span class="action-item-label">{action.label}</span>
+                    <div class="message-role-checks" aria-label={`${action.label} message roles`}>
+                      {#each MESSAGE_ACTION_ROLES as role}
+                        {@const checked = action.roles?.[role.id] ?? DEFAULT_MESSAGE_ACTIONS.find(a => a.id === action.id)?.roles?.[role.id] ?? true}
+                        {@const disabled = action.id === 'fork' && role.id === 'assistant'}
+                        <label class="role-check" class:disabled-role={disabled} title={disabled ? 'Fork is not available on assistant messages' : `${action.label} on ${role.label.toLowerCase()} messages`}>
+                          <input
+                            type="checkbox"
+                            checked={checked && !disabled}
+                            disabled={disabled}
+                            onchange={() => toggleMessageActionRole(action.id, role.id)}
+                            aria-label={`${action.label} on ${role.label} messages`}
+                          />
+                          <span>{role.label}</span>
+                        </label>
+                      {/each}
+                    </div>
                     <label class="action-toggle" title={action.enabled ? 'Disable' : 'Enable'}>
                       <input
                         type="checkbox"
@@ -2541,6 +2575,7 @@
     align-items: center;
     gap: 8px;
     padding: 4px 6px;
+    flex-wrap: wrap;
   }
   .action-item-label {
     flex: 1;
@@ -2561,6 +2596,31 @@
   .action-item.disabled-action {
     opacity: 0.7;
     background: color-mix(in srgb, var(--bg) 90%, var(--muted) 10%);
+  }
+  .message-role-checks {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-left: auto;
+  }
+  .role-check {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.8rem;
+    color: var(--muted);
+    user-select: none;
+  }
+  .role-check input {
+    width: 14px;
+    height: 14px;
+    margin: 0;
+    accent-color: var(--accent);
+  }
+  .role-check.disabled-role {
+    opacity: 0.55;
+    cursor: not-allowed;
   }
   .action-toggle {
     display: inline-flex;

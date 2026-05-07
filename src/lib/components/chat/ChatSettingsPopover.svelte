@@ -310,9 +310,9 @@
       {:else if activeTab === 'reasoning'}
         <div class="menu-section">
           <div class="menu-label">Reasoning effort</div>
-          <select value={props.reasoningEffort || 'none'} disabled={props.disabled}
+          <select value={props.reasoningEffort || 'default'} disabled={props.disabled}
             onchange={(e) => (!props.disabled && props.onInputReasoningEffort?.(e.currentTarget.value))} aria-label="Reasoning effort">
-            <option value="none">none</option><option value="minimal">minimal</option><option value="low">low</option>
+            <option value="default">Default</option><option value="none">none</option><option value="minimal">minimal</option><option value="low">low</option>
             <option value="medium">medium</option><option value="high">high</option><option value="xhigh">xhigh</option>
           </select>
         </div>

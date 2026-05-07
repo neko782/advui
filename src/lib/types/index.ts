@@ -6,7 +6,7 @@
 export type MessageRole = 'system' | 'user' | 'assistant' | 'tool';
 
 // Reasoning options
-export type ReasoningEffort = 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
+export type ReasoningEffort = 'default' | 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
 export type TextVerbosity = 'none' | 'low' | 'medium' | 'high';
 export type ReasoningSummary = 'none' | 'auto' | 'concise' | 'detailed';
 
@@ -261,10 +261,14 @@ export type MessageActionId =
   | 'moveDown'
   | 'moveUp';
 
+export type MessageActionRole = 'user' | 'assistant' | 'system';
+export type MessageActionRoles = Record<MessageActionRole, boolean>;
+
 export interface MessageActionButton {
   id: MessageActionId;
   label: string;
   enabled: boolean;
+  roles?: MessageActionRoles;
 }
 
 export type EditorActionId =
@@ -285,13 +289,13 @@ export const DEFAULT_EDITOR_ACTIONS: EditorActionButton[] = [
 ];
 
 export const DEFAULT_MESSAGE_ACTIONS: MessageActionButton[] = [
-  { id: 'regenerate', label: 'Regenerate', enabled: true },
-  { id: 'copy', label: 'Copy', enabled: true },
-  { id: 'delete', label: 'Delete', enabled: true },
-  { id: 'edit', label: 'Edit', enabled: true },
-  { id: 'fork', label: 'Fork', enabled: false },
-  { id: 'moveDown', label: 'Move down', enabled: true },
-  { id: 'moveUp', label: 'Move up', enabled: true },
+  { id: 'regenerate', label: 'Regenerate', enabled: true, roles: { user: true, assistant: true, system: false } },
+  { id: 'copy', label: 'Copy', enabled: true, roles: { user: true, assistant: true, system: true } },
+  { id: 'delete', label: 'Delete', enabled: true, roles: { user: true, assistant: true, system: true } },
+  { id: 'edit', label: 'Edit', enabled: true, roles: { user: true, assistant: true, system: true } },
+  { id: 'fork', label: 'Fork', enabled: false, roles: { user: true, assistant: false, system: true } },
+  { id: 'moveDown', label: 'Move down', enabled: true, roles: { user: true, assistant: true, system: true } },
+  { id: 'moveUp', label: 'Move up', enabled: true, roles: { user: true, assistant: true, system: true } },
 ];
 
 // ============================================================================

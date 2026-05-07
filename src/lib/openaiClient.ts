@@ -600,7 +600,7 @@ export async function respond(options: RespondOptions): Promise<GenerationRespon
   if (tempVal != null) request.temperature = tempVal;
   if (tempVal != null) chatRequest.temperature = tempVal;
   const reasoningOptions: Record<string, string> = {};
-  if (typeof reasoningEffort === 'string' && reasoningEffort && reasoningEffort !== 'none') {
+  if (typeof reasoningEffort === 'string' && reasoningEffort && reasoningEffort !== 'default') {
     reasoningOptions.effort = reasoningEffort;
   }
   if (typeof reasoningSummary === 'string' && reasoningSummary && reasoningSummary !== 'none') {

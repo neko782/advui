@@ -4,7 +4,7 @@ import { toIntOrNull, toClampedNumber } from './numbers.js';
 import type { ReasoningEffort, TextVerbosity, ReasoningSummary } from '../types/index.js';
 
 export function normalizeReasoning(val: unknown): ReasoningEffort {
-  return (REASONING_OPTIONS as readonly string[]).includes(val as string) ? val as ReasoningEffort : 'none';
+  return (REASONING_OPTIONS as readonly string[]).includes(val as string) ? val as ReasoningEffort : 'default';
 }
 
 export function normalizeVerbosity(val: unknown): TextVerbosity {
@@ -30,4 +30,3 @@ export function parseTemperature(value: unknown): number | null {
 export function parseThinkingBudgetTokens(value: unknown): number | null {
   return toIntOrNull(value);
 }
-
