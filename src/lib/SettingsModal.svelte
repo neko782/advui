@@ -4,7 +4,7 @@
   import { listModelsWithKey } from './openaiClient'
   import { IconClose, IconAdd, IconVisibility, IconVisibilityOff, IconAutorenew, IconDelete, IconDownload, IconUpload, IconDragHandle, IconTravelExplore, IconCodeBlocks, IconTerminal, IconImagesmode, IconExtension } from './icons'
   import { getThemeState, setThemeMode, subscribeTheme } from './themeStore'
-  import { exportAllData, importAllData, importChat } from './utils/exportImport'
+  import { estimateExportAllDataSize, exportAllData, importAllData, importChat } from './utils/exportImport'
   import { DEFAULT_MODEL, DEFAULT_SYSTEM_PROMPT } from './utils/presetHelpers'
   import { onMount } from 'svelte'
   import type { AppSettings, Preset, Connection, ThemeState, ThemeMode, ReasoningEffort, TextVerbosity, ReasoningSummary, MessageActionButton, MessageActionRole, EditorActionButton, DefaultToolSettings } from './types'
@@ -245,6 +245,14 @@
   let importExportStatus = $state('')
   let importExportWorking = $state(false)
   let exportIncludesMedia = $state(false)
+  let exportSizeEstimateText = $state('Estimating download size...')
+  let exportSizeEstimateRun = 0
+
+  $effect(() => {
+    if (!props.open) return
+    exportIncludesMedia
+    refreshExportSizeEstimate()
+  })
 
   onMount(() => {
     themeState = getThemeState()
@@ -785,6 +793,37 @@
     }
   }
 
+  async function refreshExportSizeEstimate() {
+    const run = ++exportSizeEstimateRun
+    exportSizeEstimateText = 'Estimating download size...'
+    try {
+      const estimate = await estimateExportAllDataSize({ includeMedia: exportIncludesMedia })
+      if (run !== exportSizeEstimateRun) return
+      const base = `Estimated download: ${formatBytes(estimate.bytes)}`
+      exportSizeEstimateText = estimate.includesMedia
+        ? `${base} plus media. Media size is not scanned.`
+        : `${base}.`
+    } catch (err) {
+      if (run !== exportSizeEstimateRun) return
+      console.error('Failed to estimate export size:', err)
+      exportSizeEstimateText = 'Estimated download size unavailable.'
+    }
+  }
+
+  function formatBytes(bytes: number) {
+    const value = Number(bytes) || 0
+    if (value < 1024) return `${Math.max(0, Math.round(value))} B`
+    const units = ['KB', 'MB', 'GB']
+    let amount = value / 1024
+    let unitIndex = 0
+    while (amount >= 1024 && unitIndex < units.length - 1) {
+      amount /= 1024
+      unitIndex++
+    }
+    const precision = amount >= 10 || unitIndex === 0 ? 0 : 1
+    return `${amount.toFixed(precision)} ${units[unitIndex]}`
+  }
+
   async function handleImportAllData() {
     if (importExportWorking) return
     const input = document.createElement('input')
@@ -1071,7 +1110,7 @@
               {#if importExportStatus}
                 <p class="hint" aria-live="polite">{importExportStatus}</p>
               {:else}
-                <p class="hint">Import chats, settings, and images. Export all data skips media unless enabled.</p>
+                <p class="hint">Import chats, settings, and images. Export all data skips media unless enabled. {exportSizeEstimateText}</p>
               {/if}
             </section>
             <section class="group legal-group">

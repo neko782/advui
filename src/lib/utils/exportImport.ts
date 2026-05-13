@@ -9,11 +9,17 @@ import type {
   Settings
 } from '../types/index.js';
 
-import { getChats, getChat, createChat } from '../chatsStore.js';
+import { getChatListItems, getChat, createChat } from '../chatsStore.js';
 import { loadSettings, saveSettings } from '../settingsStore.js';
 import { getAllImages, storeImage } from '../imageStore.js';
 import Tar from 'tar-js';
 import untar from 'js-untar';
+
+interface FileSystemWriteStream {
+  write(chunk: Uint8Array): Promise<void>;
+  close(): Promise<void>;
+  abort?: () => Promise<void>;
+}
 
 /**
  * Export a single chat as JSON
@@ -81,103 +87,34 @@ export interface ExportAllDataOptions {
   includeMedia?: boolean;
 }
 
+export interface ExportSizeEstimate {
+  bytes: number;
+  chatCount: number;
+  sampledChatCount: number;
+  includesMedia: boolean;
+  mediaEstimated: boolean;
+}
+
 /**
  * Export all data as a TAR archive. Media is skipped unless explicitly requested.
  */
 export async function exportAllData(options: ExportAllDataOptions = {}): Promise<void> {
   try {
-    const tar = new Tar();
     const includeMedia = options.includeMedia === true;
+    const fileName = `advui_backup_${Date.now()}.tar`;
 
-    // Export all chats (sorted by updatedAt descending to preserve ordering)
-    const chats = (await getChats()).slice().sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
-    const exportedAt = new Date().toISOString();
-    const chatManifest: ChatManifestEntry[] = [];
-    const usedChatPaths = new Set<string>();
-
-    chats.forEach((chat, index) => {
-      if (!chat) return;
-      const filename = buildChatArchivePath(chat, index, usedChatPaths);
-
-      const chatPayload: ExportedChat = {
-        version: 1,
-        type: 'single_chat',
-        exportedAt,
-        chat
-      };
-
-      tar.append(filename, encodeText(JSON.stringify(chatPayload, null, 2)));
-
-      chatManifest.push({
-        id: chat.id,
-        title: chat.title,
-        path: filename,
-        order: index,
-        updatedAt: chat.updatedAt
-      });
-    });
-
-    if (chatManifest.length > 0) {
-      tar.append(
-        'chats/manifest.json',
-        encodeText(
-          JSON.stringify(
-            {
-              version: 1,
-              exportedAt,
-              chats: chatManifest
-            },
-            null,
-            2
-          )
-        )
-      );
+    if (canStreamDownload()) {
+      await streamExportArchive(fileName, includeMedia);
+      return;
     }
 
-    // Export settings
-    const settings = loadSettings();
-    const settingsData = {
-      version: 1,
-      exportedAt: new Date().toISOString(),
-      settings
-    };
-    tar.append('settings.json', encodeText(JSON.stringify(settingsData, null, 2)));
-
-    if (includeMedia) {
-      try {
-        const images = await getAllImages();
-        if (images && images.length > 0) {
-          const imagesManifest: ImageManifestEntry[] = [];
-
-          for (const image of images) {
-            if (image.data && image.id) {
-              const ext = getExtensionFromMimeType(image.mimeType) || 'dat';
-              const filename = `${image.id}.${ext}`;
-              const normalizedData = normalizeBase64Data(image.data);
-
-              tar.append(`images/${filename}`, base64ToBytes(normalizedData));
-
-              imagesManifest.push({
-                id: image.id,
-                filename,
-                mimeType: image.mimeType,
-                name: image.name
-              });
-            }
-          }
-
-          tar.append('images/manifest.json', encodeText(JSON.stringify({ version: 1, images: imagesManifest }, null, 2)));
-        }
-      } catch (err) {
-        console.warn('Failed to export images:', err);
-      }
-    }
+    const tar = new Tar();
+    await appendExportArchiveToTar(tar, includeMedia);
 
     const tarData = tar.out;
     const blob = new Blob([tarData], { type: 'application/x-tar' });
     const url = URL.createObjectURL(blob);
 
-    const fileName = `advui_backup_${Date.now()}.tar`;
     downloadFile(url, fileName);
 
     URL.revokeObjectURL(url);
@@ -185,6 +122,281 @@ export async function exportAllData(options: ExportAllDataOptions = {}): Promise
     console.error('Failed to export all data:', err);
     throw err;
   }
+}
+
+export async function estimateExportAllDataSize(options: ExportAllDataOptions = {}): Promise<ExportSizeEstimate> {
+  const includeMedia = options.includeMedia === true;
+  const chatItems = (await getChatListItems()).slice().sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+  const exportedAt = new Date().toISOString();
+  const usedChatPaths = new Set<string>();
+  const manifestEntries: ChatManifestEntry[] = [];
+  const sampleSize = Math.min(3, chatItems.length);
+  let sampledChatBytes = 0;
+  let sampledChatCount = 0;
+  let chatEntryTotal = 0;
+
+  for (let index = 0; index < chatItems.length; index++) {
+    const item = chatItems[index]!;
+    const filename = buildChatArchivePath(item, index, usedChatPaths);
+    manifestEntries.push({
+      id: item.id,
+      title: item.title,
+      path: filename,
+      order: index,
+      updatedAt: item.updatedAt
+    });
+
+    if (sampledChatCount < sampleSize) {
+      const chat = await getChat(item.id);
+      if (chat) {
+        const payload: ExportedChat = {
+          version: 1,
+          type: 'single_chat',
+          exportedAt,
+          chat
+        };
+        const entryBytes = encodedLength(JSON.stringify(payload, null, 2));
+        sampledChatBytes += entryBytes;
+        sampledChatCount++;
+        chatEntryTotal += tarEntrySize(entryBytes);
+      }
+    }
+  }
+
+  const averageChatBytes = sampledChatCount > 0 ? Math.ceil(sampledChatBytes / sampledChatCount) : 0;
+  const unsampledCount = Math.max(0, chatItems.length - sampledChatCount);
+  chatEntryTotal += unsampledCount * tarEntrySize(averageChatBytes);
+
+  const settingsData = {
+    version: 1,
+    exportedAt,
+    settings: loadSettings()
+  };
+  let totalBytes = tarEntrySize(encodedLength(JSON.stringify(settingsData, null, 2))) + chatEntryTotal + 1024;
+
+  if (manifestEntries.length > 0) {
+    const manifestBytes = encodedLength(
+      JSON.stringify(
+        {
+          version: 1,
+          exportedAt,
+          chats: manifestEntries
+        },
+        null,
+        2
+      )
+    );
+    totalBytes += tarEntrySize(manifestBytes);
+  }
+
+  return {
+    bytes: totalBytes,
+    chatCount: chatItems.length,
+    sampledChatCount,
+    includesMedia: includeMedia,
+    mediaEstimated: false
+  };
+}
+
+async function appendExportArchiveToTar(tar: Tar, includeMedia: boolean): Promise<void> {
+  const chatItems = (await getChatListItems()).slice().sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+  const exportedAt = new Date().toISOString();
+  const chatManifest: ChatManifestEntry[] = [];
+  const usedChatPaths = new Set<string>();
+
+  for (let index = 0; index < chatItems.length; index++) {
+    const item = chatItems[index]!;
+    const chat = await getChat(item.id);
+    if (!chat) continue;
+    const filename = buildChatArchivePath(item, index, usedChatPaths);
+
+    const chatPayload: ExportedChat = {
+      version: 1,
+      type: 'single_chat',
+      exportedAt,
+      chat
+    };
+
+    tar.append(filename, encodeText(JSON.stringify(chatPayload, null, 2)));
+
+    chatManifest.push({
+      id: chat.id,
+      title: chat.title,
+      path: filename,
+      order: index,
+      updatedAt: chat.updatedAt
+    });
+  }
+
+  if (chatManifest.length > 0) {
+    tar.append(
+      'chats/manifest.json',
+      encodeText(
+        JSON.stringify(
+          {
+            version: 1,
+            exportedAt,
+            chats: chatManifest
+          },
+          null,
+          2
+        )
+      )
+    );
+  }
+
+  const settings = loadSettings();
+  const settingsData = {
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    settings
+  };
+  tar.append('settings.json', encodeText(JSON.stringify(settingsData, null, 2)));
+
+  if (includeMedia) {
+    try {
+      const images = await getAllImages();
+      if (images && images.length > 0) {
+        const imagesManifest: ImageManifestEntry[] = [];
+
+        for (const image of images) {
+          if (image.data && image.id) {
+            const ext = getExtensionFromMimeType(image.mimeType) || 'dat';
+            const filename = `${image.id}.${ext}`;
+            const normalizedData = normalizeBase64Data(image.data);
+
+            tar.append(`images/${filename}`, base64ToBytes(normalizedData));
+
+            imagesManifest.push({
+              id: image.id,
+              filename,
+              mimeType: image.mimeType,
+              name: image.name
+            });
+          }
+        }
+
+        tar.append('images/manifest.json', encodeText(JSON.stringify({ version: 1, images: imagesManifest }, null, 2)));
+      }
+    } catch (err) {
+      console.warn('Failed to export images:', err);
+    }
+  }
+}
+
+async function streamExportArchive(fileName: string, includeMedia: boolean): Promise<void> {
+  const picker = window as unknown as {
+    showSaveFilePicker?: (options?: unknown) => Promise<{
+      createWritable: () => Promise<FileSystemWriteStream>;
+    }>;
+  };
+  const handle = await picker.showSaveFilePicker?.({
+    suggestedName: fileName,
+    types: [
+      {
+        description: 'TAR archive',
+        accept: { 'application/x-tar': ['.tar'] }
+      }
+    ]
+  });
+  if (!handle) {
+    throw new Error('Streaming downloads are not available in this browser');
+  }
+
+  const writer = await handle.createWritable();
+  try {
+    await appendExportArchiveToStream(writer, includeMedia);
+    await writer.close();
+  } catch (err) {
+    await writer.abort?.();
+    throw err;
+  }
+}
+
+async function appendExportArchiveToStream(writer: FileSystemWriteStream, includeMedia: boolean): Promise<void> {
+  const chatItems = (await getChatListItems()).slice().sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+  const exportedAt = new Date().toISOString();
+  const chatManifest: ChatManifestEntry[] = [];
+  const usedChatPaths = new Set<string>();
+
+  for (let index = 0; index < chatItems.length; index++) {
+    const item = chatItems[index]!;
+    const chat = await getChat(item.id);
+    if (!chat) continue;
+    const filename = buildChatArchivePath(item, index, usedChatPaths);
+
+    const chatPayload: ExportedChat = {
+      version: 1,
+      type: 'single_chat',
+      exportedAt,
+      chat
+    };
+
+    await writeTarTextEntry(writer, filename, JSON.stringify(chatPayload, null, 2));
+
+    chatManifest.push({
+      id: chat.id,
+      title: chat.title,
+      path: filename,
+      order: index,
+      updatedAt: chat.updatedAt
+    });
+  }
+
+  if (chatManifest.length > 0) {
+    await writeTarTextEntry(
+      writer,
+      'chats/manifest.json',
+      JSON.stringify(
+        {
+          version: 1,
+          exportedAt,
+          chats: chatManifest
+        },
+        null,
+        2
+      )
+    );
+  }
+
+  const settingsData = {
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    settings: loadSettings()
+  };
+  await writeTarTextEntry(writer, 'settings.json', JSON.stringify(settingsData, null, 2));
+
+  if (includeMedia) {
+    try {
+      const images = await getAllImages();
+      if (images && images.length > 0) {
+        const imagesManifest: ImageManifestEntry[] = [];
+
+        for (const image of images) {
+          if (image.data && image.id) {
+            const ext = getExtensionFromMimeType(image.mimeType) || 'dat';
+            const filename = `${image.id}.${ext}`;
+            const normalizedData = normalizeBase64Data(image.data);
+
+            await writeTarBytesEntry(writer, `images/${filename}`, base64ToBytes(normalizedData));
+
+            imagesManifest.push({
+              id: image.id,
+              filename,
+              mimeType: image.mimeType,
+              name: image.name
+            });
+          }
+        }
+
+        await writeTarTextEntry(writer, 'images/manifest.json', JSON.stringify({ version: 1, images: imagesManifest }, null, 2));
+      }
+    } catch (err) {
+      console.warn('Failed to export images:', err);
+    }
+  }
+
+  await writer.write(new Uint8Array(1024));
 }
 
 /**
@@ -402,13 +614,13 @@ function sanitizeFilename(name: string): string {
     .substring(0, 50);
 }
 
-function buildChatArchivePath(chat: Chat, index: number, usedPaths: Set<string>): string {
+function buildChatArchivePath(chat: Pick<Chat, 'id' | 'title'>, index: number, usedPaths: Set<string>): string {
   const safeTitle = sanitizeFilename(chat?.title || '');
   const safeId = sanitizeFilename(chat?.id || '');
 
   const baseParts = [safeTitle, safeId].filter(Boolean);
   const fallback = `chat_${index + 1}`;
-  const baseName = baseParts.length > 0 ? baseParts.join('_') : fallback;
+  const baseName = (baseParts.length > 0 ? baseParts.join('_') : fallback).substring(0, 95);
 
   let candidate = `chats/${baseName || fallback}.json`;
   let suffix = 1;
@@ -472,6 +684,19 @@ function getExtensionFromMimeType(mimeType: string | undefined): string {
 
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
+const TAR_BLOCK_SIZE = 512;
+
+function canStreamDownload(): boolean {
+  return typeof window !== 'undefined' && typeof (window as unknown as { showSaveFilePicker?: unknown }).showSaveFilePicker === 'function';
+}
+
+function encodedLength(text: string): number {
+  return textEncoder.encode(text).byteLength;
+}
+
+function tarEntrySize(contentSize: number): number {
+  return TAR_BLOCK_SIZE + Math.ceil(contentSize / TAR_BLOCK_SIZE) * TAR_BLOCK_SIZE;
+}
 
 function normalizePath(path: string): string {
   return path.replace(/^[./]+/, '');
@@ -484,6 +709,76 @@ function encodeText(text: string): Uint8Array {
 function decodeText(bytes: Uint8Array | null): string {
   if (!bytes) return '';
   return textDecoder.decode(bytes);
+}
+
+async function writeTarTextEntry(writer: FileSystemWriteStream, path: string, text: string): Promise<void> {
+  await writeTarBytesEntry(writer, path, encodeText(text));
+}
+
+async function writeTarBytesEntry(writer: FileSystemWriteStream, path: string, bytes: Uint8Array): Promise<void> {
+  await writer.write(createTarHeader(path, bytes.byteLength));
+  await writer.write(bytes);
+  const paddingSize = (TAR_BLOCK_SIZE - (bytes.byteLength % TAR_BLOCK_SIZE)) % TAR_BLOCK_SIZE;
+  if (paddingSize > 0) {
+    await writer.write(new Uint8Array(paddingSize));
+  }
+}
+
+function createTarHeader(path: string, size: number): Uint8Array {
+  const header = new Uint8Array(TAR_BLOCK_SIZE);
+  const normalized = normalizePath(path);
+  const { name, prefix } = splitTarPath(normalized);
+
+  writeTarString(header, 0, 100, name);
+  writeTarOctal(header, 100, 8, 0o644);
+  writeTarOctal(header, 108, 8, 0);
+  writeTarOctal(header, 116, 8, 0);
+  writeTarOctal(header, 124, 12, size);
+  writeTarOctal(header, 136, 12, Math.floor(Date.now() / 1000));
+  for (let i = 148; i < 156; i++) header[i] = 32;
+  header[156] = '0'.charCodeAt(0);
+  writeTarString(header, 257, 6, 'ustar');
+  writeTarString(header, 263, 2, '00');
+  writeTarString(header, 345, 155, prefix);
+
+  let checksum = 0;
+  for (let i = 0; i < header.length; i++) {
+    checksum += header[i]!;
+  }
+  writeTarOctal(header, 148, 8, checksum);
+
+  return header;
+}
+
+function splitTarPath(path: string): { name: string; prefix: string } {
+  const pathBytes = encodeText(path);
+  if (pathBytes.byteLength <= 100) {
+    return { name: path, prefix: '' };
+  }
+
+  const parts = path.split('/');
+  for (let i = 1; i < parts.length; i++) {
+    const prefix = parts.slice(0, i).join('/');
+    const name = parts.slice(i).join('/');
+    if (encodeText(prefix).byteLength <= 155 && encodeText(name).byteLength <= 100) {
+      return { name, prefix };
+    }
+  }
+
+  throw new Error(`Archive path is too long: ${path}`);
+}
+
+function writeTarString(header: Uint8Array, offset: number, length: number, value: string): void {
+  const bytes = encodeText(value);
+  if (bytes.byteLength > length) {
+    throw new Error(`TAR field is too long: ${value}`);
+  }
+  header.set(bytes, offset);
+}
+
+function writeTarOctal(header: Uint8Array, offset: number, length: number, value: number): void {
+  const text = value.toString(8).padStart(length - 2, '0').slice(-(length - 2));
+  writeTarString(header, offset, length, `${text}\0 `);
 }
 
 function base64ToBytes(base64: string): Uint8Array {
