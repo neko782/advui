@@ -244,6 +244,7 @@
   // Import/Export state
   let importExportStatus = $state('')
   let importExportWorking = $state(false)
+  let exportIncludesMedia = $state(false)
 
   onMount(() => {
     themeState = getThemeState()
@@ -766,9 +767,9 @@
   async function handleExportAllData() {
     if (importExportWorking) return
     importExportWorking = true
-    importExportStatus = 'Exporting data...'
+    importExportStatus = exportIncludesMedia ? 'Exporting data with media...' : 'Exporting data...'
     try {
-      await exportAllData()
+      await exportAllData({ includeMedia: exportIncludesMedia })
       importExportStatus = 'Export successful!'
       setTimeout(() => {
         importExportStatus = ''
@@ -1038,7 +1039,7 @@
                   class="data-action-btn"
                   onclick={handleExportAllData}
                   disabled={importExportWorking}
-                  title="Export all chats and settings as an archive"
+                  title={exportIncludesMedia ? 'Export all chats, settings, and media as an archive' : 'Export all chats and settings as an archive'}
                   aria-label="Export all data"
                 >
                   <IconDownload style="font-size: 20px;" />
@@ -1056,10 +1057,21 @@
                   <span>Import all data</span>
                 </button>
               </div>
+              <label class="switch data-media-switch" title="Include media in all-data exports">
+                <input
+                  type="checkbox"
+                  checked={exportIncludesMedia}
+                  disabled={importExportWorking}
+                  onchange={(event) => (exportIncludesMedia = !!event.currentTarget.checked)}
+                  aria-label="Include media in export"
+                />
+                <span class="switch-ui" aria-hidden="true"></span>
+                <span class="switch-label">Include media in export</span>
+              </label>
               {#if importExportStatus}
                 <p class="hint" aria-live="polite">{importExportStatus}</p>
               {:else}
-                <p class="hint">Import chats, settings, and images. Export all data backs up chats and settings without media.</p>
+                <p class="hint">Import chats, settings, and images. Export all data skips media unless enabled.</p>
               {/if}
             </section>
             <section class="group legal-group">

@@ -77,13 +77,17 @@ export async function importChat(file: File): Promise<{ id: string; chat: Chat }
   }
 }
 
+export interface ExportAllDataOptions {
+  includeMedia?: boolean;
+}
+
 /**
- * Export all data (chats and settings) as a TAR archive.
- * Media is intentionally skipped so exports do not read or archive image data.
+ * Export all data as a TAR archive. Media is skipped unless explicitly requested.
  */
-export async function exportAllData(): Promise<void> {
+export async function exportAllData(options: ExportAllDataOptions = {}): Promise<void> {
   try {
     const tar = new Tar();
+    const includeMedia = options.includeMedia === true;
 
     // Export all chats (sorted by updatedAt descending to preserve ordering)
     const chats = (await getChats()).slice().sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
@@ -138,6 +142,36 @@ export async function exportAllData(): Promise<void> {
       settings
     };
     tar.append('settings.json', encodeText(JSON.stringify(settingsData, null, 2)));
+
+    if (includeMedia) {
+      try {
+        const images = await getAllImages();
+        if (images && images.length > 0) {
+          const imagesManifest: ImageManifestEntry[] = [];
+
+          for (const image of images) {
+            if (image.data && image.id) {
+              const ext = getExtensionFromMimeType(image.mimeType) || 'dat';
+              const filename = `${image.id}.${ext}`;
+              const normalizedData = normalizeBase64Data(image.data);
+
+              tar.append(`images/${filename}`, base64ToBytes(normalizedData));
+
+              imagesManifest.push({
+                id: image.id,
+                filename,
+                mimeType: image.mimeType,
+                name: image.name
+              });
+            }
+          }
+
+          tar.append('images/manifest.json', encodeText(JSON.stringify({ version: 1, images: imagesManifest }, null, 2)));
+        }
+      } catch (err) {
+        console.warn('Failed to export images:', err);
+      }
+    }
 
     const tarData = tar.out;
     const blob = new Blob([tarData], { type: 'application/x-tar' });
@@ -420,6 +454,22 @@ function extractChatFromPayload(payload: unknown): Chat {
   return chat;
 }
 
+/**
+ * Helper: Get file extension from MIME type
+ */
+function getExtensionFromMimeType(mimeType: string | undefined): string {
+  if (!mimeType) return 'dat';
+  const map: Record<string, string> = {
+    'image/png': 'png',
+    'image/jpeg': 'jpg',
+    'image/jpg': 'jpg',
+    'image/gif': 'gif',
+    'image/webp': 'webp',
+    'image/svg+xml': 'svg'
+  };
+  return map[mimeType.toLowerCase()] || 'dat';
+}
+
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
 
@@ -434,6 +484,15 @@ function encodeText(text: string): Uint8Array {
 function decodeText(bytes: Uint8Array | null): string {
   if (!bytes) return '';
   return textDecoder.decode(bytes);
+}
+
+function base64ToBytes(base64: string): Uint8Array {
+  const binString = atob(base64);
+  const bytes = new Uint8Array(binString.length);
+  for (let i = 0; i < binString.length; i++) {
+    bytes[i] = binString.charCodeAt(i);
+  }
+  return bytes;
 }
 
 function bytesToBase64(bytes: Uint8Array): string {
