@@ -1038,7 +1038,7 @@
                   class="data-action-btn"
                   onclick={handleExportAllData}
                   disabled={importExportWorking}
-                  title="Export all chats, settings, and images as an archive"
+                  title="Export all chats and settings as an archive"
                   aria-label="Export all data"
                 >
                   <IconDownload style="font-size: 20px;" />
@@ -1059,7 +1059,7 @@
               {#if importExportStatus}
                 <p class="hint" aria-live="polite">{importExportStatus}</p>
               {:else}
-                <p class="hint">Import and export your chats, settings, and images. Export all data creates a backup of everything.</p>
+                <p class="hint">Import chats, settings, and images. Export all data backs up chats and settings without media.</p>
               {/if}
             </section>
             <section class="group legal-group">

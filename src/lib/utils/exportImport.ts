@@ -6,8 +6,7 @@ import type {
   ChatManifestEntry,
   ImageManifestEntry,
   TarArchive,
-  Settings,
-  StoredImage
+  Settings
 } from '../types/index.js';
 
 import { getChats, getChat, createChat } from '../chatsStore.js';
@@ -79,7 +78,8 @@ export async function importChat(file: File): Promise<{ id: string; chat: Chat }
 }
 
 /**
- * Export all data (chats, settings, images) as a TAR archive
+ * Export all data (chats and settings) as a TAR archive.
+ * Media is intentionally skipped so exports do not read or archive image data.
  */
 export async function exportAllData(): Promise<void> {
   try {
@@ -138,37 +138,6 @@ export async function exportAllData(): Promise<void> {
       settings
     };
     tar.append('settings.json', encodeText(JSON.stringify(settingsData, null, 2)));
-
-    // Export images if indexedDB is available
-    try {
-      const images = await getAllImages();
-      if (images && images.length > 0) {
-        const imagesManifest: ImageManifestEntry[] = [];
-
-        for (const image of images) {
-          if (image.data && image.id) {
-            const ext = getExtensionFromMimeType(image.mimeType) || 'dat';
-            const filename = `${image.id}.${ext}`;
-            // Normalize to fix any doubled prefixes, then extract just base64
-            const normalizedData = normalizeBase64Data(image.data);
-
-            // Store as binary data so images are viewable in archive
-            tar.append(`images/${filename}`, base64ToBytes(normalizedData));
-
-            imagesManifest.push({
-              id: image.id,
-              filename,
-              mimeType: image.mimeType,
-              name: image.name
-            });
-          }
-        }
-
-        tar.append('images/manifest.json', encodeText(JSON.stringify({ version: 1, images: imagesManifest }, null, 2)));
-      }
-    } catch (err) {
-      console.warn('Failed to export images:', err);
-    }
 
     const tarData = tar.out;
     const blob = new Blob([tarData], { type: 'application/x-tar' });
@@ -451,22 +420,6 @@ function extractChatFromPayload(payload: unknown): Chat {
   return chat;
 }
 
-/**
- * Helper: Get file extension from MIME type
- */
-function getExtensionFromMimeType(mimeType: string | undefined): string {
-  if (!mimeType) return 'dat';
-  const map: Record<string, string> = {
-    'image/png': 'png',
-    'image/jpeg': 'jpg',
-    'image/jpg': 'jpg',
-    'image/gif': 'gif',
-    'image/webp': 'webp',
-    'image/svg+xml': 'svg'
-  };
-  return map[mimeType.toLowerCase()] || 'dat';
-}
-
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
 
@@ -481,15 +434,6 @@ function encodeText(text: string): Uint8Array {
 function decodeText(bytes: Uint8Array | null): string {
   if (!bytes) return '';
   return textDecoder.decode(bytes);
-}
-
-function base64ToBytes(base64: string): Uint8Array {
-  const binString = atob(base64);
-  const bytes = new Uint8Array(binString.length);
-  for (let i = 0; i < binString.length; i++) {
-    bytes[i] = binString.charCodeAt(i);
-  }
-  return bytes;
 }
 
 function bytesToBase64(bytes: Uint8Array): string {
@@ -620,4 +564,3 @@ export async function fixDoubledImages(): Promise<number> {
     return 0;
   }
 }
-
