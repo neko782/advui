@@ -1,7 +1,7 @@
 // Chat persistence with signature tracking
 import { saveChatContent } from '../../chatsStore.js';
 import { sanitizeGraphComprehensive } from './graphValidation.js';
-import type { ChatNode, ChatSettings, Chat, PersistenceResult, ImageReference } from '../../types/index.js';
+import type { ChatNode, ChatSettings, PersistenceResult, ImageReference } from '../../types/index.js';
 
 function sanitizeImages(images: unknown, stripData: boolean = false): ImageReference[] {
   if (!Array.isArray(images)) return [];
@@ -39,6 +39,33 @@ function sanitizeImages(images: unknown, stripData: boolean = false): ImageRefer
     if (name) img.name = name;
     if (!stripData && data) img.data = data;
     map.set(id, img);
+  }
+  return [...map.values()];
+}
+
+function sanitizeGeneratedImages(images: unknown): Array<ImageReference & { revisedPrompt?: string }> {
+  if (!Array.isArray(images)) return [];
+  const map = new Map<string, ImageReference & { revisedPrompt?: string }>();
+  for (const entry of images) {
+    if (!entry || typeof entry !== 'object') continue;
+    const entryObj = entry as Record<string, unknown>;
+    const id = typeof entryObj.id === 'string' && entryObj.id.trim() ? entryObj.id.trim() : null;
+    if (!id) continue;
+
+    const image: ImageReference & { revisedPrompt?: string } = { id };
+    if (typeof entryObj.mimeType === 'string' && entryObj.mimeType.trim()) image.mimeType = entryObj.mimeType.trim();
+    else image.mimeType = 'image/png';
+    if (typeof entryObj.name === 'string' && entryObj.name.trim()) image.name = entryObj.name.trim();
+    if (typeof entryObj.revisedPrompt === 'string' && entryObj.revisedPrompt) image.revisedPrompt = entryObj.revisedPrompt;
+
+    const existing = map.get(id);
+    if (existing) {
+      if (!existing.mimeType && image.mimeType) existing.mimeType = image.mimeType;
+      if (!existing.name && image.name) existing.name = image.name;
+      if (!existing.revisedPrompt && image.revisedPrompt) existing.revisedPrompt = image.revisedPrompt;
+      continue;
+    }
+    map.set(id, image);
   }
   return [...map.values()];
 }
@@ -95,6 +122,50 @@ function sanitizeVariantImages(variant: unknown): SanitizeResult {
   return { variant: { ...variantObj, images: normalized }, changed: true };
 }
 
+function sanitizeVariantGeneratedImages(variant: unknown): SanitizeResult {
+  if (!variant || typeof variant !== 'object') return { variant, changed: false };
+  const variantObj = variant as Record<string, unknown>;
+  const imagesInput = variantObj.generatedImages;
+  const normalized = sanitizeGeneratedImages(imagesInput);
+  const hasImages = normalized.length > 0;
+
+  if (!Array.isArray(imagesInput)) {
+    if (!hasImages && !('generatedImages' in variantObj)) return { variant, changed: false };
+    const cleaned = { ...variantObj };
+    if (hasImages) cleaned.generatedImages = normalized;
+    else delete cleaned.generatedImages;
+    return { variant: cleaned, changed: true };
+  }
+
+  if (!hasImages) {
+    if (!imagesInput.length) return { variant, changed: false };
+    const cleaned = { ...variantObj };
+    delete cleaned.generatedImages;
+    return { variant: cleaned, changed: true };
+  }
+
+  let needsUpdate = imagesInput.length !== normalized.length;
+  if (!needsUpdate) {
+    for (let i = 0; i < normalized.length; i++) {
+      const orig = imagesInput[i];
+      const norm = normalized[i]!;
+      const obj = orig && typeof orig === 'object' ? orig as Record<string, unknown> : null;
+      const origId = typeof obj?.id === 'string' ? obj.id : '';
+      const origMime = typeof obj?.mimeType === 'string' ? obj.mimeType.trim() : '';
+      const origName = typeof obj?.name === 'string' ? obj.name.trim() : '';
+      const origPrompt = typeof obj?.revisedPrompt === 'string' ? obj.revisedPrompt : '';
+      const origHasData = typeof obj?.data === 'string' && !!obj.data;
+      if (origId !== norm.id || origMime !== (norm.mimeType || '') || origName !== (norm.name || '') || origPrompt !== (norm.revisedPrompt || '') || origHasData) {
+        needsUpdate = true;
+        break;
+      }
+    }
+  }
+
+  if (!needsUpdate) return { variant, changed: false };
+  return { variant: { ...variantObj, generatedImages: normalized }, changed: true };
+}
+
 function stripImageDataFromNodes(nodes: ChatNode[]): ChatNode[] {
   const list = Array.isArray(nodes) ? nodes : [];
   let mutated = false;
@@ -103,9 +174,10 @@ function stripImageDataFromNodes(nodes: ChatNode[]): ChatNode[] {
     const variants = Array.isArray(node.variants) ? node.variants : [];
     let variantsChanged = false;
     const sanitizedVariants = variants.map(variant => {
-      const { variant: sanitized, changed } = sanitizeVariantImages(variant);
-      if (changed) variantsChanged = true;
-      return sanitized;
+      const imageResult = sanitizeVariantImages(variant);
+      const generatedResult = sanitizeVariantGeneratedImages(imageResult.variant);
+      if (imageResult.changed || generatedResult.changed) variantsChanged = true;
+      return generatedResult.variant;
     });
     if (!variantsChanged) return node;
     mutated = true;
@@ -150,10 +222,12 @@ function hashGeneratedImages(images: unknown): number {
     if (!entry || typeof entry !== 'object') continue;
     const obj = entry as Record<string, unknown>;
     const id = typeof obj.id === 'string' ? obj.id : '';
-    const dataLen = typeof obj.data === 'string' ? obj.data.length : 0;
+    const mimeType = typeof obj.mimeType === 'string' ? obj.mimeType : '';
+    const name = typeof obj.name === 'string' ? obj.name : '';
     const revisedPromptHash = typeof obj.revisedPrompt === 'string' ? hashString(obj.revisedPrompt) : 0;
     hash = mixHash(hash, hashString(id));
-    hash = mixHash(hash, dataLen);
+    hash = mixHash(hash, hashString(mimeType));
+    hash = mixHash(hash, hashString(name));
     hash = mixHash(hash, revisedPromptHash);
   }
   return hash >>> 0;

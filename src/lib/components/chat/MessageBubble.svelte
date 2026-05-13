@@ -126,6 +126,27 @@ const resolvedAttachments = $derived.by(() => {
   return attachments.map((attachment) => resolveAttachment(attachment, props.imageCache)).filter(Boolean)
 })
 
+function resolveGeneratedImage(image, imageCache) {
+  if (!image || typeof image !== 'object') return null
+  if (typeof image.data === 'string' && image.data) return image
+  const id = typeof image.id === 'string' && image.id.trim() ? image.id.trim() : null
+  if (!id) return null
+  const cached = imageCache?.[id]
+  if (!cached?.data) return null
+  return {
+    ...image,
+    data: cached.data,
+    mimeType: image.mimeType || cached.mimeType || 'image/png',
+    name: image.name ?? cached.name,
+  }
+}
+
+const resolvedGeneratedImages = $derived.by(() => {
+  const images = Array.isArray(props.message?.generatedImages) ? props.message.generatedImages : []
+  if (!images.length) return []
+  return images.map((image) => resolveGeneratedImage(image, props.imageCache)).filter(Boolean)
+})
+
   function extractReasoningSummary(msg) {
     const raw = msg?.reasoningSummary
     if (typeof raw === 'string') return raw
@@ -373,12 +394,12 @@ const resolvedAttachments = $derived.by(() => {
         />
       </div>
     {/if}
-    {#if props.message.generatedImages && props.message.generatedImages.length > 0}
+    {#if resolvedGeneratedImages.length > 0}
       <div class={`generated-images ${props.message.role}`}>
-        {#each props.message.generatedImages as genImg (genImg.id)}
+        {#each resolvedGeneratedImages as genImg (genImg.id)}
           <div class="generated-image-container">
             <img
-              src={`data:image/png;base64,${genImg.data}`}
+              src={`data:${genImg.mimeType || 'image/png'};base64,${genImg.data}`}
               alt={genImg.revisedPrompt || 'Generated image'}
               class="generated-image"
             />

@@ -668,7 +668,9 @@ export interface ImageGenerationOptions {
 
 export interface GeneratedImage {
   id: string;
-  data: string;  // Base64 encoded image data
+  data?: string;  // Base64 encoded image data while in transit; persisted in media storage
+  mimeType?: string;
+  name?: string;
   revisedPrompt?: string;
 }
 

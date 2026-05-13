@@ -578,6 +578,26 @@
     return refs
   }
 
+  function buildGeneratedImageRefs(list) {
+    if (!Array.isArray(list)) return []
+    const refs = []
+    const seen = new Set()
+    for (const img of list) {
+      if (!img || typeof img !== 'object') continue
+      const id = typeof img.id === 'string' && img.id.trim() ? img.id.trim() : null
+      if (!id || seen.has(id)) continue
+      seen.add(id)
+      const ref = { id }
+      if (typeof img.mimeType === 'string' && img.mimeType.trim()) ref.mimeType = img.mimeType.trim()
+      else ref.mimeType = 'image/png'
+      if (typeof img.name === 'string' && img.name.trim()) ref.name = img.name.trim()
+      else ref.name = generatedImageName({ ...img, id })
+      if (typeof img.revisedPrompt === 'string' && img.revisedPrompt) ref.revisedPrompt = img.revisedPrompt
+      refs.push(ref)
+    }
+    return refs
+  }
+
   function cacheImageData(image) {
     if (!image || typeof image !== 'object') return
     const id = typeof image.id === 'string' && image.id.trim() ? image.id.trim() : null
@@ -593,6 +613,38 @@
     }
     if (existing.data === next.data && existing.mimeType === next.mimeType && existing.name === next.name) return
     imageCache = { ...imageCache, [id]: next }
+  }
+
+  function generatedImageName(image) {
+    const id = typeof image?.id === 'string' && image.id.trim() ? image.id.trim() : `generated-${Date.now()}`
+    return `${id}.png`
+  }
+
+  async function storeGeneratedImagesInMedia(reply) {
+    if (!reply || typeof reply !== 'object' || !Array.isArray(reply.generatedImages)) return reply
+    const generatedImages = []
+    for (const image of reply.generatedImages) {
+      if (!image || typeof image !== 'object') continue
+      const id = typeof image.id === 'string' && image.id.trim() ? image.id.trim() : generateImageId()
+      const data = typeof image.data === 'string' && image.data ? image.data : ''
+      const mimeType = typeof image.mimeType === 'string' && image.mimeType.trim() ? image.mimeType.trim() : 'image/png'
+      const name = typeof image.name === 'string' && image.name.trim() ? image.name.trim() : generatedImageName({ ...image, id })
+      const revisedPrompt = typeof image.revisedPrompt === 'string' && image.revisedPrompt ? image.revisedPrompt : undefined
+
+      if (data) {
+        cacheImageData({ id, data, mimeType, name })
+        try {
+          await storeImage(id, data, mimeType, name)
+        } catch (err) {
+          console.warn('Failed to store generated image in media:', err)
+        }
+      }
+
+      const ref = { id, mimeType, name }
+      if (revisedPrompt) ref.revisedPrompt = revisedPrompt
+      generatedImages.push(ref)
+    }
+    return { ...reply, generatedImages: generatedImages.length ? generatedImages : undefined }
   }
 
   const pendingImageLoads = new Set()
@@ -664,25 +716,60 @@
             }
           }
         }
-        if (!needsUpdate) return variant
-
-        variantsChanged = true
-        if (hasImages) {
-          for (const orig of originalImages) {
-            if (orig && typeof orig === 'object' && typeof orig.data === 'string' && orig.data) {
-              cacheImageData(orig)
-            }
-          }
-          return { ...variant, images: refs }
-        }
-
         for (const orig of originalImages) {
           if (orig && typeof orig === 'object' && typeof orig.data === 'string' && orig.data) {
             cacheImageData(orig)
           }
         }
-        const cleaned = { ...variant }
-        delete cleaned.images
+        let nextVariant = variant
+        if (needsUpdate) {
+          variantsChanged = true
+          if (hasImages) {
+            nextVariant = { ...nextVariant, images: refs }
+          } else {
+            const cleaned = { ...nextVariant }
+            delete cleaned.images
+            nextVariant = cleaned
+          }
+        }
+
+        const generatedRefs = buildGeneratedImageRefs(nextVariant.generatedImages)
+        const originalGeneratedImages = Array.isArray(nextVariant.generatedImages) ? nextVariant.generatedImages : []
+        let generatedNeedsUpdate = generatedRefs.length
+          ? originalGeneratedImages.length !== generatedRefs.length
+          : originalGeneratedImages.length > 0
+        if (!generatedNeedsUpdate && generatedRefs.length) {
+          for (let i = 0; i < generatedRefs.length; i++) {
+            const orig = originalGeneratedImages[i]
+            const ref = generatedRefs[i]
+            if (!orig || typeof orig !== 'object') { generatedNeedsUpdate = true; break }
+            const origMime = (typeof orig.mimeType === 'string' && orig.mimeType.trim()) || ''
+            const origName = (typeof orig.name === 'string' && orig.name.trim()) || ''
+            const origPrompt = (typeof orig.revisedPrompt === 'string' && orig.revisedPrompt) || ''
+            const hasData = typeof orig.data === 'string' && orig.data
+            if (orig.id !== ref.id || origMime !== (ref.mimeType || '') || origName !== (ref.name || '') || origPrompt !== (ref.revisedPrompt || '') || hasData) {
+              generatedNeedsUpdate = true
+              break
+            }
+          }
+        }
+        for (const orig of originalGeneratedImages) {
+          if (orig && typeof orig === 'object' && typeof orig.data === 'string' && orig.data) {
+            const id = typeof orig.id === 'string' && orig.id.trim() ? orig.id.trim() : null
+            if (!id) continue
+            const mimeType = typeof orig.mimeType === 'string' && orig.mimeType.trim() ? orig.mimeType.trim() : 'image/png'
+            const name = typeof orig.name === 'string' && orig.name.trim() ? orig.name.trim() : generatedImageName({ ...orig, id })
+            cacheImageData({ ...orig, id, mimeType, name })
+            storeImage(id, orig.data, mimeType, name).catch((err) => {
+              console.warn('Failed to migrate generated image to media:', err)
+            })
+          }
+        }
+        if (!generatedNeedsUpdate) return nextVariant
+        variantsChanged = true
+        if (generatedRefs.length) return { ...nextVariant, generatedImages: generatedRefs }
+        const cleaned = { ...nextVariant }
+        delete cleaned.generatedImages
         return cleaned
       })
       if (!variantsChanged) return node
@@ -721,6 +808,18 @@
           if (!id || imageCache[id]?.data || seen.has(id)) continue
           seen.add(id)
           missing.push({ id, mimeType: img.mimeType, name: img.name })
+        }
+        const generatedImages = Array.isArray(vm?.m?.generatedImages) ? vm.m.generatedImages : []
+        for (const img of generatedImages) {
+          if (!img || typeof img !== 'object') continue
+          if (typeof img.data === 'string' && img.data) {
+            cacheImageData(img)
+            continue
+          }
+          const id = typeof img.id === 'string' && img.id.trim() ? img.id.trim() : null
+          if (!id || imageCache[id]?.data || seen.has(id)) continue
+          seen.add(id)
+          missing.push({ id, mimeType: img.mimeType || 'image/png', name: img.name })
         }
       }
       if (missing.length) ensureImagesAvailable(missing)
@@ -1080,7 +1179,8 @@
       })
       logGenerationEvent(debug, 'API request completed', { typingVariantId })
       if (generationState.getGenerationSequence() === genSeq) {
-        nodes = handleGenerationSuccess(nodes, typingVariantId, reply, summaryBuffer)
+        const storedReply = await storeGeneratedImagesInMedia(reply)
+        nodes = handleGenerationSuccess(nodes, typingVariantId, storedReply, summaryBuffer)
       }
       generationFinalized = finalizeGeneration(genSeq)
       await persistNow()
@@ -1357,7 +1457,8 @@
       logGenerationEvent(debug, 'API request completed', { typingVariantId, role })
 
       if (generationState.getGenerationSequence() === genSeq) {
-        nodes = handleGenerationSuccess(nodes, typingVariantId, reply, summaryBuffer)
+        const storedReply = await storeGeneratedImagesInMedia(reply)
+        nodes = handleGenerationSuccess(nodes, typingVariantId, storedReply, summaryBuffer)
       }
       generationFinalized = finalizeGeneration(genSeq)
       await persistNow()
@@ -1538,7 +1639,8 @@
       })
       logGenerationEvent(debug, 'API request completed', { typingVariantId })
       if (generationState.getGenerationSequence() === genSeq) {
-        nodes = handleGenerationSuccess(nodes, typingVariantId, reply, summaryBuffer)
+        const storedReply = await storeGeneratedImagesInMedia(reply)
+        nodes = handleGenerationSuccess(nodes, typingVariantId, storedReply, summaryBuffer)
       }
       generationFinalized = finalizeGeneration(genSeq)
       await persistNow()
@@ -1635,7 +1737,8 @@
       })
       logGenerationEvent(debug, 'API request completed', { typingVariantId })
       if (generationState.getGenerationSequence() === genSeq) {
-        nodes = handleGenerationSuccess(nodes, typingVariantId, reply, summaryBuffer)
+        const storedReply = await storeGeneratedImagesInMedia(reply)
+        nodes = handleGenerationSuccess(nodes, typingVariantId, storedReply, summaryBuffer)
       }
       generationFinalized = finalizeGeneration(genSeq)
       await persistNow()

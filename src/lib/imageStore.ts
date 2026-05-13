@@ -202,23 +202,29 @@ export async function imageExists(id: string): Promise<boolean> {
 /**
  * Collects all image IDs referenced in a nodes array
  */
-export function collectImageReferences(nodes: Array<{ variants?: Array<{ images?: Array<{ id?: string } | string> }> }>): string[] {
+export function collectImageReferences(nodes: Array<{ variants?: Array<{ images?: unknown[], generatedImages?: unknown[] }> }>): string[] {
   const ids: string[] = [];
   const seen = new Set<string>();
+  const addImage = (img: unknown) => {
+    let id: string | null = null;
+    if (typeof img === 'string') {
+      id = img.trim();
+    } else if (img && typeof img === 'object' && typeof (img as { id?: unknown }).id === 'string') {
+      id = (img as { id: string }).id.trim();
+    }
+    if (id && !seen.has(id)) {
+      seen.add(id);
+      ids.push(id);
+    }
+  };
 
   for (const node of nodes || []) {
     for (const variant of node?.variants || []) {
       for (const img of variant?.images || []) {
-        let id: string | null = null;
-        if (typeof img === 'string') {
-          id = img.trim();
-        } else if (img && typeof img === 'object' && typeof img.id === 'string') {
-          id = img.id.trim();
-        }
-        if (id && !seen.has(id)) {
-          seen.add(id);
-          ids.push(id);
-        }
+        addImage(img);
+      }
+      for (const img of variant?.generatedImages || []) {
+        addImage(img);
       }
     }
   }
@@ -231,7 +237,7 @@ export function collectImageReferences(nodes: Array<{ variants?: Array<{ images?
  * Returns the cleaned nodes and list of removed references.
  */
 export async function cleanInvalidImageReferences(
-  nodes: Array<{ variants?: Array<{ images?: unknown[] }> }>
+  nodes: Array<{ variants?: Array<{ images?: unknown[], generatedImages?: unknown[] }> }>
 ): Promise<{ nodes: typeof nodes; removedIds: string[] }> {
   const referencedIds = collectImageReferences(nodes);
   const validation = await validateImageReferences(referencedIds);
@@ -249,9 +255,37 @@ export async function cleanInvalidImageReferences(
     
     let variantsMutated = false;
     const cleanedVariants = node.variants.map(variant => {
-      if (!Array.isArray(variant?.images)) return variant;
+      let nextVariant = variant;
       
-      const cleanedImages = variant.images.filter(img => {
+      if (Array.isArray(nextVariant?.images)) {
+        const cleanedImages = nextVariant.images.filter(img => {
+          let id: string | null = null;
+          if (typeof img === 'string') {
+            id = img.trim();
+          } else if (img && typeof img === 'object' && typeof (img as { id?: string }).id === 'string') {
+            id = ((img as { id: string }).id).trim();
+          }
+          if (id && missingSet.has(id)) {
+            removedIds.push(id);
+            return false;
+          }
+          return true;
+        });
+
+        if (cleanedImages.length !== nextVariant.images.length) {
+          variantsMutated = true;
+          if (cleanedImages.length === 0) {
+            const { images: _, ...rest } = nextVariant as { images?: unknown[] };
+            nextVariant = rest;
+          } else {
+            nextVariant = { ...nextVariant, images: cleanedImages };
+          }
+        }
+      }
+
+      if (!Array.isArray(nextVariant?.generatedImages)) return nextVariant;
+
+      const cleanedGeneratedImages = nextVariant.generatedImages.filter(img => {
         let id: string | null = null;
         if (typeof img === 'string') {
           id = img.trim();
@@ -265,15 +299,15 @@ export async function cleanInvalidImageReferences(
         return true;
       });
 
-      if (cleanedImages.length !== variant.images.length) {
+      if (cleanedGeneratedImages.length !== nextVariant.generatedImages.length) {
         variantsMutated = true;
-        if (cleanedImages.length === 0) {
-          const { images: _, ...rest } = variant as { images?: unknown[] };
+        if (cleanedGeneratedImages.length === 0) {
+          const { generatedImages: _, ...rest } = nextVariant as { generatedImages?: unknown[] };
           return rest;
         }
-        return { ...variant, images: cleanedImages };
+        return { ...nextVariant, generatedImages: cleanedGeneratedImages };
       }
-      return variant;
+      return nextVariant;
     });
 
     if (variantsMutated) {
@@ -288,4 +322,3 @@ export async function cleanInvalidImageReferences(
     removedIds: [...new Set(removedIds)],
   };
 }
-
