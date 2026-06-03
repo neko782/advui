@@ -115,13 +115,11 @@
   }
 
   function toggleMessageActionRole(id: string, role: MessageActionRole) {
-    if (id === 'fork' && role === 'assistant') return
     const actions = cloneMessageActions(local?.messageActions)
     const idx = actions.findIndex(a => a.id === id)
     if (idx < 0) return
     const defaults = DEFAULT_MESSAGE_ACTIONS.find(a => a.id === id)?.roles || { user: true, assistant: true, system: true }
     actions[idx].roles = { ...defaults, ...actions[idx].roles, [role]: !(actions[idx].roles?.[role] ?? defaults[role]) }
-    if (id === 'fork') actions[idx].roles.assistant = false
     local.messageActions = actions
     persistSettings()
   }
@@ -1770,12 +1768,10 @@
                     <div class="message-role-checks" aria-label={`${action.label} message roles`}>
                       {#each MESSAGE_ACTION_ROLES as role}
                         {@const checked = action.roles?.[role.id] ?? DEFAULT_MESSAGE_ACTIONS.find(a => a.id === action.id)?.roles?.[role.id] ?? true}
-                        {@const disabled = action.id === 'fork' && role.id === 'assistant'}
-                        <label class="role-check" class:disabled-role={disabled} title={disabled ? 'Fork is not available on assistant messages' : `${action.label} on ${role.label.toLowerCase()} messages`}>
+                        <label class="role-check" title={`${action.label} on ${role.label.toLowerCase()} messages`}>
                           <input
                             type="checkbox"
-                            checked={checked && !disabled}
-                            disabled={disabled}
+                            checked={checked}
                             onchange={() => toggleMessageActionRole(action.id, role.id)}
                             aria-label={`${action.label} on ${role.label} messages`}
                           />
@@ -2668,10 +2664,6 @@
     height: 14px;
     margin: 0;
     accent-color: var(--accent);
-  }
-  .role-check.disabled-role {
-    opacity: 0.55;
-    cursor: not-allowed;
   }
   .action-toggle {
     display: inline-flex;

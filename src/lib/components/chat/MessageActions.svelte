@@ -84,7 +84,7 @@
     if (isEnabled('copy')) items.push({ id: 'copy', render: 'copy' })
     if (isEnabled('delete')) items.push({ id: 'delete', render: 'delete' })
     if (isEnabled('edit')) items.push({ id: 'edit', render: 'edit' })
-    if (isEnabled('fork') && m.role !== 'assistant') items.push({ id: 'fork', render: 'fork' })
+    if (isEnabled('fork')) items.push({ id: 'fork', render: 'fork' })
     if (isEnabled('moveDown')) items.push({ id: 'moveDown', render: 'moveDown' })
     if (isEnabled('moveUp')) items.push({ id: 'moveUp', render: 'moveUp' })
 

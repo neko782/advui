@@ -127,7 +127,6 @@ function normalizeMessageActionRoles(id: string, raw: unknown): MessageActionRol
     acc[role] = typeof source[role] === 'boolean' ? source[role] as boolean : defaults[role];
     return acc;
   }, {} as MessageActionRoles);
-  if (id === 'fork') roles.assistant = false;
   return roles;
 }
 

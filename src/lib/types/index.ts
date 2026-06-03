@@ -293,7 +293,7 @@ export const DEFAULT_MESSAGE_ACTIONS: MessageActionButton[] = [
   { id: 'copy', label: 'Copy', enabled: true, roles: { user: true, assistant: true, system: true } },
   { id: 'delete', label: 'Delete', enabled: true, roles: { user: true, assistant: true, system: true } },
   { id: 'edit', label: 'Edit', enabled: true, roles: { user: true, assistant: true, system: true } },
-  { id: 'fork', label: 'Fork', enabled: false, roles: { user: true, assistant: false, system: true } },
+  { id: 'fork', label: 'Fork', enabled: false, roles: { user: true, assistant: true, system: true } },
   { id: 'moveDown', label: 'Move down', enabled: true, roles: { user: true, assistant: true, system: true } },
   { id: 'moveUp', label: 'Move up', enabled: true, roles: { user: true, assistant: true, system: true } },
 ];
