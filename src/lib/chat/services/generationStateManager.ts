@@ -22,8 +22,21 @@ export function createGenerationStateManager(): GenerationStateManager {
   let generationActive = false;
   let generationSequence = 0;
   const abortedSequences = new Set<number>();
+  // Cap on remembered force-stopped sequences awaiting a late abort handler
+  const MAX_ABORTED_SEQUENCES = 8;
   // Track expected nodes state version to detect mutations
   let stateVersion = 0;
+
+  /**
+   * Drops the oldest remembered aborted sequences beyond the cap so the set
+   * cannot grow unbounded when abort handlers never register.
+   */
+  function pruneAbortedSequences(): void {
+    while (abortedSequences.size > MAX_ABORTED_SEQUENCES) {
+      const oldest = abortedSequences.values().next().value as number;
+      abortedSequences.delete(oldest);
+    }
+  }
 
   /**
    * Resets all generation state
@@ -43,6 +56,10 @@ export function createGenerationStateManager(): GenerationStateManager {
   function startGeneration(): number {
     generationActive = true;
     generationSequence++;
+    // Prune stale aborted sequences that can no longer receive a late handler
+    for (const seq of [...abortedSequences]) {
+      if (seq < generationSequence - MAX_ABORTED_SEQUENCES) abortedSequences.delete(seq);
+    }
     stateVersion++;
     inFlightAbort = null;
     inFlightAbortSequence = null;
@@ -186,10 +203,14 @@ export function createGenerationStateManager(): GenerationStateManager {
    */
   function forceStopGeneration(): boolean {
     const stoppedSequence = generationSequence;
+    const handlerAlreadyRan = abortExecuted;
     const didAbort = requestAbort();
 
-    if (stoppedSequence > 0) {
+    // Only remember the sequence when its abort handler has not run yet;
+    // otherwise a late re-registration would invoke the handler twice.
+    if (stoppedSequence > 0 && !handlerAlreadyRan && !didAbort) {
       abortedSequences.add(stoppedSequence);
+      pruneAbortedSequences();
     }
 
     generationActive = false;

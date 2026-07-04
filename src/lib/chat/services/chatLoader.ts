@@ -11,6 +11,7 @@ import {
   DEFAULT_SYSTEM_PROMPT
 } from './chatInit.js';
 import { migrateLegacyGraphToNodes } from './legacyMigration.js';
+import { validateRootId } from '../../branching.js';
 import { computePersistSig } from './chatPersistence.js';
 import { loadChatSettings } from '../../utils/presetHelpers.js';
 import type { ChatNode, ChatSettings, Settings, LoadedChat, Chat, Preset } from '../../types/index.js';
@@ -55,7 +56,13 @@ export async function loadChat(chatId: string | null): Promise<LoadedChat> {
     if (loaded) {
       if (Array.isArray(loaded.nodes)) {
         nextNodes = loaded.nodes.slice();
-        nextRootId = loaded?.rootId ?? (nextNodes[0]?.id || 1);
+        if (nextNodes.length) {
+          // Self-heal a dangling stored rootId (points to no loaded node)
+          const rootCheck = validateRootId(nextNodes, loaded?.rootId ?? null);
+          nextRootId = rootCheck.rootId ?? (nextNodes[0]?.id || 1);
+        } else {
+          nextRootId = loaded?.rootId ?? (nextNodes[0]?.id || 1);
+        }
       } else {
         // Legacy support: migrate flat/graph messages to node-based
         const loadedRecord = loaded as unknown as { messages?: unknown[]; rootId?: number; selected?: Record<number, number> };

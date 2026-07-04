@@ -29,7 +29,7 @@ export function clampActiveIndex(node: ChatNode): number {
   const variants = Array.isArray(node?.variants) ? node.variants : [];
   const len = variants.length;
   if (len === 0) return 0;
-  const raw = Number(node?.active) || 0;
+  const raw = Math.floor(Number(node?.active) || 0);
   return Math.max(0, Math.min(len - 1, raw));
 }
 
@@ -217,20 +217,33 @@ export function validateTree(nodes: ChatNode[], rootId: number | null): TreeVali
   const color = new Map<number, number>(); // 0=unseen,1=visiting,2=done
   for (const id of allNodeIds) color.set(id, 0);
   const stack: number[] = [];
-  function dfs(u: number): void {
-    color.set(u, 1);
-    stack.push(u);
-    for (const v of adj.get(u) || []) {
+  function dfs(root: number): void {
+    // Iterative DFS with an explicit frame stack to avoid RangeError on very long chains
+    const frames: Array<{ u: number; it: Iterator<number> }> = [];
+    color.set(root, 1);
+    stack.push(root);
+    frames.push({ u: root, it: (adj.get(root) || new Set<number>()).values() });
+    while (frames.length) {
+      const frame = frames[frames.length - 1]!;
+      const step = frame.it.next();
+      if (step.done) {
+        frames.pop();
+        stack.pop();
+        color.set(frame.u, 2);
+        continue;
+      }
+      const v = step.value;
       const c = color.get(v) || 0;
-      if (c === 0) { dfs(v); }
-      else if (c === 1) {
+      if (c === 0) {
+        color.set(v, 1);
+        stack.push(v);
+        frames.push({ u: v, it: (adj.get(v) || new Set<number>()).values() });
+      } else if (c === 1) {
         // found a cycle; record path from v to end of stack
         const start = stack.indexOf(v);
         if (start >= 0) details.cycles.push(stack.slice(start).concat(v));
       }
     }
-    stack.pop();
-    color.set(u, 2);
   }
   for (const id of allNodeIds) if ((color.get(id) || 0) === 0) dfs(id);
   if (details.cycles.length) problems.push('Cycle detected in conversation graph');
@@ -239,8 +252,9 @@ export function validateTree(nodes: ChatNode[], rootId: number | null): TreeVali
   const reachable = new Set<number>();
   if (rootId != null && allNodeIds.has(Number(rootId))) {
     const q: number[] = [Number(rootId)];
-    while (q.length) {
-      const u = q.shift()!;
+    let qi = 0;
+    while (qi < q.length) {
+      const u = q[qi++]!;
       if (reachable.has(u)) continue;
       reachable.add(u);
       for (const v of adj.get(u) || []) q.push(v);

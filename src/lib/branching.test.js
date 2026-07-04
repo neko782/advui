@@ -29,6 +29,21 @@ describe('clampActiveIndex', () => {
     const node = { id: 1, variants: [{ id: 1 }, { id: 2 }, { id: 3 }], active: 1 }
     expect(clampActiveIndex(node)).toBe(1)
   })
+
+  it('should floor fractional active values', () => {
+    const node = { id: 1, variants: [{ id: 1 }, { id: 2 }, { id: 3 }], active: 1.5 }
+    expect(clampActiveIndex(node)).toBe(1)
+  })
+
+  it('should treat NaN active as 0', () => {
+    const node = { id: 1, variants: [{ id: 1 }, { id: 2 }], active: 'garbage' }
+    expect(clampActiveIndex(node)).toBe(0)
+  })
+
+  it('should clamp fractional negative active to 0', () => {
+    const node = { id: 1, variants: [{ id: 1 }, { id: 2 }], active: -0.5 }
+    expect(clampActiveIndex(node)).toBe(0)
+  })
 })
 
 describe('normalizeNodeActive', () => {
@@ -112,6 +127,33 @@ describe('buildVisible with clamped active', () => {
     expect(visible.length).toBe(1)
     expect(visible[0].variantIndex).toBe(0) // clamped from 10 to 0
   })
+
+  it('should not truncate the chat when a node has a fractional active index', () => {
+    const nodes = [
+      {
+        id: 1,
+        variants: [
+          { id: 1, role: 'user', content: 'a', next: 2 },
+          { id: 2, role: 'user', content: 'b', next: 2 },
+        ],
+        active: 1.5, // corrupt data
+      },
+      { id: 2, variants: [{ id: 3, role: 'assistant', content: 'reply', next: null }], active: 0 },
+    ]
+    const visible = buildVisible(nodes, 1)
+    expect(visible.length).toBe(2)
+    expect(visible[0].variantIndex).toBe(1) // floored from 1.5
+    expect(visible[1].m.content).toBe('reply')
+  })
+})
+
+describe('normalizeNodeActive with fractional active', () => {
+  it('should repair fractional active values', () => {
+    const node = { id: 1, variants: [{ id: 1 }, { id: 2 }], active: 1.5 }
+    const result = normalizeNodeActive(node)
+    expect(result).not.toBe(node)
+    expect(result.active).toBe(1)
+  })
 })
 
 describe('enforceUniqueParentsWithInfo', () => {
@@ -193,5 +235,28 @@ describe('validateTree', () => {
     ]
     const result = validateTree(nodes, 1)
     expect(result.ok).toBe(true)
+  })
+
+  it('should handle very deep chains without RangeError', () => {
+    const N = 100000
+    const nodes = new Array(N)
+    for (let i = 1; i <= N; i++) {
+      nodes[i - 1] = { id: i, variants: [{ id: i, next: i < N ? i + 1 : null }], active: 0 }
+    }
+    const result = validateTree(nodes, 1)
+    expect(result.ok).toBe(true)
+    expect(result.problems).toEqual([])
+  })
+
+  it('should still detect cycles in deep chains iteratively', () => {
+    const N = 5000
+    const nodes = new Array(N)
+    for (let i = 1; i <= N; i++) {
+      // last node loops back to the first
+      nodes[i - 1] = { id: i, variants: [{ id: i, next: i < N ? i + 1 : 1 }], active: 0 }
+    }
+    const result = validateTree(nodes, 1)
+    expect(result.ok).toBe(false)
+    expect(result.details.cycles.length).toBeGreaterThan(0)
   })
 })

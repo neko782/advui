@@ -258,6 +258,37 @@ describe('loadChat', () => {
     expect(result.rootId).toBe(5)
   })
 
+  it('should self-heal a dangling stored rootId', async () => {
+    const loadedChat = {
+      nodes: [
+        { id: 5, active: 0, variants: [{ id: 1, role: 'user', content: 'hello', next: 6 }] },
+        { id: 6, active: 0, variants: [{ id: 2, role: 'assistant', content: 'hi', next: null }] }
+      ],
+      rootId: 999 // dangling: no such node
+    }
+    chatsStore.getChat.mockResolvedValue(loadedChat)
+
+    const result = await loadChat('chat123')
+
+    expect(result.rootId).toBe(5)
+    expect(result.nodes).toHaveLength(2)
+  })
+
+  it('should keep a valid stored rootId unchanged', async () => {
+    const loadedChat = {
+      nodes: [
+        { id: 3, active: 0, variants: [{ id: 1, role: 'user', content: 'hello', next: 4 }] },
+        { id: 4, active: 0, variants: [{ id: 2, role: 'assistant', content: 'hi', next: null }] }
+      ],
+      rootId: 3
+    }
+    chatsStore.getChat.mockResolvedValue(loadedChat)
+
+    const result = await loadChat('chat123')
+
+    expect(result.rootId).toBe(3)
+  })
+
   it('should handle empty string connectionId by falling back', async () => {
     const loadedChat = {
       nodes: [{ id: 1, active: 0, variants: [{ id: 1 }] }],

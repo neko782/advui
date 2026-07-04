@@ -196,6 +196,55 @@ describe('GenerationStateManager', () => {
       expect(manager.getTypingVariantId()).toBe(null)
     })
 
+    it('should not remember a force-stopped sequence when the abort handler already ran', () => {
+      const seq = manager.startGeneration()
+      let count = 0
+      manager.registerAbortHandler(seq, () => { count++ })
+
+      // Abort handler runs here
+      manager.requestAbort()
+      expect(count).toBe(1)
+
+      // Force stop after the handler already executed
+      manager.forceStopGeneration()
+
+      // A late (re-)registration for the stopped sequence must not run the handler again
+      const invoked = manager.registerAbortHandler(seq, () => { count++ })
+      expect(invoked).toBe(false)
+      expect(count).toBe(1)
+    })
+
+    it('should run the handler exactly once when registered after force stop', () => {
+      const seq = manager.startGeneration()
+      manager.forceStopGeneration()
+
+      let count = 0
+      expect(manager.registerAbortHandler(seq, () => { count++ })).toBe(true)
+      expect(count).toBe(1)
+
+      // Registering again for the same stopped sequence must not re-invoke
+      expect(manager.registerAbortHandler(seq, () => { count++ })).toBe(false)
+      expect(count).toBe(1)
+    })
+
+    it('should prune stale aborted sequences instead of growing unbounded', () => {
+      const stoppedSequences = []
+      for (let i = 0; i < 50; i++) {
+        stoppedSequences.push(manager.startGeneration())
+        manager.forceStopGeneration()
+      }
+
+      // Old sequences were pruned: a late handler for the first one is not invoked
+      let oldInvoked = false
+      expect(manager.registerAbortHandler(stoppedSequences[0], () => { oldInvoked = true })).toBe(false)
+      expect(oldInvoked).toBe(false)
+
+      // The most recent stopped sequence is still remembered
+      let recentInvoked = false
+      expect(manager.registerAbortHandler(stoppedSequences[stoppedSequences.length - 1], () => { recentInvoked = true })).toBe(true)
+      expect(recentInvoked).toBe(true)
+    })
+
     it('should increment state version on abort', () => {
       manager.startGeneration()
       const v1 = manager.getStateVersion()

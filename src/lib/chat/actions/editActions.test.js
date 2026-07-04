@@ -204,7 +204,7 @@ describe('prepareBranchAndSend', () => {
     expect(branchedVariant.next).toBe(2)
   })
 
-  it('should build history up to edited message', () => {
+  it('should not expose a history field (dead code removed)', () => {
     const nodes = [
       { id: 1, active: 0, variants: [{ id: 1, role: 'user', content: 'first', next: 2 }] },
       { id: 2, active: 0, variants: [{ id: 2, role: 'assistant', content: 'second', next: 3 }] },
@@ -214,22 +214,35 @@ describe('prepareBranchAndSend', () => {
 
     const result = prepareBranchAndSend(nodes, rootId, 2, 'edited second', 10, 4)
 
-    expect(result.history).toHaveLength(2)
-    expect(result.history[0].content).toBe('first')
-    expect(result.history[1].content).toBe('edited second')
+    expect(result.history).toBeUndefined()
   })
 
-  it('should filter out typing messages from history', () => {
+  it('should not take refresh-only path for unchanged last assistant message', () => {
     const nodes = [
-      { id: 1, active: 0, variants: [{ id: 1, role: 'user', content: 'first', next: 2 }] },
-      { id: 2, active: 0, variants: [{ id: 2, role: 'assistant', content: 'typing', typing: true, next: null }] }
+      { id: 1, active: 0, variants: [{ id: 1, role: 'user', content: 'hello', next: 2 }] },
+      { id: 2, active: 0, variants: [{ id: 2, role: 'assistant', content: 'reply', next: null }] }
     ]
     const rootId = 1
 
-    const result = prepareBranchAndSend(nodes, rootId, 1, 'edited first', 10, 3)
+    const result = prepareBranchAndSend(nodes, rootId, 2, 'reply', 10, 3)
 
-    expect(result.history).toHaveLength(1)
-    expect(result.history[0].content).toBe('edited first')
+    // Assistant edits must go through the regenerate/variant path so an
+    // assistant reply is never appended directly after an assistant message.
+    expect(result.shouldRefreshOnly).toBe(false)
+    expect(result.nodes[1].variants).toHaveLength(2)
+    expect(result.nodes[1].active).toBe(1)
+  })
+
+  it('should take refresh-only path for unchanged last user message', () => {
+    const nodes = [
+      { id: 1, active: 0, variants: [{ id: 1, role: 'user', content: 'hello', next: null }] }
+    ]
+    const rootId = 1
+
+    const result = prepareBranchAndSend(nodes, rootId, 1, 'hello', 10, 2)
+
+    expect(result.shouldRefreshOnly).toBe(true)
+    expect(result.insertIndex).toBe(0)
   })
 
   it('should return null if editingId not found', () => {

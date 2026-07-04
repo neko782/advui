@@ -25,43 +25,66 @@ export function migrateLegacyGraphToNodes(
   const byId = new Map(msgs.map(m => [m.id, m]));
   const outNodes: ChatNode[] = [];
   let nid = 1;
-  const nodeIdByMsgId = new Map<number, number>();
   const now = Date.now();
 
-  for (const m of msgs) {
-    const nodeId = nid++;
-    nodeIdByMsgId.set(m.id, nodeId);
-    outNodes.push({
-      id: nodeId,
-      variants: [{
-        id: m.id,
-        role: m.role as MessageRole,
-        content: m.content,
-        time: m.time || now,
-        typing: !!m.typing,
-        error: m.error,
-        next: null
-      }],
-      active: 0
-    });
-  }
+  if (!msgs.length) return { nodes: [], rootId: null };
 
-  // Wire next pointers along selected branches
+  const toVariant = (m: LegacyMessage): MessageVariant => ({
+    id: m.id,
+    role: m.role as MessageRole,
+    content: m.content,
+    time: m.time || now,
+    typing: !!m.typing,
+    error: m.error,
+    next: null
+  });
+
+  // Determine the root message: prefer the stored legacy root, otherwise
+  // fall back to the first message with no parent, then the first message.
+  const hasParent = new Set<number>();
   for (const m of msgs) {
-    const children = Array.isArray(m.next) ? m.next : [];
-    if (!children.length) continue;
-    const sel = Math.max(0, Math.min(children.length - 1, Number(legacySelected?.[m.id]) || 0));
-    const childMsgId = children[sel];
-    if (childMsgId === undefined) continue;
-    const fromNodeId = nodeIdByMsgId.get(m.id);
-    const toNodeId = nodeIdByMsgId.get(childMsgId);
-    const node = outNodes.find(n => n.id === fromNodeId);
-    if (node && toNodeId != null) {
-      node.variants = node.variants.map((v, i) => (i === 0 ? { ...v, next: toNodeId } : v));
+    for (const c of (Array.isArray(m.next) ? m.next : [])) hasParent.add(c);
+  }
+  const rootMsg = (legacyRootId != null && byId.has(legacyRootId))
+    ? byId.get(legacyRootId)!
+    : (msgs.find(m => !hasParent.has(m.id)) || msgs[0]!);
+
+  // Legacy sibling branches (a message's `next` children + selected index)
+  // become variants of a single node in the new model. Walk iteratively so
+  // very long chats don't overflow the stack.
+  const visitedMsgIds = new Set<number>();
+  const rootNodeId = nid++;
+  outNodes.push({ id: rootNodeId, variants: [toVariant(rootMsg)], active: 0 });
+  visitedMsgIds.add(rootMsg.id);
+
+  // Each stack entry pairs a created node with the legacy messages backing its variants
+  const stack: Array<{ node: ChatNode; msgIds: number[] }> = [
+    { node: outNodes[0]!, msgIds: [rootMsg.id] }
+  ];
+
+  while (stack.length) {
+    const { node, msgIds } = stack.pop()!;
+    for (let vi = 0; vi < msgIds.length; vi++) {
+      const m = byId.get(msgIds[vi]!);
+      if (!m) continue;
+      const children = (Array.isArray(m.next) ? m.next : [])
+        .filter(cid => byId.has(cid) && !visitedMsgIds.has(cid));
+      if (!children.length) continue;
+      for (const cid of children) visitedMsgIds.add(cid);
+
+      const rawSel = Number(legacySelected?.[m.id]) || 0;
+      const sel = Math.max(0, Math.min(children.length - 1, Math.floor(rawSel)));
+      const childNode: ChatNode = {
+        id: nid++,
+        variants: children.map(cid => toVariant(byId.get(cid)!)),
+        active: sel
+      };
+      outNodes.push(childNode);
+      node.variants = node.variants.map((v, i) => (i === vi ? { ...v, next: childNode.id } : v));
+      stack.push({ node: childNode, msgIds: children });
     }
   }
 
-  const root = (legacyRootId != null) ? nodeIdByMsgId.get(legacyRootId) : (outNodes[0]?.id || 1);
-  return { nodes: outNodes, rootId: root ?? null };
+  return { nodes: outNodes, rootId: rootNodeId };
 }
 

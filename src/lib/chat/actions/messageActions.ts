@@ -70,15 +70,20 @@ export function deleteMessage(
   const nodesById = new Map(nodes.map(n => [n.id, n]));
 
   function collectProtected(nodeId: number | null, out: Set<number>, guard: Set<number> = new Set()): void {
-    if (nodeId == null) return;
-    const id = Number(nodeId);
-    if (!Number.isFinite(id) || guard.has(id)) return;
-    guard.add(id);
-    const node = nodesById.get(id);
-    if (!node) return;
-    out.add(id);
-    for (const v of node?.variants || []) {
-      if (v?.next != null) collectProtected(v.next, out, guard);
+    // Iterative traversal with an explicit stack to avoid RangeError on very long chains
+    const stack: Array<number | null> = [nodeId];
+    while (stack.length) {
+      const raw = stack.pop();
+      if (raw == null) continue;
+      const id = Number(raw);
+      if (!Number.isFinite(id) || guard.has(id)) continue;
+      guard.add(id);
+      const node = nodesById.get(id);
+      if (!node) continue;
+      out.add(id);
+      for (const v of node?.variants || []) {
+        if (v?.next != null) stack.push(v.next);
+      }
     }
   }
 
@@ -87,15 +92,20 @@ export function deleteMessage(
 
   const toDelete = new Set<number>([loc.node.id]);
   function collect(nodeId: number | null, guard: Set<number> = new Set()): void {
-    if (nodeId == null) return;
-    const id = Number(nodeId);
-    if (!Number.isFinite(id) || guard.has(id) || protectedNodes.has(id)) return;
-    guard.add(id);
-    toDelete.add(id);
-    const node = nodesById.get(id);
-    if (!node) return;
-    for (const v of node?.variants || []) {
-      if (v?.next != null) collect(v.next, guard);
+    // Iterative traversal with an explicit stack to avoid RangeError on very long chains
+    const stack: Array<number | null> = [nodeId];
+    while (stack.length) {
+      const raw = stack.pop();
+      if (raw == null) continue;
+      const id = Number(raw);
+      if (!Number.isFinite(id) || guard.has(id) || protectedNodes.has(id)) continue;
+      guard.add(id);
+      toDelete.add(id);
+      const node = nodesById.get(id);
+      if (!node) continue;
+      for (const v of node?.variants || []) {
+        if (v?.next != null) stack.push(v.next);
+      }
     }
   }
 

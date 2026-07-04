@@ -330,3 +330,47 @@ describe('moveDown', () => {
     expect(result.nodes.find(n => n.id === 2).variants[0].next).toBeNull()
   })
 })
+
+describe('deleteMessage on very long chats', () => {
+  it('should not throw RangeError when deleting in a deep chain', () => {
+    const N = 100000
+    const nodes = new Array(N)
+    for (let i = 1; i <= N; i++) {
+      nodes[i - 1] = {
+        id: i,
+        active: 0,
+        variants: [{ id: i, role: i % 2 ? 'user' : 'assistant', content: `m${i}`, next: i < N ? i + 1 : null }]
+      }
+    }
+
+    // Deleting the second node must traverse the huge protected subtree iteratively
+    const result = deleteMessage(nodes, 1, 2)
+
+    expect(result.nodes).toHaveLength(N - 1)
+    expect(result.rootId).toBe(1)
+    // Parent now points past the deleted node to its preserved child
+    const root = result.nodes.find(n => n.id === 1)
+    expect(root.variants[0].next).toBe(3)
+  })
+
+  it('should not throw RangeError when deleting the head of a deep unprotected chain', () => {
+    const N = 100000
+    const nodes = new Array(N)
+    for (let i = 1; i <= N; i++) {
+      nodes[i - 1] = {
+        id: i,
+        active: 0,
+        variants: [
+          { id: i * 2 - 1, role: 'user', content: `a${i}`, next: i < N ? i + 1 : null },
+          { id: i * 2, role: 'user', content: `b${i}`, next: null }
+        ]
+      }
+    }
+    // Node 1's inactive variant chain: make variant b1 point into a deep alternate chain
+    // (delete node 1 while active variant preserves the chain from node 2)
+    const result = deleteMessage(nodes, 1, 1)
+
+    expect(result.rootId).toBe(2)
+    expect(result.nodes.some(n => n.id === 1)).toBe(false)
+  })
+})

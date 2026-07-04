@@ -1,7 +1,7 @@
 // Edit actions: commit, replace, branch, insert
-import { buildVisible as _buildVisible, buildVisibleUpTo as _buildVisibleUpTo } from '../../branching.js';
+import { buildVisible as _buildVisible } from '../../branching.js';
 import { findNodeByMessageId } from '../../utils/treeUtils.js';
-import type { ChatNode, MessageVariant, BranchResult, BranchAndSendResult, HistoryMessage, InsertBetweenResult } from '../../types/index.js';
+import type { ChatNode, MessageVariant, BranchResult, BranchAndSendResult, InsertBetweenResult } from '../../types/index.js';
 
 export function commitEditReplace(nodes: ChatNode[], editingId: number | null, editingText: string): ChatNode[] {
   if (editingId == null) return nodes;
@@ -56,11 +56,10 @@ export function prepareBranchAndSend(
   editingText: string,
   nextId: number,
   nextNodeId: number
-): BranchAndSendResult | null {
+): Omit<BranchAndSendResult, 'history'> | null {
   if (editingId == null) return null;
 
   const buildVisible = () => _buildVisible(nodes, rootId);
-  const buildVisibleUpTo = (indexExclusive: number) => _buildVisibleUpTo(nodes, rootId, indexExclusive);
 
   const loc = findNodeByMessageId(nodes, editingId);
   const curNode = loc?.node;
@@ -76,7 +75,7 @@ export function prepareBranchAndSend(
   const insertIndex = path.findIndex(vm => vm.nodeId === curNode.id);
   const isLast = insertIndex >= 0 && insertIndex === (path.length - 1);
   const noChange = (val === (cur.content || ''));
-  if (noChange && isLast) {
+  if (noChange && isLast && cur.role === 'user') {
     // No branching needed, just refresh after this message
     return {
       shouldRefreshOnly: true,
@@ -128,22 +127,12 @@ export function prepareBranchAndSend(
   ));
   updatedNodes = [...updatedNodes, typingNode];
 
-  // 3) Build history for API call using updated nodes
-  const buildVisibleUpdated = () => _buildVisible(updatedNodes, rootId);
-  const buildVisibleUpToUpdated = (indexExclusive: number) => _buildVisibleUpTo(updatedNodes, rootId, indexExclusive);
-  const pathForHistory = buildVisibleUpdated();
-  const historyInsertIndex = pathForHistory.findIndex(vm => vm.nodeId === curNode.id);
-  const history: HistoryMessage[] = buildVisibleUpToUpdated(historyInsertIndex + 1)
-    .filter(m => !m.typing)
-    .map(({ role, content }) => ({ role, content }));
-
   return {
     shouldRefreshOnly: false,
     nodes: updatedNodes,
     nextId: nextId + 2,
     nextNodeId: nextNodeId + 1,
-    typingVariantId: typingMsg.id,
-    history
+    typingVariantId: typingMsg.id
   };
 }
 

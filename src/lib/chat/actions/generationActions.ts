@@ -1,6 +1,6 @@
 // Generation actions: send, refresh assistant, refresh after user
 import { respond } from '../../openaiClient.js';
-import { buildVisible as _buildVisible, buildVisibleUpTo as _buildVisibleUpTo } from '../../branching.js';
+import { buildVisible as _buildVisible } from '../../branching.js';
 import { isAbortError } from '../../utils/errors.js';
 import { normalizeMcpServerList } from '../../types/index.js';
 import { updateVariantById } from './variantActions.js';
@@ -593,13 +593,10 @@ export function handleGenerationError(
 
 export function prepareRefreshAssistant(
   nodes: ChatNode[],
-  rootId: number | null,
+  _rootId: number | null,
   messageId: number,
   nextId: number
-): PreparedRefresh | null {
-  const buildVisible = () => _buildVisible(nodes, rootId);
-  const buildVisibleUpTo = (indexExclusive: number) => _buildVisibleUpTo(nodes, rootId, indexExclusive);
-
+): Omit<PreparedRefresh, 'history'> | null {
   const loc = findNodeByMessageId(nodes, messageId);
   const node = loc?.node;
   const target = node?.variants?.[loc.index];
@@ -623,25 +620,10 @@ export function prepareRefreshAssistant(
       : n
   ));
 
-  // Build history up to (but not including) this assistant node
-  const path = buildVisible();
-  const parentPathIndex = path.findIndex(vm => vm.nodeId === node.id) - 1;
-  const history: HistoryMessage[] = buildVisibleUpTo((parentPathIndex >= 0 ? parentPathIndex + 1 : 0))
-    .filter(m => !m.typing)
-    .map(({ role, content, images }) => {
-      const msg: HistoryMessage = { role, content };
-      const normalized = normalizeImages(images);
-      if (normalized.length > 0) {
-        msg.images = normalized as ImageData[];
-      }
-      return msg;
-    });
-
   return {
     nodes: updatedNodes,
     nextId: nextId + 1,
-    typingVariantId: typingMsg.id,
-    history
+    typingVariantId: typingMsg.id
   };
 }
 
@@ -651,15 +633,18 @@ export function prepareRefreshAfterUser(
   messageIndex: number,
   nextId: number,
   nextNodeId: number
-): PreparedRefresh | null {
+): Omit<PreparedRefresh, 'history'> | null {
   const buildVisible = () => _buildVisible(nodes, rootId);
-  const buildVisibleUpTo = (indexExclusive: number) => _buildVisibleUpTo(nodes, rootId, indexExclusive);
 
   const path = buildVisible();
   const vm = (typeof messageIndex === 'number') ? path[messageIndex] : null;
   const curMsg = vm?.m;
   const curNodeId = vm?.nodeId;
   if (!curMsg || !curNodeId) return null;
+
+  // Preserve the existing child subtree (if any) by splicing the typing node
+  // in between the current message and its former child.
+  const oldChildId = (curMsg.next != null) ? curMsg.next : null;
 
   const typingMsg: MessageVariant = {
     id: nextId,
@@ -668,7 +653,7 @@ export function prepareRefreshAfterUser(
     time: Date.now(),
     typing: true,
     error: undefined,
-    next: null,
+    next: oldChildId,
     reasoningSummary: '',
     reasoningSummaryLoading: true,
   };
@@ -684,22 +669,10 @@ export function prepareRefreshAfterUser(
   ));
   updatedNodes = [...updatedNodes, typingNode];
 
-  const history: HistoryMessage[] = buildVisibleUpTo(messageIndex + 1)
-    .filter(m => !m.typing)
-    .map(({ role, content, images }) => {
-      const msg: HistoryMessage = { role, content };
-      const normalized = normalizeImages(images);
-      if (normalized.length > 0) {
-        msg.images = normalized as ImageData[];
-      }
-      return msg;
-    });
-
   return {
     nodes: updatedNodes,
     nextId: nextId + 1,
     nextNodeId: nextNodeId + 1,
-    typingVariantId: typingMsg.id,
-    history
+    typingVariantId: typingMsg.id
   };
 }
