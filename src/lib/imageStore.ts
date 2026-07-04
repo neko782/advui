@@ -7,20 +7,37 @@ const DB_VERSION = 1;
 const STORE_NAME = 'images';
 
 let dbInstance: IDBDatabase | null = null;
+let openPromise: Promise<IDBDatabase> | null = null;
 
 function openDB(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    if (dbInstance) {
-      resolve(dbInstance);
-      return;
-    }
+  if (dbInstance) return Promise.resolve(dbInstance);
+  // Single-flight: concurrent first calls share one open request
+  if (openPromise) return openPromise;
 
+  openPromise = new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
 
-    request.onerror = () => reject(request.error);
+    request.onerror = () => {
+      openPromise = null;
+      reject(request.error);
+    };
+
+    request.onblocked = () => {
+      openPromise = null;
+      reject(new Error('IndexedDB open blocked by another connection'));
+    };
+
     request.onsuccess = () => {
       dbInstance = request.result;
-      resolve(dbInstance);
+      openPromise = null;
+
+      // Handle version change from another tab: close and clear the cache
+      dbInstance.onversionchange = () => {
+        dbInstance?.close();
+        dbInstance = null;
+      };
+
+      resolve(request.result);
     };
 
     request.onupgradeneeded = (event) => {
@@ -30,6 +47,8 @@ function openDB(): Promise<IDBDatabase> {
       }
     };
   });
+
+  return openPromise;
 }
 
 export async function storeImage(
@@ -97,17 +116,21 @@ export async function deleteImage(id: string): Promise<void> {
   }
 }
 
+async function getAllImagesInternal(): Promise<StoredImage[]> {
+  const db = await openDB();
+  const transaction = db.transaction([STORE_NAME], 'readonly');
+  const store = transaction.objectStore(STORE_NAME);
+
+  return await new Promise((resolve, reject) => {
+    const request = store.getAll();
+    request.onsuccess = () => resolve((request.result || []) as StoredImage[]);
+    request.onerror = () => reject(request.error);
+  });
+}
+
 export async function getAllImages(): Promise<StoredImage[]> {
   try {
-    const db = await openDB();
-    const transaction = db.transaction([STORE_NAME], 'readonly');
-    const store = transaction.objectStore(STORE_NAME);
-
-    return await new Promise((resolve, reject) => {
-      const request = store.getAll();
-      request.onsuccess = () => resolve((request.result || []) as StoredImage[]);
-      request.onerror = () => reject(request.error);
-    });
+    return await getAllImagesInternal();
   } catch (err) {
     console.error('Failed to get all images:', err);
     return [];
@@ -140,6 +163,8 @@ export interface ImageValidationResult {
   existingIds: Set<string>;
   missingIds: string[];
   orphanedIds: string[];
+  /** True when validation could not be performed (e.g. DB read error). */
+  validationFailed?: boolean;
 }
 
 /**
@@ -150,7 +175,9 @@ export async function validateImageReferences(
   referencedIds: string[]
 ): Promise<ImageValidationResult> {
   try {
-    const allImages = await getAllImages();
+    // Use the throwing variant so DB read errors are distinguishable from an
+    // empty store (getAllImages swallows errors and returns []).
+    const allImages = await getAllImagesInternal();
     const existingIds = new Set(allImages.map(img => img.id));
     const referencedSet = new Set(referencedIds);
 
@@ -177,12 +204,16 @@ export async function validateImageReferences(
       missingIds,
       orphanedIds,
     };
-  } catch {
+  } catch (err) {
+    // Fail safe: on a DB read error we can't know which images exist, so
+    // report no missing ids (never treat everything as missing).
+    console.error('Image reference validation failed:', err);
     return {
       valid: false,
       existingIds: new Set(),
-      missingIds: referencedIds,
+      missingIds: [],
       orphanedIds: [],
+      validationFailed: true,
     };
   }
 }
@@ -193,7 +224,7 @@ export async function validateImageReferences(
 export async function imageExists(id: string): Promise<boolean> {
   try {
     const image = await getImage(id);
-    return image !== null;
+    return image != null;
   } catch {
     return false;
   }
@@ -242,7 +273,9 @@ export async function cleanInvalidImageReferences(
   const referencedIds = collectImageReferences(nodes);
   const validation = await validateImageReferences(referencedIds);
 
-  if (validation.valid) {
+  // Skip cleaning when valid or when validation itself failed (a DB read
+  // error must not strip every image reference from the chat).
+  if (validation.valid || validation.validationFailed) {
     return { nodes, removedIds: [] };
   }
 

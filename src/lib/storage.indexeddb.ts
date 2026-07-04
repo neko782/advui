@@ -27,8 +27,10 @@ function queueWrite(chatId: string, writeFn: () => Promise<Chat>): Promise<Chat>
     () => writeFn() // Also retry after failures
   );
   writeQueues.set(chatId, next);
-  // Clean up queue entry after completion
-  next.finally(() => {
+  // Clean up queue entry after completion.
+  // Note: catch first so this discarded derived promise never rejects
+  // unhandled; the original `next` promise returned to the caller is unchanged.
+  next.catch(() => {}).finally(() => {
     if (writeQueues.get(chatId) === next) {
       writeQueues.delete(chatId);
     }
@@ -93,22 +95,31 @@ function broadcastChange(type: string, data: { chat?: Chat; chatId?: string }): 
 /**
  * Open IndexedDB connection and create object stores if needed
  */
-function openDB(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    if (dbInstance) {
-      resolve(dbInstance);
-      return;
-    }
+let openPromise: Promise<IDBDatabase> | null = null;
 
+function openDB(): Promise<IDBDatabase> {
+  if (dbInstance) return Promise.resolve(dbInstance);
+  // Single-flight: concurrent first calls share one open request
+  if (openPromise) return openPromise;
+
+  openPromise = new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
 
     request.onerror = () => {
       console.error('IndexedDB open failed:', request.error);
+      openPromise = null;
       reject(request.error);
+    };
+
+    request.onblocked = () => {
+      console.error('IndexedDB open blocked by another connection');
+      openPromise = null;
+      reject(new Error('IndexedDB open blocked by another connection'));
     };
 
     request.onsuccess = () => {
       dbInstance = request.result;
+      openPromise = null;
 
       // Handle unexpected database close
       dbInstance.onversionchange = () => {
@@ -116,7 +127,7 @@ function openDB(): Promise<IDBDatabase> {
         dbInstance = null;
       };
 
-      resolve(dbInstance);
+      resolve(request.result);
     };
 
     request.onupgradeneeded = (event) => {
@@ -131,6 +142,8 @@ function openDB(): Promise<IDBDatabase> {
       }
     };
   });
+
+  return openPromise;
 }
 
 /**
@@ -211,7 +224,7 @@ function readAllListItems(): Promise<ChatListItem[]> {
     }
 
     return new Promise((resolve, reject) => {
-      if (!index) {
+      const fullScan = () => {
         const fallbackRequest = store.getAll();
         fallbackRequest.onsuccess = () => {
           const chats = (fallbackRequest.result || []) as Chat[];
@@ -222,18 +235,37 @@ function readAllListItems(): Promise<ChatListItem[]> {
           resolve(items);
         };
         fallbackRequest.onerror = () => reject(fallbackRequest.error);
+      };
+
+      if (!index) {
+        fullScan();
         return;
       }
 
+      // Records with a missing/invalid updatedAt are silently absent from the
+      // index; track the store count so we can detect that and do a full scan.
+      let totalCount = -1;
+      const countRequest = store.count();
+      countRequest.onsuccess = () => {
+        totalCount = countRequest.result;
+      };
+
       const items: ChatListItem[] = [];
+      let seen = 0;
       const request = index.openCursor(null, 'prev');
 
       request.onsuccess = () => {
         const cursor = request.result;
         if (!cursor) {
+          if (totalCount >= 0 && seen < totalCount) {
+            // Index omitted some records; fall back to scanning the store
+            fullScan();
+            return;
+          }
           resolve(items);
           return;
         }
+        seen += 1;
         const item = toChatListItem(cursor.value as Chat);
         if (item) items.push(item);
         cursor.continue();

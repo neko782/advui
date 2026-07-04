@@ -777,8 +777,11 @@ function writeTarString(header: Uint8Array, offset: number, length: number, valu
 }
 
 function writeTarOctal(header: Uint8Array, offset: number, length: number, value: number): void {
-  const text = value.toString(8).padStart(length - 2, '0').slice(-(length - 2));
-  writeTarString(header, offset, length, `${text}\0 `);
+  const text = value.toString(8);
+  if (text.length > length - 2) {
+    throw new Error(`TAR octal field overflow: value ${value} does not fit in ${length - 2} octal digits`);
+  }
+  writeTarString(header, offset, length, `${text.padStart(length - 2, '0')}\0 `);
 }
 
 function base64ToBytes(base64: string): Uint8Array {

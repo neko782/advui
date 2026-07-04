@@ -53,6 +53,38 @@ function getStorageBackend(): StorageBackend {
   return activeBackend;
 }
 
+// Error names that indicate an IndexedDB infrastructure failure (DB open,
+// availability, quota, or transaction problems). Only these may trigger a
+// permanent fallback to localStorage. Validation errors and optimistic
+// concurrency conflicts must NEVER cause a fallback (that would hide all
+// IndexedDB-stored chats from the user).
+const INFRASTRUCTURE_ERROR_NAMES = new Set([
+  'InvalidStateError',
+  'UnknownError',
+  'QuotaExceededError',
+  'TransactionInactiveError',
+  'InvalidAccessError',
+  'AbortError',
+  'NotFoundError',
+  'VersionError',
+  'ConstraintError',
+  'NotAllowedError',
+  'SecurityError',
+  'TimeoutError',
+  'NS_ERROR_DOM_QUOTA_REACHED',
+]);
+
+function isInfrastructureError(err: unknown): boolean {
+  if (err == null) return false;
+  if (isConcurrencyConflict(err)) return false;
+  if (typeof DOMException !== 'undefined' && err instanceof DOMException) return true;
+  const name = (err as { name?: unknown })?.name;
+  if (typeof name === 'string' && INFRASTRUCTURE_ERROR_NAMES.has(name)) return true;
+  const message = err instanceof Error ? err.message : String(err);
+  // openDB rejections (open failed / blocked) mention IndexedDB explicitly
+  return message.toLowerCase().includes('indexeddb');
+}
+
 async function runWithBackendFallback<T>(
   run: (backend: StorageBackend) => Promise<T>
 ): Promise<T> {
@@ -60,7 +92,7 @@ async function runWithBackendFallback<T>(
   try {
     return await run(backend);
   } catch (err) {
-    if (backend !== idbStorage) throw err;
+    if (backend !== idbStorage || !isInfrastructureError(err)) throw err;
     backend = fallbackToLocalStorage(err);
     return run(backend);
   }
@@ -116,6 +148,20 @@ function isConcurrencyConflict(err: unknown): boolean {
   return message.toLowerCase().includes('concurrent') && message.toLowerCase().includes('conflict');
 }
 
+// Errors explicitly marked as never eligible for backend fallback
+// (e.g. exceptions thrown by a user-supplied updater function).
+const nonFallbackErrors = new WeakSet<object>();
+
+function markNonFallbackError(err: unknown): unknown {
+  const e = err && typeof err === 'object' ? err : new Error(String(err));
+  nonFallbackErrors.add(e);
+  return e;
+}
+
+function isNonFallbackError(err: unknown): boolean {
+  return !!err && typeof err === 'object' && nonFallbackErrors.has(err);
+}
+
 export type ChatUpdater = (current: Chat | null) => Chat | null | undefined | Promise<Chat | null | undefined>;
 
 export interface AtomicChatOptions {
@@ -143,7 +189,14 @@ export async function updateChatAtomic(
       const backend = getStorageBackend();
       try {
         const current = await backend.getChat(id);
-        const next = await updater(current);
+
+        let next: Chat | null | undefined;
+        try {
+          next = await updater(current);
+        } catch (updaterErr) {
+          // Updater exceptions are caller bugs, not storage failures: propagate.
+          throw markNonFallbackError(updaterErr);
+        }
 
         if (next === undefined) {
           return current;
@@ -162,11 +215,16 @@ export async function updateChatAtomic(
         return await backend.putChat(toPersist);
       } catch (err) {
         lastErr = err;
-        if (backend === idbStorage && !isConcurrencyConflict(err)) {
+        if (isConcurrencyConflict(err)) {
+          if (attempt < Math.max(0, retries)) continue;
+          throw err;
+        }
+        // Only infrastructure failures may trigger fallback; validation and
+        // updater errors must propagate to the caller.
+        if (backend === idbStorage && !isNonFallbackError(err) && isInfrastructureError(err)) {
           fallbackToLocalStorage(err);
           continue;
         }
-        if (attempt < Math.max(0, retries) && isConcurrencyConflict(err)) continue;
         throw err;
       }
     }
@@ -200,11 +258,16 @@ export async function putChatAtomic(
         return await backend.putChat(toPersist);
       } catch (err) {
         lastErr = err;
-        if (backend === idbStorage && !isConcurrencyConflict(err)) {
+        if (isConcurrencyConflict(err)) {
+          if (attempt < Math.max(0, retries)) continue;
+          throw err;
+        }
+        // Only infrastructure failures may trigger fallback; validation and
+        // updater errors must propagate to the caller.
+        if (backend === idbStorage && !isNonFallbackError(err) && isInfrastructureError(err)) {
           fallbackToLocalStorage(err);
           continue;
         }
-        if (attempt < Math.max(0, retries) && isConcurrencyConflict(err)) continue;
         throw err;
       }
     }
@@ -233,11 +296,16 @@ export async function deleteChatAtomic(
         return await backend.deleteChat(id, current?._version);
       } catch (err) {
         lastErr = err;
-        if (backend === idbStorage && !isConcurrencyConflict(err)) {
+        if (isConcurrencyConflict(err)) {
+          if (attempt < Math.max(0, retries)) continue;
+          throw err;
+        }
+        // Only infrastructure failures may trigger fallback; validation and
+        // updater errors must propagate to the caller.
+        if (backend === idbStorage && !isNonFallbackError(err) && isInfrastructureError(err)) {
           fallbackToLocalStorage(err);
           continue;
         }
-        if (attempt < Math.max(0, retries) && isConcurrencyConflict(err)) continue;
         throw err;
       }
     }
@@ -250,8 +318,23 @@ export async function deleteChatAtomic(
  * Subscribe to storage changes
  */
 export function subscribeChatStorage(listener: StorageListener): () => void {
-  const backend = getStorageBackend();
-  return backend.subscribeChatStorage(listener);
+  getStorageBackend();
+  // Subscribe to both backends so subscribers keep receiving events after a
+  // runtime fallback from IndexedDB to localStorage (only the active backend
+  // actually emits events at any given time).
+  const unsubscribers = [
+    idbStorage.subscribeChatStorage(listener),
+    lsStorage.subscribeChatStorage(listener),
+  ];
+  return () => {
+    for (const unsubscribe of unsubscribers) {
+      try {
+        unsubscribe();
+      } catch {
+        // Ignore unsubscribe errors
+      }
+    }
+  };
 }
 
 /**

@@ -34,8 +34,9 @@ export async function validateImageReferences(chat: Chat | null): Promise<ImageV
       const exists = await getImage(id);
       if (!exists) orphaned.push(id);
     } catch (err) {
+      // Fail safe: a lookup error doesn't mean the image is missing, so
+      // don't report it as orphaned.
       console.error('Image lookup failed for id:', id, err);
-      orphaned.push(id);
     }
   }
   return { valid: orphaned.length === 0, orphaned };

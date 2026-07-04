@@ -37,6 +37,14 @@ export function safeRead<T>(
   }
 }
 
+function isQuotaExceededError(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false;
+  const name = (err as { name?: unknown }).name;
+  if (name === 'QuotaExceededError' || name === 'NS_ERROR_DOM_QUOTA_REACHED') return true;
+  // Legacy browsers report quota errors via DOMException code 22
+  return typeof DOMException !== 'undefined' && err instanceof DOMException && err.code === 22;
+}
+
 export function safeWrite(
   key: string,
   value: unknown,
@@ -54,7 +62,7 @@ export function safeWrite(
     storage.setItem(key, serialized);
     return true;
   } catch (err) {
-    if (err && typeof err === 'object' && 'name' in err && err.name === 'QuotaExceededError') {
+    if (isQuotaExceededError(err)) {
       console.error('localStorage quota exceeded!', err);
     } else {
       console.error(`Storage write failed for key "${key}":`, err);

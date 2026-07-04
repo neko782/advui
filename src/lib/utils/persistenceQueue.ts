@@ -14,7 +14,9 @@ export function createKeyedPersistenceQueue(): KeyedPersistenceQueue {
     const prev = queues.get(normalizedKey) ?? Promise.resolve();
     const next = prev.then(fn, fn) as Promise<T>;
     queues.set(normalizedKey, next as unknown as Promise<unknown>);
-    next.finally(() => {
+    // Catch first so this discarded derived promise never rejects unhandled;
+    // the original `next` promise returned to the caller is unchanged.
+    next.catch(() => {}).finally(() => {
       if (queues.get(normalizedKey) === (next as unknown as Promise<unknown>)) {
         queues.delete(normalizedKey);
       }

@@ -331,8 +331,11 @@ export function computePersistSig(nodes: ChatNode[], chatSettings: ChatSettings,
       },
       rootId,
     });
-  } catch {
-    return '';
+  } catch (err) {
+    // Fail safe: return a unique-per-call value so change detection always
+    // sees a difference and persistence keeps happening.
+    console.error('computePersistSig failed:', err);
+    return `err:${Date.now()}:${Math.random()}`;
   }
 }
 

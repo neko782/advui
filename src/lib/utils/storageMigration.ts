@@ -1,6 +1,6 @@
 // Storage migration utilities
 import type { Chat } from '../types/index.js';
-import { putChatAtomic } from '../storage.js';
+import { putChatAtomic, getBackendName } from '../storage.js';
 
 const OLD_LS_KEY = 'advui.chats.store.v1';
 const MIGRATION_FLAG_KEY = 'storage.migration.completed.v1';
@@ -118,6 +118,15 @@ export async function migrateChatsToIndexedDB(): Promise<MigrationResult> {
     return result;
   }
 
+  // The active backend must actually be IndexedDB. If storage has fallen back
+  // to localStorage, putChatAtomic would write to the SAME key as OLD_LS_KEY
+  // and removing it afterwards would destroy all chats.
+  if (getBackendName() !== 'indexeddb') {
+    result.success = false;
+    result.reason = 'Active storage backend is not IndexedDB';
+    return result;
+  }
+
   // Check if already completed
   const flag = getMigrationFlag();
   if (flag?.completed) {
@@ -160,6 +169,13 @@ export async function migrateChatsToIndexedDB(): Promise<MigrationResult> {
     }
   }
 
+  // A fully-failed migration must be retried later: don't mark it completed.
+  if (result.migrated === 0 && result.failed > 0) {
+    result.success = false;
+    result.reason = 'Migration failed for all chats';
+    return result;
+  }
+
   // Mark migration as complete
   setMigrationFlag({
     migrated: result.migrated,
@@ -167,8 +183,10 @@ export async function migrateChatsToIndexedDB(): Promise<MigrationResult> {
     skipped: result.skipped,
   });
 
-  // Clear localStorage after successful migration
-  if (result.migrated > 0 && result.failed === 0) {
+  // Clear localStorage after successful migration, but only if the backend is
+  // still IndexedDB (a mid-migration fallback would have written the chats to
+  // OLD_LS_KEY itself, and removing it would be total data loss).
+  if (result.migrated > 0 && result.failed === 0 && getBackendName() === 'indexeddb') {
     try {
       localStorage.removeItem(OLD_LS_KEY);
     } catch {
