@@ -16,9 +16,9 @@ export async function copyText(text: string): Promise<boolean> {
     ta.style.opacity = '0';
     document.body.appendChild(ta);
     ta.select();
-    document.execCommand('copy');
+    const ok = document.execCommand('copy');
     document.body.removeChild(ta);
-    return true;
+    return ok === true;
   } catch {
     // Fallback also failed
   }

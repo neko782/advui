@@ -18,6 +18,12 @@ describe('renderMarkdown link sanitization', () => {
     expect(html).toContain('href="/docs/page"')
   })
 
+  it('blocks protocol-relative links', () => {
+    const html = renderMarkdown('[evil](//evil.com/path)')
+    expect(html).toContain('href="#"')
+    expect(html).not.toContain('//evil.com')
+  })
+
   it('renders when cache is disabled', () => {
     const html = renderMarkdown('**hello**', { cache: false })
     expect(html).toContain('<strong>hello</strong>')

@@ -283,14 +283,14 @@ export async function saveChatContent(
           : (typeof existing?.settings?.streaming === 'boolean'
             ? existing.settings.streaming
             : (typeof basePreset.streaming === 'boolean' ? basePreset.streaming : true)),
-        maxOutputTokens: toIntOrNull(pickSetting('maxOutputTokens')),
+        maxOutputTokens: toIntOrNull(pickSetting('maxOutputTokens'), { belowMin: 'unset' }),
         topP: toClampedNumber(pickSetting('topP'), 0, 1),
         temperature: toClampedNumber(pickSetting('temperature'), 0, 2),
         reasoningEffort: normalizeReasoning(pickSetting('reasoningEffort')),
         textVerbosity: normalizeVerbosity(pickSetting('textVerbosity')),
         reasoningSummary: normalizeReasoningSummary(pickSetting('reasoningSummary')),
         thinkingEnabled: !!pickSetting('thinkingEnabled'),
-        thinkingBudgetTokens: toIntOrNull(pickSetting('thinkingBudgetTokens')),
+        thinkingBudgetTokens: toIntOrNull(pickSetting('thinkingBudgetTokens'), { belowMin: 'unset' }),
         connectionId: resolvedConnectionId,
         // Web Search settings
         webSearchEnabled: !!pickSetting('webSearchEnabled'),
@@ -407,7 +407,10 @@ export interface CreateChatOptions {
 }
 
 export async function createChat(initial: CreateChatOptions = {}): Promise<{ id: string; chat: Chat }> {
-  const id = `c_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
+  const suffix = (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function')
+    ? crypto.randomUUID()
+    : `${Math.random().toString(36).slice(2, 10).padEnd(8, '0')}${Math.random().toString(36).slice(2, 10).padEnd(8, '0')}`;
+  const id = `c_${Date.now().toString(36)}_${suffix}`;
   const defaults = loadSettings();
   const preferredPreset = resolvePreset(defaults, { presetId: initial?.presetId, preset: initial?.preset });
   const systemPrompt = typeof preferredPreset?.systemPrompt === 'string'
@@ -487,7 +490,7 @@ export async function createChat(initial: CreateChatOptions = {}): Promise<{ id:
       streaming: (typeof initial?.settings?.streaming === 'boolean')
         ? initial.settings.streaming
         : (typeof preferredPreset.streaming === 'boolean' ? preferredPreset.streaming : true),
-      maxOutputTokens: toIntOrNull(hasOwn(initial?.settings || {}, 'maxOutputTokens') ? initial.settings!.maxOutputTokens : preferredPreset.maxOutputTokens),
+      maxOutputTokens: toIntOrNull(hasOwn(initial?.settings || {}, 'maxOutputTokens') ? initial.settings!.maxOutputTokens : preferredPreset.maxOutputTokens, { belowMin: 'unset' }),
       topP: toClampedNumber(hasOwn(initial?.settings || {}, 'topP') ? initial.settings!.topP : preferredPreset.topP, 0, 1),
       temperature: toClampedNumber(hasOwn(initial?.settings || {}, 'temperature') ? initial.settings!.temperature : preferredPreset.temperature, 0, 2),
       reasoningEffort: normalizeReasoning(hasOwn(initial?.settings || {}, 'reasoningEffort') ? initial.settings!.reasoningEffort : preferredPreset.reasoningEffort),
@@ -499,7 +502,7 @@ export async function createChat(initial: CreateChatOptions = {}): Promise<{ id:
         }
         return !!preferredPreset.thinkingEnabled;
       })(),
-      thinkingBudgetTokens: toIntOrNull(hasOwn(initial?.settings || {}, 'thinkingBudgetTokens') ? initial.settings!.thinkingBudgetTokens : preferredPreset.thinkingBudgetTokens),
+      thinkingBudgetTokens: toIntOrNull(hasOwn(initial?.settings || {}, 'thinkingBudgetTokens') ? initial.settings!.thinkingBudgetTokens : preferredPreset.thinkingBudgetTokens, { belowMin: 'unset' }),
       connectionId: resolvedConnectionId,
       // Web Search settings
       webSearchEnabled: hasOwn(initial?.settings || {}, 'webSearchEnabled') ? !!initial.settings!.webSearchEnabled : !!preferredPreset.webSearchEnabled,

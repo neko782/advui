@@ -106,6 +106,100 @@ describe('respond stream errors', () => {
     })).rejects.toThrow('Overloaded')
   })
 
+  it('throws when a Gemini stream emits an error payload mid-stream', async () => {
+    configureConnection('gemini')
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(makeSseResponse([
+      'data: {"candidates":[{"content":{"parts":[{"text":"partial"}]},"index":0}]}\n\n',
+      'data: {"error":{"code":429,"message":"Resource has been exhausted","status":"RESOURCE_EXHAUSTED"}}\n\n',
+    ])))
+
+    await expect(respond({
+      model: 'gemini-2.5-flash',
+      prompt: 'hi',
+      connectionId,
+      stream: true,
+    })).rejects.toThrow('Resource has been exhausted')
+  })
+
+  it('flushes the final buffered SSE chunk when the stream ends without a trailing newline', async () => {
+    configureConnection('chat_completions')
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(makeSseResponse([
+      'data: {"choices":[{"index":0,"delta":{"content":"Hello"}}]}\n\n',
+      'data: {"choices":[{"index":0,"delta":{"content":" world"}}]}',
+    ])))
+
+    const response = await respond({
+      model: 'gpt-4o-mini',
+      messages: [{ role: 'user', content: 'hi' }],
+      connectionId,
+      stream: true,
+    })
+
+    expect(response.text).toBe('Hello world')
+  })
+
+  it('accepts SSE data lines without a space after the colon', async () => {
+    configureConnection('chat_completions')
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(makeSseResponse([
+      'data:{"choices":[{"index":0,"delta":{"content":"Hello"}}]}\n\n',
+      'data:[DONE]\n\n',
+    ])))
+
+    const response = await respond({
+      model: 'gpt-4o-mini',
+      messages: [{ role: 'user', content: 'hi' }],
+      connectionId,
+      stream: true,
+    })
+
+    expect(response.text).toBe('Hello')
+  })
+
+  it('does not duplicate text when the final chunk repeats accumulated message.content', async () => {
+    configureConnection('chat_completions')
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(makeSseResponse([
+      'data: {"choices":[{"index":0,"delta":{"content":"Hello"}}]}\n\n',
+      'data: {"choices":[{"index":0,"delta":{"content":" world"}}]}\n\n',
+      'data: {"choices":[{"index":0,"delta":{},"message":{"content":"Hello world"},"finish_reason":"stop"}]}\n\n',
+      'data: [DONE]\n\n',
+    ])))
+
+    const deltas: Array<[string, string]> = []
+    const response = await respond({
+      model: 'gpt-4o-mini',
+      messages: [{ role: 'user', content: 'hi' }],
+      connectionId,
+      stream: true,
+      onTextDelta: (full, delta) => deltas.push([full, delta ?? '']),
+    })
+
+    expect(response.text).toBe('Hello world')
+    expect(deltas).toEqual([
+      ['Hello', 'Hello'],
+      ['Hello world', ' world'],
+    ])
+  })
+
+  it('returns empty text instead of raw JSON when a response has no textual content', async () => {
+    configureConnection('responses')
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      id: 'resp_1',
+      object: 'response',
+      output: [{ type: 'reasoning', summary: [] }],
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    })))
+
+    const response = await respond({
+      model: 'gpt-5.4',
+      prompt: 'hi',
+      connectionId,
+    })
+
+    expect(response.text).toBe('')
+  })
+
   it('keeps reasoning summary segments from separate output items around web search', async () => {
     configureConnection('responses')
     const reasoningDeltas: string[] = []

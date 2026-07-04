@@ -217,6 +217,7 @@ function convertToGeminiFormat(
 ): { contents: GeminiContent[]; systemInstruction?: { parts: Array<{ text: string }> } } {
   const contents: GeminiContent[] = [];
   let systemInstruction: { parts: Array<{ text: string }> } | undefined;
+  const systemTexts: string[] = [];
 
   // Handle simple prompt case
   if (typeof prompt === 'string' && prompt && (!messages || !messages.length)) {
@@ -235,7 +236,8 @@ function convertToGeminiFormat(
             .map(p => (p as { text: string }).text)
             .join('\n');
       if (text) {
-        systemInstruction = { parts: [{ text }] };
+        systemTexts.push(text);
+        systemInstruction = { parts: [{ text: systemTexts.join('\n\n') }] };
       }
       continue;
     }
@@ -352,6 +354,17 @@ function extractGeminiStreamDelta(chunk: unknown): string {
 
 function extractGeminiStreamReasoningDelta(chunk: unknown): string {
   return extractGeminiParts(chunk).reasoningSummary;
+}
+
+// Extract the JSON payload from an SSE line; returns null when the line is
+// not a data line or carries the [DONE] sentinel. Per the SSE spec the space
+// after "data:" is optional.
+function parseSseDataLine(line: string): string | null {
+  const trimmed = line.trim();
+  if (!trimmed || !trimmed.startsWith('data:')) return null;
+  const data = trimmed.slice(5).replace(/^ /, '');
+  if (!data || data === '[DONE]') return null;
+  return data;
 }
 
 function extractStreamError(event: unknown): { code: string; message: string } | null {
@@ -590,7 +603,7 @@ export async function respond(options: RespondOptions): Promise<GenerationRespon
       : []);
 
   const chatRequest: Record<string, unknown> = { model: useModel, messages: chatMessages };
-  const tokens = toIntOrNull(maxOutputTokens);
+  const tokens = toIntOrNull(maxOutputTokens, { belowMin: 'unset' });
   if (tokens != null) request.max_output_tokens = tokens;
   if (tokens != null) chatRequest.max_completion_tokens = tokens;
   const topPVal = toClampedNumber(topP, 0, 1);
@@ -615,7 +628,7 @@ export async function respond(options: RespondOptions): Promise<GenerationRespon
   if (typeof textVerbosity === 'string' && textVerbosity && textVerbosity !== 'none') {
     request.text = { verbosity: textVerbosity };
   }
-  const thinkingBudget = toIntOrNull(thinkingBudgetTokens);
+  const thinkingBudget = toIntOrNull(thinkingBudgetTokens, { belowMin: 'unset' });
   const thinkingConfig: { type: string; budget_tokens?: number } | null = (() => {
     if (!thinkingEnabled) return null;
     const body: { type: string; budget_tokens?: number } = { type: 'enabled' };
@@ -764,7 +777,7 @@ export async function respond(options: RespondOptions): Promise<GenerationRespon
       if (tempVal != null) generationConfig.temperature = tempVal;
       const topPVal = toClampedNumber(topP, 0, 1);
       if (topPVal != null) generationConfig.topP = topPVal;
-      const tokens = toIntOrNull(maxOutputTokens);
+      const tokens = toIntOrNull(maxOutputTokens, { belowMin: 'unset' });
       if (tokens != null) generationConfig.maxOutputTokens = tokens;
       if (Object.keys(generationConfig).length > 0) {
         geminiRequest.generationConfig = generationConfig;
@@ -792,39 +805,55 @@ export async function respond(options: RespondOptions): Promise<GenerationRespon
       let summary = '';
       let buffer = '';
 
+      const processLine = (line: string) => {
+        const data = parseSseDataLine(line);
+        if (data == null) return;
+
+        let chunk: Record<string, unknown>;
+        try {
+          chunk = JSON.parse(data);
+        } catch {
+          return; // ignore parse errors
+        }
+        try { onEvent?.(chunk); } catch { /* ignore */ }
+
+        const streamError = extractStreamError(chunk);
+        if (streamError) {
+          throw new Error(streamError.message);
+        }
+
+        const reasoningDelta = extractGeminiStreamReasoningDelta(chunk);
+        if (reasoningDelta) {
+          summary += reasoningDelta;
+          try { onReasoningSummaryDelta?.(summary, reasoningDelta, chunk); } catch { /* ignore */ }
+        }
+
+        const delta = extractGeminiStreamDelta(chunk);
+        if (delta) {
+          full += delta;
+          try { onTextDelta?.(full, delta, chunk); } catch { /* ignore */ }
+        }
+      };
+
       try {
         while (true) {
           const { done, value } = await reader.read();
-          if (done) break;
+          if (done) {
+            // Flush the decoder and process any remaining complete lines
+            buffer += decoder.decode();
+            for (const line of buffer.split('\n')) processLine(line);
+            buffer = '';
+            break;
+          }
 
           buffer += decoder.decode(value, { stream: true });
           const lines = buffer.split('\n');
           buffer = lines.pop() || '';
 
-          for (const line of lines) {
-            const trimmed = line.trim();
-            if (!trimmed || trimmed === 'data: [DONE]') continue;
-            if (!trimmed.startsWith('data: ')) continue;
-
-            try {
-              const chunk = JSON.parse(trimmed.slice(6));
-              try { onEvent?.(chunk); } catch { /* ignore */ }
-
-              const reasoningDelta = extractGeminiStreamReasoningDelta(chunk);
-              if (reasoningDelta) {
-                summary += reasoningDelta;
-                try { onReasoningSummaryDelta?.(summary, reasoningDelta, chunk); } catch { /* ignore */ }
-              }
-
-              const delta = extractGeminiStreamDelta(chunk);
-              if (delta) {
-                full += delta;
-                try { onTextDelta?.(full, delta, chunk); } catch { /* ignore */ }
-              }
-            } catch { /* ignore parse errors */ }
-          }
+          for (const line of lines) processLine(line);
         }
       } finally {
+        try { reader.cancel().catch(() => {}); } catch { /* ignore */ }
         reader.releaseLock();
       }
 
@@ -871,86 +900,94 @@ export async function respond(options: RespondOptions): Promise<GenerationRespon
       };
 
       let buffer = '';
+      const processLine = (line: string) => {
+        const data = parseSseDataLine(line);
+        if (data == null) return;
+
+        let chunk: Record<string, unknown>;
+        try {
+          chunk = JSON.parse(data);
+        } catch {
+          return;
+        }
+
+        try { onEvent?.(chunk); } catch { /* ignore */ }
+
+        const streamError = extractStreamError(chunk);
+        if (streamError) {
+          throw new Error(streamError.message);
+        }
+
+        const deltaText = collectChatDeltaText(chunk);
+        if (deltaText) {
+          full += deltaText;
+          try { onTextDelta?.(full, deltaText, chunk); } catch { /* ignore */ }
+        }
+
+        // Check for top-level reasoning field in chunk
+        const topLevelReasoning = collectChatReasoningContent((chunk as Record<string, unknown>)?.reasoning);
+        if (topLevelReasoning) {
+          const prev = summaryByIndex.get(0) || '';
+          const next = topLevelReasoning;
+          if (next !== prev) {
+            summaryByIndex.set(0, next);
+            const summary = buildSummary();
+            try { onReasoningSummaryDelta?.(summary, topLevelReasoning, chunk); } catch { /* ignore */ }
+          }
+        }
+
+        const choices = Array.isArray(chunk?.choices) ? chunk.choices : [];
+        let finishReasonSeen = false;
+        for (const choice of choices as Array<{ index?: number; delta?: { reasoning_content?: unknown; reasoning?: unknown }; message?: { reasoning_content?: unknown; reasoning?: unknown }; finish_reason?: string }>) {
+          const idx = Number.isFinite(Number(choice?.index)) ? Number(choice.index) : 0;
+          const prev = summaryByIndex.get(idx) || '';
+          let next = prev;
+          const deltaSummary = collectChatReasoningContent(choice?.delta?.reasoning_content) || collectChatReasoningContent(choice?.delta?.reasoning);
+          if (deltaSummary) {
+            next += deltaSummary;
+          }
+          const messageSummary = collectChatReasoningContent(choice?.message?.reasoning_content) || collectChatReasoningContent(choice?.message?.reasoning);
+          if (messageSummary) {
+            next = messageSummary;
+          }
+          if (next !== prev) {
+            summaryByIndex.set(idx, next);
+            const summary = buildSummary();
+            try { onReasoningSummaryDelta?.(summary, deltaSummary || messageSummary || '', choice); } catch { /* ignore */ }
+          }
+          if (!finishReasonSeen && typeof choice?.finish_reason === 'string' && choice.finish_reason) {
+            finishReasonSeen = true;
+          }
+        }
+
+        if (finishReasonSeen && !summaryDelivered) {
+          const summary = buildSummary();
+          try {
+            onReasoningSummaryDone?.(summary || '', chunk);
+            summaryDelivered = true;
+          } catch { /* ignore */ }
+        }
+      };
+
       try {
         while (true) {
           const { done, value } = await reader.read();
-          if (done) break;
+          if (done) {
+            // Flush the decoder and process any remaining complete lines
+            buffer += decoder.decode();
+            for (const line of buffer.split('\n')) processLine(line);
+            buffer = '';
+            break;
+          }
 
           buffer += decoder.decode(value, { stream: true });
           const lines = buffer.split('\n');
           buffer = lines.pop() || '';
 
-          for (const line of lines) {
-            const trimmed = line.trim();
-            if (!trimmed || trimmed === 'data: [DONE]') continue;
-            if (!trimmed.startsWith('data: ')) continue;
-
-            let chunk: Record<string, unknown>;
-            try {
-              chunk = JSON.parse(trimmed.slice(6));
-            } catch {
-              continue;
-            }
-
-            try { onEvent?.(chunk); } catch { /* ignore */ }
-
-            const streamError = extractStreamError(chunk);
-            if (streamError) {
-              throw new Error(streamError.message);
-            }
-
-            const deltaText = collectChatDeltaText(chunk);
-            if (deltaText) {
-              full += deltaText;
-              try { onTextDelta?.(full); } catch { /* ignore */ }
-            }
-
-            // Check for top-level reasoning field in chunk
-            const topLevelReasoning = collectChatReasoningContent((chunk as Record<string, unknown>)?.reasoning);
-            if (topLevelReasoning) {
-              const prev = summaryByIndex.get(0) || '';
-              const next = topLevelReasoning;
-              if (next !== prev) {
-                summaryByIndex.set(0, next);
-                const summary = buildSummary();
-                try { onReasoningSummaryDelta?.(summary, topLevelReasoning, chunk); } catch { /* ignore */ }
-              }
-            }
-
-            const choices = Array.isArray(chunk?.choices) ? chunk.choices : [];
-            let finishReasonSeen = false;
-            for (const choice of choices as Array<{ index?: number; delta?: { reasoning_content?: unknown; reasoning?: unknown }; message?: { reasoning_content?: unknown; reasoning?: unknown }; finish_reason?: string }>) {
-              const idx = Number.isFinite(Number(choice?.index)) ? Number(choice.index) : 0;
-              const prev = summaryByIndex.get(idx) || '';
-              let next = prev;
-              const deltaSummary = collectChatReasoningContent(choice?.delta?.reasoning_content) || collectChatReasoningContent(choice?.delta?.reasoning);
-              if (deltaSummary) {
-                next += deltaSummary;
-              }
-              const messageSummary = collectChatReasoningContent(choice?.message?.reasoning_content) || collectChatReasoningContent(choice?.message?.reasoning);
-              if (messageSummary) {
-                next = messageSummary;
-              }
-              if (next !== prev) {
-                summaryByIndex.set(idx, next);
-                const summary = buildSummary();
-                try { onReasoningSummaryDelta?.(summary, deltaSummary || messageSummary || '', choice); } catch { /* ignore */ }
-              }
-              if (!finishReasonSeen && typeof choice?.finish_reason === 'string' && choice.finish_reason) {
-                finishReasonSeen = true;
-              }
-            }
-
-            if (finishReasonSeen && !summaryDelivered) {
-              const summary = buildSummary();
-              try {
-                onReasoningSummaryDone?.(summary || '', chunk);
-                summaryDelivered = true;
-              } catch { /* ignore */ }
-            }
-          }
+          for (const line of lines) processLine(line);
         }
       } finally {
+        try { reader.cancel().catch(() => {}); } catch { /* ignore */ }
         reader.releaseLock();
       }
 
@@ -1085,11 +1122,30 @@ export async function respond(options: RespondOptions): Promise<GenerationRespon
       if (!texts.length) return '';
       return normalizeReasoningText(texts.join('\n\n'));
     };
+    // Stable synthetic keys for id-less tool events so lifecycle events
+    // (in_progress -> completed) for the same tool call map to one entry.
+    const syntheticToolKeys = new Map<string, string>();
     const upsertToolActivity = (event: Record<string, unknown>, text: string) => {
-      const id = (typeof event?.item_id === 'string' && event.item_id) ? event.item_id
-        : (typeof event?.id === 'string' && event.id) ? event.id
-        : `tool_${toolActivityByKey.size}`;
       const outputIndex = Number.isFinite(Number(event?.output_index)) ? Number(event.output_index) : null;
+      let id = (typeof event?.item_id === 'string' && event.item_id) ? event.item_id
+        : (typeof event?.id === 'string' && event.id) ? event.id
+        : '';
+      if (!id) {
+        const rawType = typeof event?.type === 'string' ? event.type : 'tool';
+        const identity = rawType
+          .replace(/^response\./, '')
+          .replace(/\.(in_progress|searching|completed|failed|interpreting|executing|generating)$/, '');
+        if (outputIndex != null) {
+          id = `tool_${identity}_${outputIndex}`;
+        } else {
+          let key = syntheticToolKeys.get(identity);
+          if (!key) {
+            key = `tool_${identity}_${syntheticToolKeys.size}`;
+            syntheticToolKeys.set(identity, key);
+          }
+          id = key;
+        }
+      }
       const existing = toolActivityByKey.get(id);
       toolActivityByKey.set(id, { key: id, outputIndex: existing?.outputIndex ?? outputIndex, order: existing?.order ?? nextToolOrder++, text });
     };
@@ -1380,33 +1436,46 @@ export async function respond(options: RespondOptions): Promise<GenerationRespon
         }
     };
 
+    const processLine = (line: string) => {
+      const data = parseSseDataLine(line);
+      if (data == null) return;
+
+      let event: Record<string, unknown>;
+      try {
+        event = JSON.parse(data);
+      } catch {
+        return;
+      }
+
+      processEvent(event);
+    };
+
     try {
       while (true) {
         const { done, value } = await reader.read();
-        if (done) break;
+        if (done) {
+          // Flush the decoder and process any remaining complete lines
+          buffer += decoder.decode();
+          for (const line of buffer.split('\n')) {
+            processLine(line);
+            if (completed) break;
+          }
+          buffer = '';
+          break;
+        }
 
         buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split('\n');
         buffer = lines.pop() || '';
 
         for (const line of lines) {
-          const trimmed = line.trim();
-          if (!trimmed || trimmed === 'data: [DONE]') continue;
-          if (!trimmed.startsWith('data: ')) continue;
-
-          let event: Record<string, unknown>;
-          try {
-            event = JSON.parse(trimmed.slice(6));
-          } catch {
-            continue;
-          }
-
-          processEvent(event);
+          processLine(line);
           if (completed) break;
         }
         if (completed) break;
       }
     } finally {
+      try { reader.cancel().catch(() => {}); } catch { /* ignore */ }
       reader.releaseLock();
     }
     const finalCombined = buildCombinedSummary();
@@ -1466,7 +1535,7 @@ export async function respond(options: RespondOptions): Promise<GenerationRespon
       if (tempVal != null) generationConfig.temperature = tempVal;
       const topPVal = toClampedNumber(topP, 0, 1);
       if (topPVal != null) generationConfig.topP = topPVal;
-      const tokens = toIntOrNull(maxOutputTokens);
+      const tokens = toIntOrNull(maxOutputTokens, { belowMin: 'unset' });
       if (tokens != null) generationConfig.maxOutputTokens = tokens;
       if (Object.keys(generationConfig).length > 0) {
         geminiRequest.generationConfig = generationConfig;
@@ -1684,16 +1753,14 @@ function collectContentText(content: unknown): string {
 function collectChatDeltaText(chunk: unknown): string {
   if (!chunk) return '';
   const pieces: string[] = [];
-  const chunkObj = chunk as { choices?: Array<{ delta?: { content?: unknown }; message?: { content?: unknown } }> };
+  const chunkObj = chunk as { choices?: Array<{ delta?: { content?: unknown } }> };
   const choices = Array.isArray(chunkObj?.choices) ? chunkObj.choices : [];
   for (const choice of choices) {
+    // Streaming path: only use delta content. Some providers include the
+    // accumulated message.content in the final chunk, which would duplicate
+    // the full text if used as a fallback here.
     const deltaText = collectContentText(choice?.delta?.content);
-    if (deltaText) {
-      pieces.push(deltaText);
-    } else {
-      const messageText = collectContentText(choice?.message?.content);
-      if (messageText) pieces.push(messageText);
-    }
+    if (deltaText) pieces.push(deltaText);
   }
   return pieces.join('');
 }
@@ -1786,7 +1853,8 @@ function extractOutputText(res: unknown): string {
       }
     }
   } catch { /* ignore */ }
-  return JSON.stringify(res);
+  // No textual content found - never dump raw API JSON as the message
+  return '';
 }
 
 function extractReasoningSummary(res: unknown): string {

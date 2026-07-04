@@ -17,9 +17,16 @@ describe('toIntOrNull', () => {
     expect(toIntOrNull(5.9)).toBe(5)
   })
 
-  it('should enforce minimum of 1', () => {
+  it('should clamp to minimum of 1 by default', () => {
     expect(toIntOrNull(0)).toBe(1)
     expect(toIntOrNull(-5)).toBe(1)
+  })
+
+  it('should treat values below the minimum as unset when requested', () => {
+    expect(toIntOrNull(0, { belowMin: 'unset' })).toBe(null)
+    expect(toIntOrNull(-5, { belowMin: 'unset' })).toBe(null)
+    expect(toIntOrNull(1, { belowMin: 'unset' })).toBe(1)
+    expect(toIntOrNull('42', { belowMin: 'unset' })).toBe(42)
   })
 })
 

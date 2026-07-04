@@ -69,14 +69,18 @@ function sanitizeLinkHref(href: unknown): string {
   const raw = href.trim();
   if (!raw) return '#';
 
+  // Protocol-relative URLs (//evil.com) would bypass the protocol allowlist.
+  if (raw.startsWith('//')) {
+    return '#';
+  }
+
   // Keep in-app anchors and relative links intact.
   if (
     raw.startsWith('#') ||
     raw.startsWith('/') ||
     raw.startsWith('./') ||
     raw.startsWith('../') ||
-    raw.startsWith('?') ||
-    raw.startsWith('//')
+    raw.startsWith('?')
   ) {
     return raw;
   }

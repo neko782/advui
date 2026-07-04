@@ -14,10 +14,19 @@ describe('isAbortError', () => {
     expect(isAbortError(error)).toBe(true)
   })
 
-  it('should detect abort by message content', () => {
+  it('should detect DOMException aborts', () => {
+    expect(isAbortError(new DOMException('The operation was aborted.', 'AbortError'))).toBe(true)
+    expect(isAbortError(new DOMException('Not allowed', 'NotAllowedError'))).toBe(false)
+  })
+
+  it('should detect exact known abort message forms', () => {
     expect(isAbortError(new Error('Request was aborted.'))).toBe(true)
     expect(isAbortError(new Error('The user aborted a request.'))).toBe(true)
-    expect(isAbortError(new Error('Connection ABORTED'))).toBe(true)
+  })
+
+  it('should not misclassify server errors mentioning "aborted"', () => {
+    expect(isAbortError(new Error('Connection ABORTED'))).toBe(false)
+    expect(isAbortError(new Error('connection aborted by peer'))).toBe(false)
   })
 
   it('should return false for non-abort errors', () => {
