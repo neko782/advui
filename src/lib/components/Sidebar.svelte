@@ -121,6 +121,14 @@
     applyEdit(id, originalTitle)
   }
 
+  function armSuppressBlur() {
+    suppressBlur = true
+    // If the user drags off the button without clicking, no blur/click will
+    // consume the flag; reset it once the press ends so it can't swallow a
+    // later, unrelated blur.
+    window.addEventListener('mouseup', () => { suppressBlur = false }, { once: true })
+  }
+
   function isGenerating(id) {
     if (!id) return false
     try {
@@ -326,23 +334,33 @@
     }
     contentSearchMatches = initialMatches
 
-    Promise.resolve().then(async () => {
-      for (const chat of chats) {
-        if (contentSearchRun !== run) return
-        if (initialMatches[chat.id]) continue
-        try {
-          const content = await loadChatSearchBlob(chat)
+    // Debounce the expensive IndexedDB content loads so we don't hit storage
+    // for the whole chat list on every keystroke.
+    if (searchDebounceTimer) clearTimeout(searchDebounceTimer)
+    searchDebounceTimer = setTimeout(() => {
+      searchDebounceTimer = null
+      Promise.resolve().then(async () => {
+        for (const chat of chats) {
           if (contentSearchRun !== run) return
-          if (content.toLowerCase().includes(query)) {
-            contentSearchMatches = { ...contentSearchMatches, [chat.id]: true }
+          if (initialMatches[chat.id]) continue
+          try {
+            const content = await loadChatSearchBlob(chat)
+            if (contentSearchRun !== run) return
+            if (content.toLowerCase().includes(query)) {
+              contentSearchMatches = { ...contentSearchMatches, [chat.id]: true }
+            }
+          } catch {
+            // Ignore content search failures for individual chats.
           }
-        } catch {
-          // Ignore content search failures for individual chats.
         }
-      }
-    }).catch(() => {})
+      }).catch(() => {})
+    }, 250)
 
     return () => {
+      if (searchDebounceTimer) {
+        clearTimeout(searchDebounceTimer)
+        searchDebounceTimer = null
+      }
       if (contentSearchRun === run) contentSearchRun += 1
     }
   })
@@ -605,7 +623,7 @@
                       <button
                         type="button"
                         class="chat-action-btn cancel"
-                        onmousedown={() => (suppressBlur = true)}
+                        onmousedown={armSuppressBlur}
                         onclick={() => cancelEdit(c.id)}
                         aria-label="Cancel edit"
                       >
@@ -614,7 +632,7 @@
                       <button
                         type="button"
                         class="chat-action-btn confirm"
-                        onmousedown={() => (suppressBlur = true)}
+                        onmousedown={armSuppressBlur}
                         onclick={() => applyEdit(c.id, c.title)}
                         aria-label="Confirm title"
                       >

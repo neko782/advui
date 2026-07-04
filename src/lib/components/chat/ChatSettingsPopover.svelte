@@ -1,3 +1,7 @@
+<script lang="ts" module>
+  let datalistUid = 0
+</script>
+
 <script lang="ts">
   import { IconTune, IconLayers } from '../../icons'
   import { DEFAULT_MODEL } from '../../utils/presetHelpers'
@@ -60,6 +64,7 @@
   }
 
   const props: Props = $props()
+  const modelDatalistId = `model-suggestions-${++datalistUid}`
   let root: HTMLDivElement | undefined
   let menu: HTMLDivElement | undefined
   let wasOpen = false
@@ -143,6 +148,9 @@
   }
 
   $effect(() => {
+    // Only listen while something is actually open; avoids document-level
+    // listeners for every mounted (but closed) instance.
+    if (!props.open && !presetMenuOpen && !activeToolPopup) return
     function onDocClick(e) {
       try {
         const isInPresetMenu = presetMenuEl && presetMenuEl.contains(e.target)
@@ -350,7 +358,7 @@
       <div class="menu-label">Model</div>
       <div class="model-input-wrapper">
         <input type="text" placeholder={DEFAULT_MODEL} value={props.model} disabled={props.disabled}
-          oninput={(e) => (!props.disabled && props.onInputModel?.(e.currentTarget.value))} list="model-suggestions" aria-label="Model" />
+          oninput={(e) => (!props.disabled && props.onInputModel?.(e.currentTarget.value))} list={modelDatalistId} aria-label="Model" />
         {#if Array.isArray(props.presets) && props.presets.length > 0}
           <div class="preset-toggle-wrapper">
             <button type="button" class="preset-toggle-btn" bind:this={presetButtonEl}
@@ -361,7 +369,7 @@
         {/if}
       </div>
       {#if props.modelIds?.length}
-        <datalist id="model-suggestions">
+        <datalist id={modelDatalistId}>
           {#each props.modelIds as mid}<option value={mid}>{mid}</option>{/each}
         </datalist>
       {/if}

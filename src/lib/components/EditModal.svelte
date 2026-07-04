@@ -18,14 +18,16 @@
   let inputEl = $state<HTMLInputElement | null>(null)
   let localValue = $state('')
 
+  let wasOpen = false
   $effect(() => {
-    if (props.open && props.value) {
-      localValue = props.value
+    if (props.open && !wasOpen) {
+      localValue = props.value ?? ''
       tick().then(() => {
         inputEl?.focus()
         inputEl?.select?.()
       })
     }
+    wasOpen = !!props.open
   })
 
   function handleConfirm() {

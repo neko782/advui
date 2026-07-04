@@ -554,12 +554,6 @@
     const updated = { ...current, ...patch }
     next[idx] = updated
     local.connections = next
-    const shouldClearModels = ['apiKey', 'apiBaseUrl'].some((key) => Object.prototype.hasOwnProperty.call(patch || {}, key))
-    if (shouldClearModels) {
-      setModelsCache(current.id, [])
-      const cache = { ...modelCacheByConnection, [current.id]: { ids: [], fetchedAt: 0 } }
-      modelCacheByConnection = cache
-    }
     // If apiMode is being changed away from 'responses', clear responses-API-only features
     // on all presets that use this connection
     if ('apiMode' in patch && patch.apiMode !== 'responses') {
@@ -580,6 +574,16 @@
       }
     }
     persistSettings()
+  }
+
+  // Invalidate the model cache once an apiKey/apiBaseUrl edit settles
+  // (change/blur), instead of destroying it on every keystroke.
+  function invalidateActiveConnectionModelCache() {
+    const list = Array.isArray(local?.connections) ? local.connections : []
+    const current = list.find(c => c?.id === activeConnectionId)
+    if (!current?.id) return
+    setModelsCache(current.id, [])
+    modelCacheByConnection = { ...modelCacheByConnection, [current.id]: { ids: [], fetchedAt: 0 } }
   }
 
   function removeConnection(id) {
@@ -1219,6 +1223,7 @@
                         value={activeConnection.apiKey || ''}
                         autocomplete="off"
                         oninput={(event) => updateActiveConnection({ apiKey: event.currentTarget.value })}
+                        onchange={() => invalidateActiveConnectionModelCache()}
                         aria-label="API key"
                         data-1p-ignore
                         data-lpignore="true"
@@ -1248,6 +1253,7 @@
                       autocomplete="off"
                       inputmode="url"
                       oninput={(event) => updateActiveConnection({ apiBaseUrl: event.currentTarget.value })}
+                      onchange={() => invalidateActiveConnectionModelCache()}
                       aria-label="API base URL"
                       data-1p-ignore
                       data-lpignore="true"

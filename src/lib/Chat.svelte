@@ -394,6 +394,10 @@
   async function persistNow() {
     const cid = props.chatId
     if (!cid || !mounted) return
+    // Never persist before this chat's content has actually been loaded,
+    // otherwise a failed/skipped load could overwrite the stored chat with
+    // the default empty state.
+    if (loadedChatId !== cid) return
     persistInFlight += 1
     try {
       const result = await persistChatContent(cid, nodes, chatSettings, rootId, debug, mounted)
@@ -824,6 +828,13 @@
       }
       if (missing.length) ensureImagesAvailable(missing)
     }, 100) // Debounce for 100ms
+
+    return () => {
+      if (imageLoadTimer) {
+        clearTimeout(imageLoadTimer)
+        imageLoadTimer = null
+      }
+    }
   })
 
   const visibleMessages = $derived(buildVisible())
@@ -1180,7 +1191,10 @@
       logGenerationEvent(debug, 'API request completed', { typingVariantId })
       if (generationState.getGenerationSequence() === genSeq) {
         const storedReply = await storeGeneratedImagesInMedia(reply)
-        nodes = handleGenerationSuccess(nodes, typingVariantId, storedReply, summaryBuffer)
+        // Re-check after the await: Stop may have been pressed while storing images.
+        if (generationState.getGenerationSequence() === genSeq) {
+          nodes = handleGenerationSuccess(nodes, typingVariantId, storedReply, summaryBuffer)
+        }
       }
       generationFinalized = finalizeGeneration(genSeq)
       await persistNow()
@@ -1252,7 +1266,7 @@
       `delete inserted ${idToDelete}`,
       (draft) => {
         const result = deleteMessage(draft.nodes, draft.rootId, idToDelete)
-        return { ...draft, nodes: result.nodes, rootId: result.rootId ?? draft.rootId }
+        return { ...draft, nodes: result.nodes, rootId: result.rootId }
       },
       { allowDelete: true }
     )
@@ -1458,7 +1472,10 @@
 
       if (generationState.getGenerationSequence() === genSeq) {
         const storedReply = await storeGeneratedImagesInMedia(reply)
-        nodes = handleGenerationSuccess(nodes, typingVariantId, storedReply, summaryBuffer)
+        // Re-check after the await: Stop may have been pressed while storing images.
+        if (generationState.getGenerationSequence() === genSeq) {
+          nodes = handleGenerationSuccess(nodes, typingVariantId, storedReply, summaryBuffer)
+        }
       }
       generationFinalized = finalizeGeneration(genSeq)
       await persistNow()
@@ -1640,7 +1657,10 @@
       logGenerationEvent(debug, 'API request completed', { typingVariantId })
       if (generationState.getGenerationSequence() === genSeq) {
         const storedReply = await storeGeneratedImagesInMedia(reply)
-        nodes = handleGenerationSuccess(nodes, typingVariantId, storedReply, summaryBuffer)
+        // Re-check after the await: Stop may have been pressed while storing images.
+        if (generationState.getGenerationSequence() === genSeq) {
+          nodes = handleGenerationSuccess(nodes, typingVariantId, storedReply, summaryBuffer)
+        }
       }
       generationFinalized = finalizeGeneration(genSeq)
       await persistNow()
@@ -1738,7 +1758,10 @@
       logGenerationEvent(debug, 'API request completed', { typingVariantId })
       if (generationState.getGenerationSequence() === genSeq) {
         const storedReply = await storeGeneratedImagesInMedia(reply)
-        nodes = handleGenerationSuccess(nodes, typingVariantId, storedReply, summaryBuffer)
+        // Re-check after the await: Stop may have been pressed while storing images.
+        if (generationState.getGenerationSequence() === genSeq) {
+          nodes = handleGenerationSuccess(nodes, typingVariantId, storedReply, summaryBuffer)
+        }
       }
       generationFinalized = finalizeGeneration(genSeq)
       await persistNow()
@@ -1926,6 +1949,7 @@
 	  $effect(() => {
 	    const cid = props.chatId
 	    if (!cid || !ready || !mounted) return
+	    if (loadedChatId !== cid) return
 	    if (persistInFlight > 0) return
 	    const hasTyping = Array.isArray(nodes) && nodes.some(n => (n?.variants || []).some(v => v?.typing))
 	    if (sending || hasTyping) return

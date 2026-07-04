@@ -200,21 +200,38 @@
     if (fileInputEl) fileInputEl.value = ''
   }
 
+  // Depth counter: dragleave fires when moving over child elements, so track
+  // enter/leave pairs to avoid indicator flicker.
+  let dragDepth = 0
+
+  function handleDragEnter(e) {
+    e.preventDefault()
+    e.stopPropagation()
+    dragDepth++
+    if (!isDragging) isDragging = true
+  }
+
   function handleDragOver(e) {
     e.preventDefault()
     e.stopPropagation()
-    if (!isDragging) isDragging = true
   }
 
   function handleDragLeave(e) {
     e.preventDefault()
     e.stopPropagation()
-    if (isDragging) isDragging = false
+    dragDepth = Math.max(0, dragDepth - 1)
+    if (dragDepth === 0 && isDragging) isDragging = false
+  }
+
+  function handleDragEnd() {
+    dragDepth = 0
+    isDragging = false
   }
 
   function handleDrop(e) {
     e.preventDefault()
     e.stopPropagation()
+    dragDepth = 0
     isDragging = false
 
     const files = e.dataTransfer?.files
@@ -277,7 +294,7 @@
   }
 </script>
 
-<footer class="composer" class:dragging={isDragging} ondragover={handleDragOver} ondragleave={handleDragLeave} ondrop={handleDrop}>
+<footer class="composer" class:dragging={isDragging} ondragenter={handleDragEnter} ondragover={handleDragOver} ondragleave={handleDragLeave} ondragend={handleDragEnd} ondrop={handleDrop}>
   <input
     type="file"
     accept="*/*"

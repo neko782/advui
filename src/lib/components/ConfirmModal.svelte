@@ -16,6 +16,15 @@
 
   const props: Props = $props()
 
+  let dialogEl = $state<HTMLDivElement | null>(null)
+
+  // Move focus into the dialog when it opens so the Escape keydown handler works.
+  $effect(() => {
+    if (props.open && dialogEl) {
+      dialogEl.focus()
+    }
+  })
+
   async function handleConfirm() {
     try {
       await props.onConfirm?.()
@@ -43,7 +52,7 @@
       aria-modal="true"
       aria-labelledby="modal-title"
       tabindex="-1"
-      onpointerdown={(event) => { if (event.target === event.currentTarget) handleCancel() }}
+      bind:this={dialogEl}
       onkeydown={(event) => { if (event.key === 'Escape') handleCancel() }}
     >
       <div class="panel" class:danger={props.danger}>

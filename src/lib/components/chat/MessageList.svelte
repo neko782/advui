@@ -184,11 +184,29 @@
   $effect(() => {
     if (!listEl) return
     containerHeight = listEl.clientHeight
+    let lastWidth = listEl.clientWidth
     const ro = new ResizeObserver((entries) => {
       containerHeight = entries[0]?.contentRect.height ?? 600
+      const width = entries[0]?.contentRect.width ?? lastWidth
+      if (width !== lastWidth) {
+        lastWidth = width
+        // Cached heights are stale at a new width; clear so items re-measure.
+        heightCache = {}
+        heightVersion++
+      }
     })
     ro.observe(listEl)
     return () => ro.disconnect()
+  })
+
+  // Prune cache entries for message ids no longer present
+  $effect(() => {
+    const ids = new Set((props.items ?? []).map((item) => item.m.id))
+    const stale = Object.keys(heightCache).filter((key) => !ids.has(Number(key)))
+    if (stale.length) {
+      for (const key of stale) delete heightCache[Number(key)]
+      heightVersion++
+    }
   })
 
   // Clear height cache when chat changes
@@ -216,7 +234,7 @@
         use:measureItem={vm.m.id}
       >
         {#if idx > 0 && props.showInsertButtons !== false}
-          <div class="insert-zone" class:disabled={props.locked} role="button" tabindex={props.locked ? -1 : 0} aria-label="Insert message here" aria-disabled={props.locked} onclick={() => !props.locked && props.onInsertBetween?.(idx - 1)} onkeydown={(e) => !props.locked && (e.key === 'Enter' || e.key === ' ') && props.onInsertBetween?.(idx - 1)}>
+          <div class="insert-zone" class:disabled={props.locked} role="button" tabindex={props.locked ? -1 : 0} aria-label="Insert message here" aria-disabled={props.locked} onclick={() => !props.locked && props.onInsertBetween?.(idx - 1)} onkeydown={(e) => { if (!props.locked && (e.key === 'Enter' || e.key === ' ')) { if (e.key === ' ') e.preventDefault(); props.onInsertBetween?.(idx - 1) } }}>
             <div class="insert-line"></div>
             <span class="insert-btn" aria-hidden="true"><IconAdd style="font-size: 18px;" /></span>
             <div class="insert-line"></div>
