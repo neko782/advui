@@ -466,6 +466,135 @@ describe('respond stream errors', () => {
     ])
   })
 
+  it('builds Responses API request bodies with attachments and sampling params', async () => {
+    configureConnection('responses')
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ output_text: 'ok' }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await respond({
+      model: 'gpt-5.4',
+      connectionId,
+      messages: [
+        { role: 'system', content: 'be nice' },
+        {
+          role: 'user',
+          content: 'look',
+          images: [
+            { id: 'img1', data: 'AAA', mimeType: 'image/png' },
+            { id: 'vid1', data: 'BBB', mimeType: 'video/mp4' },
+            { id: 'aud1', data: 'CCC', mimeType: 'audio/mpeg' },
+            { id: 'doc1', data: 'DDD', mimeType: 'application/pdf', name: 'paper.pdf' },
+            { id: 'bin1', data: 'EEE', mimeType: 'application/zip', name: 'x.zip' },
+          ],
+        },
+      ],
+      maxOutputTokens: 512,
+      topP: 0.9,
+      temperature: 1.2,
+      reasoningEffort: 'high',
+      reasoningSummary: 'auto',
+      textVerbosity: 'low',
+      thinkingEnabled: true,
+      thinkingBudgetTokens: 128,
+    })
+
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(url).toBe('https://example.test/v1/responses')
+    const body = JSON.parse(init.body as string)
+    expect(body.model).toBe('gpt-5.4')
+    expect(body.max_output_tokens).toBe(512)
+    expect(body.top_p).toBe(0.9)
+    expect(body.temperature).toBe(1.2)
+    expect(body.reasoning).toEqual({ effort: 'high', summary: 'auto' })
+    expect(body.text).toEqual({ verbosity: 'low' })
+    expect(body.thinking).toEqual({ type: 'enabled', budget_tokens: 128 })
+    expect(body.input[0]).toEqual({ role: 'system', content: 'be nice' })
+    expect(body.input[1].content).toEqual([
+      { type: 'input_text', text: 'look' },
+      { type: 'input_image', image_url: 'data:image/png;base64,AAA' },
+      { type: 'input_video', video_url: 'data:video/mp4;base64,BBB', mimeType: 'video/mp4' },
+      { type: 'input_audio', audio_url: 'data:audio/mpeg;base64,CCC', mimeType: 'audio/mpeg' },
+      { type: 'input_file', file_data: 'data:application/pdf;base64,DDD', filename: 'paper.pdf' },
+      { type: 'input_file', file_data: 'data:application/zip;base64,EEE', filename: 'x.zip' },
+    ])
+  })
+
+  it('builds Chat Completions request bodies converting attachments', async () => {
+    configureConnection('chat_completions')
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      choices: [{ message: { content: 'ok' } }],
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await respond({
+      model: 'gpt-4o-mini',
+      connectionId,
+      messages: [
+        {
+          role: 'user',
+          content: 'look',
+          images: [
+            { id: 'img1', data: 'AAA', mimeType: 'image/png' },
+            { id: 'doc1', data: 'DDD', mimeType: 'application/pdf', name: 'paper.pdf' },
+          ],
+        },
+      ],
+      maxOutputTokens: 256,
+      reasoningEffort: 'low',
+    })
+
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(url).toBe('https://example.test/v1/chat/completions')
+    const body = JSON.parse(init.body as string)
+    expect(body.max_completion_tokens).toBe(256)
+    expect(body.reasoning_effort).toBe('low')
+    expect(body.messages[0].content).toEqual([
+      { type: 'text', text: 'look' },
+      { type: 'image_url', image_url: { url: 'data:image/png;base64,AAA' } },
+      { type: 'file', file: { file_data: 'data:application/pdf;base64,DDD', filename: 'paper.pdf' } },
+    ])
+  })
+
+  it('builds Gemini request bodies with systemInstruction, inlineData and generationConfig', async () => {
+    configureConnection('gemini')
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      candidates: [{ content: { parts: [{ text: 'ok' }] }, index: 0 }],
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await respond({
+      model: 'gemini-2.5-flash',
+      connectionId,
+      messages: [
+        { role: 'system', content: 'be nice' },
+        { role: 'user', content: 'look', images: [{ id: 'img1', data: 'AAA', mimeType: 'image/png' }] },
+        { role: 'assistant', content: 'sure' },
+      ],
+      maxOutputTokens: 100,
+      topP: 0.5,
+      temperature: 0.7,
+    })
+
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(url).toBe('https://example.test/v1/models/gemini-2.5-flash:generateContent?key=test-key')
+    const body = JSON.parse(init.body as string)
+    expect(body.systemInstruction).toEqual({ parts: [{ text: 'be nice' }] })
+    expect(body.contents).toEqual([
+      { role: 'user', parts: [{ text: 'look' }, { inlineData: { mimeType: 'image/png', data: 'AAA' } }] },
+      { role: 'model', parts: [{ text: 'sure' }] },
+    ])
+    expect(body.generationConfig).toEqual({ temperature: 0.7, topP: 0.5, maxOutputTokens: 100 })
+  })
+
   it('extracts MCP output items from Responses API responses', async () => {
     configureConnection('responses')
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({
