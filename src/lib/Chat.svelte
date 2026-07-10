@@ -9,8 +9,7 @@
   import MessageList from './components/chat/MessageList.svelte'
   import Composer from './components/chat/Composer.svelte'
   import ConfirmModal from './components/ConfirmModal.svelte'
-  import { storeImage, generateImageId, fileToBase64, getImage } from './imageStore'
-  import { isSupportedAttachment, inferMimeType } from './attachments/mime'
+  import { ChatImageManager } from './chat/imageManager.svelte'
 
   // Chat module imports
   import { loadChat } from './chat/services/chatLoader'
@@ -22,6 +21,7 @@
   import { createGenerationStateManager } from './chat/services/generationStateManager'
   import { createEditStateManager } from './chat/services/editStateManager'
   import { validateChatEdit } from './chat/services/chatEditGuard'
+  import { applyDebugLockToNodes, clearDebugLockFromNodes } from './chat/services/debugLock'
 
   // Action imports
   import { deleteMessage, setMessageRole, moveUp, moveDown } from './chat/actions/messageActions'
@@ -65,8 +65,6 @@
   let nodes = $state<Node[]>([])
   let rootId = $state<number | null>(1)
   let input = $state('')
-  let attachedImages = $state<Image[]>([])
-  let imageCache = $state<Record<string, { data: string; mimeType?: string; name?: string }>>({})
   let sending = $state(false)
   let forcedLock = $state(false)
   let locked = $state(false)
@@ -304,71 +302,6 @@
     return true
   }
 
-  function applyDebugLockToVariants(list) {
-    if (!Array.isArray(list)) return list
-    return list.map((variant) => {
-      if (!variant || typeof variant !== 'object') return variant
-      return {
-        ...variant,
-        locked: true,
-        typing: true,
-      }
-    })
-  }
-
-  function applyDebugLockToNodes(list) {
-    if (!Array.isArray(list)) return list
-    return list.map((node) => {
-      if (!node || typeof node !== 'object') return node
-      return {
-        ...node,
-        locked: true,
-        variants: applyDebugLockToVariants(node.variants),
-      }
-    })
-  }
-
-  function clearDebugLockFromVariants(list) {
-    if (!Array.isArray(list)) return list
-    return list.map((variant) => {
-      if (!variant || typeof variant !== 'object') return variant
-      let next = variant
-      let mutated = false
-      if (next.locked) {
-        if (!mutated) next = { ...next }
-        delete next.locked
-        mutated = true
-      }
-      if (next.typing) {
-        if (!mutated) next = { ...next }
-        next.typing = false
-        mutated = true
-      }
-      return mutated ? next : variant
-    })
-  }
-
-  function clearDebugLockFromNodes(list) {
-    if (!Array.isArray(list)) return list
-    return list.map((node) => {
-      if (!node || typeof node !== 'object') return node
-      let next = node
-      let mutated = false
-      if (next.locked) {
-        next = { ...next }
-        delete next.locked
-        mutated = true
-      }
-      const variants = clearDebugLockFromVariants(next.variants)
-      if (variants !== next.variants) {
-        if (!mutated) next = { ...next }
-        next.variants = variants
-        mutated = true
-      }
-      return mutated ? next : node
-    })
-  }
-
   async function toggleDebugLock() {
     if (!debug) return
     const chatId = props.chatId
@@ -405,259 +338,13 @@
     try { listCmp?.scrollToBottom?.() } catch {}
   }
 
-  async function handleFilesSelected(files) {
-    try {
-      const incoming = Array.isArray(files) ? files : []
-      const accepted = incoming.filter(isSupportedAttachment)
-      if (!accepted.length) return
-      const imagePromises = accepted.map(async (file) => {
-        const id = generateImageId()
-        const base64 = await fileToBase64(file)
-        const mimeType = inferMimeType(file) || file.type || ''
-        await storeImage(id, base64, mimeType, file.name)
-        const image = {
-          id,
-          data: base64,
-          mimeType: mimeType || undefined,
-          name: file?.name || undefined
-        }
-        cacheImageData(image)
-        return image
-      })
-      const images = await Promise.all(imagePromises)
-      attachedImages = [...attachedImages, ...images]
-    } catch (err) {
-      console.error('Failed to attach images:', err)
-    }
-  }
-
-  function removeAttachedImage(id) {
-    attachedImages = attachedImages.filter(img => img.id !== id)
-  }
-
-  function toImageRef(img) {
-    if (!img || typeof img !== 'object') return null
-    const id = typeof img.id === 'string' && img.id.trim() ? img.id.trim() : null
-    if (!id) return null
-    const ref = { id }
-    if (typeof img.mimeType === 'string' && img.mimeType.trim()) ref.mimeType = img.mimeType.trim()
-    if (typeof img.name === 'string' && img.name.trim()) ref.name = img.name.trim()
-    return ref
-  }
-
-  function buildImageRefs(list) {
-    if (!Array.isArray(list)) return []
-    const refs = []
-    const seen = new Set()
-    for (const img of list) {
-      const ref = toImageRef(img)
-      if (!ref || seen.has(ref.id)) continue
-      seen.add(ref.id)
-      refs.push(ref)
-    }
-    return refs
-  }
-
-  function buildGeneratedImageRefs(list) {
-    if (!Array.isArray(list)) return []
-    const refs = []
-    const seen = new Set()
-    for (const img of list) {
-      if (!img || typeof img !== 'object') continue
-      const id = typeof img.id === 'string' && img.id.trim() ? img.id.trim() : null
-      if (!id || seen.has(id)) continue
-      seen.add(id)
-      const ref = { id }
-      if (typeof img.mimeType === 'string' && img.mimeType.trim()) ref.mimeType = img.mimeType.trim()
-      else ref.mimeType = 'image/png'
-      if (typeof img.name === 'string' && img.name.trim()) ref.name = img.name.trim()
-      else ref.name = generatedImageName({ ...img, id })
-      if (typeof img.revisedPrompt === 'string' && img.revisedPrompt) ref.revisedPrompt = img.revisedPrompt
-      refs.push(ref)
-    }
-    return refs
-  }
-
-  function cacheImageData(image) {
-    if (!image || typeof image !== 'object') return
-    const id = typeof image.id === 'string' && image.id.trim() ? image.id.trim() : null
-    const data = typeof image.data === 'string' && image.data ? image.data : null
-    if (!id || !data) return
-    const mimeType = typeof image.mimeType === 'string' && image.mimeType.trim() ? image.mimeType.trim() : undefined
-    const name = typeof image.name === 'string' && image.name.trim() ? image.name.trim() : undefined
-    const existing = imageCache[id] || {}
-    const next = {
-      data,
-      mimeType: mimeType || existing.mimeType,
-      name: name || existing.name,
-    }
-    if (existing.data === next.data && existing.mimeType === next.mimeType && existing.name === next.name) return
-    imageCache = { ...imageCache, [id]: next }
-  }
-
-  function generatedImageName(image) {
-    const id = typeof image?.id === 'string' && image.id.trim() ? image.id.trim() : `generated-${Date.now()}`
-    return `${id}.png`
-  }
-
-  async function storeGeneratedImagesInMedia(reply) {
-    if (!reply || typeof reply !== 'object' || !Array.isArray(reply.generatedImages)) return reply
-    const generatedImages = []
-    for (const image of reply.generatedImages) {
-      if (!image || typeof image !== 'object') continue
-      const id = typeof image.id === 'string' && image.id.trim() ? image.id.trim() : generateImageId()
-      const data = typeof image.data === 'string' && image.data ? image.data : ''
-      const mimeType = typeof image.mimeType === 'string' && image.mimeType.trim() ? image.mimeType.trim() : 'image/png'
-      const name = typeof image.name === 'string' && image.name.trim() ? image.name.trim() : generatedImageName({ ...image, id })
-      const revisedPrompt = typeof image.revisedPrompt === 'string' && image.revisedPrompt ? image.revisedPrompt : undefined
-
-      if (data) {
-        cacheImageData({ id, data, mimeType, name })
-        try {
-          await storeImage(id, data, mimeType, name)
-        } catch (err) {
-          console.warn('Failed to store generated image in media:', err)
-        }
-      }
-
-      const ref = { id, mimeType, name }
-      if (revisedPrompt) ref.revisedPrompt = revisedPrompt
-      generatedImages.push(ref)
-    }
-    return { ...reply, generatedImages: generatedImages.length ? generatedImages : undefined }
-  }
-
-  const pendingImageLoads = new Set()
-
-  async function fetchImageRecord(meta) {
-    const id = typeof meta?.id === 'string' && meta.id.trim() ? meta.id.trim() : null
-    if (!id) return
-    if (pendingImageLoads.has(id)) return
-    if (imageCache[id]?.data) return
-    if (typeof indexedDB === 'undefined') return
-    pendingImageLoads.add(id)
-    try {
-      const record = await getImage(id)
-      if (record && typeof record.data === 'string' && record.data) {
-        cacheImageData({
-          id,
-          data: record.data,
-          mimeType: record.mimeType || meta?.mimeType,
-          name: record.name || meta?.name,
-        })
-      }
-    } catch {}
-    finally {
-      pendingImageLoads.delete(id)
-    }
-  }
-
-  function ensureImagesAvailable(list) {
-    if (!Array.isArray(list) || !list.length) return
-    const tasks = []
-    for (const meta of list) {
-      const id = typeof meta?.id === 'string' && meta.id.trim() ? meta.id.trim() : null
-      if (!id) continue
-      if (imageCache[id]?.data) continue
-      tasks.push(fetchImageRecord(meta))
-    }
-    if (tasks.length) Promise.allSettled(tasks).catch(() => {})
-  }
-
-  function sanitizeNodesImageData(nodesInput) {
-    if (!Array.isArray(nodesInput)) return nodesInput
-    let mutated = false
-    const sanitizedNodes = nodesInput.map(node => {
-      if (!node || typeof node !== 'object') return node
-      const variants = Array.isArray(node.variants) ? node.variants : []
-      let variantsChanged = false
-      const sanitizedVariants = variants.map(variant => {
-        if (!variant || typeof variant !== 'object') return variant
-        const refs = buildImageRefs(variant.images)
-        const hasImages = refs.length > 0
-        const originalImages = Array.isArray(variant.images) ? variant.images : []
-        let needsUpdate = hasImages
-          ? (originalImages.length !== refs.length)
-          : originalImages.length > 0
-        if (!needsUpdate && hasImages) {
-          for (let i = 0; i < refs.length; i++) {
-            const orig = originalImages[i]
-            const ref = refs[i]
-            if (typeof orig === 'string') { needsUpdate = true; break }
-            if (!orig || typeof orig !== 'object') { needsUpdate = true; break }
-            const origMime = (typeof orig.mimeType === 'string' && orig.mimeType.trim()) || ''
-            const origName = (typeof orig.name === 'string' && orig.name.trim()) || ''
-            const refMime = ref.mimeType || ''
-            const refName = ref.name || ''
-            const hasData = typeof orig.data === 'string' && orig.data
-            if (orig.id !== ref.id || origMime !== refMime || origName !== refName || hasData) {
-              needsUpdate = true
-              break
-            }
-          }
-        }
-        for (const orig of originalImages) {
-          if (orig && typeof orig === 'object' && typeof orig.data === 'string' && orig.data) {
-            cacheImageData(orig)
-          }
-        }
-        let nextVariant = variant
-        if (needsUpdate) {
-          variantsChanged = true
-          if (hasImages) {
-            nextVariant = { ...nextVariant, images: refs }
-          } else {
-            const cleaned = { ...nextVariant }
-            delete cleaned.images
-            nextVariant = cleaned
-          }
-        }
-
-        const generatedRefs = buildGeneratedImageRefs(nextVariant.generatedImages)
-        const originalGeneratedImages = Array.isArray(nextVariant.generatedImages) ? nextVariant.generatedImages : []
-        let generatedNeedsUpdate = generatedRefs.length
-          ? originalGeneratedImages.length !== generatedRefs.length
-          : originalGeneratedImages.length > 0
-        if (!generatedNeedsUpdate && generatedRefs.length) {
-          for (let i = 0; i < generatedRefs.length; i++) {
-            const orig = originalGeneratedImages[i]
-            const ref = generatedRefs[i]
-            if (!orig || typeof orig !== 'object') { generatedNeedsUpdate = true; break }
-            const origMime = (typeof orig.mimeType === 'string' && orig.mimeType.trim()) || ''
-            const origName = (typeof orig.name === 'string' && orig.name.trim()) || ''
-            const origPrompt = (typeof orig.revisedPrompt === 'string' && orig.revisedPrompt) || ''
-            const hasData = typeof orig.data === 'string' && orig.data
-            if (orig.id !== ref.id || origMime !== (ref.mimeType || '') || origName !== (ref.name || '') || origPrompt !== (ref.revisedPrompt || '') || hasData) {
-              generatedNeedsUpdate = true
-              break
-            }
-          }
-        }
-        for (const orig of originalGeneratedImages) {
-          if (orig && typeof orig === 'object' && typeof orig.data === 'string' && orig.data) {
-            const id = typeof orig.id === 'string' && orig.id.trim() ? orig.id.trim() : null
-            if (!id) continue
-            const mimeType = typeof orig.mimeType === 'string' && orig.mimeType.trim() ? orig.mimeType.trim() : 'image/png'
-            const name = typeof orig.name === 'string' && orig.name.trim() ? orig.name.trim() : generatedImageName({ ...orig, id })
-            cacheImageData({ ...orig, id, mimeType, name })
-            storeImage(id, orig.data, mimeType, name).catch((err) => {
-              console.warn('Failed to migrate generated image to media:', err)
-            })
-          }
-        }
-        if (!generatedNeedsUpdate) return nextVariant
-        variantsChanged = true
-        if (generatedRefs.length) return { ...nextVariant, generatedImages: generatedRefs }
-        const cleaned = { ...nextVariant }
-        delete cleaned.generatedImages
-        return cleaned
-      })
-      if (!variantsChanged) return node
-      mutated = true
-      return { ...node, variants: sanitizedVariants }
-    })
-    return mutated ? sanitizedNodes : nodesInput
-  }
+  // Attachments & image cache (see chat/imageManager.svelte.ts)
+  const images = new ChatImageManager()
+  const handleFilesSelected = (files) => images.handleFilesSelected(files)
+  const removeAttachedImage = (id) => images.removeAttachedImage(id)
+  const storeGeneratedImagesInMedia = (reply) => images.storeGeneratedImagesInMedia(reply)
+  const sanitizeNodesImageData = (nodesInput) => images.sanitizeNodesImageData(nodesInput)
+  const withImageData = (nodesInput) => images.withImageData(nodesInput)
 
   let imageLoadTimer: ReturnType<typeof setTimeout> | null = null
   $effect(() => {
@@ -666,43 +353,7 @@
     // Debounce image loading to reduce frequent effect runs
     if (imageLoadTimer) clearTimeout(imageLoadTimer)
     imageLoadTimer = setTimeout(() => {
-      const missing = []
-      const seen = new Set()
-      for (const vm of visible) {
-        const imgs = Array.isArray(vm?.m?.images) ? vm.m.images : []
-        for (const img of imgs) {
-          if (img == null) continue
-          if (typeof img === 'string') {
-            const id = img.trim()
-            if (!id || imageCache[id]?.data || seen.has(id)) continue
-            seen.add(id)
-            missing.push({ id })
-            continue
-          }
-          if (typeof img !== 'object') continue
-          if (typeof img.data === 'string' && img.data) {
-            cacheImageData(img)
-            continue
-          }
-          const id = typeof img.id === 'string' && img.id.trim() ? img.id.trim() : null
-          if (!id || imageCache[id]?.data || seen.has(id)) continue
-          seen.add(id)
-          missing.push({ id, mimeType: img.mimeType, name: img.name })
-        }
-        const generatedImages = Array.isArray(vm?.m?.generatedImages) ? vm.m.generatedImages : []
-        for (const img of generatedImages) {
-          if (!img || typeof img !== 'object') continue
-          if (typeof img.data === 'string' && img.data) {
-            cacheImageData(img)
-            continue
-          }
-          const id = typeof img.id === 'string' && img.id.trim() ? img.id.trim() : null
-          if (!id || imageCache[id]?.data || seen.has(id)) continue
-          seen.add(id)
-          missing.push({ id, mimeType: img.mimeType || 'image/png', name: img.name })
-        }
-      }
-      if (missing.length) ensureImagesAvailable(missing)
+      images.ensureVisibleImages(visible)
     }, 100) // Debounce for 100ms
 
     return () => {
@@ -714,62 +365,6 @@
   })
 
   const visibleMessages = $derived(buildVisible())
-
-  function withImageData(nodesInput) {
-    if (!Array.isArray(nodesInput)) return nodesInput
-    let mutated = false
-    const enrichedNodes = nodesInput.map(node => {
-      if (!node || typeof node !== 'object') return node
-      const variants = Array.isArray(node.variants) ? node.variants : []
-      let variantsChanged = false
-      const enrichedVariants = variants.map(variant => {
-        if (!variant || typeof variant !== 'object') return variant
-        const images = Array.isArray(variant.images) ? variant.images : []
-        if (!images.length) return variant
-        let changed = false
-        const enrichedImages = images.map(image => {
-          if (image == null) return image
-          if (typeof image === 'string') {
-            const id = image.trim()
-            if (!id) return image
-            const cached = imageCache[id]
-            if (cached?.data) {
-              changed = true
-              return {
-                id,
-                mimeType: cached.mimeType,
-                name: cached.name,
-                data: cached.data,
-              }
-            }
-            return { id }
-          }
-          if (typeof image !== 'object') return image
-          if (typeof image.data === 'string' && image.data) return image
-          const id = typeof image.id === 'string' && image.id.trim() ? image.id.trim() : null
-          if (!id) return image
-          const cached = imageCache[id]
-          if (cached?.data) {
-            changed = true
-            return {
-              ...image,
-              data: cached.data,
-              mimeType: image.mimeType || cached.mimeType,
-              name: image.name ?? cached.name,
-            }
-          }
-          return image
-        })
-        if (!changed) return variant
-        variantsChanged = true
-        return { ...variant, images: enrichedImages }
-      })
-      if (!variantsChanged) return node
-      mutated = true
-      return { ...node, variants: enrichedVariants }
-    })
-    return mutated ? enrichedNodes : nodesInput
-  }
 
   // Message actions
   async function copyMessage(text) {
@@ -1025,65 +620,7 @@
     generationState.setTypingVariantId(typingVariantId)
     persistNow()
 
-    let generationFinalized = false
-    try {
-      let summaryBuffer = ''
-      const requestNodes = withImageData(nodes)
-      logGenerationEvent(debug, 'Starting API request', { typingVariantId })
-      const reply = await generateResponse({
-        nodes: requestNodes,
-        rootId,
-        chatSettings,
-        connectionId,
-        streaming: chatSettings.streaming,
-        typingVariantId,
-        onAbort: (fn) => registerAbortHandler(genSeq, fn),
-        onTextDelta: (full) => {
-          if (generationState.getGenerationSequence() === genSeq) {
-            updateVariant(typingVariantId, (prev) => ({ ...prev, content: full }))
-          }
-        },
-        onReasoningSummaryDelta: (fullSummary) => {
-          if (generationState.getGenerationSequence() === genSeq && typeof fullSummary === 'string') {
-            summaryBuffer = fullSummary
-            updateVariant(typingVariantId, (prev) => ({
-              ...prev,
-              reasoningSummary: summaryBuffer,
-              reasoningSummaryLoading: true,
-            }))
-          }
-        },
-        onReasoningSummaryDone: (fullSummary) => {
-          if (generationState.getGenerationSequence() === genSeq && typeof fullSummary === 'string') {
-            summaryBuffer = fullSummary
-            updateVariant(typingVariantId, (prev) => ({
-              ...prev,
-              reasoningSummary: summaryBuffer,
-              reasoningSummaryLoading: false,
-            }))
-          }
-        },
-      })
-      logGenerationEvent(debug, 'API request completed', { typingVariantId })
-      if (generationState.getGenerationSequence() === genSeq) {
-        const storedReply = await storeGeneratedImagesInMedia(reply)
-        // Re-check after the await: Stop may have been pressed while storing images.
-        if (generationState.getGenerationSequence() === genSeq) {
-          nodes = handleGenerationSuccess(nodes, typingVariantId, storedReply, summaryBuffer)
-        }
-      }
-      generationFinalized = finalizeGeneration(genSeq)
-      await persistNow()
-    } catch (err) {
-      logGenerationEvent(debug, 'Generation error', { error: err?.message, typingVariantId })
-      if (generationState.getGenerationSequence() === genSeq) {
-        nodes = handleGenerationError(nodes, typingVariantId, err)
-      }
-      generationFinalized = finalizeGeneration(genSeq)
-      await persistNow()
-    } finally {
-      if (!generationFinalized) finalizeGeneration(genSeq)
-    }
+    await runGeneration(typingVariantId, genSeq, connectionId)
   }
 
   function cancelEdit() {
@@ -1150,18 +687,88 @@
   }
 
   // Send message
+  // Shared generation lifecycle: streams a response into the typing variant,
+  // stores generated media, applies success/error to the graph and persists.
+  async function runGeneration(
+    typingVariantId: number,
+    genSeq: number,
+    connectionId: string | null,
+    logContext: Record<string, unknown> = {}
+  ) {
+    let generationFinalized = false
+    try {
+      let summaryBuffer = ''
+      const requestNodes = withImageData(nodes)
+      logGenerationEvent(debug, 'Starting API request', { typingVariantId, ...logContext })
+      const reply = await generateResponse({
+        nodes: requestNodes,
+        rootId,
+        chatSettings,
+        connectionId,
+        streaming: chatSettings.streaming,
+        typingVariantId,
+        onAbort: (fn) => registerAbortHandler(genSeq, fn),
+        onTextDelta: (full) => {
+          if (generationState.getGenerationSequence() === genSeq) {
+            updateVariant(typingVariantId, (prev) => ({ ...prev, content: full }))
+          }
+        },
+        onReasoningSummaryDelta: (fullSummary) => {
+          if (generationState.getGenerationSequence() === genSeq && typeof fullSummary === 'string') {
+            summaryBuffer = fullSummary
+            updateVariant(typingVariantId, (prev) => ({
+              ...prev,
+              reasoningSummary: summaryBuffer,
+              reasoningSummaryLoading: true,
+            }))
+          }
+        },
+        onReasoningSummaryDone: (fullSummary) => {
+          if (generationState.getGenerationSequence() === genSeq && typeof fullSummary === 'string') {
+            summaryBuffer = fullSummary
+            updateVariant(typingVariantId, (prev) => ({
+              ...prev,
+              reasoningSummary: summaryBuffer,
+              reasoningSummaryLoading: false,
+            }))
+          }
+        },
+      })
+      logGenerationEvent(debug, 'API request completed', { typingVariantId, ...logContext })
+
+      if (generationState.getGenerationSequence() === genSeq) {
+        const storedReply = await storeGeneratedImagesInMedia(reply)
+        // Re-check after the await: Stop may have been pressed while storing images.
+        if (generationState.getGenerationSequence() === genSeq) {
+          nodes = handleGenerationSuccess(nodes, typingVariantId, storedReply, summaryBuffer)
+        }
+      }
+      generationFinalized = finalizeGeneration(genSeq)
+      await persistNow()
+    } catch (err) {
+      logGenerationEvent(debug, 'Generation error', { error: err?.message, typingVariantId, ...logContext })
+      if (generationState.getGenerationSequence() === genSeq) {
+        nodes = handleGenerationError(nodes, typingVariantId, err)
+      }
+      generationFinalized = finalizeGeneration(genSeq)
+      await persistNow()
+    } finally {
+      if (!generationFinalized) finalizeGeneration(genSeq)
+    }
+  }
+
   async function sendWithRole(role = 'user') {
     if (locked || sending) return
 
     const rawInput = (typeof input === 'string') ? input : ''
     const trimmedInput = rawInput.trim()
-    const imageRefs = buildImageRefs(attachedImages)
+    const imageRefs = images.buildAttachedImageRefs()
     const hasContent = trimmedInput.length > 0
     const hasImages = imageRefs.length > 0
 
     if (role !== 'user' && !hasContent && !hasImages) {
       input = ''
-      attachedImages = []
+      images.clearAttached()
       return
     }
 
@@ -1278,7 +885,7 @@
     if (!ok) return
 
     input = ''
-    attachedImages = []
+    images.clearAttached()
 
     let genSeq: number | null = null
     if (apiKey && typingVariantId != null) {
@@ -1304,67 +911,7 @@
 
     if (!(apiKey && typingVariantId != null && genSeq != null)) return
 
-    let generationFinalized = false
-    try {
-      let reply = null
-      let summaryBuffer = ''
-      const requestNodes = withImageData(nodes)
-      logGenerationEvent(debug, 'Starting API request', { typingVariantId, role })
-      reply = await generateResponse({
-        nodes: requestNodes,
-        rootId,
-        chatSettings,
-        connectionId,
-        streaming: chatSettings.streaming,
-        typingVariantId,
-        onAbort: (fn) => registerAbortHandler(genSeq, fn),
-        onTextDelta: (full) => {
-          if (generationState.getGenerationSequence() === genSeq) {
-            updateVariant(typingVariantId, (prev) => ({ ...prev, content: full }))
-          }
-        },
-        onReasoningSummaryDelta: (fullSummary) => {
-          if (generationState.getGenerationSequence() === genSeq && typeof fullSummary === 'string') {
-            summaryBuffer = fullSummary
-            updateVariant(typingVariantId, (prev) => ({
-              ...prev,
-              reasoningSummary: summaryBuffer,
-              reasoningSummaryLoading: true,
-            }))
-          }
-        },
-        onReasoningSummaryDone: (fullSummary) => {
-          if (generationState.getGenerationSequence() === genSeq && typeof fullSummary === 'string') {
-            summaryBuffer = fullSummary
-            updateVariant(typingVariantId, (prev) => ({
-              ...prev,
-              reasoningSummary: summaryBuffer,
-              reasoningSummaryLoading: false,
-            }))
-          }
-        },
-      })
-      logGenerationEvent(debug, 'API request completed', { typingVariantId, role })
-
-      if (generationState.getGenerationSequence() === genSeq) {
-        const storedReply = await storeGeneratedImagesInMedia(reply)
-        // Re-check after the await: Stop may have been pressed while storing images.
-        if (generationState.getGenerationSequence() === genSeq) {
-          nodes = handleGenerationSuccess(nodes, typingVariantId, storedReply, summaryBuffer)
-        }
-      }
-      generationFinalized = finalizeGeneration(genSeq)
-      await persistNow()
-    } catch (err) {
-      logGenerationEvent(debug, 'Generation error', { error: err?.message, typingVariantId, role })
-      if (generationState.getGenerationSequence() === genSeq) {
-        nodes = handleGenerationError(nodes, typingVariantId, err)
-      }
-      generationFinalized = finalizeGeneration(genSeq)
-      await persistNow()
-    } finally {
-      if (!generationFinalized) finalizeGeneration(genSeq)
-    }
+    await runGeneration(typingVariantId, genSeq, connectionId, { role })
   }
 
   function send() { return sendWithRole('user') }
@@ -1442,12 +989,12 @@
   function addToChat(role = 'user') {
     if (locked) return
     const text = (typeof input === 'string') ? input : ''
-    const imageRefs = buildImageRefs(attachedImages)
+    const imageRefs = images.buildAttachedImageRefs()
     const hasImages = imageRefs.length > 0
     const inserted = appendMessage(role, text, hasImages ? imageRefs : [])
     if (inserted == null) return
     input = ''
-    attachedImages = []
+    images.clearAttached()
     queueMicrotask(() => scrollToBottom())
   }
 
@@ -1491,65 +1038,7 @@
     generationState.setTypingVariantId(typingVariantId)
     persistNow()
 
-    let generationFinalized = false
-    try {
-      let summaryBuffer = ''
-      const requestNodes = withImageData(nodes)
-      logGenerationEvent(debug, 'Starting API request', { typingVariantId })
-      const reply = await generateResponse({
-        nodes: requestNodes,
-        rootId,
-        chatSettings,
-        connectionId,
-        streaming: chatSettings.streaming,
-        typingVariantId,
-        onAbort: (fn) => registerAbortHandler(genSeq, fn),
-        onTextDelta: (full) => {
-          if (generationState.getGenerationSequence() === genSeq) {
-            updateVariant(typingVariantId, (prev) => ({ ...prev, content: full }))
-          }
-        },
-        onReasoningSummaryDelta: (fullSummary) => {
-          if (generationState.getGenerationSequence() === genSeq && typeof fullSummary === 'string') {
-            summaryBuffer = fullSummary
-            updateVariant(typingVariantId, (prev) => ({
-              ...prev,
-              reasoningSummary: summaryBuffer,
-              reasoningSummaryLoading: true,
-            }))
-          }
-        },
-        onReasoningSummaryDone: (fullSummary) => {
-          if (generationState.getGenerationSequence() === genSeq && typeof fullSummary === 'string') {
-            summaryBuffer = fullSummary
-            updateVariant(typingVariantId, (prev) => ({
-              ...prev,
-              reasoningSummary: summaryBuffer,
-              reasoningSummaryLoading: false,
-            }))
-          }
-        },
-      })
-      logGenerationEvent(debug, 'API request completed', { typingVariantId })
-      if (generationState.getGenerationSequence() === genSeq) {
-        const storedReply = await storeGeneratedImagesInMedia(reply)
-        // Re-check after the await: Stop may have been pressed while storing images.
-        if (generationState.getGenerationSequence() === genSeq) {
-          nodes = handleGenerationSuccess(nodes, typingVariantId, storedReply, summaryBuffer)
-        }
-      }
-      generationFinalized = finalizeGeneration(genSeq)
-      await persistNow()
-    } catch (err) {
-      logGenerationEvent(debug, 'Generation error', { error: err?.message, typingVariantId })
-      if (generationState.getGenerationSequence() === genSeq) {
-        nodes = handleGenerationError(nodes, typingVariantId, err)
-      }
-      generationFinalized = finalizeGeneration(genSeq)
-      await persistNow()
-    } finally {
-      if (!generationFinalized) finalizeGeneration(genSeq)
-    }
+    await runGeneration(typingVariantId, genSeq, connectionId)
   }
 
   async function refreshAfterUserIndex(i) {
@@ -1592,65 +1081,7 @@
     generationState.setTypingVariantId(typingVariantId)
     persistNow()
 
-    let generationFinalized = false
-    try {
-      let summaryBuffer = ''
-      const requestNodes = withImageData(nodes)
-      logGenerationEvent(debug, 'Starting API request', { typingVariantId })
-      const reply = await generateResponse({
-        nodes: requestNodes,
-        rootId,
-        chatSettings,
-        connectionId,
-        streaming: chatSettings.streaming,
-        typingVariantId,
-        onAbort: (fn) => registerAbortHandler(genSeq, fn),
-        onTextDelta: (full) => {
-          if (generationState.getGenerationSequence() === genSeq) {
-            updateVariant(typingVariantId, (prev) => ({ ...prev, content: full }))
-          }
-        },
-        onReasoningSummaryDelta: (fullSummary) => {
-          if (generationState.getGenerationSequence() === genSeq && typeof fullSummary === 'string') {
-            summaryBuffer = fullSummary
-            updateVariant(typingVariantId, (prev) => ({
-              ...prev,
-              reasoningSummary: summaryBuffer,
-              reasoningSummaryLoading: true,
-            }))
-          }
-        },
-        onReasoningSummaryDone: (fullSummary) => {
-          if (generationState.getGenerationSequence() === genSeq && typeof fullSummary === 'string') {
-            summaryBuffer = fullSummary
-            updateVariant(typingVariantId, (prev) => ({
-              ...prev,
-              reasoningSummary: summaryBuffer,
-              reasoningSummaryLoading: false,
-            }))
-          }
-        },
-      })
-      logGenerationEvent(debug, 'API request completed', { typingVariantId })
-      if (generationState.getGenerationSequence() === genSeq) {
-        const storedReply = await storeGeneratedImagesInMedia(reply)
-        // Re-check after the await: Stop may have been pressed while storing images.
-        if (generationState.getGenerationSequence() === genSeq) {
-          nodes = handleGenerationSuccess(nodes, typingVariantId, storedReply, summaryBuffer)
-        }
-      }
-      generationFinalized = finalizeGeneration(genSeq)
-      await persistNow()
-    } catch (err) {
-      logGenerationEvent(debug, 'Generation error', { error: err?.message, typingVariantId })
-      if (generationState.getGenerationSequence() === genSeq) {
-        nodes = handleGenerationError(nodes, typingVariantId, err)
-      }
-      generationFinalized = finalizeGeneration(genSeq)
-      await persistNow()
-    } finally {
-      if (!generationFinalized) finalizeGeneration(genSeq)
-    }
+    await runGeneration(typingVariantId, genSeq, connectionId)
   }
 
   // Debug function - intentionally named to indicate it deliberately breaks branching logic
@@ -1875,7 +1306,7 @@
   <MessageList
     bind:this={listCmp}
     items={visibleMessages}
-    imageCache={imageCache}
+    imageCache={images.imageCache}
     chatId={props.chatId}
     notice={visibleNotice}
     total={nodes.length}
@@ -1942,7 +1373,7 @@
     modelIds={modelIds}
     connections={connectionOptions}
     chatConnectionId={chatSettings.connectionId}
-    attachedImages={attachedImages}
+    attachedImages={images.attachedImages}
     keybinds={settings?.keybinds}
     showThinkingControls={!!settings?.showThinkingSettings}
     presets={settings?.presets}
