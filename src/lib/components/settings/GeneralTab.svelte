@@ -1,105 +1,307 @@
 <script lang="ts">
-  import { IconClose } from './icons'
-  import GeneralTab from './components/settings/GeneralTab.svelte'
-  import ConnectionsTab from './components/settings/ConnectionsTab.svelte'
-  import PresetsTab from './components/settings/PresetsTab.svelte'
-  import FeaturesTab from './components/settings/FeaturesTab.svelte'
-  import { SettingsDraft } from './components/settings/settingsDraft.svelte'
+  import { onMount } from 'svelte'
+  import { IconDownload, IconUpload } from '../../icons'
+  import { getThemeState, setThemeMode, subscribeTheme } from '../../themeStore'
+  import { estimateExportAllDataSize, exportAllData, importAllData, importChat } from '../../utils/exportImport'
+  import type { ThemeState } from '../../types'
+  import type { SettingsDraft } from './settingsDraft.svelte'
 
   interface Props {
-    open?: boolean
-    onClose?: () => void
-    onSaved?: () => void
+    draft: SettingsDraft
   }
 
   const props: Props = $props()
+  const local = $derived(props.draft.local)
+  const persistSettings = () => props.draft.persist()
 
-  const draft = new SettingsDraft(() => { try { props.onSaved?.() } catch {} })
+  const SOURCE_CODE_URL = (import.meta.env.VITE_SOURCE_CODE_URL || 'https://github.com/neko782/advui').trim()
 
-  const TABS = [
-    { id: 'general', label: 'General' },
-    { id: 'features', label: 'Features' },
-    { id: 'connection', label: 'Connections' },
-    { id: 'presets', label: 'Presets' },
-  ]
-  let activeTab = $state<'general' | 'connection' | 'presets' | 'features'>('general')
+  let themeState = $state<ThemeState>({ mode: 'system', theme: 'light' })
 
-  function setTab(id) {
-    if (TABS.some(tab => tab.id === id)) {
-      activeTab = id
+  onMount(() => {
+    themeState = getThemeState()
+    const unsubscribe = subscribeTheme((next) => {
+      themeState = next
+    })
+    return () => {
+      unsubscribe()
+    }
+  })
+
+  // Import/Export state
+  let importExportStatus = $state('')
+  let importExportWorking = $state(false)
+  let exportIncludesMedia = $state(false)
+  let exportSizeEstimateText = $state('Estimating download size...')
+  let exportSizeEstimateRun = 0
+
+  $effect(() => {
+    exportIncludesMedia
+    refreshExportSizeEstimate()
+  })
+
+  async function handleExportAllData() {
+    if (importExportWorking) return
+    importExportWorking = true
+    importExportStatus = exportIncludesMedia ? 'Exporting data with media...' : 'Exporting data...'
+    try {
+      await exportAllData({ includeMedia: exportIncludesMedia })
+      importExportStatus = 'Export successful!'
+      setTimeout(() => {
+        importExportStatus = ''
+      }, 3000)
+    } catch (err) {
+      console.error('Export failed:', err)
+      importExportStatus = `Export failed: ${err.message}`
+      setTimeout(() => {
+        importExportStatus = ''
+      }, 5000)
+    } finally {
+      importExportWorking = false
     }
   }
 
-  function close() {
-    // Reset draft state to the persisted settings the next time we open
-    draft.reset()
-    activeTab = 'general'
-    props.onClose?.()
+  async function refreshExportSizeEstimate() {
+    const run = ++exportSizeEstimateRun
+    exportSizeEstimateText = 'Estimating download size...'
+    try {
+      const estimate = await estimateExportAllDataSize({ includeMedia: exportIncludesMedia })
+      if (run !== exportSizeEstimateRun) return
+      const base = `Estimated download: ${formatBytes(estimate.bytes)}`
+      exportSizeEstimateText = estimate.includesMedia
+        ? `${base} plus media. Media size is not scanned.`
+        : `${base}.`
+    } catch (err) {
+      if (run !== exportSizeEstimateRun) return
+      console.error('Failed to estimate export size:', err)
+      exportSizeEstimateText = 'Estimated download size unavailable.'
+    }
   }
 
-  // Defer sync to avoid blocking during initialization
-  $effect(() => {
-    queueMicrotask(() => {
-      draft.syncActiveConnection()
-      draft.syncActivePreset()
-    })
-  })
+  function formatBytes(bytes: number) {
+    const value = Number(bytes) || 0
+    if (value < 1024) return `${Math.max(0, Math.round(value))} B`
+    const units = ['KB', 'MB', 'GB']
+    let amount = value / 1024
+    let unitIndex = 0
+    while (amount >= 1024 && unitIndex < units.length - 1) {
+      amount /= 1024
+      unitIndex++
+    }
+    const precision = amount >= 10 || unitIndex === 0 ? 0 : 1
+    return `${amount.toFixed(precision)} ${units[unitIndex]}`
+  }
+
+  async function handleImportAllData() {
+    if (importExportWorking) return
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = '.tar'
+    input.onchange = async (e) => {
+      const file = e.target.files?.[0]
+      if (!file) return
+
+      importExportWorking = true
+      importExportStatus = 'Importing data...'
+      try {
+        const results = await importAllData(file)
+        let msg = `Import complete: ${results.chatsImported} chats`
+        if (results.imagesImported > 0) {
+          msg += `, ${results.imagesImported} images`
+        }
+        if (results.settingsImported) {
+          msg += ', settings'
+        }
+        if (results.errors.length > 0) {
+          msg += ` (${results.errors.length} errors)`
+        }
+        importExportStatus = msg
+        setTimeout(() => {
+          importExportStatus = ''
+          // Refresh the page to reload all data
+          if (results.chatsImported > 0 || results.settingsImported) {
+            window.location.reload()
+          }
+        }, 3000)
+      } catch (err) {
+        console.error('Import failed:', err)
+        importExportStatus = `Import failed: ${err.message}`
+        setTimeout(() => {
+          importExportStatus = ''
+        }, 5000)
+      } finally {
+        importExportWorking = false
+      }
+    }
+    input.click()
+  }
+
+  async function handleImportChat() {
+    if (importExportWorking) return
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = '.json'
+    input.onchange = async (e) => {
+      const file = e.target.files?.[0]
+      if (!file) return
+
+      importExportWorking = true
+      importExportStatus = 'Importing chat...'
+      try {
+        await importChat(file)
+        importExportStatus = 'Chat imported successfully!'
+        setTimeout(() => {
+          importExportStatus = ''
+          // Refresh the page to show the new chat
+          window.location.reload()
+        }, 2000)
+      } catch (err) {
+        console.error('Import failed:', err)
+        importExportStatus = `Import failed: ${err.message}`
+        setTimeout(() => {
+          importExportStatus = ''
+        }, 5000)
+      } finally {
+        importExportWorking = false
+      }
+    }
+    input.click()
+  }
 </script>
 
-<svelte:window onkeydown={(e) => { if (props.open && e.key === 'Escape') close() }} />
-
-{#if props.open}
-  <button type="button" class="backdrop" aria-label="Close settings overlay" onclick={close}></button>
-  <div
-    class="modal"
-    role="dialog"
-    aria-modal="true"
-    aria-label="Settings"
-    tabindex="-1"
-    onpointerdown={(event) => { if (event.target === event.currentTarget) close() }}
-  >
-    <div class="panel">
-      <header class="modal-head">
-        <div class="title">Settings</div>
-        <button class="icon-btn" onclick={close} aria-label="Close">
-          <IconClose style="font-size: 20px;" />
-        </button>
-      </header>
-      <div class="tab-bar" role="tablist" aria-label="Settings sections">
-        {#each TABS as tab}
-          <button
-            id={`settings-tab-${tab.id}`}
-            type="button"
-            role="tab"
-            class={`tab ${tab.id === activeTab ? 'active' : ''}`}
-            aria-selected={tab.id === activeTab}
-            tabindex={tab.id === activeTab ? 0 : -1}
-            onclick={() => setTab(tab.id)}
-          >
-            {tab.label}
-          </button>
-        {/each}
-      </div>
-      <div
-        class="modal-body"
-        role="tabpanel"
-        aria-labelledby={`settings-tab-${activeTab}`}
-      >
-        <div class="modal-scroller">
-          {#if activeTab === 'general'}
-            <GeneralTab draft={draft} />
-          {:else if activeTab === 'connection'}
-            <ConnectionsTab draft={draft} />
-          {:else if activeTab === 'presets'}
-            <PresetsTab draft={draft} />
-          {:else if activeTab === 'features'}
-            <FeaturesTab draft={draft} />
-          {/if}
-        </div>
-      </div>
-    </div>
-  </div>
-{/if}
+            <section class="group">
+              <div class="group-title">Appearance</div>
+              <label class="field">
+                <span>Theme</span>
+                <select
+                  value={themeState.mode}
+                  onchange={(event) => {
+                    const next = event.currentTarget.value
+                    themeState = setThemeMode(next)
+                  }}
+                  aria-label="Theme preference"
+                >
+                  <option value="system">System default</option>
+                  <option value="light">Light</option>
+                  <option value="dark">Dark</option>
+                </select>
+              </label>
+              <p class="hint">Choose whether to match your device setting or force a light or dark theme.</p>
+            </section>
+            <section class="group">
+              <div class="group-title">Keyboard shortcuts</div>
+              <label class="field">
+                <span>Send message</span>
+                <select
+                  value={local.keybinds?.sendMessage || 'Enter'}
+                  onchange={(event) => { local.keybinds = { ...local.keybinds, sendMessage: event.currentTarget.value }; persistSettings() }}
+                  aria-label="Send message keybind"
+                >
+                  <option value="Enter">Enter</option>
+                  <option value="Shift+Enter">Shift+Enter</option>
+                  <option value="Ctrl+Enter">Ctrl+Enter (Cmd+Enter on Mac)</option>
+                  <option value="Alt+Enter">Alt+Enter</option>
+                  <option value="None">None</option>
+                </select>
+              </label>
+              <label class="field">
+                <span>New line</span>
+                <select
+                  value={local.keybinds?.newLine || 'Shift+Enter'}
+                  onchange={(event) => { local.keybinds = { ...local.keybinds, newLine: event.currentTarget.value }; persistSettings() }}
+                  aria-label="New line keybind"
+                >
+                  <option value="Enter">Enter</option>
+                  <option value="Shift+Enter">Shift+Enter</option>
+                  <option value="Ctrl+Enter">Ctrl+Enter (Cmd+Enter on Mac)</option>
+                  <option value="Alt+Enter">Alt+Enter</option>
+                  <option value="None">None</option>
+                </select>
+              </label>
+              <p class="hint">Configure keyboard shortcuts for actions in the composer. Does not apply on mobile devices.</p>
+            </section>
+            <section class="group">
+              <div class="group-title">Data</div>
+              <div class="data-actions">
+                <button
+                  type="button"
+                  class="data-action-btn"
+                  onclick={handleImportChat}
+                  disabled={importExportWorking}
+                  title="Import a chat from JSON file"
+                  aria-label="Import chat"
+                >
+                  <IconUpload style="font-size: 20px;" />
+                  <span>Import chat</span>
+                </button>
+                <button
+                  type="button"
+                  class="data-action-btn"
+                  onclick={handleExportAllData}
+                  disabled={importExportWorking}
+                  title={exportIncludesMedia ? 'Export all chats, settings, and media as an archive' : 'Export all chats and settings as an archive'}
+                  aria-label="Export all data"
+                >
+                  <IconDownload style="font-size: 20px;" />
+                  <span>Export all data</span>
+                </button>
+                <button
+                  type="button"
+                  class="data-action-btn"
+                  onclick={handleImportAllData}
+                  disabled={importExportWorking}
+                  title="Import all data from an archive"
+                  aria-label="Import all data"
+                >
+                  <IconUpload style="font-size: 20px;" />
+                  <span>Import all data</span>
+                </button>
+              </div>
+              <label class="switch data-media-switch" title="Include media in all-data exports">
+                <input
+                  type="checkbox"
+                  checked={exportIncludesMedia}
+                  disabled={importExportWorking}
+                  onchange={(event) => (exportIncludesMedia = !!event.currentTarget.checked)}
+                  aria-label="Include media in export"
+                />
+                <span class="switch-ui" aria-hidden="true"></span>
+                <span class="switch-label">Include media in export</span>
+              </label>
+              {#if importExportStatus}
+                <p class="hint" aria-live="polite">{importExportStatus}</p>
+              {:else}
+                <p class="hint">Import chats, settings, and images. Export all data skips media unless enabled. {exportSizeEstimateText}</p>
+              {/if}
+            </section>
+            <section class="group legal-group">
+              <div class="group-title">Open-source notice</div>
+              <p class="hint">This program is licensed under the GNU Affero General Public License, version 3 or any later version.</p>
+              <p class="hint">You can access the complete corresponding source code here:</p>
+              <a
+                class="legal-link"
+                href={SOURCE_CODE_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                {SOURCE_CODE_URL}
+              </a>
+              <p class="hint">This software is provided without warranty, to the extent permitted by law.</p>
+            </section>
+            <section class="group developer-group">
+              <div class="group-title">Developer</div>
+              <label class="switch">
+                <input
+                  type="checkbox"
+                  bind:checked={local.debug}
+                  onchange={() => persistSettings()}
+                  aria-label="Debug Mode"
+                />
+                <span class="switch-ui" aria-hidden="true"></span>
+                <span class="switch-label">Debug mode</span>
+              </label>
+              <p class="hint">Useless and dangerous tools used for debugging. You don't need these.</p>
+            </section>
 
 <style>
   .backdrop {

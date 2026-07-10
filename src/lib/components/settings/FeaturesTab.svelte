@@ -1,105 +1,394 @@
 <script lang="ts">
-  import { IconClose } from './icons'
-  import GeneralTab from './components/settings/GeneralTab.svelte'
-  import ConnectionsTab from './components/settings/ConnectionsTab.svelte'
-  import PresetsTab from './components/settings/PresetsTab.svelte'
-  import FeaturesTab from './components/settings/FeaturesTab.svelte'
-  import { SettingsDraft } from './components/settings/settingsDraft.svelte'
+  import { IconDragHandle, IconTravelExplore, IconCodeBlocks, IconTerminal, IconImagesmode, IconExtension } from '../../icons'
+  import type { MessageActionRole } from '../../types'
+  import type { SettingsDraft } from './settingsDraft.svelte'
 
   interface Props {
-    open?: boolean
-    onClose?: () => void
-    onSaved?: () => void
+    draft: SettingsDraft
   }
 
   const props: Props = $props()
+  const draft = $derived(props.draft)
+  const local = $derived(props.draft.local)
+  const persistSettings = () => props.draft.persist()
 
-  const draft = new SettingsDraft(() => { try { props.onSaved?.() } catch {} })
-
-  const TABS = [
-    { id: 'general', label: 'General' },
-    { id: 'features', label: 'Features' },
-    { id: 'connection', label: 'Connections' },
-    { id: 'presets', label: 'Presets' },
+  const MESSAGE_ACTION_ROLES: { id: MessageActionRole, label: string }[] = [
+    { id: 'user', label: 'User' },
+    { id: 'assistant', label: 'Assistant' },
+    { id: 'system', label: 'System' },
   ]
-  let activeTab = $state<'general' | 'connection' | 'presets' | 'features'>('general')
 
-  function setTab(id) {
-    if (TABS.some(tab => tab.id === id)) {
-      activeTab = id
+  const messageActionsForRender = () => draft.messageActions
+  const editorActionsForRender = () => draft.editorActions
+  const defaultToolsForRender = () => draft.defaultTools
+
+  const toggleMessageAction = (id) => draft.toggleMessageAction(id)
+  const toggleMessageActionRole = (id, role) => draft.toggleMessageActionRole(id, role)
+  const resetMessageActions = () => draft.resetMessageActions()
+  const toggleEditorAction = (id) => draft.toggleEditorAction(id)
+  const resetEditorActions = () => draft.resetEditorActions()
+  const updateDefaultTool = (key, value) => draft.updateDefaultTool(key, value)
+
+  // Message actions drag state
+  let draggedActionId = $state<string | null>(null)
+  let dragOverActionId = $state<string | null>(null)
+
+  function handleActionDragStart(e: DragEvent, id: string) {
+    draggedActionId = id
+    e.dataTransfer!.effectAllowed = 'move'
+    e.dataTransfer!.setData('text/plain', id)
+  }
+
+  function handleActionDragOver(e: DragEvent, id: string) {
+    e.preventDefault()
+    e.dataTransfer!.dropEffect = 'move'
+    if (!draggedActionId || draggedActionId === id) return
+    dragOverActionId = id
+  }
+
+  function handleActionDrop(e: DragEvent) {
+    e.preventDefault()
+    if (draggedActionId && dragOverActionId && draggedActionId !== dragOverActionId) {
+      draft.reorderMessageActions(draggedActionId, dragOverActionId)
+    }
+    draggedActionId = null
+    dragOverActionId = null
+  }
+
+  function handleActionDragEnd() {
+    draggedActionId = null
+    dragOverActionId = null
+  }
+
+  // Touch drag for message actions
+  let touchActionDragId = $state<string | null>(null)
+  let touchActionListRef = $state<HTMLElement | null>(null)
+
+  function handleActionTouchStart(e: TouchEvent, id: string) {
+    touchActionDragId = id
+    draggedActionId = id
+    const listEl = (e.currentTarget as HTMLElement).closest('.item-list')
+    if (listEl) touchActionListRef = listEl as HTMLElement
+  }
+
+  function handleActionTouchMove(e: TouchEvent) {
+    if (!touchActionDragId || !touchActionListRef) return
+    e.preventDefault()
+    const touchY = e.touches[0].clientY
+    const items = touchActionListRef.querySelectorAll('.list-item')
+    for (const item of items) {
+      const id = item.getAttribute('data-id')
+      if (id && id !== touchActionDragId) {
+        const rect = item.getBoundingClientRect()
+        if (touchY >= rect.top && touchY <= rect.bottom) {
+          dragOverActionId = id
+          return
+        }
+      }
     }
   }
 
-  function close() {
-    // Reset draft state to the persisted settings the next time we open
-    draft.reset()
-    activeTab = 'general'
-    props.onClose?.()
+  function handleActionTouchEnd() {
+    if (touchActionDragId && dragOverActionId) {
+      draft.reorderMessageActions(touchActionDragId, dragOverActionId)
+    }
+    touchActionDragId = null
+    touchActionListRef = null
+    draggedActionId = null
+    dragOverActionId = null
   }
-
-  // Defer sync to avoid blocking during initialization
-  $effect(() => {
-    queueMicrotask(() => {
-      draft.syncActiveConnection()
-      draft.syncActivePreset()
-    })
-  })
 </script>
 
-<svelte:window onkeydown={(e) => { if (props.open && e.key === 'Escape') close() }} />
+            <section class="group">
+              <div class="group-title">General</div>
+              <label class="switch" title="Show thinking controls">
+                <input
+                  type="checkbox"
+                  checked={!!local.showThinkingSettings}
+                  onchange={(event) => {
+                    local.showThinkingSettings = !!event.currentTarget.checked
+                    persistSettings()
+                  }}
+                  aria-label="Show thinking controls"
+                />
+                <span class="switch-ui" aria-hidden="true"></span>
+                <span class="switch-label">Anthropic thinking controls</span>
+              </label>
+              <p class="hint">Enable control of Anthropic-style thinking parameters in chat settings.</p>
+              <label class="switch" title="Fancy effects">
+                <input
+                  type="checkbox"
+                  checked={!!local.fancyEffects}
+                  onchange={(event) => {
+                    local.fancyEffects = !!event.currentTarget.checked
+                    persistSettings()
+                  }}
+                  aria-label="Fancy effects"
+                />
+                <span class="switch-ui" aria-hidden="true"></span>
+                <span class="switch-label">Fancy effects</span>
+              </label>
+              <p class="hint">Enable blur effects, shadows, and animations. Disable for better performance on slower devices.</p>
+              <label class="switch" title="Allow inline HTML">
+                <input
+                  type="checkbox"
+                  checked={!!local.allowInlineHtml}
+                  onchange={(event) => {
+                    local.allowInlineHtml = !!event.currentTarget.checked
+                    persistSettings()
+                  }}
+                  aria-label="Allow inline HTML"
+                />
+                <span class="switch-ui" aria-hidden="true"></span>
+                <span class="switch-label">Allow inline HTML</span>
+              </label>
+              <p class="hint">Allow HTML tags in markdown messages. Disabled by default for security.</p>
+            </section>
 
-{#if props.open}
-  <button type="button" class="backdrop" aria-label="Close settings overlay" onclick={close}></button>
-  <div
-    class="modal"
-    role="dialog"
-    aria-modal="true"
-    aria-label="Settings"
-    tabindex="-1"
-    onpointerdown={(event) => { if (event.target === event.currentTarget) close() }}
-  >
-    <div class="panel">
-      <header class="modal-head">
-        <div class="title">Settings</div>
-        <button class="icon-btn" onclick={close} aria-label="Close">
-          <IconClose style="font-size: 20px;" />
-        </button>
-      </header>
-      <div class="tab-bar" role="tablist" aria-label="Settings sections">
-        {#each TABS as tab}
-          <button
-            id={`settings-tab-${tab.id}`}
-            type="button"
-            role="tab"
-            class={`tab ${tab.id === activeTab ? 'active' : ''}`}
-            aria-selected={tab.id === activeTab}
-            tabindex={tab.id === activeTab ? 0 : -1}
-            onclick={() => setTab(tab.id)}
-          >
-            {tab.label}
-          </button>
-        {/each}
-      </div>
-      <div
-        class="modal-body"
-        role="tabpanel"
-        aria-labelledby={`settings-tab-${activeTab}`}
-      >
-        <div class="modal-scroller">
-          {#if activeTab === 'general'}
-            <GeneralTab draft={draft} />
-          {:else if activeTab === 'connection'}
-            <ConnectionsTab draft={draft} />
-          {:else if activeTab === 'presets'}
-            <PresetsTab draft={draft} />
-          {:else if activeTab === 'features'}
-            <FeaturesTab draft={draft} />
-          {/if}
-        </div>
-      </div>
-    </div>
-  </div>
-{/if}
+            <section class="group">
+              <div class="group-head">
+                <div class="group-title">Message buttons</div>
+                <button
+                  type="button"
+                  class="reset-btn"
+                  onclick={resetMessageActions}
+                  title="Reset to defaults"
+                  aria-label="Reset message buttons to defaults"
+                >Reset</button>
+              </div>
+              <p class="hint section-hint">Toggle and reorder the action buttons shown on chat messages. Drag to change order.</p>
+              <div class="item-list reorder-list">
+                {#each messageActionsForRender() as action (action.id)}
+                  {@const isDragging = draggedActionId === action.id}
+                  {@const isDragOver = dragOverActionId === action.id && draggedActionId !== action.id}
+                  <div
+                    class="list-item action-item {isDragging ? 'dragging' : ''} {isDragOver ? 'drag-over' : ''} {!action.enabled ? 'disabled-action' : ''}"
+                    data-id={action.id}
+                    draggable="true"
+                    ondragstart={(e) => handleActionDragStart(e, action.id)}
+                    ondragover={(e) => handleActionDragOver(e, action.id)}
+                    ondrop={handleActionDrop}
+                    ondragend={handleActionDragEnd}
+                    role="listitem"
+                  >
+                    <div
+                      class="drag-handle"
+                      aria-label="Drag to reorder"
+                      ontouchstart={(e) => handleActionTouchStart(e, action.id)}
+                      ontouchmove={handleActionTouchMove}
+                      ontouchend={handleActionTouchEnd}
+                      ontouchcancel={() => { touchActionDragId = null; touchActionListRef = null; draggedActionId = null; dragOverActionId = null }}
+                    >
+                      <IconDragHandle style="font-size: 20px;" />
+                    </div>
+                    <span class="action-item-label">{action.label}</span>
+                    <div class="message-role-checks" aria-label={`${action.label} message roles`}>
+                      {#each MESSAGE_ACTION_ROLES as role}
+                        {@const checked = action.roles?.[role.id] ?? DEFAULT_MESSAGE_ACTIONS.find(a => a.id === action.id)?.roles?.[role.id] ?? true}
+                        <label class="role-check" title={`${action.label} on ${role.label.toLowerCase()} messages`}>
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onchange={() => toggleMessageActionRole(action.id, role.id)}
+                            aria-label={`${action.label} on ${role.label} messages`}
+                          />
+                          <span>{role.label}</span>
+                        </label>
+                      {/each}
+                    </div>
+                    <label class="action-toggle" title={action.enabled ? 'Disable' : 'Enable'}>
+                      <input
+                        type="checkbox"
+                        checked={action.enabled}
+                        onchange={() => toggleMessageAction(action.id)}
+                        aria-label={`${action.enabled ? 'Disable' : 'Enable'} ${action.label}`}
+                      />
+                      <span class="switch-ui" aria-hidden="true"></span>
+                    </label>
+                  </div>
+                {/each}
+              </div>
+            </section>
+
+            <section class="group">
+              <div class="group-head">
+                <div class="group-title">Editor buttons</div>
+                <button
+                  type="button"
+                  class="reset-btn"
+                  onclick={resetEditorActions}
+                  title="Reset to defaults"
+                  aria-label="Reset editor buttons to defaults"
+                >Reset</button>
+              </div>
+              <p class="hint section-hint">Toggle the action buttons shown when editing a message.</p>
+              <div class="item-list">
+                {#each editorActionsForRender() as action (action.id)}
+                  <div
+                    class="list-item action-item {!action.enabled ? 'disabled-action' : ''}"
+                    data-id={action.id}
+                  >
+                    <span class="action-item-label">{action.label}</span>
+                    <label class="action-toggle" title={action.enabled ? 'Disable' : 'Enable'}>
+                      <input
+                        type="checkbox"
+                        checked={action.enabled}
+                        onchange={() => toggleEditorAction(action.id)}
+                        aria-label={`${action.enabled ? 'Disable' : 'Enable'} ${action.label}`}
+                      />
+                      <span class="switch-ui" aria-hidden="true"></span>
+                    </label>
+                  </div>
+                {/each}
+              </div>
+            </section>
+
+            <section class="group">
+              <div class="group-title">Composer & roles</div>
+              <label class="switch" title="Disable role switching">
+                <input
+                  type="checkbox"
+                  checked={!!local.disableRoleSwitching}
+                  onchange={(event) => {
+                    local.disableRoleSwitching = !!event.currentTarget.checked
+                    persistSettings()
+                  }}
+                  aria-label="Disable role switching"
+                />
+                <span class="switch-ui" aria-hidden="true"></span>
+                <span class="switch-label">Disable role switching on messages</span>
+              </label>
+              <p class="hint">Prevent changing the role of existing messages by clicking the role badge.</p>
+              <label class="switch" title="Disable send role popup">
+                <input
+                  type="checkbox"
+                  checked={!!local.disableSendRolePopup}
+                  onchange={(event) => {
+                    local.disableSendRolePopup = !!event.currentTarget.checked
+                    persistSettings()
+                  }}
+                  aria-label="Disable send role popup"
+                />
+                <span class="switch-ui" aria-hidden="true"></span>
+                <span class="switch-label">Disable send role popup</span>
+              </label>
+              <p class="hint">Hide the role selection popup on the send button. Messages will always send as user.</p>
+              <label class="switch" title="Show add without sending button">
+                <input
+                  type="checkbox"
+                  checked={!!local.showAddWithoutSend}
+                  onchange={(event) => {
+                    local.showAddWithoutSend = !!event.currentTarget.checked
+                    persistSettings()
+                  }}
+                  aria-label="Show add without sending button"
+                />
+                <span class="switch-ui" aria-hidden="true"></span>
+                <span class="switch-label">Add without sending button</span>
+              </label>
+              <p class="hint">Show a button next to send that adds a message to the chat without triggering an API response.</p>
+              <label class="switch" title="Show insert buttons between messages">
+                <input
+                  type="checkbox"
+                  checked={local.showInsertButtons !== false}
+                  onchange={(event) => {
+                    local.showInsertButtons = !!event.currentTarget.checked
+                    persistSettings()
+                  }}
+                  aria-label="Show insert buttons between messages"
+                />
+                <span class="switch-ui" aria-hidden="true"></span>
+                <span class="switch-label">Insert buttons between messages</span>
+              </label>
+              <p class="hint">Show the inline insert controls between existing messages.</p>
+            </section>
+
+            <section class="group">
+              <div class="group-title">Default tools</div>
+              <p class="hint section-hint">Set default tool availability for new presets. Only applies to Responses API connections.</p>
+              <div class="tools-grid">
+                <label class="tool-card" title="Web search">
+                  <div class="tool-card-icon"><IconTravelExplore style="font-size: 24px;" /></div>
+                  <div class="tool-card-info">
+                    <span class="tool-card-name">Web search</span>
+                    <span class="tool-card-desc">Search the web for up-to-date information</span>
+                  </div>
+                  <div class="tool-card-toggle">
+                    <input
+                      type="checkbox"
+                      checked={defaultToolsForRender().webSearch}
+                      onchange={(event) => updateDefaultTool('webSearch', event.currentTarget.checked)}
+                      aria-label="Web search default"
+                    />
+                    <span class="switch-ui" aria-hidden="true"></span>
+                  </div>
+                </label>
+                <label class="tool-card" title="Code interpreter">
+                  <div class="tool-card-icon"><IconCodeBlocks style="font-size: 24px;" /></div>
+                  <div class="tool-card-info">
+                    <span class="tool-card-name">Code interpreter</span>
+                    <span class="tool-card-desc">Run Python code in a sandboxed environment</span>
+                  </div>
+                  <div class="tool-card-toggle">
+                    <input
+                      type="checkbox"
+                      checked={defaultToolsForRender().codeInterpreter}
+                      onchange={(event) => updateDefaultTool('codeInterpreter', event.currentTarget.checked)}
+                      aria-label="Code interpreter default"
+                    />
+                    <span class="switch-ui" aria-hidden="true"></span>
+                  </div>
+                </label>
+                <label class="tool-card" title="Shell">
+                  <div class="tool-card-icon"><IconTerminal style="font-size: 24px;" /></div>
+                  <div class="tool-card-info">
+                    <span class="tool-card-name">Shell</span>
+                    <span class="tool-card-desc">Execute shell commands on the server</span>
+                  </div>
+                  <div class="tool-card-toggle">
+                    <input
+                      type="checkbox"
+                      checked={defaultToolsForRender().shell}
+                      onchange={(event) => updateDefaultTool('shell', event.currentTarget.checked)}
+                      aria-label="Shell default"
+                    />
+                    <span class="switch-ui" aria-hidden="true"></span>
+                  </div>
+                </label>
+                <label class="tool-card" title="Image generation">
+                  <div class="tool-card-icon"><IconImagesmode style="font-size: 24px;" /></div>
+                  <div class="tool-card-info">
+                    <span class="tool-card-name">Image generation</span>
+                    <span class="tool-card-desc">Generate images from text descriptions</span>
+                  </div>
+                  <div class="tool-card-toggle">
+                    <input
+                      type="checkbox"
+                      checked={defaultToolsForRender().imageGeneration}
+                      onchange={(event) => updateDefaultTool('imageGeneration', event.currentTarget.checked)}
+                      aria-label="Image generation default"
+                    />
+                    <span class="switch-ui" aria-hidden="true"></span>
+                  </div>
+                </label>
+                <label class="tool-card" title="MCP servers">
+                  <div class="tool-card-icon"><IconExtension style="font-size: 24px;" /></div>
+                  <div class="tool-card-info">
+                    <span class="tool-card-name">MCP</span>
+                    <span class="tool-card-desc">Remote tool servers via Model Context Protocol</span>
+                  </div>
+                  <div class="tool-card-toggle">
+                    <input
+                      type="checkbox"
+                      checked={defaultToolsForRender().mcp}
+                      onchange={(event) => updateDefaultTool('mcp', event.currentTarget.checked)}
+                      aria-label="MCP default"
+                    />
+                    <span class="switch-ui" aria-hidden="true"></span>
+                  </div>
+                </label>
+              </div>
+            </section>
 
 <style>
   .backdrop {

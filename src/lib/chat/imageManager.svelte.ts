@@ -243,8 +243,9 @@ export class ChatImageManager {
       if (!node || typeof node !== 'object') return node;
       const variants = Array.isArray(node.variants) ? node.variants : [];
       let variantsChanged = false;
-      const sanitizedVariants = variants.map((variant: Record<string, unknown>) => {
-        if (!variant || typeof variant !== 'object') return variant;
+      const sanitizedVariants = variants.map((variantInput) => {
+        if (!variantInput || typeof variantInput !== 'object') return variantInput;
+        const variant = variantInput as unknown as Record<string, unknown>;
         const refs = buildImageRefs(variant.images);
         const hasImages = refs.length > 0;
         const originalImages = Array.isArray(variant.images) ? variant.images : [];
@@ -326,7 +327,7 @@ export class ChatImageManager {
       });
       if (!variantsChanged) return node;
       mutated = true;
-      return { ...node, variants: sanitizedVariants } as ChatNode;
+      return { ...node, variants: sanitizedVariants } as unknown as ChatNode;
     });
     return mutated ? sanitizedNodes : nodesInput;
   }
@@ -339,8 +340,9 @@ export class ChatImageManager {
       if (!node || typeof node !== 'object') return node;
       const variants = Array.isArray(node.variants) ? node.variants : [];
       let variantsChanged = false;
-      const enrichedVariants = variants.map((variant: Record<string, unknown>) => {
-        if (!variant || typeof variant !== 'object') return variant;
+      const enrichedVariants = variants.map((variantInput) => {
+        if (!variantInput || typeof variantInput !== 'object') return variantInput;
+        const variant = variantInput as unknown as Record<string, unknown>;
         const images = Array.isArray(variant.images) ? variant.images : [];
         if (!images.length) return variant;
         let changed = false;
@@ -384,7 +386,7 @@ export class ChatImageManager {
       });
       if (!variantsChanged) return node;
       mutated = true;
-      return { ...node, variants: enrichedVariants } as ChatNode;
+      return { ...node, variants: enrichedVariants } as unknown as ChatNode;
     });
     return mutated ? enrichedNodes : nodesInput;
   }
