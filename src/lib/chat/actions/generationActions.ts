@@ -2,7 +2,7 @@
 import { respond } from '../../openaiClient.js';
 import { buildVisible as _buildVisible } from '../../branching.js';
 import { isAbortError } from '../../utils/errors.js';
-import { normalizeMcpServerList } from '../../types/index.js';
+import { normalizeMcpServerList } from '../../utils/mcp.js';
 import { updateVariantById } from './variantActions.js';
 import { findNodeByMessageId } from '../../utils/treeUtils.js';
 import type {

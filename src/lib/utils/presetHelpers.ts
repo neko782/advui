@@ -16,7 +16,8 @@ import type {
   TextVerbosity,
   ReasoningSummary
 } from '../types/index.js';
-import { isPlainObject, normalizeMcpServerList } from '../types/index.js';
+import { isPlainObject } from './objects.js';
+import { normalizeMcpServerList } from './mcp.js';
 
 export const DEFAULT_SYSTEM_PROMPT = 'You are a helpful assistant.';
 export const DEFAULT_MODEL = 'gpt-5.5';

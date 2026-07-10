@@ -22,7 +22,16 @@ import type {
   ContainerNetworkPolicy,
   McpResponseItem,
 } from './types/index.js';
-import { normalizeMcpServerList } from './types/index.js';
+import { normalizeMcpServerList } from './utils/mcp.js';
+import {
+  normalizeMimeType,
+  isImageMimeType,
+  isVideoMimeType,
+  isAudioMimeType,
+  isPdfMimeType,
+  inferAttachmentFilename,
+  ensureDataUrl,
+} from './attachments/mime.js';
 
 function resolveConnection(options: {
   connectionId?: string | null;
@@ -70,56 +79,6 @@ function buildClientOptions(options: { apiKey: string; apiBaseUrl?: string }): C
   const clientOptions: ClientOptions = { apiKey, dangerouslyAllowBrowser: true };
   if (baseURL) clientOptions.baseURL = baseURL;
   return clientOptions;
-}
-
-// ============================================================================
-// ATTACHMENT MIME TYPE DETECTION
-// Keep in sync with: Chat.svelte, Composer.svelte, MessageBubble.svelte
-// See Chat.svelte "ATTACHMENT SYSTEM" comment for full list of locations
-// ============================================================================
-function normalizeMimeType(mimeType: unknown): string {
-  if (typeof mimeType !== 'string') return '';
-  return mimeType.trim().toLowerCase();
-}
-
-function isImageMimeType(mimeType: string | undefined): boolean {
-  const normalized = normalizeMimeType(mimeType);
-  return normalized.startsWith('image/');
-}
-
-function isVideoMimeType(mimeType: string | undefined): boolean {
-  const normalized = normalizeMimeType(mimeType);
-  return normalized.startsWith('video/');
-}
-
-function isAudioMimeType(mimeType: string | undefined): boolean {
-  const normalized = normalizeMimeType(mimeType);
-  return normalized.startsWith('audio/');
-}
-
-function isPdfMimeType(mimeType: string | undefined): boolean {
-  return normalizeMimeType(mimeType) === 'application/pdf';
-}
-
-function inferAttachmentFilename(attachment: { name?: string; id?: string; mimeType?: string } | null, fallbackBase: string = 'attachment'): string {
-  if (!attachment || typeof attachment !== 'object') return `${fallbackBase}`;
-  if (typeof attachment.name === 'string' && attachment.name.trim()) return attachment.name.trim();
-  if (typeof attachment.id === 'string' && attachment.id.trim()) {
-    const id = attachment.id.trim();
-    if (isPdfMimeType(attachment.mimeType) && !id.toLowerCase().endsWith('.pdf')) {
-      return `${id}.pdf`;
-    }
-    return id;
-  }
-  if (isPdfMimeType(attachment?.mimeType)) return `${fallbackBase}.pdf`;
-  return fallbackBase;
-}
-
-function ensureDataUrl(data: unknown, mimeType: string | undefined): string {
-  if (typeof data !== 'string' || !data) return '';
-  if (data.startsWith('data:')) return data;
-  const mime = normalizeMimeType(mimeType) || 'application/octet-stream';
-  return `data:${mime};base64,${data}`;
 }
 
 function sanitizeMcpLabel(raw: string): string {

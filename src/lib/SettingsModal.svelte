@@ -8,7 +8,7 @@
   import { DEFAULT_MODEL, DEFAULT_SYSTEM_PROMPT } from './utils/presetHelpers'
   import { onMount } from 'svelte'
   import type { AppSettings, Preset, Connection, ThemeState, ThemeMode, ReasoningEffort, TextVerbosity, ReasoningSummary, MessageActionButton, MessageActionRole, EditorActionButton, DefaultToolSettings } from './types'
-  import { DEFAULT_MESSAGE_ACTIONS, DEFAULT_EDITOR_ACTIONS, DEFAULT_TOOL_SETTINGS } from './types'
+  import { DEFAULT_MESSAGE_ACTIONS, DEFAULT_EDITOR_ACTIONS, DEFAULT_TOOL_SETTINGS } from './constants/defaults'
 
   interface Props {
     open?: boolean

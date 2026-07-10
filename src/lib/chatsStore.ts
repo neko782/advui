@@ -17,7 +17,8 @@ import { deepClone } from './utils/immutable.js';
 import { resolvePreset, DEFAULT_MODEL, DEFAULT_SYSTEM_PROMPT, computeConnectionId } from './utils/presetHelpers.js';
 import { normalizeReasoning, normalizeVerbosity, normalizeReasoningSummary } from './utils/validation.js';
 import type { Chat, ChatListItem, ChatNode, ChatSettings, ChatSelection, MessageVariant } from './types/index.js';
-import { hasOwn, normalizeMcpServerList } from './types/index.js';
+import { hasOwn } from './utils/objects.js';
+import { normalizeMcpServerList } from './utils/mcp.js';
 
 export const SELECTED_KEY = 'openai.chats.selected.v1';
 

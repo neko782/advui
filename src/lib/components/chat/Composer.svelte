@@ -1,6 +1,14 @@
 <script lang="ts">
   import { IconAdd, IconClose, IconStop, IconSend, IconEditSquare } from '../../icons'
   import { autoGrow } from '../../utils/dom'
+  import {
+    isSupportedAttachment,
+    isImageAttachment,
+    isVideoAttachment,
+    isAudioAttachment,
+    attachmentTypeLabel,
+    attachmentDisplayName
+  } from '../../attachments/mime'
   import ChatSettingsPopover from './ChatSettingsPopover.svelte'
   import { onMount } from 'svelte'
   import type { Image, Preset, Connection, ConnectionOption, Keybinds, ReasoningEffort, TextVerbosity, ReasoningSummary, MessageRole, ApiMode, McpServerConfig } from '../../types'
@@ -101,63 +109,9 @@
     }
   })
 
-  // ============================================================================
-  // ATTACHMENT TYPE DETECTION
-  // Keep in sync with: Chat.svelte, MessageBubble.svelte, openaiClient.ts
-  // See Chat.svelte "ATTACHMENT SYSTEM" comment for full list of locations
-  // ============================================================================
-  function isSupportedAttachment(file) {
-    return !!file
-  }
-
-  function isImageAttachment(attachment) {
-    if (!attachment || typeof attachment !== 'object') return false
-    const mime = typeof attachment.mimeType === 'string' ? attachment.mimeType : ''
-    if (mime.startsWith('image/')) return true
-    if (!mime && typeof attachment.name === 'string') {
-      return /\.(png|jpe?g|gif|webp)$/i.test(attachment.name)
-    }
-    return false
-  }
-
-  function isVideoAttachment(attachment) {
-    if (!attachment || typeof attachment !== 'object') return false
-    const mime = typeof attachment.mimeType === 'string' ? attachment.mimeType : ''
-    if (mime.startsWith('video/')) return true
-    if (!mime && typeof attachment.name === 'string') {
-      return /\.(mp4|webm|mov|avi|mkv)$/i.test(attachment.name)
-    }
-    return false
-  }
-
-  function isAudioAttachment(attachment) {
-    if (!attachment || typeof attachment !== 'object') return false
-    const mime = typeof attachment.mimeType === 'string' ? attachment.mimeType : ''
-    if (mime.startsWith('audio/')) return true
-    if (!mime && typeof attachment.name === 'string') {
-      return /\.(mp3|wav|ogg|m4a|aac|flac)$/i.test(attachment.name)
-    }
-    return false
-  }
-
-  function getAttachmentTypeLabel(attachment) {
-    if (isVideoAttachment(attachment)) return 'VIDEO'
-    if (isAudioAttachment(attachment)) return 'AUDIO'
-    const mime = typeof attachment?.mimeType === 'string' ? attachment.mimeType : ''
-    if (mime === 'application/pdf') return 'PDF'
-    if (mime) {
-      const parts = mime.split('/')
-      if (parts.length === 2 && parts[1]) return parts[1].toUpperCase()
-    }
-    return 'FILE'
-  }
-
-  function getAttachmentDisplayName(attachment) {
-    if (!attachment || typeof attachment !== 'object') return ''
-    if (typeof attachment.name === 'string' && attachment.name.trim()) return attachment.name.trim()
-    if (typeof attachment.id === 'string' && attachment.id.trim()) return attachment.id.trim()
-    return 'attachment'
-  }
+  // Attachment type detection lives in ../../attachments/mime.ts (shared).
+  const getAttachmentTypeLabel = attachmentTypeLabel
+  const getAttachmentDisplayName = attachmentDisplayName
 
   function onKey(e) {
     if (isMobileViewport) return

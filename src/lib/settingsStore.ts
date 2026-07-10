@@ -20,7 +20,7 @@ import type {
   EditorActionButton,
   DefaultToolSettings,
 } from './types/index.js';
-import { DEFAULT_MESSAGE_ACTIONS, DEFAULT_EDITOR_ACTIONS, DEFAULT_TOOL_SETTINGS } from './types/index.js';
+import { DEFAULT_MESSAGE_ACTIONS, DEFAULT_EDITOR_ACTIONS, DEFAULT_TOOL_SETTINGS } from './constants/defaults.js';
 
 export const SETTINGS_KEY = 'openai.settings.v1';
 

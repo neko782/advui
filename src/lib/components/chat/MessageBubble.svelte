@@ -1,5 +1,14 @@
 <script lang="ts">
   import { autoGrow } from '../../utils/dom'
+  import {
+    isImageAttachment,
+    isPdfAttachment,
+    isVideoAttachment,
+    isAudioAttachment,
+    attachmentDisplayName,
+    attachmentDataUrl,
+    attachmentMimeLabel
+  } from '../../attachments/mime'
   import type { Message } from '../../types'
   import MarkdownContent from './MarkdownContent.svelte'
 
@@ -23,78 +32,7 @@
   let lastSyncedEditingId = $state<number | null>(null)
   const EDIT_GROW_OPTS = { maxHeight: Number.POSITIVE_INFINITY, minHeight: 32 }
 
-// ============================================================================
-// ATTACHMENT TYPE DETECTION & DISPLAY
-// Keep in sync with: Chat.svelte, Composer.svelte, openaiClient.ts
-// See Chat.svelte "ATTACHMENT SYSTEM" comment for full list of locations
-// ============================================================================
-function isImageAttachment(attachment) {
-  if (!attachment || typeof attachment !== 'object') return false
-  const mime = typeof attachment.mimeType === 'string' ? attachment.mimeType : ''
-  if (mime.startsWith('image/')) return true
-  if (!mime && typeof attachment.name === 'string') {
-    return /\.(png|jpe?g|gif|webp)$/i.test(attachment.name)
-  }
-  return false
-}
-
-function isPdfAttachment(attachment) {
-  if (!attachment || typeof attachment !== 'object') return false
-  const mime = (attachment.mimeType || '').toLowerCase()
-  if (mime === 'application/pdf') return true
-  if (!mime && typeof attachment.name === 'string') {
-    return attachment.name.toLowerCase().endsWith('.pdf')
-  }
-  return false
-}
-
-function isVideoAttachment(attachment) {
-  if (!attachment || typeof attachment !== 'object') return false
-  const mime = (attachment.mimeType || '').toLowerCase()
-  if (mime.startsWith('video/')) return true
-  if (!mime && typeof attachment.name === 'string') {
-    return /\.(mp4|webm|mov|avi|mkv)$/i.test(attachment.name)
-  }
-  return false
-}
-
-function isAudioAttachment(attachment) {
-  if (!attachment || typeof attachment !== 'object') return false
-  const mime = (attachment.mimeType || '').toLowerCase()
-  if (mime.startsWith('audio/')) return true
-  if (!mime && typeof attachment.name === 'string') {
-    return /\.(mp3|wav|ogg|m4a|aac|flac)$/i.test(attachment.name)
-  }
-  return false
-}
-
-function attachmentDisplayName(attachment) {
-  if (!attachment || typeof attachment !== 'object') return 'attachment'
-  if (typeof attachment.name === 'string' && attachment.name.trim()) return attachment.name.trim()
-  if (typeof attachment.id === 'string' && attachment.id.trim()) return attachment.id.trim()
-  return 'attachment'
-}
-
-function attachmentDataUrl(attachment) {
-  if (!attachment || typeof attachment !== 'object') return ''
-  const data = typeof attachment.data === 'string' && attachment.data ? attachment.data : ''
-  if (!data) return ''
-  const mime = typeof attachment.mimeType === 'string' && attachment.mimeType
-    ? attachment.mimeType
-    : (isPdfAttachment(attachment)
-      ? 'application/pdf'
-      : (isImageAttachment(attachment) ? 'image/png' : 'application/octet-stream'))
-  return `data:${mime};base64,${data}`
-}
-
-function attachmentMimeLabel(attachment) {
-  if (isPdfAttachment(attachment)) return 'PDF'
-  const mime = typeof attachment?.mimeType === 'string' ? attachment.mimeType : ''
-  if (!mime) return 'FILE'
-  const parts = mime.split('/')
-  if (parts.length === 2 && parts[1]) return parts[1].toUpperCase()
-  return mime.toUpperCase()
-}
+// Attachment type detection & display lives in ../../attachments/mime.ts (shared).
 
 function resolveAttachment(attachment, imageCache) {
   if (attachment == null) return null
