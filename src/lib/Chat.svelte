@@ -14,10 +14,9 @@
   // Chat module imports
   import { loadChat } from './chat/services/chatLoader'
   import { pickPresetFromSettings, presetSignature } from './chat/services/chatInit'
-  import { persistChatContent, computePersistSig } from './chat/services/chatPersistence'
+  import { createChatPersister } from './chat/services/chatPersistence'
   import { computeValidationNotice, computeGenerationNotice, assembleNotice, computeFollowingMap } from './chat/services/noticeHelpers'
   import { resolveConnectionContext as _resolveConnectionContext } from './chat/services/connectionResolver'
-  import { createPersistenceScheduler, queueGlobalPersist, flushGlobalPersists } from './chat/services/persistenceScheduler'
   import { createNoticeManager } from './chat/services/noticeManager'
   import { createGenerationStateManager } from './chat/services/generationStateManager'
   import { createEditStateManager } from './chat/services/editStateManager'
@@ -60,7 +59,6 @@
   const props: Props = $props()
 
   // Managers
-  const persistenceScheduler = createPersistenceScheduler()
   const noticeManager = createNoticeManager()
   const generationState = createGenerationStateManager()
   const editStateManager = createEditStateManager()
@@ -147,10 +145,35 @@
 
   let chatSettingsOpen = $state(false)
   let modelIds = $state<string[]>(loadModelsCache(initialConnectionId).ids || [])
-  let persistedSig = ''
-  let scheduledPersistSig = ''
-  let persistInFlight = $state(0)
-  let persistRetryTimer: ReturnType<typeof setTimeout> | null = null
+
+  // Persistence: signature tracking, throttling and retries live in the persister.
+  const persister = createChatPersister({
+    getChatId: () => props.chatId || null,
+    getState: () => ({ nodes, chatSettings, rootId, debug }),
+    canPersist: () => {
+      const cid = props.chatId
+      return !!cid && mounted && loadedChatId === cid
+    },
+    isDestroyed: () => destroyed,
+    isBusy: () => {
+      if (sending) return true
+      return Array.isArray(nodes) && nodes.some(n => (n?.variants || []).some(v => v?.typing))
+    },
+    onSanitized: (result) => {
+      sanitizerNotice = result.notice
+      if (result.nodes !== nodes) nodes = result.nodes
+      if (result.rootId !== rootId) rootId = result.rootId
+    },
+    onChatUpdated: (updated) => {
+      try { props.onChatUpdated?.(updated ?? undefined) } catch {}
+    },
+    onConflict: () => {
+      sanitizerNotice = `Failed to save: this chat was modified in another tab. Reload the page to sync.`
+    },
+    onSaveError: (msg) => {
+      sanitizerNotice = msg ? `Failed to save chat: ${msg}` : 'Failed to save chat.'
+    },
+  })
 
   // Editing state
   let editingId = $state<number | null>(null)
@@ -373,67 +396,9 @@
     }
   }
 
-  // Persistence
-  function schedulePersistRetry(delayMs: number = 750) {
-    if (persistRetryTimer) return
-    persistRetryTimer = setTimeout(() => {
-      persistRetryTimer = null
-      const cid = props.chatId
-      if (!cid || !ready || !mounted || destroyed) return
-      try {
-        const desired = computePersistSig(nodes, chatSettings, rootId)
-        if (desired === persistedSig) return
-        // Force a new schedule attempt even if we previously "scheduled" this sig.
-        scheduledPersistSig = ''
-        queueGlobalPersist(cid, async () => {
-          await persistNow()
-        })
-      } catch {}
-    }, delayMs)
-  }
-
+  // Persistence (policy lives in createChatPersister)
   async function persistNow() {
-    const cid = props.chatId
-    if (!cid || !mounted) return
-    // Never persist before this chat's content has actually been loaded,
-    // otherwise a failed/skipped load could overwrite the stored chat with
-    // the default empty state.
-    if (loadedChatId !== cid) return
-    persistInFlight += 1
-    try {
-      const result = await persistChatContent(cid, nodes, chatSettings, rootId, debug, mounted)
-      if (destroyed) return
-      if (result.notice) {
-        // Only update in-memory state if sanitization actually made corrections
-        sanitizerNotice = result.notice
-        if (result.nodes !== nodes) nodes = result.nodes
-        if (result.rootId !== rootId) rootId = result.rootId
-      }
-      persistedSig = computePersistSig(nodes, chatSettings, rootId)
-      scheduledPersistSig = persistedSig
-      if (persistRetryTimer) {
-        clearTimeout(persistRetryTimer)
-        persistRetryTimer = null
-      }
-      scheduleParentRefresh(result.updated)
-    } catch (err) {
-      if (destroyed) return
-      const msg = (err as Error)?.message || ''
-      if (msg.includes('Concurrent modification conflict')) {
-        sanitizerNotice = `Failed to save: this chat was modified in another tab. Reload the page to sync.`
-        scheduledPersistSig = persistedSig
-        return
-      }
-      sanitizerNotice = msg ? `Failed to save chat: ${msg}` : 'Failed to save chat.'
-      scheduledPersistSig = persistedSig
-      schedulePersistRetry()
-    } finally {
-      persistInFlight = Math.max(0, persistInFlight - 1)
-    }
-  }
-
-  function scheduleParentRefresh(updated) {
-    persistenceScheduler.scheduleRefresh(props.onChatUpdated, updated)
+    await persister.persistNow()
   }
 
   // Scroll helper
@@ -1761,8 +1726,7 @@
 
     ready = false
     forcedLock = false
-    persistedSig = ''
-    scheduledPersistSig = ''
+    persister.reset()
     chatSettingsOpen = false
 
     if (!cid) return
@@ -1786,8 +1750,7 @@
 	        editingId = null
 	        editingText = ''
 	        dismissedNotice = ''
-	        persistedSig = result.persistSig
-	        scheduledPersistSig = result.persistSig
+	        persister.markPersisted(result.persistSig)
 	        loadedChatId = cid
 	      } finally {
 	        ready = true
@@ -1863,19 +1826,11 @@
 	    const cid = props.chatId
 	    if (!cid || !ready || !mounted) return
 	    if (loadedChatId !== cid) return
-	    if (persistInFlight > 0) return
 	    const hasTyping = Array.isArray(nodes) && nodes.some(n => (n?.variants || []).some(v => v?.typing))
 	    if (sending || hasTyping) return
-	    try {
-	      const sig = computePersistSig(nodes, chatSettings, rootId)
-	      if (sig === persistedSig || sig === scheduledPersistSig) return
-	      // Streamed responses are persisted explicitly at start/end.
-	      scheduledPersistSig = sig
-	      // Use global throttle to prevent storage write storms across multiple chats
-	      queueGlobalPersist(cid, async () => {
-	        await persistNow()
-	      })
-	    } catch {}
+	    // The persister dedupes via content signatures; computing the signature
+	    // deep-reads nodes/chatSettings/rootId so this effect tracks content changes.
+	    persister.requestPersist()
 	  })
 
   $effect(() => {
@@ -1916,23 +1871,18 @@
     }
     if (!chatId) return
     try { props.onGeneratingChange?.(chatId, false) } catch {}
-    persistenceScheduler.cancel()
+    persister.cancel()
 
     // Best-effort: flush any pending throttled persists for this chat.
     // Guard against persisting uninitialized state when a chat unmounts before load completes.
     try {
       if (ready && loadedChatId === chatId) {
-        const snapshotNodes = deepClone(nodes)
-        const snapshotSettings = { ...chatSettings }
-        const snapshotRootId = rootId
-        const snapshotDebug = debug
-        const snapshotSig = computePersistSig(snapshotNodes, snapshotSettings, snapshotRootId)
-        if (snapshotSig && snapshotSig !== persistedSig) {
-          queueGlobalPersist(chatId, async () => {
-            await persistChatContent(chatId, snapshotNodes, snapshotSettings, snapshotRootId, snapshotDebug, true)
-          })
-          void flushGlobalPersists()
-        }
+        persister.flushForUnmount(chatId, {
+          nodes: deepClone(nodes),
+          chatSettings: { ...chatSettings },
+          rootId,
+          debug,
+        })
       }
     } catch {}
   })

@@ -2,6 +2,7 @@
 import { safeRead, safeWrite } from './utils/localStorageHelper.js';
 import { deepClone } from './utils/immutable.js';
 import { assertValidChat } from './utils/chatSchema.js';
+import { ConflictError } from './storage.errors.js';
 import { validateImageReferences } from './chat/services/imageCleanup.js';
 import type { Chat, ChatListItem, StorageChange, StorageListener, LocalStorageStore } from './types/index.js';
 
@@ -127,7 +128,7 @@ function writeOneInternal(chat: Chat): Promise<Chat> {
       : null;
     const currentVersion = Number(existing?._version) || 0;
     if (expectedVersion != null && currentVersion !== expectedVersion) {
-      throw new Error(`Concurrent modification conflict for chat "${candidate.id}".`);
+      throw new ConflictError(candidate.id, 'modification');
     }
 
     // Since writes are queued, we don't need to check versions - just increment
@@ -189,7 +190,7 @@ function deleteOne(id: string, expectedVersion?: number): Promise<Chat | null> {
       if (!store.byId?.[id]) return null;
       const existing = store.byId[id]!;
       if (expectedVersion != null && existing._version !== expectedVersion) {
-        throw new Error(`Concurrent deletion conflict for chat "${id}".`);
+        throw new ConflictError(id, 'deletion');
       }
       const byId = { ...store.byId };
       delete byId[id];

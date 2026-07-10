@@ -2,7 +2,10 @@
 import * as idbStorage from './storage.indexeddb.js';
 import * as lsStorage from './storage.localStorage.js';
 import { createKeyedPersistenceQueue } from './utils/persistenceQueue.js';
+import { isConcurrencyConflict } from './storage.errors.js';
 import type { Chat, ChatListItem, StorageListener, StorageBackend } from './types/index.js';
+
+export { ConflictError, isConcurrencyConflict } from './storage.errors.js';
 
 const BACKEND_KEY = 'storage.backend.v1';
 const CHAT_STORE_QUEUE_KEY = 'chats.v1';
@@ -143,11 +146,6 @@ export async function deleteChat(id: string, expectedVersion?: number): Promise<
   });
 }
 
-function isConcurrencyConflict(err: unknown): boolean {
-  const message = err instanceof Error ? err.message : String(err || '');
-  return message.toLowerCase().includes('concurrent') && message.toLowerCase().includes('conflict');
-}
-
 // Errors explicitly marked as never eligible for backend fallback
 // (e.g. exceptions thrown by a user-supplied updater function).
 const nonFallbackErrors = new WeakSet<object>();
@@ -169,6 +167,45 @@ export interface AtomicChatOptions {
 }
 
 /**
+ * Runs an atomic read-modify-write operation against the current backend,
+ * retrying optimistic concurrency conflicts and falling back to localStorage
+ * only on infrastructure failures. Serialized via the chat store queue.
+ *
+ * The single owner of the retry/fallback policy for all atomic operations.
+ */
+async function withAtomicRetry<T>(
+  retries: number,
+  operation: (backend: StorageBackend) => Promise<T>,
+  operationName: string,
+): Promise<T> {
+  return chatStoreQueue.run(CHAT_STORE_QUEUE_KEY, async () => {
+    let lastErr: unknown = null;
+
+    for (let attempt = 0; attempt <= Math.max(0, retries); attempt += 1) {
+      const backend = getStorageBackend();
+      try {
+        return await operation(backend);
+      } catch (err) {
+        lastErr = err;
+        if (isConcurrencyConflict(err)) {
+          if (attempt < Math.max(0, retries)) continue;
+          throw err;
+        }
+        // Only infrastructure failures may trigger fallback; validation and
+        // updater errors must propagate to the caller.
+        if (backend === idbStorage && !isNonFallbackError(err) && isInfrastructureError(err)) {
+          fallbackToLocalStorage(err);
+          continue;
+        }
+        throw err;
+      }
+    }
+
+    throw lastErr instanceof Error ? lastErr : new Error(String(lastErr || `Unknown ${operationName} error`));
+  });
+}
+
+/**
  * Atomic read-modify-write update for a chat.
  * - Serializes *all* chat persistence ops via a queue.
  * - Automatically sets `_expectedVersion` from the latest stored value.
@@ -182,55 +219,33 @@ export async function updateChatAtomic(
   if (!id) return null;
   if (typeof updater !== 'function') throw new Error('updateChatAtomic: updater must be a function');
 
-  return chatStoreQueue.run(CHAT_STORE_QUEUE_KEY, async () => {
-    let lastErr: unknown = null;
+  return withAtomicRetry(retries, async (backend) => {
+    const current = await backend.getChat(id);
 
-    for (let attempt = 0; attempt <= Math.max(0, retries); attempt += 1) {
-      const backend = getStorageBackend();
-      try {
-        const current = await backend.getChat(id);
-
-        let next: Chat | null | undefined;
-        try {
-          next = await updater(current);
-        } catch (updaterErr) {
-          // Updater exceptions are caller bugs, not storage failures: propagate.
-          throw markNonFallbackError(updaterErr);
-        }
-
-        if (next === undefined) {
-          return current;
-        }
-        if (next == null) {
-          if (!current) return null;
-          return await backend.deleteChat(id, current?._version);
-        }
-
-        const toPersist: Chat = {
-          ...next,
-          id,
-          _expectedVersion: current?._version,
-        };
-
-        return await backend.putChat(toPersist);
-      } catch (err) {
-        lastErr = err;
-        if (isConcurrencyConflict(err)) {
-          if (attempt < Math.max(0, retries)) continue;
-          throw err;
-        }
-        // Only infrastructure failures may trigger fallback; validation and
-        // updater errors must propagate to the caller.
-        if (backend === idbStorage && !isNonFallbackError(err) && isInfrastructureError(err)) {
-          fallbackToLocalStorage(err);
-          continue;
-        }
-        throw err;
-      }
+    let next: Chat | null | undefined;
+    try {
+      next = await updater(current);
+    } catch (updaterErr) {
+      // Updater exceptions are caller bugs, not storage failures: propagate.
+      throw markNonFallbackError(updaterErr);
     }
 
-    throw lastErr instanceof Error ? lastErr : new Error(String(lastErr || 'Unknown updateChatAtomic error'));
-  });
+    if (next === undefined) {
+      return current;
+    }
+    if (next == null) {
+      if (!current) return null;
+      return await backend.deleteChat(id, current?._version);
+    }
+
+    const toPersist: Chat = {
+      ...next,
+      id,
+      _expectedVersion: current?._version,
+    };
+
+    return await backend.putChat(toPersist);
+  }, 'updateChatAtomic');
 }
 
 /**
@@ -243,37 +258,15 @@ export async function putChatAtomic(
   const id = chat?.id;
   if (!id) throw new Error('putChatAtomic: chat.id is required');
 
-  return chatStoreQueue.run(CHAT_STORE_QUEUE_KEY, async () => {
-    let lastErr: unknown = null;
-
-    for (let attempt = 0; attempt <= Math.max(0, retries); attempt += 1) {
-      const backend = getStorageBackend();
-      try {
-        const current = await backend.getChat(id);
-        const toPersist: Chat = {
-          ...chat,
-          id,
-          _expectedVersion: current?._version,
-        };
-        return await backend.putChat(toPersist);
-      } catch (err) {
-        lastErr = err;
-        if (isConcurrencyConflict(err)) {
-          if (attempt < Math.max(0, retries)) continue;
-          throw err;
-        }
-        // Only infrastructure failures may trigger fallback; validation and
-        // updater errors must propagate to the caller.
-        if (backend === idbStorage && !isNonFallbackError(err) && isInfrastructureError(err)) {
-          fallbackToLocalStorage(err);
-          continue;
-        }
-        throw err;
-      }
-    }
-
-    throw lastErr instanceof Error ? lastErr : new Error(String(lastErr || 'Unknown putChatAtomic error'));
-  });
+  return withAtomicRetry(retries, async (backend) => {
+    const current = await backend.getChat(id);
+    const toPersist: Chat = {
+      ...chat,
+      id,
+      _expectedVersion: current?._version,
+    };
+    return await backend.putChat(toPersist);
+  }, 'putChatAtomic');
 }
 
 /**
@@ -285,33 +278,11 @@ export async function deleteChatAtomic(
 ): Promise<Chat | null> {
   if (!id) return null;
 
-  return chatStoreQueue.run(CHAT_STORE_QUEUE_KEY, async () => {
-    let lastErr: unknown = null;
-
-    for (let attempt = 0; attempt <= Math.max(0, retries); attempt += 1) {
-      const backend = getStorageBackend();
-      try {
-        const current = await backend.getChat(id);
-        if (!current) return null;
-        return await backend.deleteChat(id, current?._version);
-      } catch (err) {
-        lastErr = err;
-        if (isConcurrencyConflict(err)) {
-          if (attempt < Math.max(0, retries)) continue;
-          throw err;
-        }
-        // Only infrastructure failures may trigger fallback; validation and
-        // updater errors must propagate to the caller.
-        if (backend === idbStorage && !isNonFallbackError(err) && isInfrastructureError(err)) {
-          fallbackToLocalStorage(err);
-          continue;
-        }
-        throw err;
-      }
-    }
-
-    throw lastErr instanceof Error ? lastErr : new Error(String(lastErr || 'Unknown deleteChatAtomic error'));
-  });
+  return withAtomicRetry(retries, async (backend) => {
+    const current = await backend.getChat(id);
+    if (!current) return null;
+    return await backend.deleteChat(id, current?._version);
+  }, 'deleteChatAtomic');
 }
 
 /**

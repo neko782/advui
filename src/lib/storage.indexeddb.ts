@@ -1,6 +1,7 @@
 // IndexedDB storage backend for chats
 import { deepClone } from './utils/immutable.js';
 import { assertValidChat } from './utils/chatSchema.js';
+import { ConflictError } from './storage.errors.js';
 import { validateImageReferences } from './chat/services/imageCleanup.js';
 import type { Chat, ChatListItem, StorageChange, StorageListener } from './types/index.js';
 
@@ -338,7 +339,7 @@ function writeOneInternal(chat: Chat): Promise<Chat> {
           : null;
         const currentVersion = Number(existing?._version) || 0;
         if (expectedVersion != null && currentVersion !== expectedVersion) {
-          reject(new Error(`Concurrent modification conflict for chat "${candidate.id}".`));
+          reject(new ConflictError(candidate.id, 'modification'));
           return;
         }
 
@@ -405,7 +406,7 @@ function deleteOne(id: string, expectedVersion?: number): Promise<Chat | null> {
 
         // Check for concurrent modifications
         if (expectedVersion != null && existing._version !== expectedVersion) {
-          reject(new Error(`Concurrent deletion conflict for chat "${id}".`));
+          reject(new ConflictError(id, 'deletion'));
           return;
         }
 

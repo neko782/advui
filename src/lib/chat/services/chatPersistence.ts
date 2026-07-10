@@ -1,7 +1,10 @@
-// Chat persistence with signature tracking
+// Chat persistence: content sanitization, change-detection signatures,
+// global write throttling, retry-on-failure, and parent refresh debouncing.
+// Single owner of the "when and how do we save a chat" policy.
 import { saveChatContent } from '../../chatsStore.js';
+import { isConcurrencyConflict } from '../../storage.errors.js';
 import { sanitizeGraphComprehensive } from './graphValidation.js';
-import type { ChatNode, ChatSettings, PersistenceResult, ImageReference } from '../../types/index.js';
+import type { Chat, ChatNode, ChatSettings, PersistenceResult, PersistenceScheduler, ImageReference } from '../../types/index.js';
 
 function sanitizeImages(images: unknown, stripData: boolean = false): ImageReference[] {
   if (!Array.isArray(images)) return [];
@@ -339,6 +342,108 @@ export function computePersistSig(nodes: ChatNode[], chatSettings: ChatSettings,
   }
 }
 
+// ============================================================================
+// Global persistence throttle - limits how often persistence can occur across
+// all chats. This prevents storage write storms when multiple chats are active.
+// ============================================================================
+
+const GLOBAL_THROTTLE_MS = 50;
+let globalPersistTimer: ReturnType<typeof setTimeout> | null = null;
+let pendingPersists: Map<string, () => Promise<void>> = new Map();
+
+/**
+ * Queue a persist operation with global throttling
+ * Only the latest persist for each chatId is kept
+ */
+export function queueGlobalPersist(chatId: string, persistFn: () => Promise<void>): void {
+  pendingPersists.set(chatId, persistFn);
+
+  if (globalPersistTimer) return;
+
+  globalPersistTimer = setTimeout(async () => {
+    globalPersistTimer = null;
+    const batch = pendingPersists;
+    pendingPersists = new Map();
+
+    // Execute all pending persists in parallel
+    const tasks = Array.from(batch.values()).map(fn => {
+      try { return fn(); } catch { return Promise.resolve(); }
+    });
+    await Promise.allSettled(tasks);
+  }, GLOBAL_THROTTLE_MS);
+}
+
+/**
+ * Flush any pending global persists immediately.
+ * Useful on teardown to avoid losing the last throttled write.
+ */
+export async function flushGlobalPersists(): Promise<void> {
+  if (globalPersistTimer) {
+    clearTimeout(globalPersistTimer);
+    globalPersistTimer = null;
+  }
+
+  const batch = pendingPersists;
+  if (!batch.size) return;
+  pendingPersists = new Map();
+
+  const tasks = Array.from(batch.values()).map(fn => {
+    try { return fn(); } catch { return Promise.resolve(); }
+  });
+  await Promise.allSettled(tasks);
+}
+
+/**
+ * Creates a persistence scheduler for handling refresh callbacks
+ * Uses debounce behavior - latest callback payload wins while pending.
+ */
+export function createPersistenceScheduler(): PersistenceScheduler {
+  let refreshTimer: ReturnType<typeof setTimeout> | null = null;
+  let pendingCallback: ((updated?: Chat) => void) | undefined;
+  let pendingUpdated: Chat | null | undefined;
+
+  function scheduleRefresh(
+    callback: ((updated?: Chat) => void) | undefined,
+    updated?: Chat | null
+  ): void {
+    if (!callback || typeof callback !== 'function') return;
+
+    pendingCallback = callback;
+    pendingUpdated = updated;
+
+    if (refreshTimer) {
+      return;
+    }
+
+    refreshTimer = setTimeout(() => {
+      refreshTimer = null;
+      const cb = pendingCallback;
+      const payload = pendingUpdated;
+      pendingCallback = undefined;
+      pendingUpdated = undefined;
+      try {
+        cb?.(payload ?? undefined);
+      } catch {
+        // Ignore callback errors
+      }
+    }, 0);
+  }
+
+  function cancel(): void {
+    if (refreshTimer) {
+      clearTimeout(refreshTimer);
+      refreshTimer = null;
+    }
+    pendingCallback = undefined;
+    pendingUpdated = undefined;
+  }
+
+  return {
+    scheduleRefresh,
+    cancel,
+  };
+}
+
 export async function persistChatContent(
   chatId: string,
   nodes: ChatNode[],
@@ -370,4 +475,169 @@ export async function persistChatContent(
   } catch (err) {
     throw err;
   }
+}
+
+// ============================================================================
+// Chat persister: owns signature tracking, throttled scheduling, retries and
+// parent refresh debouncing for a single chat component.
+// ============================================================================
+
+export interface ChatSnapshot {
+  nodes: ChatNode[];
+  chatSettings: ChatSettings;
+  rootId: number | null;
+  debug: boolean;
+}
+
+export interface ChatPersisterHost {
+  getChatId(): string | null;
+  getState(): ChatSnapshot;
+  /** True when this chat's content is loaded and the component is alive. */
+  canPersist(): boolean;
+  isDestroyed(): boolean;
+  /** True while a generation is streaming (auto-persist stays quiet). */
+  isBusy(): boolean;
+  /** Called when persistence sanitized the graph (autofix notice). */
+  onSanitized(result: PersistenceResult): void;
+  /** Debounced notification that the stored chat changed. */
+  onChatUpdated(updated: Chat | null): void;
+  /** A concurrent modification from another tab was detected. */
+  onConflict(): void;
+  /** A non-conflict save error occurred. */
+  onSaveError(message: string): void;
+}
+
+export interface ChatPersister {
+  /** Persist if the content signature changed (throttled). Safe to call from effects. */
+  requestPersist(): void;
+  /** Persist immediately (still guarded by host.canPersist()). */
+  persistNow(): Promise<void>;
+  /** Marks the given signature as already persisted (after load). */
+  markPersisted(sig: string): void;
+  /** Clears signature state (before loading another chat). */
+  reset(): void;
+  /** Cancels pending timers/refreshes. */
+  cancel(): void;
+  /** Best-effort flush of a snapshot during unmount. */
+  flushForUnmount(chatId: string, snapshot: ChatSnapshot): void;
+  isInFlight(): boolean;
+}
+
+const PERSIST_RETRY_MS = 750;
+
+export function createChatPersister(host: ChatPersisterHost): ChatPersister {
+  let persistedSig = '';
+  let scheduledPersistSig = '';
+  let inFlight = 0;
+  let retryTimer: ReturnType<typeof setTimeout> | null = null;
+  const refreshScheduler = createPersistenceScheduler();
+
+  function clearRetry(): void {
+    if (retryTimer) {
+      clearTimeout(retryTimer);
+      retryTimer = null;
+    }
+  }
+
+  function scheduleRetry(delayMs: number = PERSIST_RETRY_MS): void {
+    if (retryTimer) return;
+    retryTimer = setTimeout(() => {
+      retryTimer = null;
+      const cid = host.getChatId();
+      if (!cid || !host.canPersist() || host.isDestroyed()) return;
+      try {
+        const s = host.getState();
+        const desired = computePersistSig(s.nodes, s.chatSettings, s.rootId);
+        if (desired === persistedSig) return;
+        // Force a new schedule attempt even if we previously "scheduled" this sig.
+        scheduledPersistSig = '';
+        queueGlobalPersist(cid, async () => {
+          await persistNow();
+        });
+      } catch { /* ignore */ }
+    }, delayMs);
+  }
+
+  async function persistNow(): Promise<void> {
+    const cid = host.getChatId();
+    if (!cid || !host.canPersist()) return;
+    inFlight += 1;
+    try {
+      const s = host.getState();
+      const result = await persistChatContent(cid, s.nodes, s.chatSettings, s.rootId, s.debug, true);
+      if (host.isDestroyed()) return;
+      if (result.notice) {
+        // Only update host state if sanitization actually made corrections
+        host.onSanitized(result);
+      }
+      const after = host.getState();
+      persistedSig = computePersistSig(after.nodes, after.chatSettings, after.rootId);
+      scheduledPersistSig = persistedSig;
+      clearRetry();
+      refreshScheduler.scheduleRefresh((updated) => host.onChatUpdated(updated ?? null), result.updated);
+    } catch (err) {
+      if (host.isDestroyed()) return;
+      if (isConcurrencyConflict(err)) {
+        host.onConflict();
+        scheduledPersistSig = persistedSig;
+        return;
+      }
+      host.onSaveError((err as Error)?.message || '');
+      scheduledPersistSig = persistedSig;
+      scheduleRetry();
+    } finally {
+      inFlight = Math.max(0, inFlight - 1);
+      // Content may have changed while this persist was in flight; the
+      // request path skips while inFlight > 0, so re-check here.
+      if (inFlight === 0) {
+        try { requestPersist(); } catch { /* ignore */ }
+      }
+    }
+  }
+
+  function requestPersist(): void {
+    const cid = host.getChatId();
+    if (!cid || !host.canPersist() || host.isBusy() || inFlight > 0) return;
+    try {
+      const s = host.getState();
+      const sig = computePersistSig(s.nodes, s.chatSettings, s.rootId);
+      if (sig === persistedSig || sig === scheduledPersistSig) return;
+      scheduledPersistSig = sig;
+      // Use global throttle to prevent storage write storms across multiple chats
+      queueGlobalPersist(cid, async () => {
+        await persistNow();
+      });
+    } catch { /* ignore */ }
+  }
+
+  return {
+    requestPersist,
+    persistNow,
+    markPersisted(sig: string): void {
+      persistedSig = sig;
+      scheduledPersistSig = sig;
+    },
+    reset(): void {
+      persistedSig = '';
+      scheduledPersistSig = '';
+    },
+    cancel(): void {
+      clearRetry();
+      refreshScheduler.cancel();
+    },
+    flushForUnmount(chatId: string, snapshot: ChatSnapshot): void {
+      try {
+        const sig = computePersistSig(snapshot.nodes, snapshot.chatSettings, snapshot.rootId);
+        if (sig && sig !== persistedSig) {
+          queueGlobalPersist(chatId, async () => {
+            await persistChatContent(chatId, snapshot.nodes, snapshot.chatSettings, snapshot.rootId, snapshot.debug, true);
+          });
+          void flushGlobalPersists();
+        }
+      } catch { /* ignore */ }
+    },
+    isInFlight(): boolean {
+      return inFlight > 0;
+    },
+  };
 }

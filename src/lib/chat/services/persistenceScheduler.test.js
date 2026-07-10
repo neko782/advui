@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { createPersistenceScheduler } from './persistenceScheduler.js'
+import { createPersistenceScheduler } from './chatPersistence.js'
 
 describe('createPersistenceScheduler', () => {
   beforeEach(() => {
