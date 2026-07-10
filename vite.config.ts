@@ -34,6 +34,8 @@ export default defineConfig({
   define: {
     __GIT_HASH__: JSON.stringify(getGitHash()),
   },
+  // Vitest runs components in happy-dom; make Svelte resolve its client build
+  resolve: process.env.VITEST ? { conditions: ['browser'] } : undefined,
   test: {
     environment: 'happy-dom',
     globals: true,
