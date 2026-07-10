@@ -4,18 +4,16 @@
   import SettingsModal from './lib/SettingsModal.svelte'
   import { loadAll, getChatListItems, createChat, setSelected, getChat, deleteChat, renameChat, duplicateChat, toChatListItem, unlockAllChats } from './lib/chatsStore'
   import { loadSettings } from './lib/settingsStore'
+  import { settingsStore, generationRegistry } from './lib/stores/appState.svelte'
   import { ensureModels } from './lib/modelsStore'
   import { initTheme } from './lib/themeStore'
-  import type { Chat as ChatType, ChatListItem, Preset, AppSettings } from './lib/types'
+  import type { Chat as ChatType, ChatListItem, Preset } from './lib/types'
 
   let chats = $state<ChatListItem[]>([])
   let selectedId = $state<string | null>(null)
   let sidebarOpen = $state(true)
   let showSettings = $state(false)
-  let settingsVersion = $state(0)
-  let presets = $state<Preset[]>([])
-  let generatingMap = $state<Record<string, boolean>>({})
-  let appSettings = $state<AppSettings | null>(null)
+  let presets = $derived<Preset[]>(Array.isArray(settingsStore.current?.presets) ? settingsStore.current.presets : [])
 
   // Track previous selected chat to keep it mounted until user switches away
   let previousSelectedId = $state<string | null>(null)
@@ -26,10 +24,18 @@
     if (selectedId) ids.add(selectedId)
     // Keep previous chat mounted until user navigates away from current
     if (previousSelectedId && previousSelectedId !== selectedId) ids.add(previousSelectedId)
-    for (const id of Object.keys(generatingMap)) {
-      if (generatingMap[id]) ids.add(id)
+    for (const id of Object.keys(generationRegistry.map)) {
+      if (generationRegistry.map[id]) ids.add(id)
     }
     return ids
+  })
+
+  // Apply fancy effects attribute to the root element whenever settings change
+  $effect(() => {
+    const fancy = !!settingsStore.current?.fancyEffects
+    if (typeof document !== 'undefined') {
+      document.documentElement.setAttribute('data-fancy-effects', fancy ? 'true' : 'false')
+    }
   })
 
   const SIDEBAR_KEY = 'ui.sidebar.open.v1'
@@ -69,38 +75,6 @@
     saveSidebarPref(false)
   }
 
-  function setGenerating(chatId, isGenerating) {
-    if (!chatId) return
-    const current = generatingMap
-    if (isGenerating) {
-      if (current[chatId]) return
-      generatingMap = { ...current, [chatId]: true }
-      return
-    }
-    if (!current[chatId]) return
-    const next = { ...current }
-    delete next[chatId]
-    generatingMap = next
-  }
-
-  function pruneGenerating(activeIds = []) {
-    const allowed = new Set(activeIds)
-    const current = generatingMap
-    let changed = false
-    const next = { ...current }
-    for (const id of Object.keys(current)) {
-      if (!allowed.has(id)) {
-        delete next[id]
-        changed = true
-      }
-    }
-    if (changed) generatingMap = next
-  }
-
-  function onChatGeneratingChange(chatId, isGenerating) {
-    setGenerating(chatId, isGenerating)
-  }
-
   function sortChats(list: ChatListItem[]): ChatListItem[] {
     return list.slice().sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
   }
@@ -124,7 +98,7 @@
       // Show most recent chats first
       const list = sortChats(await getChatListItems())
       chats = list
-      pruneGenerating(list.map(item => item.id).filter(Boolean))
+      generationRegistry.prune(list.map(item => item.id))
       const saved = loadAll().selectedId
       if (saved && await getChat(saved)) {
         if (selectedId !== saved) selectedId = saved
@@ -140,20 +114,6 @@
     }
   }
 
-  function syncSettings() {
-    try {
-      const settings = loadSettings()
-      appSettings = settings
-      presets = Array.isArray(settings?.presets) ? settings.presets : []
-      // Apply fancy effects attribute to root element
-      if (typeof document !== 'undefined') {
-        document.documentElement.setAttribute('data-fancy-effects', settings?.fancyEffects ? 'true' : 'false')
-      }
-    } catch {
-      appSettings = null
-      presets = []
-    }
-  }
 
   async function ensureOneChat() {
     const all = await getChatListItems()
@@ -183,7 +143,7 @@
     // Defer initial population to avoid mutating state during mount flush
     setTimeout(async () => {
       sidebarOpen = loadSidebarPref()
-      syncSettings()
+      settingsStore.reload()
 
       // Migrate chats from localStorage to IndexedDB if needed
       try {
@@ -247,7 +207,7 @@
   function onChatUpdated(updated?: ChatType) {
     if (updated?.id) {
       upsertChat(updated)
-      pruneGenerating([...(chats || []).map(item => item.id).filter(Boolean)])
+      generationRegistry.prune((chats || []).map(item => item.id))
       return
     }
     // Fall back to full refresh when no payload is available
@@ -265,7 +225,7 @@
   async function onDeleteChat(id) {
     if (!id) return
     await deleteChat(id)
-    setGenerating(id, false)
+    generationRegistry.setGenerating(id, false)
     // Clear previous if the deleted chat was the previous one
     if (previousSelectedId === id) {
       previousSelectedId = null
@@ -304,7 +264,7 @@
     chats={chats}
     selectedId={selectedId}
     presets={presets}
-    generatingMap={generatingMap}
+    generatingMap={generationRegistry.map}
     onSelect={onSelectChat}
     onNewChat={onNewChat}
     onDeleteChat={onDeleteChat}
@@ -320,9 +280,6 @@
           chatId={c.id}
           onNewChat={onNewChat}
           onChatUpdated={onChatUpdated}
-          settingsVersion={settingsVersion}
-          onGeneratingChange={onChatGeneratingChange}
-          appSettings={appSettings}
         />
       </div>
     {/each}
@@ -331,10 +288,7 @@
   <SettingsModal
     open={showSettings}
     onClose={() => (showSettings = false)}
-    onSaved={() => {
-      settingsVersion = Date.now()
-      syncSettings()
-    }}
+    onSaved={() => settingsStore.reload()}
   />
 </div>
 

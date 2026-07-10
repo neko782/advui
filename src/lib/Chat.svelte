@@ -1,7 +1,8 @@
 <script lang="ts">
   // Core imports
   import { onMount, onDestroy } from 'svelte'
-  import { loadSettings, findConnection } from './settingsStore'
+  import { findConnection } from './settingsStore'
+  import { settingsStore, generationRegistry } from './stores/appState.svelte'
   import { ensureModels, loadModelsCache } from './modelsStore'
   import { debugSetChatLockState } from './chatsStore'
   import { copyText as copyToClipboard } from './utils/clipboard'
@@ -51,9 +52,6 @@
     chatId: string
     onNewChat?: (options?: { presetId?: string }) => void
     onChatUpdated?: (updated?: StoredChat) => void
-    settingsVersion?: number
-    onGeneratingChange?: (chatId: string, isGenerating: boolean) => void
-    appSettings?: AppSettings | null
   }
 
   const props: Props = $props()
@@ -76,13 +74,13 @@
   // Track the chatId that started the current generation to avoid race conditions
   let generationChatId: string | null = null
 
-  // Synchronously notify parent when sending changes to avoid race conditions with unmounting
+  // Synchronously update the registry when sending changes to avoid race conditions with unmounting
   function setSending(value: boolean, forChatId?: string) {
     sending = value
     // Use the provided chatId, or fall back to the generation chatId, or current props
     const chatId = forChatId ?? generationChatId ?? props.chatId
     if (chatId) {
-      try { props.onGeneratingChange?.(chatId, value) } catch {}
+      try { generationRegistry.setGenerating(chatId, value) } catch {}
     }
     // Clear generation chatId when stopping
     if (!value) {
@@ -101,17 +99,17 @@
   let mounted = false
   let destroyed = false
 
-  // Settings & chat configuration
-  // Prefer settings from prop (shared across all chats) over loading independently
-  const initialSettings = props.appSettings ?? loadSettings()
+  // Settings & chat configuration (single reactive source of truth)
+  const initialSettings = settingsStore.current
   let settings = $state<AppSettings>(initialSettings)
   let debug = $state(!!initialSettings?.debug)
 
-  // Sync settings from prop when it changes (single source of truth from parent)
+  // Sync settings from the store when it changes
   $effect(() => {
-    if (props.appSettings) {
-      settings = props.appSettings
-      debug = !!props.appSettings.debug
+    const next = settingsStore.current
+    if (next) {
+      settings = next
+      debug = !!next.debug
     }
   })
   const initialPreset = pickPresetFromSettings(initialSettings)
@@ -1793,21 +1791,6 @@
     }
   })
 
-  // Fallback: reload settings from storage when settingsVersion changes (only if appSettings prop not provided)
-  let lastSettingsVersion = 0
-  $effect(() => {
-    const v = Number(props.settingsVersion) || 0
-    if (v === lastSettingsVersion) return
-    lastSettingsVersion = v
-    // Skip if settings are provided via prop (handled by prop sync effect)
-    if (props.appSettings) return
-    try {
-      const next = loadSettings()
-      settings = next
-      debug = !!next?.debug
-    } catch {}
-  })
-
   $effect(() => {
     if (!debug && forcedLock) {
       nodes = clearDebugLockFromNodes(nodes)
@@ -1870,7 +1853,7 @@
       generationState.forceStopGeneration()
     }
     if (!chatId) return
-    try { props.onGeneratingChange?.(chatId, false) } catch {}
+    try { generationRegistry.setGenerating(chatId, false) } catch {}
     persister.cancel()
 
     // Best-effort: flush any pending throttled persists for this chat.
