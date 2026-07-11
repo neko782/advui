@@ -14,6 +14,10 @@
   // Chat module imports
   import { loadChat } from './chat/services/chatLoader'
   import { pickPresetFromSettings, presetSignature } from './chat/services/chatInit'
+  import { getCharacter } from './tavern/charactersStore'
+  import { buildPromptInjections, resolvePromptPreset } from './tavern/promptPresets'
+  import { resolveTavernPresetId } from './tavern/tavernPreset'
+  import type { Character } from './types/tavern'
   import { createChatPersister } from './chat/services/chatPersistence'
   import { computeValidationNotice, computeGenerationNotice, assembleNotice, computeFollowingMap } from './chat/services/noticeHelpers'
   import { resolveConnectionContext as _resolveConnectionContext } from './chat/services/connectionResolver'
@@ -141,6 +145,10 @@
 
   let chatSettingsOpen = $state(false)
   let modelIds = $state<string[]>(loadModelsCache(initialConnectionId).ids || [])
+
+  // Tavern: character bound to this chat (null for normal chats)
+  let characterId = $state<string | null>(null)
+  let character = $state<Character | null>(null)
 
   // Persistence: signature tracking, throttling and retries live in the persister.
   const persister = createChatPersister({
@@ -700,12 +708,22 @@
       let summaryBuffer = ''
       const requestNodes = withImageData(nodes)
       logGenerationEvent(debug, 'Starting API request', { typingVariantId, ...logContext })
+      // Tavern: inject prompt preset blocks around the history for character chats
+      const injections = (characterId && character)
+        ? buildPromptInjections(
+            resolvePromptPreset(settings?.promptPresets, settings?.selectedPromptPresetId),
+            character,
+            settings?.persona || null
+          )
+        : null
       const reply = await generateResponse({
         nodes: requestNodes,
         rootId,
         chatSettings,
         connectionId,
         streaming: chatSettings.streaming,
+        historyPrefix: injections?.prefix,
+        historySuffix: injections?.suffix,
         typingVariantId,
         onAbort: (fn) => registerAbortHandler(genSeq, fn),
         onTextDelta: (full) => {
@@ -1102,6 +1120,28 @@
     chatSettingsOpen = !chatSettingsOpen
   }
 
+  // Tavern quick preset edit: chat settings changes in a character chat write
+  // straight back to the tavern-selected preset, so the settings popover acts
+  // as a quick preset editor instead of per-chat overrides.
+  function persistTavernPresetPatch(patch: Record<string, unknown>) {
+    if (!characterId) return
+    try {
+      const current = settingsStore.current
+      const targetId = resolveTavernPresetId(current)
+      if (!targetId) return
+      const list = Array.isArray(current?.presets) ? current.presets : []
+      if (!list.some(p => p?.id === targetId)) return
+      const nextPresets = list.map(p => (p?.id === targetId ? { ...p, ...patch } : p))
+      appliedTavernPresetSig = JSON.stringify(nextPresets.find(p => p?.id === targetId))
+      settingsStore.save({ ...current, presets: nextPresets })
+    } catch {}
+  }
+
+  function updateChatSettings(patch: Partial<ChatSettings>) {
+    chatSettings = { ...chatSettings, ...patch }
+    persistTavernPresetPatch(patch as Record<string, unknown>)
+  }
+
   function handleSelectPreset(preset) {
     if (!preset || typeof preset !== 'object') return
     // Apply preset settings (excluding systemPrompt)
@@ -1142,6 +1182,16 @@
       mcpEnabled: typeof preset.mcpEnabled === 'boolean' ? preset.mcpEnabled : chatSettings.mcpEnabled,
       mcpServers: preset.mcpServers ?? chatSettings.mcpServers,
     }
+    // Tavern: picking a preset from the composer switches the tavern-wide selection
+    if (characterId && preset.id) {
+      try {
+        const current = settingsStore.current
+        if (resolveTavernPresetId(current) !== preset.id) {
+          const key = current?.tavernSharePresetSelection ? 'selectedPresetId' : 'tavernSelectedPresetId'
+          settingsStore.save({ ...current, [key]: preset.id })
+        }
+      } catch {}
+    }
     persistNow()
   }
 
@@ -1173,6 +1223,16 @@
         nextId = result.nextId
         nextNodeId = result.nextNodeId
         chatSettings = result.chatSettings
+        characterId = result.characterId || null
+        character = null
+        if (result.characterId) {
+          const charId = result.characterId
+          getCharacter(charId).then((loadedChar) => {
+            if (props.chatId === cid && characterId === charId) {
+              character = loadedChar
+            }
+          }).catch(() => {})
+        }
         try { modelIds = loadModelsCache(result.chatSettings?.connectionId).ids || [] } catch {}
         rootId = result.rootId
 	        editStateManager.forceClear()
@@ -1194,6 +1254,22 @@
       const autoLocked = !!(sending || (Array.isArray(nodes) && nodes.some(n => (n?.variants || []).some(v => v?.typing))))
       locked = !!(forcedLock || autoLocked)
     } catch { locked = !!(forcedLock || sending) }
+  })
+
+  // Tavern: character chats follow the tavern preset selection. Re-apply when
+  // the selection or the preset's contents change (e.g. via tavern settings).
+  let appliedTavernPresetSig = ''
+  $effect(() => {
+    if (!characterId) return
+    const current = settingsStore.current
+    const selectedId = resolveTavernPresetId(current)
+    if (!selectedId) return
+    const preset = (current?.presets || []).find(p => p?.id === selectedId)
+    if (!preset) return
+    const sig = JSON.stringify(preset)
+    if (chatSettings?.presetId === selectedId && sig === appliedTavernPresetSig) return
+    appliedTavernPresetSig = sig
+    handleSelectPreset(preset)
   })
 
   $effect(() => {
@@ -1306,6 +1382,9 @@
   <MessageList
     bind:this={listCmp}
     items={visibleMessages}
+    character={characterId ? character : null}
+    personaName={settings?.persona?.name}
+    avatarShape={settings?.tavernAvatarShape}
     imageCache={images.imageCache}
     chatId={props.chatId}
     notice={visibleNotice}
@@ -1385,40 +1464,39 @@
       const newConnection = connectionOptions.find(c => c.id === newConnectionId)
       // Clear responses-API-only features when switching to non-responses API connection
       if (newConnection?.apiMode !== 'responses') {
-        chatSettings = {
-          ...chatSettings,
+        updateChatSettings({
           connectionId: newConnectionId,
           webSearchEnabled: false,
           codeInterpreterEnabled: false,
           shellEnabled: false,
           imageGenerationEnabled: false,
           mcpEnabled: false,
-        }
+        })
       } else {
-        chatSettings = { ...chatSettings, connectionId: newConnectionId }
+        updateChatSettings({ connectionId: newConnectionId })
       }
     }}
-    onChangeModel={(val) => (chatSettings = { ...chatSettings, model: val })}
-    onChangeStreaming={(val) => (chatSettings = { ...chatSettings, streaming: !!val })}
-    onChangeMaxOutputTokens={(val) => (chatSettings = { ...chatSettings, maxOutputTokens: toIntOrNull(val) })}
-    onChangeTopP={(val) => (chatSettings = { ...chatSettings, topP: toClampedNumber(val, 0, 1) })}
-    onChangeTemperature={(val) => (chatSettings = { ...chatSettings, temperature: toClampedNumber(val, 0, 2) })}
-    onChangeReasoningEffort={(val) => (chatSettings = { ...chatSettings, reasoningEffort: normalizeReasoning(val) })}
-    onChangeReasoningSummary={(val) => (chatSettings = { ...chatSettings, reasoningSummary: normalizeReasoningSummary(val) })}
-    onChangeTextVerbosity={(val) => (chatSettings = { ...chatSettings, textVerbosity: normalizeVerbosity(val) })}
-    onChangeThinkingEnabled={(val) => (chatSettings = { ...chatSettings, thinkingEnabled: !!val })}
-    onChangeThinkingBudgetTokens={(val) => (chatSettings = { ...chatSettings, thinkingBudgetTokens: toIntOrNull(val) })}
-    onChangeWebSearchEnabled={(val) => (chatSettings = { ...chatSettings, webSearchEnabled: !!val })}
-    onChangeCodeInterpreterEnabled={(val) => (chatSettings = { ...chatSettings, codeInterpreterEnabled: !!val })}
-    onChangeCodeInterpreterNetworkEnabled={(val) => (chatSettings = { ...chatSettings, codeInterpreterNetworkEnabled: !!val })}
-    onChangeCodeInterpreterAllowedDomains={(val) => (chatSettings = { ...chatSettings, codeInterpreterAllowedDomains: val || undefined })}
-    onChangeShellEnabled={(val) => (chatSettings = { ...chatSettings, shellEnabled: !!val })}
-    onChangeShellNetworkEnabled={(val) => (chatSettings = { ...chatSettings, shellNetworkEnabled: !!val })}
-    onChangeShellAllowedDomains={(val) => (chatSettings = { ...chatSettings, shellAllowedDomains: val || undefined })}
-    onChangeImageGenerationEnabled={(val) => (chatSettings = { ...chatSettings, imageGenerationEnabled: !!val })}
-    onChangeImageGenerationModel={(val) => (chatSettings = { ...chatSettings, imageGenerationModel: val || undefined })}
-    onChangeMcpEnabled={(val) => (chatSettings = { ...chatSettings, mcpEnabled: !!val })}
-    onChangeMcpServers={(servers) => (chatSettings = { ...chatSettings, mcpServers: servers })}
+    onChangeModel={(val) => updateChatSettings({ model: val })}
+    onChangeStreaming={(val) => updateChatSettings({ streaming: !!val })}
+    onChangeMaxOutputTokens={(val) => updateChatSettings({ maxOutputTokens: toIntOrNull(val) })}
+    onChangeTopP={(val) => updateChatSettings({ topP: toClampedNumber(val, 0, 1) })}
+    onChangeTemperature={(val) => updateChatSettings({ temperature: toClampedNumber(val, 0, 2) })}
+    onChangeReasoningEffort={(val) => updateChatSettings({ reasoningEffort: normalizeReasoning(val) })}
+    onChangeReasoningSummary={(val) => updateChatSettings({ reasoningSummary: normalizeReasoningSummary(val) })}
+    onChangeTextVerbosity={(val) => updateChatSettings({ textVerbosity: normalizeVerbosity(val) })}
+    onChangeThinkingEnabled={(val) => updateChatSettings({ thinkingEnabled: !!val })}
+    onChangeThinkingBudgetTokens={(val) => updateChatSettings({ thinkingBudgetTokens: toIntOrNull(val) })}
+    onChangeWebSearchEnabled={(val) => updateChatSettings({ webSearchEnabled: !!val })}
+    onChangeCodeInterpreterEnabled={(val) => updateChatSettings({ codeInterpreterEnabled: !!val })}
+    onChangeCodeInterpreterNetworkEnabled={(val) => updateChatSettings({ codeInterpreterNetworkEnabled: !!val })}
+    onChangeCodeInterpreterAllowedDomains={(val) => updateChatSettings({ codeInterpreterAllowedDomains: val || undefined })}
+    onChangeShellEnabled={(val) => updateChatSettings({ shellEnabled: !!val })}
+    onChangeShellNetworkEnabled={(val) => updateChatSettings({ shellNetworkEnabled: !!val })}
+    onChangeShellAllowedDomains={(val) => updateChatSettings({ shellAllowedDomains: val || undefined })}
+    onChangeImageGenerationEnabled={(val) => updateChatSettings({ imageGenerationEnabled: !!val })}
+    onChangeImageGenerationModel={(val) => updateChatSettings({ imageGenerationModel: val || undefined })}
+    onChangeMcpEnabled={(val) => updateChatSettings({ mcpEnabled: !!val })}
+    onChangeMcpServers={(servers) => updateChatSettings({ mcpServers: servers })}
     onSelectPreset={handleSelectPreset}
     disableSendRolePopup={settings?.disableSendRolePopup}
     showAddWithoutSend={settings?.showAddWithoutSend}

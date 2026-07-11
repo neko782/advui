@@ -17,6 +17,7 @@ export type * from './api.js';
 export type * from './chat.js';
 export type * from './settings.js';
 export type * from './storage.js';
+export type * from './tavern.js';
 
 // ---------------------------------------------------------------------------
 // Backwards-compatible aliases (older code imports these names)

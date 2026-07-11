@@ -103,6 +103,7 @@ function toChatListItem(chat: Chat | null | undefined): ChatListItem | null {
     id: chat.id,
     title: typeof chat.title === 'string' && chat.title.trim() ? chat.title : 'New Chat',
     updatedAt: Number(chat.updatedAt) || 0,
+    characterId: typeof chat.characterId === 'string' && chat.characterId ? chat.characterId : undefined,
   };
 }
 

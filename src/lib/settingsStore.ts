@@ -21,6 +21,7 @@ import type {
   DefaultToolSettings,
 } from './types/index.js';
 import { DEFAULT_MESSAGE_ACTIONS, DEFAULT_EDITOR_ACTIONS, DEFAULT_TOOL_SETTINGS } from './constants/defaults.js';
+import { ensurePromptPresetList, ensurePersonaList, makeDefaultPromptPreset } from './tavern/promptPresets.js';
 
 export const SETTINGS_KEY = 'openai.settings.v1';
 
@@ -251,6 +252,28 @@ function attachCompatFields(out: Partial<Settings> & Record<string, unknown>): S
   out.disableSendRolePopup = !!out.disableSendRolePopup;
   out.showAddWithoutSend = !!out.showAddWithoutSend;
   out.showInsertButtons = out.showInsertButtons !== false;
+  // Tavern: prompt presets + personas
+  const promptPresets = ensurePromptPresetList(out.promptPresets);
+  const candidatePromptId = typeof out.selectedPromptPresetId === 'string' ? out.selectedPromptPresetId : null;
+  out.promptPresets = promptPresets;
+  out.selectedPromptPresetId = promptPresets.some((p) => p.id === candidatePromptId)
+    ? candidatePromptId!
+    : promptPresets[0]?.id || makeDefaultPromptPreset().id;
+  const personas = ensurePersonaList(out.personas, out.persona);
+  const candidatePersonaId = typeof out.selectedPersonaId === 'string' ? out.selectedPersonaId : null;
+  const selectedPersonaId = personas.some((p) => p.id === candidatePersonaId)
+    ? candidatePersonaId!
+    : personas[0]!.id!;
+  out.personas = personas;
+  out.selectedPersonaId = selectedPersonaId;
+  // Active persona kept in sync for consumers (prompt building, greetings)
+  out.persona = personas.find((p) => p.id === selectedPersonaId) || personas[0];
+  out.tavernAvatarShape = out.tavernAvatarShape === 'rounded' ? 'rounded' : 'circle';
+  out.tavernSharePresetSelection = !!out.tavernSharePresetSelection;
+  const tavernPresetCandidate = typeof out.tavernSelectedPresetId === 'string' ? out.tavernSelectedPresetId : null;
+  out.tavernSelectedPresetId = ensuredPresets.some((p) => p.id === tavernPresetCandidate)
+    ? tavernPresetCandidate!
+    : (out.selectedPresetId as string);
   return out as Settings;
 }
 
@@ -370,6 +393,14 @@ export function loadSettings(): Settings {
       disableSendRolePopup,
       showAddWithoutSend,
       showInsertButtons,
+      promptPresets: parsed?.promptPresets as Settings['promptPresets'],
+      selectedPromptPresetId: parsed?.selectedPromptPresetId as string | undefined,
+      persona: parsed?.persona as Settings['persona'],
+      personas: parsed?.personas as Settings['personas'],
+      selectedPersonaId: parsed?.selectedPersonaId as string | undefined,
+      tavernAvatarShape: parsed?.tavernAvatarShape as Settings['tavernAvatarShape'],
+      tavernSelectedPresetId: parsed?.tavernSelectedPresetId as string | undefined,
+      tavernSharePresetSelection: parsed?.tavernSharePresetSelection as boolean | undefined,
     });
   } catch (err) {
     console.error('Failed to load settings, falling back to defaults:', err);
@@ -440,6 +471,14 @@ export function saveSettings(next: Partial<Settings>): Settings {
     disableSendRolePopup,
     showAddWithoutSend,
     showInsertButtons,
+    promptPresets: next?.promptPresets,
+    selectedPromptPresetId: next?.selectedPromptPresetId,
+    persona: next?.persona,
+    personas: next?.personas,
+    selectedPersonaId: next?.selectedPersonaId,
+    tavernAvatarShape: next?.tavernAvatarShape,
+    tavernSelectedPresetId: next?.tavernSelectedPresetId,
+    tavernSharePresetSelection: next?.tavernSharePresetSelection,
   });
   const ok = safeWrite(SETTINGS_KEY, data);
   if (!ok) {

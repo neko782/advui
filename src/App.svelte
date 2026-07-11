@@ -1,19 +1,38 @@
 <script lang="ts">
   import Chat from './lib/Chat.svelte'
   import Sidebar from './lib/components/Sidebar.svelte'
+  import TavernSidebar from './lib/components/tavern/TavernSidebar.svelte'
+  import CharacterEditorModal from './lib/components/tavern/CharacterEditorModal.svelte'
+  import TavernSettingsModal from './lib/components/tavern/TavernSettingsModal.svelte'
   import SettingsModal from './lib/SettingsModal.svelte'
   import { loadAll, getChatListItems, createChat, setSelected, getChat, deleteChat, renameChat, duplicateChat, toChatListItem, unlockAllChats } from './lib/chatsStore'
   import { loadSettings } from './lib/settingsStore'
   import { settingsStore, generationRegistry } from './lib/stores/appState.svelte'
   import { ensureModels } from './lib/modelsStore'
   import { initTheme } from './lib/themeStore'
+  import { getAllCharacters, putCharacter, deleteCharacter } from './lib/tavern/charactersStore'
+  import { parseCharacterFile, makeBlankCharacter } from './lib/tavern/characterCard'
+  import { createCharacterChat } from './lib/tavern/tavernChat'
   import type { Chat as ChatType, ChatListItem, Preset } from './lib/types'
+  import type { Character, PromptPreset, Persona } from './lib/types/tavern'
 
   let chats = $state<ChatListItem[]>([])
   let selectedId = $state<string | null>(null)
   let sidebarOpen = $state(true)
   let showSettings = $state(false)
   let presets = $derived<Preset[]>(Array.isArray(settingsStore.current?.presets) ? settingsStore.current.presets : [])
+
+  // Tavern state
+  const MODE_KEY = 'ui.mode.v1'
+  let mode = $state<'chat' | 'tavern'>('chat')
+  let characters = $state<Character[]>([])
+  let selectedCharacterId = $state<string | null>(null)
+  let showTavernSettings = $state(false)
+  let characterEditorOpen = $state(false)
+  let characterEditorTarget = $state<Character | null>(null)
+
+  const normalChats = $derived(chats.filter(c => !c.characterId))
+  const tavernChats = $derived(chats.filter(c => !!c.characterId))
 
   // Track previous selected chat to keep it mounted until user switches away
   let previousSelectedId = $state<string | null>(null)
@@ -137,13 +156,25 @@
       }
     } catch {}
   }
+  function loadModePref(): 'chat' | 'tavern' {
+    try {
+      return localStorage.getItem(MODE_KEY) === 'tavern' ? 'tavern' : 'chat'
+    } catch { return 'chat' }
+  }
+
+  async function refreshCharacters() {
+    characters = await getAllCharacters()
+  }
+
   onMount(() => {
     initTheme()
     ensureStartupModels().catch(() => {})
     // Defer initial population to avoid mutating state during mount flush
     setTimeout(async () => {
       sidebarOpen = loadSidebarPref()
+      mode = loadModePref()
       settingsStore.reload()
+      refreshCharacters().catch(() => {})
 
       // Migrate chats from localStorage to IndexedDB if needed
       try {
@@ -256,23 +287,151 @@
     if (summary) chats = sortChats([summary, ...chats])
     else await refresh()
   }
+
+  // -------------------------------------------------------------------------
+  // Tavern mode
+  // -------------------------------------------------------------------------
+
+  function switchMode(next: 'chat' | 'tavern') {
+    if (mode === next) return
+    mode = next
+    try { localStorage.setItem(MODE_KEY, next) } catch {}
+    const pool = next === 'tavern' ? tavernChats : normalChats
+    if (!pool.some(c => c.id === selectedId)) {
+      const first = pool[0]?.id || null
+      if (first) onSelectChat(first)
+    }
+    if (next === 'tavern') {
+      const item = tavernChats.find(c => c.id === selectedId)
+      selectedCharacterId = item?.characterId || null
+    }
+  }
+
+  function onSelectCharacter(id: string | null) {
+    selectedCharacterId = id
+    if (!id) return
+    const recent = tavernChats
+      .filter(c => c.characterId === id)
+      .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))[0]
+    if (recent) onSelectChat(recent.id)
+  }
+
+  async function onImportCharacterFiles(files: FileList | File[]) {
+    const list = Array.from(files || [])
+    const errors: string[] = []
+    for (const file of list) {
+      try {
+        const character = await parseCharacterFile(file)
+        await putCharacter(character)
+      } catch (err) {
+        errors.push(`${file.name}: ${err instanceof Error ? err.message : 'import failed'}`)
+      }
+    }
+    await refreshCharacters()
+    if (errors.length) alert(`Some cards could not be imported:\n${errors.join('\n')}`)
+  }
+
+  function onNewCharacter() {
+    characterEditorTarget = makeBlankCharacter()
+    characterEditorOpen = true
+  }
+
+  function onEditCharacter(character: Character) {
+    characterEditorTarget = character
+    characterEditorOpen = true
+  }
+
+  async function onCharacterSave(character: Character) {
+    try {
+      await putCharacter(character)
+      characterEditorOpen = false
+      characterEditorTarget = null
+      await refreshCharacters()
+    } catch (err) {
+      console.error('Failed to save character:', err)
+      alert('Failed to save character. Please try again.')
+    }
+  }
+
+  async function onDeleteCharacter(id: string) {
+    if (!id) return
+    // Delete the character's chats first
+    const owned = tavernChats.filter(c => c.characterId === id)
+    for (const chat of owned) {
+      try { await deleteChat(chat.id) } catch {}
+      generationRegistry.setGenerating(chat.id, false)
+      if (selectedId === chat.id) selectedId = null
+      if (previousSelectedId === chat.id) previousSelectedId = null
+    }
+    await deleteCharacter(id)
+    if (selectedCharacterId === id) selectedCharacterId = null
+    await refreshCharacters()
+    await refresh()
+  }
+
+  async function onNewTavernChat(characterId: string) {
+    const character = characters.find(c => c.id === characterId)
+    if (!character) return
+    const created = await createCharacterChat(character, settingsStore.current)
+    if (selectedId) previousSelectedId = selectedId
+    selectedId = created.id
+    const summary = toChatListItem(created.chat)
+    if (summary) chats = sortChats([summary, ...chats])
+    else await refresh()
+  }
+
+  function onTavernSettingsSave(data: {
+    tavernSelectedPresetId: string
+    tavernSharePresetSelection: boolean
+    promptPresets: PromptPreset[]
+    selectedPromptPresetId: string
+    personas: Persona[]
+    selectedPersonaId: string
+    tavernAvatarShape: 'circle' | 'rounded'
+  }) {
+    settingsStore.save({ ...settingsStore.current, ...data })
+  }
 </script>
 
 <div class="app-shell">
-  <Sidebar
-    open={sidebarOpen}
-    chats={chats}
-    selectedId={selectedId}
-    presets={presets}
-    generatingMap={generationRegistry.map}
-    onSelect={onSelectChat}
-    onNewChat={onNewChat}
-    onDeleteChat={onDeleteChat}
-    onDuplicateChat={onDuplicateChat}
-    onRenameChat={onRenameChat}
-    onToggle={toggleSidebar}
-    onOpenSettings={onOpenSettings}
-  />
+  {#if mode === 'chat'}
+    <Sidebar
+      open={sidebarOpen}
+      chats={normalChats}
+      selectedId={selectedId}
+      presets={presets}
+      generatingMap={generationRegistry.map}
+      onSelect={onSelectChat}
+      onNewChat={onNewChat}
+      onDeleteChat={onDeleteChat}
+      onDuplicateChat={onDuplicateChat}
+      onRenameChat={onRenameChat}
+      onToggle={toggleSidebar}
+      onOpenSettings={onOpenSettings}
+      onSwitchMode={switchMode}
+    />
+  {:else}
+    <TavernSidebar
+      open={sidebarOpen}
+      characters={characters}
+      chats={tavernChats}
+      selectedCharacterId={selectedCharacterId}
+      selectedId={selectedId}
+      generatingMap={generationRegistry.map}
+      onSelectCharacter={onSelectCharacter}
+      onImportCharacterFiles={onImportCharacterFiles}
+      onNewCharacter={onNewCharacter}
+      onEditCharacter={onEditCharacter}
+      onDeleteCharacter={onDeleteCharacter}
+      onNewChat={onNewTavernChat}
+      onSelect={onSelectChat}
+      onDeleteChat={onDeleteChat}
+      onOpenTavernSettings={() => (showTavernSettings = true)}
+      onToggle={toggleSidebar}
+      onOpenSettings={onOpenSettings}
+      onSwitchMode={switchMode}
+    />
+  {/if}
   <div class="chat-pane">
     {#each (chats || []).filter(c => mountedChatIds.has(c.id)) as c (c.id)}
       <div class="chat-wrapper {selectedId === c.id ? 'active' : 'hidden'}">
@@ -289,6 +448,26 @@
     open={showSettings}
     onClose={() => (showSettings = false)}
     onSaved={() => settingsStore.reload()}
+  />
+  <TavernSettingsModal
+    open={showTavernSettings}
+    connectionPresets={presets}
+    tavernSelectedPresetId={settingsStore.current?.tavernSelectedPresetId}
+    tavernSharePresetSelection={settingsStore.current?.tavernSharePresetSelection}
+    chatSelectedPresetId={settingsStore.current?.selectedPresetId}
+    promptPresets={settingsStore.current?.promptPresets}
+    selectedPromptPresetId={settingsStore.current?.selectedPromptPresetId}
+    personas={settingsStore.current?.personas}
+    selectedPersonaId={settingsStore.current?.selectedPersonaId}
+    avatarShape={settingsStore.current?.tavernAvatarShape}
+    onSave={onTavernSettingsSave}
+    onClose={() => (showTavernSettings = false)}
+  />
+  <CharacterEditorModal
+    open={characterEditorOpen}
+    character={characterEditorTarget}
+    onSave={onCharacterSave}
+    onCancel={() => { characterEditorOpen = false; characterEditorTarget = null }}
   />
 </div>
 

@@ -4,12 +4,14 @@ import { loadSettings } from '../../settingsStore.js';
 import {
   makeSystemPrologue,
   pickPresetFromSettings,
+  normalizePreset,
   buildChatSettings,
   recomputeNextIds,
   ensureUniqueIds,
   detectIdCollisions,
   DEFAULT_SYSTEM_PROMPT
 } from './chatInit.js';
+import { resolveTavernPresetId } from '../../tavern/tavernPreset.js';
 import { migrateLegacyGraphToNodes } from './legacyMigration.js';
 import { validateRootId } from '../../branching.js';
 import { computePersistSig } from './chatPersistence.js';
@@ -35,6 +37,7 @@ export async function loadChat(chatId: string | null): Promise<LoadedChat> {
   let nextNextId = 1;
   let nextNextNodeId = 1;
   let nextPersistSig = '';
+  let nextCharacterId: string | null = null;
 
   if (!chatId) {
     return {
@@ -76,9 +79,19 @@ export async function loadChat(chatId: string | null): Promise<LoadedChat> {
         nextRootId = mig.rootId;
       }
 
-      // Use centralized loadChatSettings to merge loaded settings with preset defaults.
-      // When adding new ChatSettings fields, add them to loadChatSettings() in presetHelpers.ts
-      nextChatSettings = loadChatSettings(loaded, basePreset, nextSettings);
+      nextCharacterId = (typeof loaded.characterId === 'string' && loaded.characterId) ? loaded.characterId : null;
+
+      if (nextCharacterId) {
+        // Tavern chats follow the tavern preset selection (independent from
+        // chat mode unless sharing is enabled) instead of per-chat settings.
+        const tavernPresetId = resolveTavernPresetId(nextSettings);
+        const tavernPreset = presetsList.find(p => p?.id === tavernPresetId);
+        nextChatSettings = buildChatSettings(tavernPreset ? normalizePreset(tavernPreset) : basePreset, nextSettings);
+      } else {
+        // Use centralized loadChatSettings to merge loaded settings with preset defaults.
+        // When adding new ChatSettings fields, add them to loadChatSettings() in presetHelpers.ts
+        nextChatSettings = loadChatSettings(loaded, basePreset, nextSettings);
+      }
 
       if (!nextNodes.length) {
         if (loaded?.rootId == null) {
@@ -139,7 +152,8 @@ export async function loadChat(chatId: string | null): Promise<LoadedChat> {
     nextId: nextNextId,
     nextNodeId: nextNextNodeId,
     persistSig: nextPersistSig,
-    settings: nextSettings
+    settings: nextSettings,
+    characterId: nextCharacterId
   };
 }
 

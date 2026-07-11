@@ -3,10 +3,18 @@
   import MessageMeta from './MessageMeta.svelte'
   import MessageBubble from './MessageBubble.svelte'
   import MessageActions from './MessageActions.svelte'
+  import { IconPerson } from '../../icons'
   import type { VisibleMessage, MessageRole, MessageActionButton, EditorActionButton } from '../../types'
+  import type { Character } from '../../types/tavern'
 
   interface Props {
     vm: VisibleMessage
+    /** Tavern: character bound to this chat (adds avatar + name to assistant messages). */
+    character?: Character | null
+    /** Tavern: active persona name (labels user messages). */
+    personaName?: string
+    /** Tavern: avatar shape ('circle' default, or 'rounded' square). */
+    avatarShape?: 'circle' | 'rounded'
     imageCache?: Record<string, { data: string; mimeType?: string; name?: string }>
     total?: number
     visibleCount?: number
@@ -54,6 +62,14 @@
   const isEditing = $derived(props.editingId === m.id)
   const branchesLength = $derived(Number(props.branchesLength) || 0)
   const branchIndex = $derived(Number(props.branchIndex) || 0)
+  // Tavern: assistant messages show the character avatar + name,
+  // user messages are labeled with the active persona name.
+  const showCharacter = $derived(!!props.character && m.role === 'assistant')
+  const roleLabel = $derived.by(() => {
+    if (showCharacter) return props.character!.nickname || props.character!.name || formatRole(m.role)
+    if (props.character && m.role === 'user' && props.personaName) return props.personaName
+    return formatRole(m.role)
+  })
   // Move should target the clicked message, not its parent
   function doMoveUp() { props.onMoveUp?.(m.id) }
   function doMoveDown() { props.onMoveDown?.(m.id) }
@@ -61,7 +77,18 @@
 
 <div class={`row ${m.role}`}>
   <div class={`stack ${m.role} ${isEditing ? 'editing' : ''}`}>
-    <MessageMeta role={m.role} label={formatRole(m.role)} locked={props.locked} debug={props.debug} messageId={m.id} disabled={props.disableRoleSwitching} onSetRole={(r) => props.onSetRole?.(m.id, r)} />
+    {#if showCharacter}
+      <div class="char-header">
+        {#if props.character!.avatar}
+          <img class="char-avatar {props.avatarShape === 'rounded' ? 'rounded' : ''}" src={props.character!.avatar} alt={props.character!.name} loading="lazy" />
+        {:else}
+          <div class="char-avatar placeholder {props.avatarShape === 'rounded' ? 'rounded' : ''}"><IconPerson style="font-size: 18px;" /></div>
+        {/if}
+        <MessageMeta role={m.role} label={roleLabel} locked={props.locked} debug={props.debug} messageId={m.id} disabled={props.disableRoleSwitching} onSetRole={(r) => props.onSetRole?.(m.id, r)} />
+      </div>
+    {:else}
+      <MessageMeta role={m.role} label={roleLabel} locked={props.locked} debug={props.debug} messageId={m.id} disabled={props.disableRoleSwitching} onSetRole={(r) => props.onSetRole?.(m.id, r)} />
+    {/if}
     <MessageBubble
       message={m}
       imageCache={props.imageCache}
@@ -114,6 +141,27 @@
   .row.user { justify-content: flex-end; }
   .row.assistant { justify-content: flex-start; }
   .row.system { justify-content: center; }
+  .char-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 4px;
+  }
+  /* The meta badge already carries its own bottom margin; neutralize it so the
+     avatar and name stay vertically centered on one line. */
+  .char-header :global(.meta) { margin-bottom: 0; }
+  .char-avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    object-fit: cover;
+    object-position: top;
+    background: var(--border);
+    display: block;
+    flex: 0 0 auto;
+  }
+  .char-avatar.rounded { border-radius: 8px; }
+  .char-avatar.placeholder { display: grid; place-items: center; color: var(--muted); }
   .stack { display: grid; grid-auto-flow: row; grid-auto-rows: max-content; grid-template-columns: minmax(0, 1fr); gap: 2px; width: min(720px, 92%); }
   .stack.assistant { justify-content: start; }
   .stack.user { justify-content: end; }

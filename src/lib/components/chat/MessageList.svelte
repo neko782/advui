@@ -2,9 +2,16 @@
   import MessageItem from './MessageItem.svelte'
   import { IconAdd } from '../../icons'
   import type { VisibleMessage, MessageRole, MessageActionButton, EditorActionButton } from '../../types'
+  import type { Character } from '../../types/tavern'
 
   interface Props {
     items?: VisibleMessage[]
+    /** Tavern: character bound to this chat (adds avatar + name to messages). */
+    character?: Character | null
+    /** Tavern: active persona name (labels user messages). */
+    personaName?: string
+    /** Tavern: avatar shape ('circle' default, or 'rounded' square). */
+    avatarShape?: 'circle' | 'rounded'
     imageCache?: Record<string, { data: string; mimeType?: string; name?: string }>
     chatId?: string
     notice?: string
@@ -243,6 +250,9 @@
         {/if}
         <MessageItem
           vm={vm}
+          character={props.character}
+          personaName={props.personaName}
+          avatarShape={props.avatarShape}
           imageCache={props.imageCache}
           total={props.total}
           visibleCount={(props.items?.length || 0)}

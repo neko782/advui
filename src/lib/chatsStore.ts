@@ -173,6 +173,7 @@ export function toChatListItem(chat: Chat | null | undefined): ChatListItem | nu
     id: chat.id,
     title: typeof chat.title === 'string' && chat.title.trim() ? chat.title : 'New Chat',
     updatedAt: Number(chat.updatedAt) || 0,
+    characterId: typeof chat.characterId === 'string' && chat.characterId ? chat.characterId : undefined,
   };
 }
 
@@ -347,7 +348,14 @@ export async function saveChatContent(
         rootId: nextRootId,
         settings: baseSettings,
         presetId,
-        title: computeTitleFromNodes(nextNodes, nextRootId),
+        title: (() => {
+          const computed = computeTitleFromNodes(nextNodes, nextRootId);
+          // Tavern chats keep their character-name title until a user message exists
+          if (existing?.characterId && computed === 'New Chat') {
+            return (typeof existing.title === 'string' && existing.title.trim()) ? existing.title : computed;
+          }
+          return computed;
+        })(),
         updatedAt: Date.now(),
       };
       return updated;
@@ -389,6 +397,7 @@ export async function duplicateChat(id: string): Promise<{ id: string; chat: Cha
     settings: deepClone(original.settings || {}),
     presetId: original.presetId || undefined,
     title: `${baseTitle} (copy)`,
+    characterId: original.characterId || undefined,
   });
 }
 
@@ -405,6 +414,8 @@ export interface CreateChatOptions {
   updatedAt?: number;
   /** Optional: preserve original title (for imports) */
   title?: string;
+  /** Tavern: character this chat belongs to */
+  characterId?: string | null;
 }
 
 export async function createChat(initial: CreateChatOptions = {}): Promise<{ id: string; chat: Chat }> {
@@ -528,6 +539,9 @@ export async function createChat(initial: CreateChatOptions = {}): Promise<{ id:
     rootId,
     presetId: (typeof initial?.presetId === 'string') ? initial.presetId : (preferredPreset?.id || null),
   };
+  if (typeof initial?.characterId === 'string' && initial.characterId) {
+    chat.characterId = initial.characterId;
+  }
   const persisted = await storePutAtomic(chat);
   const finalChat = persisted || chat;
   cacheChat(id, finalChat);

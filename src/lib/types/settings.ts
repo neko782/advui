@@ -10,6 +10,7 @@ import type {
   ReasoningSummary,
   McpServerConfig,
 } from './api.js';
+import type { PromptPreset, Persona } from './tavern.js';
 
 // ============================================================================
 // Connection Types
@@ -167,6 +168,19 @@ export interface Settings {
   disableSendRolePopup?: boolean;
   showAddWithoutSend?: boolean;
   showInsertButtons?: boolean;
+  // Tavern: shareable prompt presets (ordered prompt blocks) + personas
+  promptPresets?: PromptPreset[];
+  selectedPromptPresetId?: string;
+  /** The active persona (derived from personas + selectedPersonaId). */
+  persona?: Persona;
+  personas?: Persona[];
+  selectedPersonaId?: string;
+  /** Shape of the character avatar next to messages. */
+  tavernAvatarShape?: 'circle' | 'rounded';
+  /** Preset selection used by tavern chats (independent from chat mode by default). */
+  tavernSelectedPresetId?: string;
+  /** When true, tavern chats follow the chat mode preset selection instead. */
+  tavernSharePresetSelection?: boolean;
 }
 
 // ============================================================================

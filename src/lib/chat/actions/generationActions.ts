@@ -398,6 +398,10 @@ export interface GenerateResponseOptions {
   connectionId: string | null;
   streaming: boolean;
   typingVariantId: number | null;
+  /** Tavern: messages prepended before the chat history (prompt preset blocks). */
+  historyPrefix?: HistoryMessage[];
+  /** Tavern: messages appended after the chat history (post-history instructions). */
+  historySuffix?: HistoryMessage[];
   onAbort?: (abortFn: () => void) => void;
   onTextDelta?: (fullText: string) => void;
   onReasoningSummaryDelta?: (fullSummary: string) => void;
@@ -412,6 +416,8 @@ export async function generateResponse(options: GenerateResponseOptions): Promis
     connectionId,
     streaming,
     typingVariantId,
+    historyPrefix,
+    historySuffix,
     onAbort,
     onTextDelta,
     onReasoningSummaryDelta,
@@ -419,7 +425,7 @@ export async function generateResponse(options: GenerateResponseOptions): Promis
   } = options;
 
   const buildVisible = () => _buildVisible(nodes, rootId);
-  const history: HistoryMessage[] = buildVisible()
+  let history: HistoryMessage[] = buildVisible()
     .map(vm => vm.m)
     .filter(m => !m.typing)
     .map(({ role, content, images }) => {
@@ -430,6 +436,15 @@ export async function generateResponse(options: GenerateResponseOptions): Promis
       }
       return msg;
     });
+
+  // Tavern: wrap the chat history with prompt preset injections
+  if ((historyPrefix && historyPrefix.length) || (historySuffix && historySuffix.length)) {
+    history = [
+      ...(historyPrefix || []),
+      ...history,
+      ...(historySuffix || []),
+    ];
+  }
 
   // Build web search options if enabled
   const webSearch: WebSearchOptions | undefined = chatSettings.webSearchEnabled

@@ -108,6 +108,8 @@ export interface Chat {
   nodes: ChatNode[];
   rootId: number | null;
   presetId: string | null;
+  /** Tavern: id of the character this chat belongs to (undefined for normal chats). */
+  characterId?: string | null;
   _version?: number;
   _expectedVersion?: number;
   _persistedAt?: number;
@@ -122,6 +124,8 @@ export interface ChatListItem {
   id: string;
   title: string;
   updatedAt: number;
+  /** Tavern: id of the character this chat belongs to (undefined for normal chats). */
+  characterId?: string | null;
 }
 
 // ============================================================================
@@ -318,6 +322,8 @@ export interface LoadedChat {
   nextNodeId: number;
   persistSig: string;
   settings: Settings;
+  /** Tavern: character id when this is a character chat. */
+  characterId?: string | null;
 }
 
 // ============================================================================

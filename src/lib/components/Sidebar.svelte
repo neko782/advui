@@ -20,6 +20,7 @@
     onRenameChat?: (id: string, title: string) => Promise<void>
     onToggle?: () => void
     onOpenSettings?: () => void
+    onSwitchMode?: (mode: 'chat' | 'tavern') => void
   }
 
   const props: Props = $props()
@@ -491,8 +492,10 @@
       {#if props.open}
         <div class="brand">
           <span class="brand-name">advui</span>
-          <span class="brand-beta">beta</span>
-          <span class="brand-hash">{gitHash}</span>
+          <div class="mode-switch" role="tablist" aria-label="Mode">
+            <button type="button" class="mode-btn active" role="tab" aria-selected="true">Chat</button>
+            <button type="button" class="mode-btn" role="tab" aria-selected="false" onclick={() => props.onSwitchMode?.('tavern')}>Tavern</button>
+          </div>
         </div>
       {/if}
     </div>
@@ -698,9 +701,10 @@
 
       <!-- Footer actions pinned at the bottom -->
       <div class="side-footer">
-        <button class="nav-item" onclick={() => props.onOpenSettings?.()} title="Settings" aria-label="Settings">
+        <button class="nav-item" onclick={() => props.onOpenSettings?.()} title="Settings ({gitHash})" aria-label="Settings">
           <IconSettings style="font-size: 20px;" />
           <span class="label">Settings</span>
+          <span class="brand-hash">{gitHash}</span>
         </button>
       </div>
     </div>
@@ -787,15 +791,33 @@
     font-weight: 500;
     color: var(--muted);
     opacity: 0.8;
+    margin-left: auto;
   }
-  .brand-beta {
+  .sidebar.collapsed .brand-hash { display: none; }
+  .mode-switch {
+    display: inline-flex;
+    gap: 2px;
+    padding: 2px;
+    border-radius: 999px;
+    background: var(--border);
+  }
+  .mode-btn {
     font-size: 0.7rem;
     text-transform: uppercase;
     letter-spacing: 0.08em;
-    padding: 2px 6px;
+    padding: 2px 8px;
+    border: 0;
     border-radius: 999px;
-    background: var(--border);
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+    transition: background-color 120ms ease, color 120ms ease;
+  }
+  .mode-btn:hover { color: var(--text); }
+  .mode-btn.active {
+    background: var(--panel);
     color: var(--text);
+    font-weight: 600;
   }
   .icon-btn {
     min-width: 36px;
