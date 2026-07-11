@@ -1,4 +1,5 @@
 import { Marked, type Token, type Tokens } from 'marked';
+import markedKatex from 'marked-katex-extension';
 import hljs from 'highlight.js/lib/core';
 
 // 25 most common languages
@@ -191,6 +192,7 @@ const customRenderer = {
 let allowHtml = false;
 
 const marked = new Marked({ breaks: true, gfm: true });
+marked.use(markedKatex({ throwOnError: false }));
 marked.use(customRenderer as any);
 marked.use({
   renderer: {

@@ -418,6 +418,13 @@ const resolvedGeneratedImages = $derived.by(() => {
   .bubble :global(ul > li:first-child), .bubble :global(ol > li:first-child) { margin-top: 0; }
   .bubble :global(ul > li:last-child), .bubble :global(ol > li:last-child) { margin-bottom: 0; }
   .bubble :global(a) { color: var(--accent); text-decoration: underline; }
+  .bubble :global(.katex-display) {
+    max-width: 100%;
+    margin: 0.5em 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding-block: 0.15em;
+  }
   /* Table styles */
   .bubble :global(.table-block-wrapper) {
     width: 100%;

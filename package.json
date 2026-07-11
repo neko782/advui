@@ -39,8 +39,10 @@
     "@tanstack/svelte-virtual": "^3.13.18",
     "highlight.js": "^11.11.1",
     "js-untar": "^2.0.0",
+    "katex": "^0.17.0",
     "klona": "^2.0.6",
     "marked": "^17.0.1",
+    "marked-katex-extension": "^5.1.10",
     "tar-js": "^0.3.0"
   }
 }

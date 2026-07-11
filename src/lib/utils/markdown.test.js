@@ -30,6 +30,31 @@ describe('renderMarkdown link sanitization', () => {
   })
 })
 
+describe('renderMarkdown LaTeX', () => {
+  it('renders inline math', () => {
+    const html = renderMarkdown('Euler wrote $e^{i\\pi} + 1 = 0$.')
+
+    expect(html).toContain('class="katex"')
+    expect(html).toContain('e^{i\\pi} + 1 = 0')
+  })
+
+  it('renders display math', () => {
+    const html = renderMarkdown('$$\n\\int_0^1 x^2 \\, dx = \\frac{1}{3}\n$$')
+
+    expect(html).toContain('class="katex-display"')
+    expect(html).toContain('\\int_0^1 x^2 \\, dx = \\frac{1}{3}')
+  })
+
+  it('leaves dollar-delimited content in code blocks untouched', () => {
+    const blocks = buildMarkdownBlocks('```text\n$not_math$\n```')
+
+    expect(blocks).toHaveLength(1)
+    expect(blocks[0].kind).toBe('code')
+    expect(blocks[0].codeText).toBe('$not_math$')
+    expect(blocks[0].codeHtml).not.toContain('class="katex"')
+  })
+})
+
 describe('buildMarkdownBlocks', () => {
   it('separates text, code, and table blocks', () => {
     const blocks = buildMarkdownBlocks('intro\n\n```js\nconst x = 1\n```\n\n| a | b |\n| - | - |\n| 1 | 2 |')
