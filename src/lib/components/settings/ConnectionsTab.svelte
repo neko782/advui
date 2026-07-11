@@ -102,6 +102,13 @@
     }
   }
 
+  function resetTouchState() {
+    touchDragId = null
+    touchListRef = null
+    draggedConnectionId = null
+    dragOverConnectionId = null
+  }
+
   function handleConnectionTouchEnd() {
     if (touchDragId && dragOverConnectionId) {
       draft.reorderConnections(touchDragId, dragOverConnectionId)

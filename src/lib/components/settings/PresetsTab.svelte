@@ -106,6 +106,13 @@
     }
   }
 
+  function resetTouchState() {
+    touchDragId = null
+    touchListRef = null
+    draggedPresetId = null
+    dragOverPresetId = null
+  }
+
   function handlePresetTouchEnd() {
     if (touchDragId && dragOverPresetId) {
       draft.reorderPresets(touchDragId, dragOverPresetId)
