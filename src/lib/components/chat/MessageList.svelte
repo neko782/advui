@@ -15,6 +15,7 @@
     editingText?: string
     insertedMessageId?: number | null
     allowInlineHtml?: boolean
+    renderLatex?: boolean
     messageActions?: MessageActionButton[]
     editorActions?: EditorActionButton[]
     disableRoleSwitching?: boolean
@@ -256,6 +257,7 @@
           branchIndex={(typeof vm?.variantIndex === 'number') ? vm.variantIndex : 0}
           branchesLength={(typeof vm?.variantsLength === 'number') ? vm.variantsLength : 1}
           allowInlineHtml={props.allowInlineHtml}
+          renderLatex={props.renderLatex}
           messageActions={props.messageActions}
           editorActions={props.editorActions}
           isInsertedMessage={props.insertedMessageId != null && vm.m.id === props.insertedMessageId}

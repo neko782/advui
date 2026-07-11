@@ -144,6 +144,20 @@
                 <span class="switch-label">Allow inline HTML</span>
               </label>
               <p class="hint">Allow HTML tags in markdown messages. Disabled by default for security.</p>
+              <label class="switch" title="Render LaTeX math">
+                <input
+                  type="checkbox"
+                  checked={local.renderLatex !== false}
+                  onchange={(event) => {
+                    local.renderLatex = !!event.currentTarget.checked
+                    persistSettings()
+                  }}
+                  aria-label="Render LaTeX math"
+                />
+                <span class="switch-ui" aria-hidden="true"></span>
+                <span class="switch-label">Render LaTeX math</span>
+              </label>
+              <p class="hint">Render math wrapped in $, $$, \(...\), or \[...\] delimiters using KaTeX.</p>
             </section>
 
             <section class="group">

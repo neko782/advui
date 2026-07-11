@@ -6,6 +6,7 @@
   interface Props {
     content?: string
     allowInlineHtml?: boolean
+    renderLatex?: boolean
     streaming?: boolean
   }
 
@@ -17,6 +18,7 @@
   const blocks = $derived(
     buildMarkdownBlocks(props.content ?? '', {
       allowInlineHtml: props.allowInlineHtml,
+      renderLatex: props.renderLatex,
       streaming: props.streaming,
     })
   )

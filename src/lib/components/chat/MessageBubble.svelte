@@ -18,6 +18,7 @@
     isEditing?: boolean
     editingText?: string
     allowInlineHtml?: boolean
+    renderLatex?: boolean
     onEditInput?: (text: string) => void
     onEditKeydown?: (e: KeyboardEvent) => void
   }
@@ -230,6 +231,7 @@ const resolvedGeneratedImages = $derived.by(() => {
           <MarkdownContent
             content={reasoningSummaryText}
             allowInlineHtml={props.allowInlineHtml}
+            renderLatex={props.renderLatex}
             streaming={props.message.reasoningSummaryLoading}
           />
         </div>
@@ -242,6 +244,7 @@ const resolvedGeneratedImages = $derived.by(() => {
         <MarkdownContent
           content={props.message.content}
           allowInlineHtml={props.allowInlineHtml}
+          renderLatex={props.renderLatex}
           streaming={true}
         />
       {:else}
@@ -329,6 +332,7 @@ const resolvedGeneratedImages = $derived.by(() => {
         <MarkdownContent
           content={props.message.content}
           allowInlineHtml={props.allowInlineHtml}
+          renderLatex={props.renderLatex}
         />
       </div>
     {/if}

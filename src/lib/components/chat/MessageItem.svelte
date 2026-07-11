@@ -22,6 +22,7 @@
     branchIndex?: number
     branchesLength?: number
     allowInlineHtml?: boolean
+    renderLatex?: boolean
     messageActions?: MessageActionButton[]
     editorActions?: EditorActionButton[]
     disableRoleSwitching?: boolean
@@ -67,6 +68,7 @@
       isEditing={isEditing}
       editingText={props.editingText}
       allowInlineHtml={props.allowInlineHtml}
+      renderLatex={props.renderLatex}
       onEditInput={(t) => props.onEditInput?.(t)}
       onEditKeydown={props.onEditKeydown}
     />

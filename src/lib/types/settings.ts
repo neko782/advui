@@ -157,6 +157,7 @@ export interface Settings {
   showThinkingSettings: boolean;
   fancyEffects: boolean;
   allowInlineHtml: boolean;
+  renderLatex: boolean;
   defaultChat: DefaultChatSettings;
   model: string;
   messageActions?: MessageActionButton[];

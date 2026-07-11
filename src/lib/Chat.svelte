@@ -1316,6 +1316,7 @@
     editingText={editingText}
     insertedMessageId={insertedMessageId}
     allowInlineHtml={settings?.allowInlineHtml}
+    renderLatex={settings?.renderLatex !== false}
     messageActions={settings?.messageActions}
     editorActions={settings?.editorActions}
     disableRoleSwitching={settings?.disableRoleSwitching}

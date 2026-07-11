@@ -243,6 +243,7 @@ function attachCompatFields(out: Partial<Settings> & Record<string, unknown>): S
   out.showThinkingSettings = !!out.showThinkingSettings;
   out.fancyEffects = !!out.fancyEffects;
   out.allowInlineHtml = !!out.allowInlineHtml;
+  out.renderLatex = out.renderLatex !== false;
   out.messageActions = normalizeMessageActions(out.messageActions);
   out.editorActions = normalizeEditorActions(out.editorActions);
   out.defaultTools = normalizeDefaultTools(out.defaultTools);
@@ -300,6 +301,7 @@ export function loadSettings(): Settings {
     showThinkingSettings: false,
     fancyEffects: false,
     allowInlineHtml: false,
+    renderLatex: true,
     showInsertButtons: true,
   });
   const parsed = safeRead<Record<string, unknown> | null>(SETTINGS_KEY, null, (value) => (value && typeof value === 'object' ? value as Record<string, unknown> : null));
@@ -339,6 +341,7 @@ export function loadSettings(): Settings {
     const showThinkingSettings = !!parsed?.showThinkingSettings;
     const fancyEffects = !!parsed?.fancyEffects;
     const allowInlineHtml = !!parsed?.allowInlineHtml;
+    const renderLatex = parsed?.renderLatex !== false;
     const messageActions = normalizeMessageActions(parsed?.messageActions);
     const editorActions = normalizeEditorActions(parsed?.editorActions);
     const defaultTools = normalizeDefaultTools(parsed?.defaultTools);
@@ -359,6 +362,7 @@ export function loadSettings(): Settings {
       showThinkingSettings,
       fancyEffects,
       allowInlineHtml,
+      renderLatex,
       messageActions,
       editorActions,
       defaultTools,
@@ -407,6 +411,7 @@ export function saveSettings(next: Partial<Settings>): Settings {
   const showThinkingSettings = !!next?.showThinkingSettings;
   const fancyEffects = !!next?.fancyEffects;
   const allowInlineHtml = !!next?.allowInlineHtml;
+  const renderLatex = next?.renderLatex !== false;
   const messageActions = normalizeMessageActions(next?.messageActions);
   const editorActions = normalizeEditorActions(next?.editorActions);
   const defaultTools = normalizeDefaultTools(next?.defaultTools);
@@ -427,6 +432,7 @@ export function saveSettings(next: Partial<Settings>): Settings {
     showThinkingSettings,
     fancyEffects,
     allowInlineHtml,
+    renderLatex,
     messageActions,
     editorActions,
     defaultTools,

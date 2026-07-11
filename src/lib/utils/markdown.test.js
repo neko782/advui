@@ -45,6 +45,23 @@ describe('renderMarkdown LaTeX', () => {
     expect(html).toContain('\\int_0^1 x^2 \\, dx = \\frac{1}{3}')
   })
 
+  it('renders backslash-delimited inline and display math', () => {
+    const inline = renderMarkdown('Euler wrote \\(e^{i\\pi} + 1 = 0\\).')
+    const display = renderMarkdown('Result: \\[\\sum_{n=1}^{\\infty} \\frac{1}{n^2}\\]')
+
+    expect(inline).toContain('class="katex"')
+    expect(inline).not.toContain('class="katex-display"')
+    expect(display).toContain('class="katex-display"')
+  })
+
+  it('leaves LaTeX delimiters as text when rendering is disabled', () => {
+    const html = renderMarkdown('Math: $x^2$ and \\(y^2\\)', { renderLatex: false })
+
+    expect(html).not.toContain('class="katex"')
+    expect(html).toContain('$x^2$')
+    expect(html).toContain('(y^2)')
+  })
+
   it('leaves dollar-delimited content in code blocks untouched', () => {
     const blocks = buildMarkdownBlocks('```text\n$not_math$\n```')
 

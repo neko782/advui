@@ -1,5 +1,5 @@
 import { Marked, type Token, type Tokens } from 'marked';
-import markedKatex from 'marked-katex-extension';
+import katex from 'katex';
 import hljs from 'highlight.js/lib/core';
 
 // 25 most common languages
@@ -188,11 +188,111 @@ const customRenderer = {
   },
 };
 
-// Flag checked by html renderer
+// Flags checked by renderers and extension tokenizers.
 let allowHtml = false;
+let allowLatex = true;
+
+const inlineDollarLatexRule = /^(\${1,2})(?!\$)((?:\\.|[^\\\n])*?(?:\\.|[^\\\n\$]))\1(?=[\s?!\.,:？！。，：]|$)/;
+const blockDollarLatexRule = /^(\${1,2})\n((?:\\[^]|[^\\])+?)\n\1(?:\n|$)/;
+const inlineParenLatexRule = /^\\\(((?:\\.|[^\\\n])*?)\\\)/;
+const inlineBracketLatexRule = /^\\\[([^\n]+?)\\\]/;
+const blockBracketLatexRule = /^\\\[\s*\n?([\s\S]+?)\n?\s*\\\](?:\n|$)/;
+
+function renderLatex(text: string, displayMode: boolean): string {
+  return katex.renderToString(text.trim(), { displayMode, throwOnError: false });
+}
+
+const latexExtension = {
+  extensions: [
+    {
+      name: 'inlineDollarLatex',
+      level: 'inline' as const,
+      start(src: string) {
+        return allowLatex ? src.indexOf('$') : undefined;
+      },
+      tokenizer(src: string) {
+        if (!allowLatex) return undefined;
+        const match = src.match(inlineDollarLatexRule);
+        if (!match) return undefined;
+        return {
+          type: 'inlineDollarLatex',
+          raw: match[0],
+          text: match[2],
+          displayMode: match[1].length === 2,
+        };
+      },
+      renderer(token: { text: string; displayMode: boolean }) {
+        return renderLatex(token.text, token.displayMode);
+      },
+    },
+    {
+      name: 'blockDollarLatex',
+      level: 'block' as const,
+      tokenizer(src: string) {
+        if (!allowLatex) return undefined;
+        const match = src.match(blockDollarLatexRule);
+        if (!match) return undefined;
+        return {
+          type: 'blockDollarLatex',
+          raw: match[0],
+          text: match[2],
+          displayMode: true,
+        };
+      },
+      renderer(token: { text: string }) {
+        return `${renderLatex(token.text, true)}\n`;
+      },
+    },
+    {
+      name: 'inlineParenLatex',
+      level: 'inline' as const,
+      start(src: string) {
+        return allowLatex ? src.indexOf('\\(') : undefined;
+      },
+      tokenizer(src: string) {
+        if (!allowLatex) return undefined;
+        const match = src.match(inlineParenLatexRule);
+        if (!match) return undefined;
+        return { type: 'inlineParenLatex', raw: match[0], text: match[1] };
+      },
+      renderer(token: { text: string }) {
+        return renderLatex(token.text, false);
+      },
+    },
+    {
+      name: 'blockBracketLatex',
+      level: 'block' as const,
+      tokenizer(src: string) {
+        if (!allowLatex) return undefined;
+        const match = src.match(blockBracketLatexRule);
+        if (!match) return undefined;
+        return { type: 'blockBracketLatex', raw: match[0], text: match[1] };
+      },
+      renderer(token: { text: string }) {
+        return `${renderLatex(token.text, true)}\n`;
+      },
+    },
+    {
+      name: 'inlineBracketLatex',
+      level: 'inline' as const,
+      start(src: string) {
+        return allowLatex ? src.indexOf('\\[') : undefined;
+      },
+      tokenizer(src: string) {
+        if (!allowLatex) return undefined;
+        const match = src.match(inlineBracketLatexRule);
+        if (!match) return undefined;
+        return { type: 'inlineBracketLatex', raw: match[0], text: match[1] };
+      },
+      renderer(token: { text: string }) {
+        return renderLatex(token.text, true);
+      },
+    },
+  ],
+};
 
 const marked = new Marked({ breaks: true, gfm: true });
-marked.use(markedKatex({ throwOnError: false }));
+marked.use(latexExtension);
 marked.use(customRenderer as any);
 marked.use({
   renderer: {
@@ -213,6 +313,7 @@ const MAX_CACHEABLE_CHARS = 12000;
 
 export interface RenderMarkdownOptions {
   allowInlineHtml?: boolean;
+  renderLatex?: boolean;
   cache?: boolean;
 }
 
@@ -259,6 +360,19 @@ function withAllowHtml<T>(value: boolean, fn: () => T): T {
   }
 }
 
+function withRenderOptions<T>(html: boolean, latex: boolean, fn: () => T): T {
+  const previousHtml = allowHtml;
+  const previousLatex = allowLatex;
+  allowHtml = html;
+  allowLatex = latex;
+  try {
+    return fn();
+  } finally {
+    allowHtml = previousHtml;
+    allowLatex = previousLatex;
+  }
+}
+
 function renderTokens(tokens: Token[], allowInlineHtmlValue: boolean): string {
   return withAllowHtml(allowInlineHtmlValue, () => marked.parser(tokens) as string);
 }
@@ -294,57 +408,59 @@ export function buildMarkdownBlocks(src: string, options: BuildMarkdownBlocksOpt
     return [];
   }
 
-  const tokens = marked.lexer(text);
-  const lastRenderableIndex = options.streaming ? findLastRenderableTokenIndex(tokens) : -1;
-  const blocks: MarkdownBlock[] = [];
-  let renderableIndex = 0;
+  return withRenderOptions(!!options.allowInlineHtml, options.renderLatex !== false, () => {
+    const tokens = marked.lexer(text);
+    const lastRenderableIndex = options.streaming ? findLastRenderableTokenIndex(tokens) : -1;
+    const blocks: MarkdownBlock[] = [];
+    let renderableIndex = 0;
 
-  for (let i = 0; i < tokens.length; i += 1) {
-    const token = tokens[i];
-    if (!isRenderableToken(token)) {
-      continue;
+    for (let i = 0; i < tokens.length; i += 1) {
+      const token = tokens[i];
+      if (!isRenderableToken(token)) {
+        continue;
+      }
+
+      const key = `${renderableIndex}:${token.type}`;
+      renderableIndex += 1;
+      const allowBlockHtml = !!options.allowInlineHtml && i !== lastRenderableIndex;
+
+      if (token.type === 'code') {
+        const highlighted = highlightCodeBlock(token.text, token.lang || '');
+        blocks.push({
+          kind: 'code',
+          key,
+          codeHtml: highlighted.codeHtml,
+          codeText: token.text,
+          langLabel: highlighted.langLabel,
+          langClass: highlighted.langClass,
+        });
+        continue;
+      }
+
+      if (token.type === 'table') {
+        blocks.push({
+          kind: 'table',
+          key,
+          header: token.header.map((cell) => ({
+            html: renderInlineTokens(cell.tokens, allowBlockHtml),
+            align: cell.align,
+          })),
+          rows: token.rows.map((row) => row.map((cell) => ({
+            html: renderInlineTokens(cell.tokens, allowBlockHtml),
+            align: cell.align,
+          }))),
+        });
+        continue;
+      }
+
+      const html = renderTokens([token], allowBlockHtml);
+      if (html) {
+        blocks.push({ kind: 'html', key, html });
+      }
     }
 
-    const key = `${renderableIndex}:${token.type}`;
-    renderableIndex += 1;
-    const allowBlockHtml = !!options.allowInlineHtml && i !== lastRenderableIndex;
-
-    if (token.type === 'code') {
-      const highlighted = highlightCodeBlock(token.text, token.lang || '');
-      blocks.push({
-        kind: 'code',
-        key,
-        codeHtml: highlighted.codeHtml,
-        codeText: token.text,
-        langLabel: highlighted.langLabel,
-        langClass: highlighted.langClass,
-      });
-      continue;
-    }
-
-    if (token.type === 'table') {
-      blocks.push({
-        kind: 'table',
-        key,
-        header: token.header.map((cell) => ({
-          html: renderInlineTokens(cell.tokens, allowBlockHtml),
-          align: cell.align,
-        })),
-        rows: token.rows.map((row) => row.map((cell) => ({
-          html: renderInlineTokens(cell.tokens, allowBlockHtml),
-          align: cell.align,
-        }))),
-      });
-      continue;
-    }
-
-    const html = renderTokens([token], allowBlockHtml);
-    if (html) {
-      blocks.push({ kind: 'html', key, html });
-    }
-  }
-
-  return blocks;
+    return blocks;
+  });
 }
 
 function wrapTables(html: string): string {
@@ -361,12 +477,13 @@ export function renderMarkdown(src: string, options: RenderMarkdownOptions = {})
   const text = String(src || '');
   const useCache = options.cache !== false && text.length <= MAX_CACHEABLE_CHARS;
   const allowInlineHtml = !!options.allowInlineHtml;
+  const renderLatexOption = options.renderLatex !== false;
 
   if (!useCache) {
-    return withAllowHtml(allowInlineHtml, () => wrapTables(marked.parse(text) as string));
+    return withRenderOptions(allowInlineHtml, renderLatexOption, () => wrapTables(marked.parse(text) as string));
   }
 
-  const key = `${allowInlineHtml ? '1' : '0'}:${text}`;
+  const key = `${allowInlineHtml ? '1' : '0'}:${renderLatexOption ? '1' : '0'}:${text}`;
 
   // Return cached result if available
   if (cache.has(key)) {
@@ -378,7 +495,7 @@ export function renderMarkdown(src: string, options: RenderMarkdownOptions = {})
   }
 
   // Render and cache
-  const result = withAllowHtml(allowInlineHtml, () => wrapTables(marked.parse(text) as string));
+  const result = withRenderOptions(allowInlineHtml, renderLatexOption, () => wrapTables(marked.parse(text) as string));
   cache.set(key, result);
 
   // Evict oldest entry if cache is full
