@@ -1,5 +1,6 @@
 <script lang="ts">
   import { IconDragHandle, IconTravelExplore, IconCodeBlocks, IconTerminal, IconImagesmode, IconExtension } from '../../icons'
+  import { DEFAULT_MESSAGE_ACTIONS } from '../../constants/defaults.js'
   import type { MessageActionRole } from '../../types'
   import type { SettingsDraft } from './settingsDraft.svelte'
 

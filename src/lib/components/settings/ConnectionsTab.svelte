@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte'
   import { IconAdd, IconVisibility, IconVisibilityOff, IconAutorenew, IconDelete, IconDragHandle } from '../../icons'
+  import { DEFAULT_API_BASE_URL } from './settingsDraft.svelte'
   import type { SettingsDraft } from './settingsDraft.svelte'
 
   interface Props {
