@@ -186,9 +186,18 @@ const customRenderer = {
       return `<a href="${escapeHtml(href)}"${titleAttr} target="_blank" rel="noopener noreferrer">${text}</a>`;
     },
 
-    // Keep GFM's other features, but preserve tildes as conversational text.
-    del(token: { raw?: string; text?: string }) {
-      return escapeHtml(token.raw || `~~${token.text || ''}~~`);
+    // A single tilde pair is common in conversational text. Preserve ~text~,
+    // while retaining standard GFM strikethrough for ~~text~~.
+    del(
+      this: { parser?: { parseInline?: (tokens: unknown[]) => string } },
+      token: { raw?: string; text?: string; tokens?: unknown[] }
+    ) {
+      const raw = token.raw || '';
+      if (!raw.startsWith('~~')) return escapeHtml(raw || `~${token.text || ''}~`);
+      const text = token.tokens && this?.parser?.parseInline
+        ? this.parser.parseInline(token.tokens)
+        : escapeHtml(token.text || '');
+      return `<del>${text}</del>`;
     },
   },
 };

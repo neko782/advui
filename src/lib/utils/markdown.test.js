@@ -29,12 +29,12 @@ describe('renderMarkdown link sanitization', () => {
     expect(html).toContain('<strong>hello</strong>')
   })
 
-  it('renders tildes literally instead of as strikethrough', () => {
-    const html = renderMarkdown('About ~10 minutes and ~~not crossed out~~', { cache: false })
+  it('renders single tildes literally while retaining double-tilde strikethrough', () => {
+    const html = renderMarkdown('About ~10 minutes~ and ~~crossed out~~', { cache: false })
 
-    expect(html).toContain('~10 minutes')
-    expect(html).toContain('~~not crossed out~~')
-    expect(html).not.toContain('<del>')
+    expect(html).toContain('~10 minutes~')
+    expect(html).toContain('<del>crossed out</del>')
+    expect(html).not.toContain('<del>10 minutes</del>')
   })
 })
 

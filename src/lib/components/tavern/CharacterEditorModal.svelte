@@ -275,6 +275,7 @@
     width: min(calc(100vw - 48px), 640px);
     height: min(calc(100vh - 48px), 780px);
     height: min(calc(100dvh - 48px), 780px);
+    min-height: 0;
     background: var(--panel);
     border: 1px solid var(--border);
     border-radius: 20px;
@@ -291,6 +292,7 @@
     to { opacity: 1; transform: scale(1) translateY(0); }
   }
   .modal-head {
+    flex: 0 0 auto;
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -321,10 +323,13 @@
     border-color: color-mix(in srgb, var(--border) 70%, var(--accent) 30%);
     transform: translateY(-1px);
   }
-  .modal-body { flex: 1; overflow: hidden; }
+  .modal-body { flex: 1 1 auto; min-height: 0; overflow: hidden; }
   .modal-scroller {
     height: 100%;
+    box-sizing: border-box;
     overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
     padding: 28px;
     display: grid;
     gap: 12px;
@@ -335,6 +340,7 @@
   .modal-scroller::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
   .modal-scroller::-webkit-scrollbar-thumb:hover { background: var(--muted); }
   .modal-foot {
+    flex: 0 0 auto;
     display: flex;
     align-items: center;
     gap: 10px;
