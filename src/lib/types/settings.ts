@@ -69,6 +69,8 @@ export interface PresetFields {
   // MCP settings (Responses API only)
   mcpEnabled?: boolean;
   mcpServers?: McpServerConfig[];
+  /** When true, the preset is only offered in tavern mode (hidden from chat mode pickers). */
+  tavernOnly?: boolean;
 }
 
 export interface Preset extends PresetFields {
@@ -176,11 +178,15 @@ export interface Settings {
   personas?: Persona[];
   selectedPersonaId?: string;
   /** Shape of the character avatar next to messages. */
-  tavernAvatarShape?: 'circle' | 'rounded';
-  /** Preset selection used by tavern chats (independent from chat mode by default). */
+  tavernAvatarShape?: 'circle' | 'rounded' | 'card';
+  /** Preset selection used by tavern chats (independent from chat mode). */
   tavernSelectedPresetId?: string;
-  /** When true, tavern chats follow the chat mode preset selection instead. */
+  /** @deprecated No longer used; tavern keeps its own selection. Kept for stored-settings compat. */
   tavernSharePresetSelection?: boolean;
+  /** When true, tavern chats manage presets per chat, exactly like chat mode. */
+  tavernPerChatPresets?: boolean;
+  /** Preset used automatically for new chat-mode chats (skips the preset menu). Empty = ask. */
+  defaultNewChatPresetId?: string;
 }
 
 // ============================================================================

@@ -1127,6 +1127,9 @@
     if (!characterId) return
     try {
       const current = settingsStore.current
+      // Per-chat preset mode: chat settings are per-chat overrides, exactly
+      // like chat mode — never write back into the preset.
+      if (current?.tavernPerChatPresets) return
       const targetId = resolveTavernPresetId(current)
       if (!targetId) return
       const list = Array.isArray(current?.presets) ? current.presets : []
@@ -1182,13 +1185,14 @@
       mcpEnabled: typeof preset.mcpEnabled === 'boolean' ? preset.mcpEnabled : chatSettings.mcpEnabled,
       mcpServers: preset.mcpServers ?? chatSettings.mcpServers,
     }
-    // Tavern: picking a preset from the composer switches the tavern-wide selection
+    // Tavern: picking a preset from the composer switches the tavern-wide
+    // selection — unless per-chat presets are enabled, in which case the pick
+    // only affects this chat (same as chat mode).
     if (characterId && preset.id) {
       try {
         const current = settingsStore.current
-        if (resolveTavernPresetId(current) !== preset.id) {
-          const key = current?.tavernSharePresetSelection ? 'selectedPresetId' : 'tavernSelectedPresetId'
-          settingsStore.save({ ...current, [key]: preset.id })
+        if (!current?.tavernPerChatPresets && resolveTavernPresetId(current) !== preset.id) {
+          settingsStore.save({ ...current, tavernSelectedPresetId: preset.id })
         }
       } catch {}
     }
@@ -1262,6 +1266,8 @@
   $effect(() => {
     if (!characterId) return
     const current = settingsStore.current
+    // Per-chat preset mode: chats keep their own settings, no auto-follow.
+    if (current?.tavernPerChatPresets) return
     const selectedId = resolveTavernPresetId(current)
     if (!selectedId) return
     const preset = (current?.presets || []).find(p => p?.id === selectedId)
@@ -1456,7 +1462,7 @@
     attachedImages={images.attachedImages}
     keybinds={settings?.keybinds}
     showThinkingControls={!!settings?.showThinkingSettings}
-    presets={settings?.presets}
+    presets={characterId ? settings?.presets : (settings?.presets || []).filter(p => !p?.tavernOnly)}
     onToggleChatSettings={toggleChatSettings}
     onCloseChatSettings={() => (chatSettingsOpen = false)}
     onChangeConnection={(val) => {

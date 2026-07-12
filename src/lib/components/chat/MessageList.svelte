@@ -11,7 +11,7 @@
     /** Tavern: active persona name (labels user messages). */
     personaName?: string
     /** Tavern: avatar shape ('circle' default, or 'rounded' square). */
-    avatarShape?: 'circle' | 'rounded'
+    avatarShape?: 'circle' | 'rounded' | 'card'
     imageCache?: Record<string, { data: string; mimeType?: string; name?: string }>
     chatId?: string
     notice?: string

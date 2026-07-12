@@ -212,7 +212,11 @@
     const list = Array.isArray(settings?.presets) ? settings.presets : []
     const requestedId = typeof options?.presetId === 'string' ? options.presetId : null
     const requested = requestedId ? list.find(p => p?.id === requestedId) : null
-    const preset = requested || list[0] || null
+    // No explicit preset: prefer the configured default for new chats
+    const preferredDefault = !requested && settings?.defaultNewChatPresetId
+      ? list.find(p => p?.id === settings.defaultNewChatPresetId)
+      : null
+    const preset = requested || preferredDefault || list.find(p => !p?.tavernOnly) || list[0] || null
     const initial = preset
       ? { presetId: preset.id, preset }
       : {}
@@ -382,12 +386,12 @@
 
   function onTavernSettingsSave(data: {
     tavernSelectedPresetId: string
-    tavernSharePresetSelection: boolean
+    tavernPerChatPresets: boolean
     promptPresets: PromptPreset[]
     selectedPromptPresetId: string
     personas: Persona[]
     selectedPersonaId: string
-    tavernAvatarShape: 'circle' | 'rounded'
+    tavernAvatarShape: 'circle' | 'rounded' | 'card'
   }) {
     settingsStore.save({ ...settingsStore.current, ...data })
   }
@@ -400,6 +404,7 @@
       chats={normalChats}
       selectedId={selectedId}
       presets={presets}
+      defaultPresetId={settingsStore.current?.defaultNewChatPresetId}
       generatingMap={generationRegistry.map}
       onSelect={onSelectChat}
       onNewChat={onNewChat}
@@ -453,8 +458,7 @@
     open={showTavernSettings}
     connectionPresets={presets}
     tavernSelectedPresetId={settingsStore.current?.tavernSelectedPresetId}
-    tavernSharePresetSelection={settingsStore.current?.tavernSharePresetSelection}
-    chatSelectedPresetId={settingsStore.current?.selectedPresetId}
+    tavernPerChatPresets={settingsStore.current?.tavernPerChatPresets}
     promptPresets={settingsStore.current?.promptPresets}
     selectedPromptPresetId={settingsStore.current?.selectedPromptPresetId}
     personas={settingsStore.current?.personas}

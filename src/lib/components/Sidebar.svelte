@@ -12,6 +12,8 @@
     chats?: ChatListItem[]
     selectedId?: string | null
     presets?: Preset[]
+    /** When set (and valid), new chats use this preset directly without asking. */
+    defaultPresetId?: string
     generatingMap?: Record<string, boolean>
     onSelect?: (id: string) => void
     onNewChat?: (options?: { presetId?: string }) => void
@@ -27,6 +29,10 @@
 
   // Git hash injected at build time
   const gitHash = __GIT_HASH__
+
+  // Chat mode never offers tavern-only presets
+  const chatPresets = $derived((Array.isArray(props?.presets) ? props.presets : []).filter(p => !p?.tavernOnly))
+  const defaultPreset = $derived(chatPresets.find(p => p?.id && p.id === props.defaultPresetId) || null)
 
   let confirmDeleteId = $state<string | null>(null)
   let editingId = $state<string | null>(null)
@@ -220,7 +226,13 @@
   }
 
   function handleNewChatClick() {
-    const list = Array.isArray(props?.presets) ? props.presets : []
+    // A default preset skips the preset menu entirely
+    if (defaultPreset?.id) {
+      closePresetMenu()
+      props.onNewChat?.({ presetId: defaultPreset.id })
+      return
+    }
+    const list = chatPresets
     if (list.length <= 1) {
       closePresetMenu()
       const first = list[0]
@@ -471,8 +483,8 @@
       presetMenuOpen = false
     }
     lastSidebarOpen = isOpen
-    const count = Array.isArray(props?.presets) ? props.presets.length : 0
-    if (count <= 1 && presetMenuOpen) presetMenuOpen = false
+    const count = chatPresets.length
+    if ((count <= 1 || defaultPreset) && presetMenuOpen) presetMenuOpen = false
   })
 
   onDestroy(() => {
@@ -505,13 +517,13 @@
       <!-- Primary nav actions -->
       <nav class="top-nav" aria-label="Primary">
         <div class="new-chat-wrapper">
-          <button class="nav-item" onclick={handleNewChatClick} title="New chat" aria-label="New chat" aria-haspopup={(Array.isArray(props?.presets) && props.presets.length > 1) ? 'true' : 'false'} aria-expanded={presetMenuOpen ? 'true' : 'false'}>
+          <button class="nav-item" onclick={handleNewChatClick} title="New chat" aria-label="New chat" aria-haspopup={(!defaultPreset && chatPresets.length > 1) ? 'true' : 'false'} aria-expanded={presetMenuOpen ? 'true' : 'false'}>
             <IconEditSquare style="font-size: 20px;" />
             <span class="label">New chat</span>
           </button>
           {#if presetMenuOpen}
             <div class="preset-menu" bind:this={presetMenuEl} aria-label="Choose preset">
-              {#each (props.presets || []) as preset (preset.id || preset.name)}
+              {#each chatPresets as preset (preset.id || preset.name)}
                 <button
                   type="button"
                   class="preset-menu-item"

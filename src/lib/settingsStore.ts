@@ -268,12 +268,19 @@ function attachCompatFields(out: Partial<Settings> & Record<string, unknown>): S
   out.selectedPersonaId = selectedPersonaId;
   // Active persona kept in sync for consumers (prompt building, greetings)
   out.persona = personas.find((p) => p.id === selectedPersonaId) || personas[0];
-  out.tavernAvatarShape = out.tavernAvatarShape === 'rounded' ? 'rounded' : 'circle';
+  out.tavernAvatarShape = out.tavernAvatarShape === 'rounded' || out.tavernAvatarShape === 'card'
+    ? out.tavernAvatarShape
+    : 'circle';
   out.tavernSharePresetSelection = !!out.tavernSharePresetSelection;
+  out.tavernPerChatPresets = !!out.tavernPerChatPresets;
   const tavernPresetCandidate = typeof out.tavernSelectedPresetId === 'string' ? out.tavernSelectedPresetId : null;
   out.tavernSelectedPresetId = ensuredPresets.some((p) => p.id === tavernPresetCandidate)
     ? tavernPresetCandidate!
     : (out.selectedPresetId as string);
+  const defaultNewChatCandidate = typeof out.defaultNewChatPresetId === 'string' ? out.defaultNewChatPresetId : '';
+  out.defaultNewChatPresetId = ensuredPresets.some((p) => p.id === defaultNewChatCandidate)
+    ? defaultNewChatCandidate
+    : '';
   return out as Settings;
 }
 
@@ -401,6 +408,8 @@ export function loadSettings(): Settings {
       tavernAvatarShape: parsed?.tavernAvatarShape as Settings['tavernAvatarShape'],
       tavernSelectedPresetId: parsed?.tavernSelectedPresetId as string | undefined,
       tavernSharePresetSelection: parsed?.tavernSharePresetSelection as boolean | undefined,
+      tavernPerChatPresets: parsed?.tavernPerChatPresets as boolean | undefined,
+      defaultNewChatPresetId: parsed?.defaultNewChatPresetId as string | undefined,
     });
   } catch (err) {
     console.error('Failed to load settings, falling back to defaults:', err);
@@ -479,6 +488,8 @@ export function saveSettings(next: Partial<Settings>): Settings {
     tavernAvatarShape: next?.tavernAvatarShape,
     tavernSelectedPresetId: next?.tavernSelectedPresetId,
     tavernSharePresetSelection: next?.tavernSharePresetSelection,
+    tavernPerChatPresets: next?.tavernPerChatPresets,
+    defaultNewChatPresetId: next?.defaultNewChatPresetId,
   });
   const ok = safeWrite(SETTINGS_KEY, data);
   if (!ok) {

@@ -57,6 +57,7 @@ export const DEFAULT_PRESET_FIELDS: PresetFields = {
   // MCP defaults
   mcpEnabled: false,
   mcpServers: [],
+  tavernOnly: false,
 };
 
 export function generatePresetId(): string {
@@ -154,6 +155,9 @@ export function normalizePreset(
   const mcpEnabled = typeof base.mcpEnabled === 'boolean' ? base.mcpEnabled : false;
   const mcpServers = normalizeMcpServerList(base.mcpServers);
 
+  // Tavern visibility
+  const tavernOnly = base.tavernOnly === true;
+
   const result: Preset = {
     id,
     model,
@@ -190,6 +194,7 @@ export function normalizePreset(
     // MCP settings
     mcpEnabled,
     mcpServers,
+    tavernOnly,
   };
 
   // Only include name if it was explicitly provided or if generating for a list

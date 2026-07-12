@@ -14,7 +14,7 @@
     /** Tavern: active persona name (labels user messages). */
     personaName?: string
     /** Tavern: avatar shape ('circle' default, or 'rounded' square). */
-    avatarShape?: 'circle' | 'rounded'
+    avatarShape?: 'circle' | 'rounded' | 'card'
     imageCache?: Record<string, { data: string; mimeType?: string; name?: string }>
     total?: number
     visibleCount?: number
@@ -73,6 +73,10 @@
   // Move should target the clicked message, not its parent
   function doMoveUp() { props.onMoveUp?.(m.id) }
   function doMoveDown() { props.onMoveDown?.(m.id) }
+
+  const avatarShapeClass = $derived(
+    props.avatarShape === 'rounded' ? 'rounded' : props.avatarShape === 'card' ? 'card' : ''
+  )
 </script>
 
 <div class={`row ${m.role}`}>
@@ -80,9 +84,9 @@
     {#if showCharacter}
       <div class="char-header">
         {#if props.character!.avatar}
-          <img class="char-avatar {props.avatarShape === 'rounded' ? 'rounded' : ''}" src={props.character!.avatar} alt={props.character!.name} loading="lazy" />
+          <img class="char-avatar {avatarShapeClass}" src={props.character!.avatar} alt={props.character!.name} loading="lazy" />
         {:else}
-          <div class="char-avatar placeholder {props.avatarShape === 'rounded' ? 'rounded' : ''}"><IconPerson style="font-size: 18px;" /></div>
+          <div class="char-avatar placeholder {avatarShapeClass}"><IconPerson style="font-size: 18px;" /></div>
         {/if}
         <MessageMeta role={m.role} label={roleLabel} locked={props.locked} debug={props.debug} messageId={m.id} disabled={props.disableRoleSwitching} onSetRole={(r) => props.onSetRole?.(m.id, r)} />
       </div>
@@ -161,6 +165,8 @@
     flex: 0 0 auto;
   }
   .char-avatar.rounded { border-radius: 8px; }
+  /* Official character card aspect ratio (400x600 → 2:3) */
+  .char-avatar.card { width: 30px; height: 45px; border-radius: 8px; object-position: center; }
   .char-avatar.placeholder { display: grid; place-items: center; color: var(--muted); }
   .stack { display: grid; grid-auto-flow: row; grid-auto-rows: max-content; grid-template-columns: minmax(0, 1fr); gap: 2px; width: min(720px, 92%); }
   .stack.assistant { justify-content: start; }

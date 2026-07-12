@@ -11,15 +11,14 @@
   import type { Preset } from '../../types'
   import type { PromptPreset, PromptBlock, PromptBlockMarker, Persona } from '../../types/tavern'
 
-  type AvatarShape = 'circle' | 'rounded'
+  type AvatarShape = 'circle' | 'rounded' | 'card'
 
   interface Props {
     open?: boolean
     /** Connection presets (selection only; edited in the main Settings). */
     connectionPresets?: Preset[]
     tavernSelectedPresetId?: string
-    tavernSharePresetSelection?: boolean
-    chatSelectedPresetId?: string
+    tavernPerChatPresets?: boolean
     promptPresets?: PromptPreset[]
     selectedPromptPresetId?: string
     personas?: Persona[]
@@ -27,7 +26,7 @@
     avatarShape?: AvatarShape
     onSave?: (data: {
       tavernSelectedPresetId: string
-      tavernSharePresetSelection: boolean
+      tavernPerChatPresets: boolean
       promptPresets: PromptPreset[]
       selectedPromptPresetId: string
       personas: Persona[]
@@ -51,7 +50,7 @@
   let personas = $state<Persona[]>([])
   let selectedPersonaId = $state('')
   let connectionPresetId = $state('')
-  let shareSelection = $state(false)
+  let perChatPresets = $state(false)
   let avatarShape = $state<AvatarShape>('circle')
   let expandedBlockId = $state<string | null>(null)
   let errorText = $state('')
@@ -72,8 +71,8 @@
         ? props.selectedPersonaId!
         : personas[0].id!
       connectionPresetId = props.tavernSelectedPresetId || (props.connectionPresets?.[0]?.id ?? '') || ''
-      shareSelection = !!props.tavernSharePresetSelection
-      avatarShape = props.avatarShape === 'rounded' ? 'rounded' : 'circle'
+      perChatPresets = !!props.tavernPerChatPresets
+      avatarShape = props.avatarShape === 'rounded' || props.avatarShape === 'card' ? props.avatarShape : 'circle'
       expandedBlockId = null
       errorText = ''
     }
@@ -87,7 +86,7 @@
   $effect(() => {
     const sig = JSON.stringify({
       presets, selectedId, personas, selectedPersonaId,
-      connectionPresetId, shareSelection, avatarShape,
+      connectionPresetId, perChatPresets, avatarShape,
     })
     if (!props.open) {
       persistInitialized = false
@@ -103,7 +102,7 @@
     lastPersistSig = sig
     props.onSave?.({
       tavernSelectedPresetId: connectionPresetId,
-      tavernSharePresetSelection: shareSelection,
+      tavernPerChatPresets: perChatPresets,
       promptPresets: JSON.parse(JSON.stringify(presets)),
       selectedPromptPresetId: selectedId,
       personas: JSON.parse(JSON.stringify(personas)),
@@ -299,22 +298,23 @@
           {#if tab === 'general'}
             <div class="group">
               <div class="group-title">Preset</div>
+              <div class="field">
+                <span class="field-label">{perChatPresets ? 'Preset for new tavern chats' : 'Preset for all tavern chats'}</span>
+                <select class="select" value={connectionPresetId} onchange={(e) => (connectionPresetId = e.currentTarget.value)} aria-label="Tavern preset">
+                  {#each (props.connectionPresets || []) as preset (preset.id)}
+                    <option value={preset.id}>{preset.name || 'Preset'}{preset.model ? ` — ${preset.model}` : ''}</option>
+                  {/each}
+                </select>
+              </div>
               <label class="switch">
-                <input type="checkbox" checked={shareSelection} onchange={(e) => (shareSelection = e.currentTarget.checked)} style="display: none;" />
-                <span class="switch-ui" data-on={shareSelection}></span>
-                <span class="switch-label">Follow Chat mode preset selection</span>
+                <input type="checkbox" checked={perChatPresets} onchange={(e) => (perChatPresets = e.currentTarget.checked)} style="display: none;" />
+                <span class="switch-ui" data-on={perChatPresets}></span>
+                <span class="switch-label">Per-chat presets (like Chat mode)</span>
               </label>
-              {#if shareSelection}
-                <div class="hint">Tavern chats use whatever preset is selected in Chat mode.</div>
+              {#if perChatPresets}
+                <div class="hint">Each character chat keeps its own settings. Picking a preset in the composer or tweaking chat settings only affects that chat — the preset itself is never modified.</div>
               {:else}
-                <div class="field">
-                  <select class="select" value={connectionPresetId} onchange={(e) => (connectionPresetId = e.currentTarget.value)} aria-label="Tavern preset">
-                    {#each (props.connectionPresets || []) as preset (preset.id)}
-                      <option value={preset.id}>{preset.name || 'Preset'}{preset.model ? ` — ${preset.model}` : ''}</option>
-                    {/each}
-                  </select>
-                  <div class="hint">Applies to all tavern chats. The chat settings button in a character chat quick-edits this preset. Presets are managed in the main Settings and are never exported.</div>
-                </div>
+                <div class="hint">Applies to all tavern chats. The chat settings button in a character chat quick-edits this preset. Presets are managed in the main Settings and are never exported.</div>
               {/if}
             </div>
 
@@ -329,7 +329,11 @@
                   <button type="button" class="shape-option {avatarShape === 'rounded' ? 'active' : ''}" role="radio" aria-checked={avatarShape === 'rounded'} onclick={() => (avatarShape = 'rounded')}>
                     <span class="shape-preview rounded"></span> Rounded
                   </button>
+                  <button type="button" class="shape-option {avatarShape === 'card' ? 'active' : ''}" role="radio" aria-checked={avatarShape === 'card'} onclick={() => (avatarShape = 'card')}>
+                    <span class="shape-preview card"></span> Card (2:3)
+                  </button>
                 </div>
+                <div class="hint">Card keeps the original character card aspect ratio (400×600).</div>
               </div>
             </div>
           {:else if tab === 'prompts'}
@@ -493,6 +497,7 @@
   .panel {
     width: min(calc(100vw - 48px), 760px);
     height: min(calc(100vh - 48px), 780px);
+    height: min(calc(100dvh - 48px), 780px);
     background: var(--panel);
     border: 1px solid var(--border);
     border-radius: 20px;
@@ -591,6 +596,7 @@
   /* Group cards, fields — same vocabulary as SettingsModal */
   .group {
     display: grid;
+    min-width: 0;
     gap: 12px;
     padding: 20px;
     background: var(--panel);
@@ -600,12 +606,12 @@
   }
   .group:hover { border-color: color-mix(in srgb, var(--border) 80%, var(--text) 20%); }
   .group-title { font-weight: 600; font-size: 1rem; letter-spacing: -0.01em; color: var(--text); }
-  .group-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-  .field { display: grid; gap: 6px; }
+  .group-head { display: flex; align-items: center; justify-content: space-between; gap: 8px 12px; flex-wrap: wrap; min-width: 0; }
+  .field { display: grid; gap: 6px; min-width: 0; }
   .field-label { font-size: 0.85rem; color: var(--muted); }
-  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; min-width: 0; }
   .grow { flex: 1 1 auto; min-width: 0; }
-  .hint { color: var(--muted); font-size: .85rem; line-height: 1.4; }
+  .hint { color: var(--muted); font-size: .85rem; line-height: 1.4; overflow-wrap: anywhere; }
   .input, .select, .textarea {
     box-sizing: border-box;
     padding: 9px 12px;
@@ -703,9 +709,11 @@
   }
   .shape-preview.circle { border-radius: 50%; }
   .shape-preview.rounded { border-radius: 6px; }
+  .shape-preview.card { width: 16px; height: 24px; border-radius: 4px; }
+  .shape-switch { flex-wrap: wrap; }
 
   /* Prompt blocks */
-  .blocks { display: flex; flex-direction: column; gap: 6px; }
+  .blocks { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
   .block {
     border: 1px solid var(--border);
     border-radius: 12px;
@@ -715,7 +723,7 @@
   .block:hover { border-color: color-mix(in srgb, var(--border) 60%, var(--accent) 40%); }
   .block.disabled { opacity: 0.55; }
   .block.marker { border-style: dashed; }
-  .block-head { display: flex; align-items: center; gap: 8px; padding: 8px 10px; }
+  .block-head { display: flex; align-items: center; gap: 8px; padding: 8px 10px; min-width: 0; }
   .block-head input[type='checkbox'] { width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer; flex: 0 0 auto; }
   .block-title {
     display: flex;
@@ -767,7 +775,7 @@
   .block-body { padding: 0 10px 10px; display: flex; flex-direction: column; gap: 8px; }
 
   /* Personas */
-  .personas { display: flex; flex-direction: column; gap: 10px; }
+  .personas { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
   .persona {
     border: 1px solid var(--border);
     border-radius: 12px;
@@ -784,7 +792,8 @@
     background: color-mix(in srgb, var(--accent) 6%, var(--bg) 94%);
     box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 12%, transparent);
   }
-  .persona-head { display: flex; align-items: center; gap: 8px; }
+  .persona-head { display: flex; align-items: center; gap: 8px; min-width: 0; flex-wrap: wrap; }
+  .persona-head .input.grow { flex: 1 1 140px; }
   .active-toggle {
     display: inline-flex;
     align-items: center;
@@ -805,11 +814,19 @@
 
   @media (max-width: 640px) {
     .modal { padding: 0; }
-    .panel { width: 100%; height: 100%; border-radius: 0; border: none; }
-    .modal-head { padding: 16px 20px; }
-    .tab-bar { padding: 10px 16px; gap: 4px; }
+    .panel { width: 100%; height: 100%; height: 100dvh; border-radius: 0; border: none; }
+    .modal-head { padding: 12px 16px; }
+    .tab-bar { padding: 8px 12px; gap: 4px; }
     .tab { padding: 8px 14px; font-size: 0.9rem; }
-    .modal-scroller { padding: 20px; gap: 16px; }
-    .group { padding: 16px; border-radius: 12px; }
+    .modal-scroller {
+      padding: 12px;
+      padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+      gap: 12px;
+    }
+    .group { padding: 12px; border-radius: 12px; }
+    /* Icon-button toolbars (prompt preset actions) wrap under the title
+       instead of forcing the group wider than the screen. */
+    .group-head .row { flex: 1 1 100%; justify-content: flex-start; }
+    .block-actions { opacity: 1; }
   }
 </style>

@@ -594,24 +594,15 @@
   @media (max-width: 640px) {
     .group { padding: 16px; border-radius: 12px;
     }
-    /* Two-row layout: label + toggle on top, role checks underneath,
-       so button names never get squeezed out. */
-    .action-item {
-      display: grid;
-      grid-template-columns: auto minmax(0, 1fr) auto;
-      grid-template-areas:
-        'handle label toggle'
-        'handle roles roles';
-      align-items: center;
-      row-gap: 0;
-    }
-    .action-item .drag-handle { grid-area: handle; }
-    .action-item-label { grid-area: label; }
-    .action-toggle { grid-area: toggle; }
+    /* Two-row layout: handle + name + toggle on the first line, role
+       checkboxes wrap to their own full-width line below, so button names
+       never get squeezed out. */
+    .action-item { row-gap: 0; }
     .message-role-checks {
-      grid-area: roles;
+      order: 10;
+      flex-basis: 100%;
       margin-left: 0;
-      padding: 0 4px 8px;
+      padding: 2px 4px 8px;
     }
   }
   /* Smooth scrollbar styling */

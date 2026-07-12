@@ -32,6 +32,24 @@
   const removePreset = (id) => draft.removePreset(id)
   const updateActivePreset = (patch) => draft.updateActivePreset(patch)
 
+  // Default preset for new chat-mode chats (skips the preset menu)
+  const isDefaultForNewChats = $derived(
+    !!activePreset?.id && local?.defaultNewChatPresetId === activePreset.id
+  )
+  function toggleDefaultForNewChats(checked: boolean) {
+    if (!activePreset?.id) return
+    local.defaultNewChatPresetId = checked ? activePreset.id : ''
+    draft.persist()
+  }
+  function toggleTavernOnly(checked: boolean) {
+    updateActivePreset({ tavernOnly: checked })
+    // A tavern-only preset can't be the chat-mode default
+    if (checked && local?.defaultNewChatPresetId === activePreset?.id) {
+      local.defaultNewChatPresetId = ''
+      draft.persist()
+    }
+  }
+
   onMount(() => {
     // Model suggestions come from the shared cache; hydrate it lazily
     if (!draft.modelCacheLoaded) {
@@ -162,7 +180,15 @@
                       class="item-content"
                       onclick={() => selectPreset(preset.id)}
                     >
-                      <span class="item-name">{preset.name || 'Untitled'}</span>
+                      <span class="item-name">
+                        {preset.name || 'Untitled'}
+                        {#if local?.defaultNewChatPresetId && preset.id === local.defaultNewChatPresetId}
+                          <span class="item-badge">default</span>
+                        {/if}
+                        {#if preset.tavernOnly}
+                          <span class="item-badge tavern">tavern</span>
+                        {/if}
+                      </span>
                       <span class="item-meta">{preset.model || 'No model'} · {presetConnection?.name || 'No connection'}</span>
                     </button>
                     {#if (local?.presets?.length || 0) > 1}
@@ -192,6 +218,30 @@
                       aria-label="Preset name"
                     />
                   </label>
+                  <label class="switch" title="Only offer this preset in tavern mode">
+                    <input
+                      type="checkbox"
+                      checked={!!activePreset.tavernOnly}
+                      onchange={(event) => toggleTavernOnly(!!event.currentTarget.checked)}
+                      aria-label="Tavern only"
+                    />
+                    <span class="switch-ui" aria-hidden="true"></span>
+                    <span class="switch-label">Tavern only</span>
+                  </label>
+                  <p class="hint">Hide this preset from Chat mode — it only shows up in tavern preset pickers.</p>
+                  {#if !activePreset.tavernOnly}
+                    <label class="switch" title="Use this preset for new chats without asking">
+                      <input
+                        type="checkbox"
+                        checked={isDefaultForNewChats}
+                        onchange={(event) => toggleDefaultForNewChats(!!event.currentTarget.checked)}
+                        aria-label="Default for new chats"
+                      />
+                      <span class="switch-ui" aria-hidden="true"></span>
+                      <span class="switch-label">Default for new chats</span>
+                    </label>
+                    <p class="hint">New chats use this preset immediately instead of asking which preset to use.</p>
+                  {/if}
                   <label class="field">
                     <span>System prompt</span>
                     <textarea
@@ -960,6 +1010,23 @@
     overflow: hidden;
     text-overflow: ellipsis;
     max-width: 100%;
+  }
+  .item-badge {
+    display: inline-block;
+    vertical-align: 1px;
+    font-size: 0.62rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 1px 7px;
+    margin-left: 4px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--accent) 14%, transparent);
+    color: var(--accent);
+  }
+  .item-badge.tavern {
+    background: color-mix(in srgb, var(--border) 60%, transparent);
+    color: var(--muted);
   }
   .item-delete {
     display: flex;
