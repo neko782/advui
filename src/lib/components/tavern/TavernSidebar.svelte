@@ -1,6 +1,9 @@
 <script lang="ts">
-  import { IconMenu, IconEditSquare, IconSettings, IconUpload, IconAdd, IconChevronLeft, IconEdit, IconDelete, IconTune, IconPerson } from '../../icons'
+  import { onMount } from 'svelte'
+  import { IconMenu, IconEditSquare, IconSettings, IconUpload, IconAdd, IconChevronLeft, IconEdit, IconDelete, IconTune, IconPerson, IconMoreVert, IconDownload, IconContentCopy } from '../../icons'
   import ConfirmModal from '../ConfirmModal.svelte'
+  import EditModal from '../EditModal.svelte'
+  import { exportChat } from '../../utils/exportImport'
   import type { ChatListItem } from '../../types'
   import type { Character } from '../../types/tavern'
 
@@ -19,6 +22,8 @@
     onNewChat?: (characterId: string) => void
     onSelect?: (id: string) => void
     onDeleteChat?: (id: string) => Promise<void> | void
+    onDuplicateChat?: (id: string) => Promise<void>
+    onRenameChat?: (id: string, title: string) => Promise<void>
     onOpenTavernSettings?: () => void
     onToggle?: () => void
     onOpenSettings?: () => void
@@ -33,6 +38,8 @@
   let fileInput = $state<HTMLInputElement | null>(null)
   let deleteCharacterId = $state<string | null>(null)
   let deleteChatId = $state<string | null>(null)
+  let chatMenuOpen = $state<string | null>(null)
+  let editModalChat = $state<ChatListItem | null>(null)
 
   const selectedCharacter = $derived(
     (props.characters || []).find(c => c.id === props.selectedCharacterId) || null
@@ -65,6 +72,72 @@
     deleteChatId = null
     if (id) await props.onDeleteChat?.(id)
   }
+
+  function toggleChatMenu(chatId: string, event: MouseEvent) {
+    event.stopPropagation()
+    chatMenuOpen = chatMenuOpen === chatId ? null : chatId
+  }
+
+  function openEditChat(chat: ChatListItem, event: MouseEvent) {
+    event.stopPropagation()
+    chatMenuOpen = null
+    editModalChat = chat
+  }
+
+  async function duplicateSelectedChat(chatId: string, event: MouseEvent) {
+    event.stopPropagation()
+    chatMenuOpen = null
+    try {
+      await props.onDuplicateChat?.(chatId)
+    } catch (err) {
+      console.error('Failed to duplicate chat:', err)
+      alert('Failed to duplicate chat. Please try again.')
+    }
+  }
+
+  async function exportSelectedChat(chatId: string, event: MouseEvent) {
+    event.stopPropagation()
+    chatMenuOpen = null
+    try {
+      await exportChat(chatId)
+    } catch (err) {
+      console.error('Failed to export chat:', err)
+      alert('Failed to export chat. Please try again.')
+    }
+  }
+
+  function requestDeleteChat(chatId: string, event: MouseEvent) {
+    event.stopPropagation()
+    chatMenuOpen = null
+    deleteChatId = chatId
+  }
+
+  async function confirmEditChat(newTitle: string) {
+    if (!editModalChat) return
+    const chat = editModalChat
+    editModalChat = null
+    const nextTitle = newTitle.trim() || 'New Chat'
+    if (nextTitle !== (chat.title || 'New Chat')) {
+      await props.onRenameChat?.(chat.id, nextTitle)
+    }
+  }
+
+  onMount(() => {
+    function handlePointerDown(event: PointerEvent) {
+      if (!chatMenuOpen) return
+      const target = event.target as Element | null
+      if (!target?.closest('.chat-menu') && !target?.closest('.chat-menu-btn')) chatMenuOpen = null
+    }
+    function handleKeydown(event: KeyboardEvent) {
+      if (event.key === 'Escape') chatMenuOpen = null
+    }
+    document.addEventListener('pointerdown', handlePointerDown)
+    document.addEventListener('keydown', handleKeydown)
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown)
+      document.removeEventListener('keydown', handleKeydown)
+    }
+  })
 
   function confirmDeleteCharacter() {
     const id = deleteCharacterId
@@ -203,9 +276,36 @@
                     <span class="chat-title">{c.title || 'New Chat'}</span>
                   </span>
                 </button>
-                <button type="button" class="chat-action-btn danger" title="Delete chat" aria-label="Delete chat" onclick={() => (deleteChatId = c.id)}>
-                  <IconDelete style="font-size: 18px;" />
-                </button>
+                <div class="chat-actions">
+                  <div class="chat-menu-wrapper">
+                    <button
+                      type="button"
+                      class="chat-action-btn chat-menu-btn"
+                      onclick={(e) => toggleChatMenu(c.id, e)}
+                      aria-label="Chat options"
+                      aria-haspopup="true"
+                      aria-expanded={chatMenuOpen === c.id ? 'true' : 'false'}
+                    >
+                      <IconMoreVert style="font-size: 18px;" />
+                    </button>
+                    {#if chatMenuOpen === c.id}
+                      <div class="chat-menu">
+                        <button type="button" class="chat-menu-item" onclick={(e) => openEditChat(c, e)}>
+                          <IconEdit style="font-size: 18px;" /><span>Edit</span>
+                        </button>
+                        <button type="button" class="chat-menu-item" onclick={(e) => duplicateSelectedChat(c.id, e)}>
+                          <IconContentCopy style="font-size: 18px;" /><span>Duplicate</span>
+                        </button>
+                        <button type="button" class="chat-menu-item" onclick={(e) => exportSelectedChat(c.id, e)}>
+                          <IconDownload style="font-size: 18px;" /><span>Export</span>
+                        </button>
+                        <button type="button" class="chat-menu-item" onclick={(e) => requestDeleteChat(c.id, e)}>
+                          <IconDelete style="font-size: 18px;" /><span>Delete</span>
+                        </button>
+                      </div>
+                    {/if}
+                  </div>
+                </div>
               </div>
             {/each}
           </nav>
@@ -248,6 +348,18 @@
   danger={true}
   onConfirm={confirmDeleteCharacter}
   onCancel={() => (deleteCharacterId = null)}
+/>
+
+<EditModal
+  open={editModalChat !== null}
+  title="Edit Chat Title"
+  label="Chat title"
+  placeholder="New Chat"
+  value={editModalChat?.title || ''}
+  confirmText="Save"
+  cancelText="Cancel"
+  onConfirm={confirmEditChat}
+  onCancel={() => (editModalChat = null)}
 />
 
 <style>
@@ -504,6 +616,7 @@
     min-height: 0;
   }
   .chat-row {
+    position: relative;
     flex: 0 0 auto;
     display: flex;
     align-items: center;
@@ -513,8 +626,11 @@
     border-radius: 8px;
   }
   .chat-row.active, .chat-row:hover { background: var(--panel); }
-  .chat-row .chat-action-btn { opacity: 0; }
-  .chat-row:hover .chat-action-btn, .chat-row.active .chat-action-btn { opacity: 1; }
+  .chat-row:has(.chat-menu) { z-index: 160; }
+  .chat-row .chat-actions { opacity: 0; pointer-events: none; }
+  .chat-row:hover .chat-actions,
+  .chat-row.active .chat-actions,
+  .chat-row:has(.chat-menu) .chat-actions { opacity: 1; pointer-events: auto; }
   .chat-link {
     text-align: left;
     display: flex;
@@ -565,6 +681,46 @@
     color: #dc2626;
   }
   .chat-action-btn:active { transform: scale(0.9); }
+
+  .chat-actions { display: flex; flex: 0 0 auto; transition: opacity 150ms ease; }
+  .chat-menu-wrapper { position: relative; }
+  .chat-menu {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: -4px;
+    z-index: 100;
+    min-width: 150px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 6px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--panel);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+  }
+  :global(:root[data-theme='dark']) .chat-menu { box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
+  .chat-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 9px 12px;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--text);
+    font: inherit;
+    font-size: 0.9rem;
+    text-align: left;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+  .chat-menu-item:hover, .chat-menu-item:focus-visible { background: var(--hover-bg); }
+  .chat-menu-item:last-child { color: #ef4444; }
+  .chat-menu-item:last-child:hover, .chat-menu-item:last-child:focus-visible {
+    background: color-mix(in srgb, #ef4444 12%, transparent);
+  }
 
   .side-footer {
     padding: 8px;

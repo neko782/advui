@@ -431,6 +431,8 @@
       onNewChat={onNewTavernChat}
       onSelect={onSelectChat}
       onDeleteChat={onDeleteChat}
+      onDuplicateChat={onDuplicateChat}
+      onRenameChat={onRenameChat}
       onOpenTavernSettings={() => (showTavernSettings = true)}
       onToggle={toggleSidebar}
       onOpenSettings={onOpenSettings}

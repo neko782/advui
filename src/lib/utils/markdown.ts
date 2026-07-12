@@ -185,6 +185,11 @@ const customRenderer = {
       const titleAttr = title ? ` title="${escapeHtml(title)}"` : '';
       return `<a href="${escapeHtml(href)}"${titleAttr} target="_blank" rel="noopener noreferrer">${text}</a>`;
     },
+
+    // Keep GFM's other features, but preserve tildes as conversational text.
+    del(token: { raw?: string; text?: string }) {
+      return escapeHtml(token.raw || `~~${token.text || ''}~~`);
+    },
   },
 };
 

@@ -28,6 +28,14 @@ describe('renderMarkdown link sanitization', () => {
     const html = renderMarkdown('**hello**', { cache: false })
     expect(html).toContain('<strong>hello</strong>')
   })
+
+  it('renders tildes literally instead of as strikethrough', () => {
+    const html = renderMarkdown('About ~10 minutes and ~~not crossed out~~', { cache: false })
+
+    expect(html).toContain('~10 minutes')
+    expect(html).toContain('~~not crossed out~~')
+    expect(html).not.toContain('<del>')
+  })
 })
 
 describe('renderMarkdown LaTeX', () => {
