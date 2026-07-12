@@ -1,10 +1,11 @@
 <script lang="ts">
-  import { onMount } from 'svelte'
-  import { IconMenu, IconEditSquare, IconSettings, IconUpload, IconAdd, IconChevronLeft, IconEdit, IconDelete, IconTune, IconPerson, IconMoreVert, IconDownload, IconContentCopy } from '../../icons'
+  import { onMount, onDestroy } from 'svelte'
+  import { IconMenu, IconEditSquare, IconSettings, IconUpload, IconAdd, IconChevronLeft, IconEdit, IconDelete, IconTune, IconPerson, IconMoreVert, IconDownload, IconContentCopy, IconSearch, IconDescription, IconClose, IconArrowDownward, IconArrowUpward } from '../../icons'
   import ConfirmModal from '../ConfirmModal.svelte'
   import EditModal from '../EditModal.svelte'
   import { exportChat } from '../../utils/exportImport'
-  import type { ChatListItem } from '../../types'
+  import { getChat } from '../../chatsStore'
+  import type { Chat, ChatListItem } from '../../types'
   import type { Character } from '../../types/tavern'
 
   interface Props {
@@ -40,16 +41,157 @@
   let deleteChatId = $state<string | null>(null)
   let chatMenuOpen = $state<string | null>(null)
   let editModalChat = $state<ChatListItem | null>(null)
+  let globalSearchQuery = $state('')
+  let characterSearchQuery = $state('')
+  let searchMode = $state<'title' | 'content'>('title')
+  let characterSort = $state<'updated' | 'created' | 'lastChat' | 'name'>('updated')
+  let sortDescending = $state(true)
+  let searchDebounceTimer: ReturnType<typeof setTimeout> | null = null
+  let contentSearchMatches = $state<Record<string, boolean>>({})
+  let contentSearchRun = 0
+  const contentCache = new Map<string, string>()
 
   const selectedCharacter = $derived(
     (props.characters || []).find(c => c.id === props.selectedCharacterId) || null
   )
 
-  const characterChats = $derived(
+  const allCharacterChats = $derived(
     (props.chats || [])
       .filter(c => c.characterId === props.selectedCharacterId)
       .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
   )
+
+  const activeSearchQuery = $derived(selectedCharacter ? characterSearchQuery : globalSearchQuery)
+
+  function matchesChatTitle(chat: ChatListItem, query: string): boolean {
+    return (chat.title || '').toLowerCase().includes(query) || (chat.id || '').toLowerCase().includes(query)
+  }
+
+  function characterSearchText(character: Character): string {
+    return [
+      character.name, character.nickname, character.creator, character.creatorNotes,
+      character.description, character.personality, character.scenario,
+      ...(character.tags || []),
+    ].filter(Boolean).join(' ').toLowerCase()
+  }
+
+  function lastChatAt(characterId: string): number {
+    let latest = 0
+    for (const chat of props.chats || []) {
+      if (chat.characterId === characterId) latest = Math.max(latest, chat.updatedAt || 0)
+    }
+    return latest
+  }
+
+  const sortedCharacters = $derived.by(() => {
+    const direction = sortDescending ? -1 : 1
+    return [...(props.characters || [])].sort((a, b) => {
+      if (characterSort === 'name') {
+        return direction * (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' })
+      }
+      const aValue = characterSort === 'created' ? a.createdAt || 0
+        : characterSort === 'lastChat' ? lastChatAt(a.id)
+        : a.updatedAt || 0
+      const bValue = characterSort === 'created' ? b.createdAt || 0
+        : characterSort === 'lastChat' ? lastChatAt(b.id)
+        : b.updatedAt || 0
+      return direction * (aValue - bValue) || (a.name || '').localeCompare(b.name || '')
+    })
+  })
+
+  const filteredCharacters = $derived.by(() => {
+    const query = globalSearchQuery.trim().toLowerCase()
+    if (!query) return sortedCharacters
+    return sortedCharacters.filter(character => characterSearchText(character).includes(query))
+  })
+
+  function chatMatchesSearch(chat: ChatListItem, query: string): boolean {
+    return matchesChatTitle(chat, query) || (searchMode === 'content' && !!contentSearchMatches[chat.id])
+  }
+
+  const characterChats = $derived.by(() => {
+    const query = characterSearchQuery.trim().toLowerCase()
+    if (!query) return allCharacterChats
+    return allCharacterChats.filter(chat => chatMatchesSearch(chat, query))
+  })
+
+  const globalChatResults = $derived.by(() => {
+    const query = globalSearchQuery.trim().toLowerCase()
+    if (!query) return []
+    return (props.chats || [])
+      .filter(chat => chatMatchesSearch(chat, query))
+      .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
+  })
+
+  function buildSearchBlob(chat: Chat | null): string {
+    if (!chat?.nodes || !Array.isArray(chat.nodes)) return ''
+    const parts: string[] = []
+    let length = 0
+    for (const node of chat.nodes) {
+      if (length >= 100000 || !Array.isArray(node?.variants)) break
+      for (const variant of node.variants) {
+        if (length >= 100000) break
+        if (typeof variant?.content === 'string' && variant.content) {
+          parts.push(variant.content)
+          length += variant.content.length
+        }
+      }
+    }
+    return parts.join(' ')
+  }
+
+  async function loadChatSearchBlob(chat: ChatListItem): Promise<string> {
+    const key = `${chat.id}-${chat.updatedAt || 0}`
+    const cached = contentCache.get(key)
+    if (cached !== undefined) return cached
+    const blob = buildSearchBlob(await getChat(chat.id))
+    if (contentCache.size > 30) contentCache.delete(contentCache.keys().next().value as string)
+    contentCache.set(key, blob)
+    return blob
+  }
+
+  $effect(() => {
+    const query = activeSearchQuery.trim().toLowerCase()
+    const candidates = selectedCharacter ? allCharacterChats : (props.chats || [])
+    const mode = searchMode
+    const run = ++contentSearchRun
+    if (mode !== 'content' || !query) {
+      contentSearchMatches = {}
+      return
+    }
+    const initial: Record<string, boolean> = {}
+    for (const chat of candidates) if (matchesChatTitle(chat, query)) initial[chat.id] = true
+    contentSearchMatches = initial
+    if (searchDebounceTimer) clearTimeout(searchDebounceTimer)
+    searchDebounceTimer = setTimeout(async () => {
+      searchDebounceTimer = null
+      for (const chat of candidates) {
+        if (contentSearchRun !== run) return
+        if (initial[chat.id]) continue
+        try {
+          const content = await loadChatSearchBlob(chat)
+          if (contentSearchRun !== run) return
+          if (content.toLowerCase().includes(query)) {
+            contentSearchMatches = { ...contentSearchMatches, [chat.id]: true }
+          }
+        } catch { /* Ignore an unreadable chat and continue searching. */ }
+      }
+    }, 250)
+    return () => {
+      if (searchDebounceTimer) clearTimeout(searchDebounceTimer)
+      searchDebounceTimer = null
+      if (contentSearchRun === run) contentSearchRun += 1
+    }
+  })
+
+  function characterNameFor(chat: ChatListItem): string {
+    return (props.characters || []).find(character => character.id === chat.characterId)?.name || 'Unknown character'
+  }
+
+  function clearActiveSearch() {
+    if (selectedCharacter) characterSearchQuery = ''
+    else globalSearchQuery = ''
+  }
 
   function chatCountFor(characterId: string): number {
     return (props.chats || []).filter(c => c.characterId === characterId).length
@@ -144,6 +286,10 @@
     deleteCharacterId = null
     if (id) props.onDeleteCharacter?.(id)
   }
+
+  onDestroy(() => {
+    if (searchDebounceTimer) clearTimeout(searchDebounceTimer)
+  })
 </script>
 
 <aside class="sidebar {props.open ? '' : 'collapsed'}">
@@ -185,48 +331,115 @@
           />
         </nav>
         {#if props.open}
-          <div class="section-label">Characters</div>
-          <div class="character-list" role="list">
-            {#if !(props.characters || []).length}
-              <div class="empty-hint">
-                No characters yet. Import a SillyTavern card (.png / .json) or create one.
-              </div>
-            {/if}
-            {#each (props.characters || []) as character (character.id)}
-              <div class="character-card" role="listitem">
-                <button
-                  type="button"
-                  class="character-btn"
-                  onclick={() => props.onSelectCharacter?.(character.id)}
-                >
-                  {#if character.avatar}
-                    <img class="character-avatar" src={character.avatar} alt={character.name} loading="lazy" />
-                  {:else}
-                    <div class="character-avatar placeholder">
-                      <IconPerson style="font-size: 28px;" />
-                    </div>
-                  {/if}
-                  <div class="character-info">
-                    <div class="character-name">{character.name || 'Unnamed'}</div>
-                    {#if character.creator}
-                      <div class="character-creator">by {character.creator}</div>
-                    {/if}
-                    {#if character.creatorNotes}
-                      <div class="character-notes">{character.creatorNotes}</div>
-                    {/if}
-                    <div class="character-meta">{chatCountFor(character.id)} chats</div>
-                  </div>
-                </button>
-                <div class="character-actions">
-                  <button type="button" class="chat-action-btn" title="Edit character" aria-label="Edit character" onclick={() => props.onEditCharacter?.(character)}>
-                    <IconEdit style="font-size: 18px;" />
-                  </button>
-                  <button type="button" class="chat-action-btn danger" title="Delete character" aria-label="Delete character" onclick={() => (deleteCharacterId = character.id)}>
-                    <IconDelete style="font-size: 18px;" />
-                  </button>
+          <div class="search-tools">
+            <div class="search-input-wrapper">
+              <IconSearch style="font-size: 18px; color: var(--muted);" />
+              <input
+                class="search-input"
+                type="search"
+                placeholder={searchMode === 'title' ? 'Search characters & chats...' : 'Search characters & chat content...'}
+                value={globalSearchQuery}
+                oninput={(event) => (globalSearchQuery = event.currentTarget.value)}
+                aria-label="Search all characters and chats"
+              />
+              <button type="button" class="search-mode-btn {searchMode === 'content' ? 'active' : ''}" onclick={() => (searchMode = searchMode === 'title' ? 'content' : 'title')} title={searchMode === 'title' ? 'Search chat content too' : 'Search titles only'} aria-label={searchMode === 'title' ? 'Search chat content too' : 'Search titles only'}>
+                <IconDescription style="font-size: 18px;" />
+              </button>
+              {#if globalSearchQuery}
+                <button type="button" class="search-clear-btn" onclick={clearActiveSearch} title="Clear search" aria-label="Clear search"><IconClose style="font-size: 18px;" /></button>
+              {/if}
+            </div>
+            <div class="sort-row">
+              <label class="sort-label" for="character-sort">Sort</label>
+              <select id="character-sort" class="sort-select" bind:value={characterSort}>
+                <option value="updated">Modified date</option>
+                <option value="created">Creation date</option>
+                <option value="lastChat">Last chat</option>
+                <option value="name">Alphabetical</option>
+              </select>
+              <button type="button" class="sort-direction" onclick={() => (sortDescending = !sortDescending)} title={sortDescending ? 'Descending' : 'Ascending'} aria-label={sortDescending ? 'Sort descending' : 'Sort ascending'}>
+                {#if sortDescending}<IconArrowDownward style="font-size: 18px;" />{:else}<IconArrowUpward style="font-size: 18px;" />{/if}
+              </button>
+            </div>
+          </div>
+          <div class="browse-results">
+            <div class="section-label">Characters</div>
+            <div class="character-list" role="list">
+              {#if !(props.characters || []).length}
+                <div class="empty-hint">
+                  No characters yet. Import a SillyTavern card (.png / .json) or create one.
                 </div>
-              </div>
-            {/each}
+              {:else if !filteredCharacters.length}
+                <div class="empty-hint">No matching characters.</div>
+              {/if}
+              {#each filteredCharacters as character (character.id)}
+                <div class="character-card" role="listitem">
+                  <button
+                    type="button"
+                    class="character-btn"
+                    onclick={() => props.onSelectCharacter?.(character.id)}
+                  >
+                    {#if character.avatar}
+                      <img class="character-avatar" src={character.avatar} alt={character.name} loading="lazy" />
+                    {:else}
+                      <div class="character-avatar placeholder">
+                        <IconPerson style="font-size: 28px;" />
+                      </div>
+                    {/if}
+                    <div class="character-info">
+                      <div class="character-name">{character.name || 'Unnamed'}</div>
+                      {#if character.creator}
+                        <div class="character-creator">by {character.creator}</div>
+                      {/if}
+                      {#if character.creatorNotes}
+                        <div class="character-notes">{character.creatorNotes}</div>
+                      {/if}
+                      <div class="character-meta">{chatCountFor(character.id)} chats</div>
+                    </div>
+                  </button>
+                  <div class="character-actions">
+                    <button type="button" class="chat-action-btn" title="Edit character" aria-label="Edit character" onclick={() => props.onEditCharacter?.(character)}>
+                      <IconEdit style="font-size: 18px;" />
+                    </button>
+                    <button type="button" class="chat-action-btn danger" title="Delete character" aria-label="Delete character" onclick={() => (deleteCharacterId = character.id)}>
+                      <IconDelete style="font-size: 18px;" />
+                    </button>
+                  </div>
+                </div>
+              {/each}
+            </div>
+
+            {#if globalSearchQuery.trim()}
+              <div class="section-label result-heading">Chats</div>
+              <nav class="chat-list global-results" aria-label="Matching chats">
+                {#if !globalChatResults.length}
+                  <div class="empty-hint">No matching chats.</div>
+                {/if}
+                {#each globalChatResults as c (c.id)}
+                  <div class="chat-row {props.selectedId === c.id ? 'active' : ''}">
+                    <button type="button" class="chat-link {props.selectedId === c.id ? 'active' : ''}" onclick={() => props.onSelect?.(c.id)}>
+                      <span class="chat-label">
+                        {#if isGenerating(c.id)}<span class="chat-spinner" aria-hidden="true"></span>{/if}
+                        <span class="chat-result-copy"><span class="chat-title">{c.title || 'New Chat'}</span><span class="chat-character">{characterNameFor(c)}</span></span>
+                      </span>
+                    </button>
+                    <div class="chat-actions">
+                      <div class="chat-menu-wrapper">
+                        <button type="button" class="chat-action-btn chat-menu-btn" onclick={(e) => toggleChatMenu(c.id, e)} aria-label="Chat options" aria-haspopup="true" aria-expanded={chatMenuOpen === c.id ? 'true' : 'false'}><IconMoreVert style="font-size: 18px;" /></button>
+                        {#if chatMenuOpen === c.id}
+                          <div class="chat-menu">
+                            <button type="button" class="chat-menu-item" onclick={(e) => openEditChat(c, e)}><IconEdit style="font-size: 18px;" /><span>Edit</span></button>
+                            <button type="button" class="chat-menu-item" onclick={(e) => duplicateSelectedChat(c.id, e)}><IconContentCopy style="font-size: 18px;" /><span>Duplicate</span></button>
+                            <button type="button" class="chat-menu-item" onclick={(e) => exportSelectedChat(c.id, e)}><IconDownload style="font-size: 18px;" /><span>Export</span></button>
+                            <button type="button" class="chat-menu-item" onclick={(e) => requestDeleteChat(c.id, e)}><IconDelete style="font-size: 18px;" /><span>Delete</span></button>
+                          </div>
+                        {/if}
+                      </div>
+                    </div>
+                  </div>
+                {/each}
+              </nav>
+            {/if}
           </div>
         {/if}
       {:else}
@@ -258,9 +471,17 @@
 
         {#if props.open}
           <div class="section-label">Chats</div>
+          <div class="search-tools character-search">
+            <div class="search-input-wrapper">
+              <IconSearch style="font-size: 18px; color: var(--muted);" />
+              <input class="search-input" type="search" placeholder={searchMode === 'title' ? 'Search this character’s chats...' : 'Search this character’s chat content...'} value={characterSearchQuery} oninput={(event) => (characterSearchQuery = event.currentTarget.value)} aria-label="Search this character's chats" />
+              <button type="button" class="search-mode-btn {searchMode === 'content' ? 'active' : ''}" onclick={() => (searchMode = searchMode === 'title' ? 'content' : 'title')} title={searchMode === 'title' ? 'Search chat content too' : 'Search titles only'} aria-label={searchMode === 'title' ? 'Search chat content too' : 'Search titles only'}><IconDescription style="font-size: 18px;" /></button>
+              {#if characterSearchQuery}<button type="button" class="search-clear-btn" onclick={clearActiveSearch} title="Clear search" aria-label="Clear search"><IconClose style="font-size: 18px;" /></button>{/if}
+            </div>
+          </div>
           <nav class="chat-list" aria-label="Chats">
             {#if !characterChats.length}
-              <div class="empty-hint">No chats yet with {selectedCharacter.name}.</div>
+              <div class="empty-hint">{characterSearchQuery.trim() ? 'No matching chats.' : `No chats yet with ${selectedCharacter.name}.`}</div>
             {/if}
             {#each characterChats as c (c.id)}
               <div class="chat-row {props.selectedId === c.id ? 'active' : ''}">
@@ -454,6 +675,8 @@
   .sidebar.collapsed .brand,
   .sidebar.collapsed .section-label,
   .sidebar.collapsed .character-list,
+  .sidebar.collapsed .browse-results,
+  .sidebar.collapsed .search-tools,
   .sidebar.collapsed .chat-list,
   .sidebar.collapsed .char-header,
   .sidebar.collapsed .brand-hash { display: none; }
@@ -500,15 +723,73 @@
     line-height: 1.4;
   }
 
+  .search-tools { display: grid; gap: 7px; padding: 10px 8px 0; }
+  .search-tools.character-search { padding-top: 0; padding-bottom: 8px; }
+  .search-input-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    padding: 5px 7px 5px 10px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--panel);
+  }
+  .search-input {
+    flex: 1 1 auto;
+    min-width: 0;
+    border: 0;
+    outline: 0;
+    background: transparent;
+    color: var(--text);
+    font: inherit;
+    font-size: 0.84rem;
+  }
+  .search-input::-webkit-search-cancel-button { display: none; }
+  .search-mode-btn, .search-clear-btn, .sort-direction {
+    width: 28px;
+    height: 28px;
+    flex: 0 0 auto;
+    display: grid;
+    place-items: center;
+    border: 0;
+    border-radius: 7px;
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+  }
+  .search-mode-btn:hover, .search-mode-btn.active,
+  .search-clear-btn:hover, .sort-direction:hover { background: var(--hover-bg); color: var(--accent); }
+  .sort-row { display: flex; align-items: center; gap: 6px; }
+  .sort-label { color: var(--muted); font-size: 0.75rem; padding-left: 3px; }
+  .sort-select {
+    flex: 1 1 auto;
+    min-width: 0;
+    padding: 6px 8px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--panel);
+    color: var(--text);
+    font: inherit;
+    font-size: 0.78rem;
+  }
+  .browse-results {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding-bottom: 10px;
+  }
+
   /* Character cards */
   .character-list {
     display: flex;
     flex-direction: column;
     gap: 8px;
     padding: 0 8px 10px;
-    overflow-y: auto;
+    overflow-y: visible;
     overflow-x: hidden;
-    flex: 1;
+    flex: 0 0 auto;
     min-height: 0;
   }
   .character-card {
@@ -615,6 +896,10 @@
     flex: 1;
     min-height: 0;
   }
+  .global-results { overflow: visible; padding-bottom: 0; }
+  .result-heading { margin-top: 4px; }
+  .chat-result-copy { display: flex; flex-direction: column; min-width: 0; }
+  .chat-character { color: var(--muted); font-size: 0.7rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .chat-row {
     position: relative;
     flex: 0 0 auto;
@@ -630,6 +915,7 @@
   .chat-row .chat-actions { opacity: 0; pointer-events: none; }
   .chat-row:hover .chat-actions,
   .chat-row.active .chat-actions,
+  .chat-row:focus-within .chat-actions,
   .chat-row:has(.chat-menu) .chat-actions { opacity: 1; pointer-events: auto; }
   .chat-link {
     text-align: left;
@@ -739,6 +1025,11 @@
     padding: 0;
   }
   .sidebar.collapsed .footer-row { flex-direction: column; }
+
+  @media (hover: none) {
+    .character-actions { opacity: 1; }
+    .chat-row .chat-actions { opacity: 1; pointer-events: auto; }
+  }
 
   @media (max-width: 1260px) {
     .sidebar.collapsed {

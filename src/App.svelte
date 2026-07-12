@@ -472,7 +472,13 @@
   <CharacterEditorModal
     open={characterEditorOpen}
     character={characterEditorTarget}
+    canDelete={!!characterEditorTarget && characters.some(character => character.id === characterEditorTarget?.id)}
     onSave={onCharacterSave}
+    onDelete={async (id) => {
+      characterEditorOpen = false
+      characterEditorTarget = null
+      await onDeleteCharacter(id)
+    }}
     onCancel={() => { characterEditorOpen = false; characterEditorTarget = null }}
   />
 </div>

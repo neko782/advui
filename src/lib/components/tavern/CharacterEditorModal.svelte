@@ -1,12 +1,15 @@
 <script lang="ts">
   import { IconClose, IconAdd, IconDelete, IconDownload, IconPerson, IconChevronRight } from '../../icons'
+  import ConfirmModal from '../ConfirmModal.svelte'
   import { exportCharacterCard } from '../../tavern/characterCard'
   import type { Character } from '../../types/tavern'
 
   interface Props {
     open?: boolean
     character?: Character | null
+    canDelete?: boolean
     onSave?: (character: Character) => void
+    onDelete?: (id: string) => Promise<void> | void
     onCancel?: () => void
   }
 
@@ -20,11 +23,13 @@
   let errorText = $state('')
   let lastLoadedKey = $state('')
   let openSection = $state<SectionId | null>('description')
+  let deleteConfirmOpen = $state(false)
 
   // Re-seed the draft whenever the modal opens for a (possibly different) character
   $effect(() => {
     if (!props.open) {
       lastLoadedKey = ''
+      deleteConfirmOpen = false
       return
     }
     const source = props.character
@@ -32,6 +37,7 @@
     if (lastLoadedKey === key) return
     lastLoadedKey = key
     errorText = ''
+    deleteConfirmOpen = false
     openSection = 'description'
     draft = source
       ? { ...source, alternateGreetings: [...(source.alternateGreetings || [])], tags: [...(source.tags || [])] }
@@ -108,6 +114,12 @@
     props.onSave?.(applyTags({ ...draft, name: draft.name.trim() }))
   }
 
+  async function handleDelete() {
+    if (!draft || !props.canDelete) return
+    deleteConfirmOpen = false
+    await props.onDelete?.(draft.id)
+  }
+
   const sections: Array<{ id: SectionId; label: string }> = [
     { id: 'description', label: 'Description' },
     { id: 'greetings', label: 'Greetings' },
@@ -117,7 +129,7 @@
   ]
 </script>
 
-<svelte:window onkeydown={(e) => { if (props.open && e.key === 'Escape') props.onCancel?.() }} />
+<svelte:window onkeydown={(e) => { if (props.open && !deleteConfirmOpen && e.key === 'Escape') props.onCancel?.() }} />
 
 {#if props.open && draft}
   <button type="button" class="backdrop" aria-label="Close character editor overlay" onclick={() => props.onCancel?.()}></button>
@@ -239,6 +251,11 @@
         <button type="button" class="icon-btn" onclick={handleExport} title="Export card (PNG/JSON)" aria-label="Export card">
           <IconDownload style="font-size: 20px;" />
         </button>
+        {#if props.canDelete}
+          <button type="button" class="icon-btn delete-btn" onclick={() => (deleteConfirmOpen = true)} title="Delete character" aria-label="Delete character">
+            <IconDelete style="font-size: 20px;" />
+          </button>
+        {/if}
         <div class="foot-spacer"></div>
         <button type="button" class="foot-btn" onclick={() => props.onCancel?.()}>Cancel</button>
         <button type="button" class="foot-btn primary" onclick={handleSave}>Save</button>
@@ -246,6 +263,17 @@
     </div>
   </div>
 {/if}
+
+<ConfirmModal
+  open={deleteConfirmOpen}
+  title="Delete Character"
+  message="Delete this character and all of their chats? This action cannot be undone."
+  confirmText="Delete"
+  cancelText="Cancel"
+  danger={true}
+  onConfirm={handleDelete}
+  onCancel={() => (deleteConfirmOpen = false)}
+/>
 
 <style>
   /* Chrome mirrors SettingsModal for a consistent look */
@@ -270,12 +298,15 @@
     display: flex; align-items: center; justify-content: center;
     padding: 24px;
     z-index: 1001;
+    box-sizing: border-box;
+    overflow: hidden;
   }
   .panel {
     width: min(calc(100vw - 48px), 640px);
     height: min(calc(100vh - 48px), 780px);
     height: min(calc(100dvh - 48px), 780px);
     min-height: 0;
+    max-height: calc(100dvh - 48px);
     background: var(--panel);
     border: 1px solid var(--border);
     border-radius: 20px;
@@ -323,6 +354,8 @@
     border-color: color-mix(in srgb, var(--border) 70%, var(--accent) 30%);
     transform: translateY(-1px);
   }
+  .icon-btn.delete-btn { color: #dc5050; }
+  .icon-btn.delete-btn:hover { border-color: #dc5050; background: rgba(220, 80, 80, 0.1); }
   .modal-body { flex: 1 1 auto; min-height: 0; overflow: hidden; }
   .modal-scroller {
     height: 100%;
@@ -330,7 +363,8 @@
     overflow-y: auto;
     overscroll-behavior: contain;
     scrollbar-gutter: stable;
-    padding: 28px;
+    padding: 28px 28px 48px;
+    scroll-padding-bottom: 48px;
     display: grid;
     gap: 12px;
     align-content: start;
@@ -515,7 +549,7 @@
     /* Compact chrome so the content gets the space */
     .modal-head { padding: 10px 14px; }
     .title { font-size: 1.05rem; }
-    .modal-scroller { padding: 12px; gap: 10px; }
+    .modal-scroller { padding: 12px 12px 32px; scroll-padding-bottom: 32px; gap: 10px; }
     .section-head { padding: 11px 12px; }
     .section-body { padding: 2px 10px 12px; }
     .modal-foot {

@@ -92,7 +92,7 @@
   .modal-overlay {
     position: fixed;
     inset: 0;
-    z-index: 1000;
+    z-index: 1100;
   }
   :global(:root[data-fancy-effects="true"]) .modal-overlay {
     animation: fadeIn 0.15s ease-out;
