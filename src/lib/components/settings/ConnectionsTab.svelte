@@ -327,12 +327,14 @@
     font-size: .85rem;
     margin-top: 2px;
     line-height: 1.4;
+    overflow-wrap: anywhere;
   }
   /* API key action buttons size */
   .row .icon-btn { height: 42px; width: 42px;
   }
   .group {
     display: grid;
+    min-width: 0;
     gap: 12px;
     padding: 20px;
     background: var(--panel);
@@ -368,11 +370,13 @@
     flex-direction: column;
     gap: 6px;
     margin-bottom: 20px;
+    min-width: 0;
   }
   .list-item {
     display: flex;
     align-items: center;
     gap: 6px;
+    min-width: 0;
     padding: 6px;
     border-radius: 12px;
     background: var(--bg);

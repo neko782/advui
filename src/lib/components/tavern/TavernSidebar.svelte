@@ -401,6 +401,7 @@
   }
   .character-card {
     position: relative;
+    flex: 0 0 auto;
     border: 1px solid var(--border);
     border-radius: 12px;
     background: var(--panel);
@@ -503,6 +504,7 @@
     min-height: 0;
   }
   .chat-row {
+    flex: 0 0 auto;
     display: flex;
     align-items: center;
     gap: 6px;

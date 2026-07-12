@@ -274,6 +274,7 @@
   .panel {
     width: min(calc(100vw - 48px), 640px);
     height: min(calc(100vh - 48px), 780px);
+    height: min(calc(100dvh - 48px), 780px);
     background: var(--panel);
     border: 1px solid var(--border);
     border-radius: 20px;
@@ -498,10 +499,28 @@
 
   @media (max-width: 640px) {
     .modal { padding: 0; }
-    .panel { width: 100%; height: 100%; border-radius: 0; border: none; }
-    .modal-head { padding: 16px 20px; }
-    .modal-scroller { padding: 20px; }
-    .modal-foot { padding: 12px 20px; }
+    .panel {
+      width: 100%;
+      height: 100%;
+      height: 100dvh;
+      border-radius: 0;
+      border: none;
+    }
+    /* Compact chrome so the content gets the space */
+    .modal-head { padding: 10px 14px; }
+    .title { font-size: 1.05rem; }
+    .modal-scroller { padding: 12px; gap: 10px; }
+    .section-head { padding: 11px 12px; }
+    .section-body { padding: 2px 10px 12px; }
+    .modal-foot {
+      padding: 10px 14px;
+      padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+    }
+    .foot-btn { flex: 1 1 auto; justify-content: center; }
+    .modal-foot .icon-btn { flex: 0 0 auto; }
     .grid-2 { grid-template-columns: 1fr; }
+    /* Give long-form fields more room on small screens */
+    .textarea { min-height: 88px; }
+    .textarea.tall { min-height: 40dvh; }
   }
 </style>

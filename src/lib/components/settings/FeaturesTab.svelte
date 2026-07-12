@@ -594,6 +594,25 @@
   @media (max-width: 640px) {
     .group { padding: 16px; border-radius: 12px;
     }
+    /* Two-row layout: label + toggle on top, role checks underneath,
+       so button names never get squeezed out. */
+    .action-item {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      grid-template-areas:
+        'handle label toggle'
+        'handle roles roles';
+      align-items: center;
+      row-gap: 0;
+    }
+    .action-item .drag-handle { grid-area: handle; }
+    .action-item-label { grid-area: label; }
+    .action-toggle { grid-area: toggle; }
+    .message-role-checks {
+      grid-area: roles;
+      margin-left: 0;
+      padding: 0 4px 8px;
+    }
   }
   /* Smooth scrollbar styling */
   /* Reset button */
