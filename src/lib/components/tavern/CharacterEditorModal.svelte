@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { IconClose, IconAdd, IconDelete, IconDownload, IconPerson, IconChevronRight } from '../../icons'
+  import { IconClose, IconAdd, IconDelete, IconDownload, IconPerson } from '../../icons'
   import ConfirmModal from '../ConfirmModal.svelte'
   import { exportCharacterCard } from '../../tavern/characterCard'
   import type { Character } from '../../types/tavern'
@@ -22,8 +22,11 @@
   let avatarInput = $state<HTMLInputElement | null>(null)
   let errorText = $state('')
   let lastLoadedKey = $state('')
-  let openSection = $state<SectionId | null>('description')
+  let activeSection = $state<SectionId>('description')
   let deleteConfirmOpen = $state(false)
+  let modalEl = $state<HTMLDivElement | null>(null)
+  let scrollerEl = $state<HTMLDivElement | null>(null)
+  let tabsEl = $state<HTMLElement | null>(null)
 
   // Re-seed the draft whenever the modal opens for a (possibly different) character
   $effect(() => {
@@ -38,15 +41,70 @@
     lastLoadedKey = key
     errorText = ''
     deleteConfirmOpen = false
-    openSection = 'description'
+    activeSection = 'description'
     draft = source
       ? { ...source, alternateGreetings: [...(source.alternateGreetings || [])], tags: [...(source.tags || [])] }
       : null
     tagsText = source ? (source.tags || []).join(', ') : ''
   })
 
-  function toggleSection(id: SectionId) {
-    openSection = openSection === id ? null : id
+  function selectSection(id: SectionId, event: MouseEvent) {
+    const changed = activeSection !== id
+    activeSection = id
+    // Center the tapped bubble by scrolling ONLY the tab strip horizontally,
+    // so the tap never drags the vertical scroll position around.
+    const btn = event.currentTarget as HTMLElement | null
+    if (btn && tabsEl) {
+      const left = btn.offsetLeft - (tabsEl.clientWidth - btn.offsetWidth) / 2
+      tabsEl.scrollTo({ left: Math.max(0, left), behavior: 'smooth' })
+    }
+    // Section content swapped underneath: reset to the top so the view never
+    // lands on a random mid-scroll position of the new content.
+    if (changed && scrollerEl) scrollerEl.scrollTo({ top: 0 })
+  }
+
+  // Keep the modal pinned to the *visual* viewport so the on-screen keyboard
+  // resizes the panel instead of letting the browser scroll the page.
+  $effect(() => {
+    if (!props.open) return
+    const vv = window.visualViewport
+    if (!vv) return
+    const update = () => {
+      if (!modalEl) return
+      modalEl.style.setProperty('--vv-height', `${Math.round(vv.height)}px`)
+      modalEl.style.setProperty('--vv-top', `${Math.round(vv.offsetTop)}px`)
+      // The inner scroller owns all scrolling; keep the page itself pinned.
+      if (window.scrollY !== 0) window.scrollTo(0, 0)
+    }
+    update()
+    vv.addEventListener('resize', update)
+    vv.addEventListener('scroll', update)
+    return () => {
+      vv.removeEventListener('resize', update)
+      vv.removeEventListener('scroll', update)
+      if (modalEl) {
+        modalEl.style.removeProperty('--vv-height')
+        modalEl.style.removeProperty('--vv-top')
+      }
+    }
+  })
+
+  // On touch devices, when a field gains focus (keyboard opens + field expands),
+  // align it just below the sticky bubbles inside our own scroller instead of
+  // letting the browser yank the page around.
+  function handleFocusIn(event: FocusEvent) {
+    const target = event.target as HTMLElement
+    if (!(target instanceof HTMLTextAreaElement)) return
+    if (!window.matchMedia('(max-width: 640px)').matches) return
+    // Wait for the expansion transition + keyboard viewport change to settle.
+    setTimeout(() => {
+      if (!scrollerEl || document.activeElement !== target) return
+      const tabsH = tabsEl?.offsetHeight ?? 0
+      const sRect = scrollerEl.getBoundingClientRect()
+      const tRect = target.getBoundingClientRect()
+      const delta = tRect.top - sRect.top - tabsH - 8
+      if (Math.abs(delta) > 4) scrollerEl.scrollBy({ top: delta, behavior: 'smooth' })
+    }, 250)
   }
 
   function updateField<K extends keyof Character>(key: K, value: Character[K]) {
@@ -139,6 +197,7 @@
     aria-modal="true"
     aria-labelledby="char-editor-title"
     tabindex="-1"
+    bind:this={modalEl}
     onpointerdown={(event) => { if (event.target === event.currentTarget) props.onCancel?.() }}
   >
     <div class="panel">
@@ -150,8 +209,8 @@
       </header>
 
       <div class="modal-body">
-        <div class="modal-scroller">
-          <!-- Identity: always visible, everything else folds away -->
+        <div class="modal-scroller" bind:this={scrollerEl} onfocusin={handleFocusIn}>
+          <!-- Identity: always visible, everything else lives behind the bubbles -->
           <div class="identity">
             <button type="button" class="avatar-wrap" title="Change avatar" aria-label="Change avatar" onclick={() => avatarInput?.click()}>
               {#if draft.avatar}
@@ -168,78 +227,81 @@
             </div>
           </div>
 
-          {#each sections as section (section.id)}
-            <div class="section {openSection === section.id ? 'open' : ''}">
-              <button type="button" class="section-head" aria-expanded={openSection === section.id} onclick={() => toggleSection(section.id)}>
-                <IconChevronRight style="font-size: 18px;" />
-                <span>{section.label}</span>
-              </button>
-              {#if openSection === section.id}
-                <div class="section-body">
-                  {#if section.id === 'description'}
-                    <textarea class="textarea tall" value={draft.description} oninput={(e) => updateField('description', e.currentTarget.value)} placeholder={'Who {{char}} is...'} aria-label="Description"></textarea>
-                  {:else if section.id === 'greetings'}
-                    <label class="field">
-                      <span class="field-label">First message</span>
-                      <textarea class="textarea" value={draft.firstMes} oninput={(e) => updateField('firstMes', e.currentTarget.value)}></textarea>
-                    </label>
-                    {#each draft.alternateGreetings as greeting, index (index)}
-                      <div class="greeting-row">
-                        <textarea class="textarea" value={greeting} oninput={(e) => updateGreeting(index, e.currentTarget.value)} placeholder={`Alternate greeting ${index + 1}`}></textarea>
-                        <button type="button" class="small-btn danger" aria-label="Remove greeting" onclick={() => removeGreeting(index)}>
-                          <IconDelete style="font-size: 16px;" />
-                        </button>
-                      </div>
-                    {/each}
-                    <button type="button" class="small-btn" onclick={addGreeting}>
-                      <IconAdd style="font-size: 16px;" /> Alternate greeting
-                    </button>
-                  {:else if section.id === 'behavior'}
-                    <label class="field">
-                      <span class="field-label">Personality</span>
-                      <textarea class="textarea" value={draft.personality} oninput={(e) => updateField('personality', e.currentTarget.value)}></textarea>
-                    </label>
-                    <label class="field">
-                      <span class="field-label">Scenario</span>
-                      <textarea class="textarea" value={draft.scenario} oninput={(e) => updateField('scenario', e.currentTarget.value)}></textarea>
-                    </label>
-                    <label class="field">
-                      <span class="field-label">Example dialogue</span>
-                      <textarea class="textarea" value={draft.mesExample} oninput={(e) => updateField('mesExample', e.currentTarget.value)}></textarea>
-                    </label>
-                  {:else if section.id === 'overrides'}
-                    <label class="field">
-                      <span class="field-label">System prompt (replaces the main prompt; supports {'{{original}}'})</span>
-                      <textarea class="textarea" value={draft.systemPrompt} oninput={(e) => updateField('systemPrompt', e.currentTarget.value)}></textarea>
-                    </label>
-                    <label class="field">
-                      <span class="field-label">Post-history instructions (supports {'{{original}}'})</span>
-                      <textarea class="textarea" value={draft.postHistoryInstructions} oninput={(e) => updateField('postHistoryInstructions', e.currentTarget.value)}></textarea>
-                    </label>
-                  {:else}
-                    <div class="grid-2">
-                      <label class="field">
-                        <span class="field-label">Creator</span>
-                        <input class="input" value={draft.creator} oninput={(e) => updateField('creator', e.currentTarget.value)} />
-                      </label>
-                      <label class="field">
-                        <span class="field-label">Version</span>
-                        <input class="input" value={draft.characterVersion} oninput={(e) => updateField('characterVersion', e.currentTarget.value)} />
-                      </label>
-                    </div>
-                    <label class="field">
-                      <span class="field-label">Tags (comma separated)</span>
-                      <input class="input" value={tagsText} oninput={(e) => (tagsText = e.currentTarget.value)} />
-                    </label>
-                    <label class="field">
-                      <span class="field-label">Creator notes (not sent to the model)</span>
-                      <textarea class="textarea" value={draft.creatorNotes} oninput={(e) => updateField('creatorNotes', e.currentTarget.value)}></textarea>
-                    </label>
-                  {/if}
+          <!-- Section bubbles: one compact row replaces five collapsed headers -->
+          <div class="section-tabs" role="tablist" aria-label="Character sections" bind:this={tabsEl}>
+            {#each sections as section (section.id)}
+              <button
+                type="button"
+                class="tab-bubble {activeSection === section.id ? 'active' : ''}"
+                role="tab"
+                aria-selected={activeSection === section.id}
+                onclick={(e) => selectSection(section.id, e)}
+              >{section.label}</button>
+            {/each}
+          </div>
+
+          <div class="section-body" role="tabpanel">
+            {#if activeSection === 'description'}
+              <textarea class="textarea tall" value={draft.description} oninput={(e) => updateField('description', e.currentTarget.value)} placeholder={'Who {{char}} is...'} aria-label="Description"></textarea>
+            {:else if activeSection === 'greetings'}
+              <label class="field">
+                <span class="field-label">First message</span>
+                <textarea class="textarea" value={draft.firstMes} oninput={(e) => updateField('firstMes', e.currentTarget.value)}></textarea>
+              </label>
+              {#each draft.alternateGreetings as greeting, index (index)}
+                <div class="greeting-row">
+                  <textarea class="textarea" value={greeting} oninput={(e) => updateGreeting(index, e.currentTarget.value)} placeholder={`Alternate greeting ${index + 1}`}></textarea>
+                  <button type="button" class="small-btn danger" aria-label="Remove greeting" onclick={() => removeGreeting(index)}>
+                    <IconDelete style="font-size: 16px;" />
+                  </button>
                 </div>
-              {/if}
-            </div>
-          {/each}
+              {/each}
+              <button type="button" class="small-btn" onclick={addGreeting}>
+                <IconAdd style="font-size: 16px;" /> Alternate greeting
+              </button>
+            {:else if activeSection === 'behavior'}
+              <label class="field">
+                <span class="field-label">Personality</span>
+                <textarea class="textarea" value={draft.personality} oninput={(e) => updateField('personality', e.currentTarget.value)}></textarea>
+              </label>
+              <label class="field">
+                <span class="field-label">Scenario</span>
+                <textarea class="textarea" value={draft.scenario} oninput={(e) => updateField('scenario', e.currentTarget.value)}></textarea>
+              </label>
+              <label class="field">
+                <span class="field-label">Example dialogue</span>
+                <textarea class="textarea" value={draft.mesExample} oninput={(e) => updateField('mesExample', e.currentTarget.value)}></textarea>
+              </label>
+            {:else if activeSection === 'overrides'}
+              <label class="field">
+                <span class="field-label">System prompt (replaces the main prompt; supports {'{{original}}'})</span>
+                <textarea class="textarea" value={draft.systemPrompt} oninput={(e) => updateField('systemPrompt', e.currentTarget.value)}></textarea>
+              </label>
+              <label class="field">
+                <span class="field-label">Post-history instructions (supports {'{{original}}'})</span>
+                <textarea class="textarea" value={draft.postHistoryInstructions} oninput={(e) => updateField('postHistoryInstructions', e.currentTarget.value)}></textarea>
+              </label>
+            {:else}
+              <div class="grid-2">
+                <label class="field">
+                  <span class="field-label">Creator</span>
+                  <input class="input" value={draft.creator} oninput={(e) => updateField('creator', e.currentTarget.value)} />
+                </label>
+                <label class="field">
+                  <span class="field-label">Version</span>
+                  <input class="input" value={draft.characterVersion} oninput={(e) => updateField('characterVersion', e.currentTarget.value)} />
+                </label>
+              </div>
+              <label class="field">
+                <span class="field-label">Tags (comma separated)</span>
+                <input class="input" value={tagsText} oninput={(e) => (tagsText = e.currentTarget.value)} />
+              </label>
+              <label class="field">
+                <span class="field-label">Creator notes (not sent to the model)</span>
+                <textarea class="textarea" value={draft.creatorNotes} oninput={(e) => updateField('creatorNotes', e.currentTarget.value)}></textarea>
+              </label>
+            {/if}
+          </div>
 
           {#if errorText}
             <div class="error-text">{errorText}</div>
@@ -363,8 +425,9 @@
     overflow-y: auto;
     overscroll-behavior: contain;
     scrollbar-gutter: stable;
-    padding: 28px 28px 48px;
+    padding: 0 28px 48px;
     scroll-padding-bottom: 48px;
+    scroll-padding-top: 56px;
     display: grid;
     gap: 12px;
     align-content: start;
@@ -410,7 +473,7 @@
     background: color-mix(in srgb, var(--accent) 85%, black 15%);
   }
 
-  .identity { display: flex; gap: 12px; align-items: stretch; margin-bottom: 4px; }
+  .identity { display: flex; gap: 12px; align-items: stretch; margin-bottom: 4px; padding-top: 20px; }
   .avatar-wrap {
     position: relative;
     border: 0;
@@ -446,34 +509,45 @@
   .identity-fields { flex: 1 1 auto; display: flex; flex-direction: column; gap: 8px; justify-content: center; min-width: 0; }
   .name-input { font-weight: 600; }
 
-  .section {
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    background: var(--bg);
-    overflow: hidden;
-    transition: border-color 0.15s ease;
-  }
-  .section:hover { border-color: color-mix(in srgb, var(--border) 60%, var(--accent) 40%); }
-  .section-head {
+  /* Bubble row: replaces the stack of collapsed section headers */
+  .section-tabs {
+    position: sticky;
+    top: 0;
+    z-index: 5;
     display: flex;
-    align-items: center;
-    gap: 8px;
-    width: 100%;
-    padding: 12px 14px;
-    border: 0;
-    background: transparent;
+    gap: 6px;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+    /* Bleed into the scroller padding so stuck content can't peek through */
+    margin: 0 -28px;
+    padding: 8px 28px;
+    background: var(--panel);
+    box-shadow: 0 6px 8px -8px rgba(0,0,0,0.25);
+  }
+  .section-tabs::-webkit-scrollbar { display: none; }
+  .tab-bubble {
+    flex: 0 0 auto;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 6px 13px;
+    background: var(--bg);
     color: var(--text);
     font: inherit;
-    font-size: 0.92rem;
-    font-weight: 600;
+    font-size: 0.85rem;
+    font-weight: 500;
+    white-space: nowrap;
     cursor: pointer;
-    text-align: left;
+    transition: background-color .15s ease, color .15s ease, border-color .15s ease;
   }
-  .section-head :global(svg) { transition: transform 150ms ease; color: var(--muted); }
-  .section.open .section-head :global(svg) { transform: rotate(90deg); }
-  .section-head:hover { background: color-mix(in srgb, var(--border) 25%, transparent); }
+  .tab-bubble:hover { border-color: color-mix(in srgb, var(--border) 55%, var(--accent) 45%); }
+  .tab-bubble.active {
+    background: var(--accent);
+    border-color: transparent;
+    color: #fff;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.14);
+  }
   .section-body {
-    padding: 4px 14px 14px;
     display: flex;
     flex-direction: column;
     gap: 10px;
@@ -492,6 +566,8 @@
     color: var(--text);
     font: inherit;
     font-size: 0.9rem;
+    /* Keep natively focus-scrolled fields clear of the sticky bubble row */
+    scroll-margin-top: 56px;
   }
   .input:hover, .textarea:hover { border-color: color-mix(in srgb, var(--border) 70%, var(--accent)); }
   .input:focus, .textarea:focus {
@@ -499,8 +575,18 @@
     border-color: var(--accent);
     box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 15%, transparent);
   }
-  .textarea { min-height: 68px; resize: vertical; }
+  .textarea {
+    min-height: 68px;
+    resize: vertical;
+    /* Expand-on-hover/focus: collapse is delayed so sweeping the pointer
+       across fields doesn't cause jittery reflows. */
+    transition: min-height .18s ease .25s;
+  }
   .textarea.tall { min-height: 130px; }
+  @media (hover: hover) and (pointer: fine) {
+    .textarea:hover { min-height: 320px; transition-delay: .12s; }
+  }
+  .textarea:focus { min-height: 320px; transition-delay: 0s; }
   .greeting-row { display: flex; gap: 6px; align-items: flex-start; }
   .greeting-row .textarea { flex: 1 1 auto; }
   .small-btn {
@@ -538,29 +624,47 @@
   .error-text { color: #e53935; font-size: 0.85rem; }
 
   @media (max-width: 640px) {
-    .modal { padding: 0; }
+    .modal { padding: 0; align-items: flex-start; }
     .panel {
       width: 100%;
-      height: 100%;
       height: 100dvh;
+      /* Track the visual viewport: the keyboard shrinks the panel instead of
+         scrolling the page, so the footer stays reachable and nothing jumps. */
+      height: var(--vv-height, 100dvh);
+      transform: translateY(var(--vv-top, 0px));
       border-radius: 0;
       border: none;
     }
     /* Compact chrome so the content gets the space */
-    .modal-head { padding: 10px 14px; }
-    .title { font-size: 1.05rem; }
-    .modal-scroller { padding: 12px 12px 32px; scroll-padding-bottom: 32px; gap: 10px; }
-    .section-head { padding: 11px 12px; }
-    .section-body { padding: 2px 10px 12px; }
-    .modal-foot {
-      padding: 10px 14px;
-      padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+    .modal-head { padding: 8px 12px; }
+    .title { font-size: 1rem; }
+    .modal-head .icon-btn { width: 32px; height: 32px; }
+    .modal-scroller {
+      padding: 0 12px 24px;
+      scroll-padding-bottom: 24px;
+      scroll-padding-top: 52px;
+      gap: 8px;
     }
-    .foot-btn { flex: 1 1 auto; justify-content: center; }
+    .identity { padding-top: 10px; gap: 10px; }
+    .avatar { width: 56px; }
+    .identity-fields { gap: 6px; }
+    .section-tabs { margin: 0 -12px; padding: 6px 12px; }
+    .input, .textarea { scroll-margin-top: 52px; }
+    .modal-foot {
+      padding: 8px 12px;
+      padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+      gap: 8px;
+    }
+    .foot-btn { flex: 1 1 auto; justify-content: center; padding: 9px 14px; }
     .modal-foot .icon-btn { flex: 0 0 auto; }
     .grid-2 { grid-template-columns: 1fr; }
-    /* Give long-form fields more room on small screens */
-    .textarea { min-height: 88px; }
-    .textarea.tall { min-height: 40dvh; }
+    /* Fields stay compact until focused, then take all the room the keyboard
+       leaves us (tracked via --vv-height). Drag-resize is useless on touch. */
+    .textarea { min-height: 72px; resize: none; }
+    .textarea.tall { min-height: 120px; }
+    .textarea:focus,
+    .textarea.tall:focus {
+      min-height: max(140px, calc(var(--vv-height, 100dvh) - 240px));
+    }
   }
 </style>
