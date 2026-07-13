@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { IconClose, IconAdd, IconDelete, IconDownload, IconPerson } from '../../icons'
+  import { IconClose, IconAdd, IconDelete, IconDownload, IconPerson, IconCollapseContent } from '../../icons'
   import ConfirmModal from '../ConfirmModal.svelte'
   import { exportCharacterCard } from '../../tavern/characterCard'
   import type { Character } from '../../types/tavern'
@@ -89,22 +89,23 @@
     }
   })
 
-  // On touch devices, when a field gains focus (keyboard opens + field expands),
-  // align it just below the sticky bubbles inside our own scroller instead of
-  // letting the browser yank the page around.
+  // On mobile a focused textarea takes over the whole modal body (CSS
+  // :focus-within), so no scrolling ever happens while typing. This state
+  // just drives the floating "collapse" button.
+  let fieldExpanded = $state(false)
+
   function handleFocusIn(event: FocusEvent) {
-    const target = event.target as HTMLElement
-    if (!(target instanceof HTMLTextAreaElement)) return
-    if (!window.matchMedia('(max-width: 640px)').matches) return
-    // Wait for the expansion transition + keyboard viewport change to settle.
-    setTimeout(() => {
-      if (!scrollerEl || document.activeElement !== target) return
-      const tabsH = tabsEl?.offsetHeight ?? 0
-      const sRect = scrollerEl.getBoundingClientRect()
-      const tRect = target.getBoundingClientRect()
-      const delta = tRect.top - sRect.top - tabsH - 8
-      if (Math.abs(delta) > 4) scrollerEl.scrollBy({ top: delta, behavior: 'smooth' })
-    }, 250)
+    if (event.target instanceof HTMLTextAreaElement) fieldExpanded = true
+  }
+
+  function handleFocusOut(event: FocusEvent) {
+    if (!(event.relatedTarget instanceof HTMLTextAreaElement)) fieldExpanded = false
+  }
+
+  function collapseField() {
+    const active = document.activeElement
+    if (active instanceof HTMLElement) active.blur()
+    fieldExpanded = false
   }
 
   function updateField<K extends keyof Character>(key: K, value: Character[K]) {
@@ -209,7 +210,7 @@
       </header>
 
       <div class="modal-body">
-        <div class="modal-scroller" bind:this={scrollerEl} onfocusin={handleFocusIn}>
+        <div class="modal-scroller" bind:this={scrollerEl} onfocusin={handleFocusIn} onfocusout={handleFocusOut}>
           <!-- Identity: always visible, everything else lives behind the bubbles -->
           <div class="identity">
             <button type="button" class="avatar-wrap" title="Change avatar" aria-label="Change avatar" onclick={() => avatarInput?.click()}>
@@ -242,7 +243,10 @@
 
           <div class="section-body" role="tabpanel">
             {#if activeSection === 'description'}
-              <textarea class="textarea tall" value={draft.description} oninput={(e) => updateField('description', e.currentTarget.value)} placeholder={'Who {{char}} is...'} aria-label="Description"></textarea>
+              <label class="field">
+                <span class="field-label">Description</span>
+                <textarea class="textarea tall" value={draft.description} oninput={(e) => updateField('description', e.currentTarget.value)} placeholder={'Who {{char}} is...'} aria-label="Description"></textarea>
+              </label>
             {:else if activeSection === 'greetings'}
               <label class="field">
                 <span class="field-label">First message</span>
@@ -307,6 +311,16 @@
             <div class="error-text">{errorText}</div>
           {/if}
         </div>
+        {#if fieldExpanded}
+          <button
+            type="button"
+            class="collapse-btn"
+            onpointerdown={(e) => e.preventDefault()}
+            onclick={collapseField}
+          >
+            <IconCollapseContent style="font-size: 16px;" /> Collapse
+          </button>
+        {/if}
       </div>
 
       <footer class="modal-foot">
@@ -418,7 +432,27 @@
   }
   .icon-btn.delete-btn { color: #dc5050; }
   .icon-btn.delete-btn:hover { border-color: #dc5050; background: rgba(220, 80, 80, 0.1); }
-  .modal-body { flex: 1 1 auto; min-height: 0; overflow: hidden; }
+  .modal-body { flex: 1 1 auto; min-height: 0; overflow: hidden; position: relative; }
+  /* Floating collapse control for the mobile fullscreen field editor */
+  .collapse-btn {
+    display: none;
+    position: absolute;
+    top: 8px;
+    right: 12px;
+    z-index: 11;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--bg);
+    color: var(--text);
+    font: inherit;
+    font-size: 0.8rem;
+    font-weight: 500;
+    cursor: pointer;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.18);
+  }
   .modal-scroller {
     height: 100%;
     box-sizing: border-box;
@@ -658,13 +692,41 @@
     .foot-btn { flex: 1 1 auto; justify-content: center; padding: 9px 14px; }
     .modal-foot .icon-btn { flex: 0 0 auto; }
     .grid-2 { grid-template-columns: 1fr; }
-    /* Fields stay compact until focused, then take all the room the keyboard
-       leaves us (tracked via --vv-height). Drag-resize is useless on touch. */
-    .textarea { min-height: 72px; resize: none; }
+    /* Fields stay compact until focused. Drag-resize is useless on touch. */
+    .textarea { min-height: 72px; resize: none; transition: none; }
     .textarea.tall { min-height: 120px; }
-    .textarea:focus,
-    .textarea.tall:focus {
-      min-height: max(140px, calc(var(--vv-height, 100dvh) - 240px));
+    /* Focused textarea takes over the entire modal body, covering the
+       identity block and bubbles: nothing underneath can scroll while the
+       keyboard is open. The floating button collapses it back. */
+    .field:has(.textarea):focus-within,
+    .greeting-row:focus-within {
+      position: absolute;
+      inset: 0;
+      z-index: 10;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin: 0;
+      padding: 10px 12px 12px;
+      box-sizing: border-box;
+      background: var(--panel);
     }
+    .field:has(.textarea):focus-within .field-label {
+      /* Keep the label clear of the floating collapse button */
+      padding-right: 110px;
+      min-height: 24px;
+      display: flex;
+      align-items: center;
+    }
+    .field:has(.textarea):focus-within .textarea,
+    .greeting-row:focus-within .textarea {
+      flex: 1 1 auto;
+      min-height: 0;
+      height: auto;
+    }
+    /* Greeting rows have no label; pad for the collapse button instead */
+    .greeting-row:focus-within { padding-top: 44px; }
+    .greeting-row:focus-within .small-btn.danger { display: none; }
+    .collapse-btn { display: inline-flex; }
   }
 </style>
