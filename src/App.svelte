@@ -199,6 +199,36 @@
     }
   })
 
+  // Keep the app shell sized to the *visual* viewport so the on-screen
+  // keyboard shrinks the layout instead of creating a second scrollable
+  // region behind it (which used to push the input below the keyboard).
+  onMount(() => {
+    const vv = window.visualViewport
+    if (!vv) return
+    const root = document.documentElement
+    const update = () => {
+      // Only pin things when the keyboard actually eats space; otherwise
+      // leave the browser alone (pinch-zoom also resizes the visual viewport).
+      const keyboardOpen = window.innerHeight - vv.height > 80
+      if (keyboardOpen) {
+        root.style.setProperty('--app-height', `${Math.round(vv.height)}px`)
+        // The shell owns all scrolling; keep the page itself pinned so the
+        // browser can't scroll the input out from under the keyboard.
+        if (window.scrollY !== 0 || window.scrollX !== 0) window.scrollTo(0, 0)
+      } else {
+        root.style.removeProperty('--app-height')
+      }
+    }
+    update()
+    vv.addEventListener('resize', update)
+    vv.addEventListener('scroll', update)
+    return () => {
+      vv.removeEventListener('resize', update)
+      vv.removeEventListener('scroll', update)
+      root.style.removeProperty('--app-height')
+    }
+  })
+
   function onSelectChat(id) {
     // Track previous selection before changing (for keeping chat mounted)
     if (selectedId && selectedId !== id) {
@@ -484,10 +514,11 @@
 </div>
 
 <style>
-  :global(#app) { height: 100dvh; }
+  :global(#app) { height: 100dvh; height: var(--app-height, 100dvh); }
   .app-shell {
     position: relative;
     height: 100dvh;
+    height: var(--app-height, 100dvh);
     overflow: hidden;
   }
   .chat-pane {
