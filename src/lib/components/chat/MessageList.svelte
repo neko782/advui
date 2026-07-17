@@ -315,9 +315,17 @@
     border: 1px solid #e57373;
     background: #ffebee;
     color: #c62828;
+    box-sizing: border-box;
     max-width: var(--page-max); margin-inline: auto; width: min(720px, 92%);
-    display: grid; grid-template-columns: 1fr auto; align-items: start; gap: 8px;
+    display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 8px;
     z-index: 10;
+  }
+  .notice-text {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    max-height: 40vh;
+    overflow-y: auto;
   }
   :global([data-theme='dark']) .notice {
     background: #4a1c1c;
@@ -334,6 +342,9 @@
   .notice-close {
     appearance: none; border: none; background: transparent; color: inherit;
     font-size: 16px; line-height: 1; padding: 2px 6px; cursor: pointer; border-radius: 6px;
+    flex-shrink: 0;
+    /* Keep a comfortable touch target on mobile */
+    min-width: 28px; min-height: 24px;
   }
   .notice-close:hover { background: color-mix(in srgb, currentColor 10%, transparent); }
 

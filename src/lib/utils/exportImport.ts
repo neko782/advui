@@ -130,7 +130,17 @@ export async function estimateExportAllDataSize(options: ExportAllDataOptions = 
   const exportedAt = new Date().toISOString();
   const usedChatPaths = new Set<string>();
   const manifestEntries: ChatManifestEntry[] = [];
-  const sampleSize = Math.min(3, chatItems.length);
+  // Sample chats spread evenly across the list instead of only the most
+  // recent ones, so a single unusually large chat doesn't skew the
+  // extrapolated average for every other chat.
+  const sampleSize = Math.min(10, chatItems.length);
+  const sampleIndexes = new Set<number>();
+  if (sampleSize > 0) {
+    const step = chatItems.length / sampleSize;
+    for (let i = 0; i < sampleSize; i++) {
+      sampleIndexes.add(Math.min(chatItems.length - 1, Math.floor(i * step)));
+    }
+  }
   let sampledChatBytes = 0;
   let sampledChatCount = 0;
   let chatEntryTotal = 0;
@@ -146,7 +156,7 @@ export async function estimateExportAllDataSize(options: ExportAllDataOptions = 
       updatedAt: item.updatedAt
     });
 
-    if (sampledChatCount < sampleSize) {
+    if (sampleIndexes.has(index)) {
       const chat = await getChat(item.id);
       if (chat) {
         const payload: ExportedChat = {
@@ -733,7 +743,7 @@ function createTarHeader(path: string, size: number): Uint8Array {
   writeTarOctal(header, 100, 8, 0o644);
   writeTarOctal(header, 108, 8, 0);
   writeTarOctal(header, 116, 8, 0);
-  writeTarOctal(header, 124, 12, size);
+  writeTarNumeric(header, 124, 12, size);
   writeTarOctal(header, 136, 12, Math.floor(Date.now() / 1000));
   for (let i = 148; i < 156; i++) header[i] = 32;
   header[156] = '0'.charCodeAt(0);
@@ -745,7 +755,8 @@ function createTarHeader(path: string, size: number): Uint8Array {
   for (let i = 0; i < header.length; i++) {
     checksum += header[i]!;
   }
-  writeTarOctal(header, 148, 8, checksum);
+  // Checksum uses the traditional "%06o\0 " format (6 digits, NUL, space)
+  writeTarString(header, 148, 8, `${checksum.toString(8).padStart(6, '0')}\0 `);
 
   return header;
 }
@@ -778,10 +789,39 @@ function writeTarString(header: Uint8Array, offset: number, length: number, valu
 
 function writeTarOctal(header: Uint8Array, offset: number, length: number, value: number): void {
   const text = value.toString(8);
-  if (text.length > length - 2) {
-    throw new Error(`TAR octal field overflow: value ${value} does not fit in ${length - 2} octal digits`);
+  if (text.length > length - 1) {
+    throw new Error(`TAR octal field overflow: value ${value} does not fit in ${length - 1} octal digits`);
   }
-  writeTarString(header, offset, length, `${text.padStart(length - 2, '0')}\0 `);
+  // Standard tar octal fields: (length - 1) digits followed by a NUL terminator.
+  writeTarString(header, offset, length, `${text.padStart(length - 1, '0')}\0`);
+}
+
+/**
+ * Write a numeric field (e.g. size), falling back to GNU base-256 encoding
+ * when the value does not fit in the octal representation (files >= 8 GB).
+ */
+function writeTarNumeric(header: Uint8Array, offset: number, length: number, value: number): void {
+  if (!Number.isFinite(value) || value < 0) {
+    throw new Error(`TAR numeric field invalid: ${value}`);
+  }
+
+  const maxOctal = Math.pow(8, length - 1) - 1;
+  if (value <= maxOctal) {
+    writeTarOctal(header, offset, length, value);
+    return;
+  }
+
+  // GNU base-256 (binary) encoding: high bit of the first byte set,
+  // remaining bytes hold the big-endian value.
+  let remaining = value;
+  for (let i = length - 1; i > 0; i--) {
+    header[offset + i] = remaining % 256;
+    remaining = Math.floor(remaining / 256);
+  }
+  if (remaining > 0x7f) {
+    throw new Error(`TAR numeric field overflow: value ${value} does not fit in ${length} bytes`);
+  }
+  header[offset] = 0x80 | remaining;
 }
 
 function base64ToBytes(base64: string): Uint8Array {
