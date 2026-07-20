@@ -45,9 +45,9 @@
 
 {#if props.open}
   <div class="modal-overlay" role="presentation">
-    <button type="button" class="backdrop" aria-label="Close dialog" onclick={handleCancel}></button>
+    <button type="button" class="ui-backdrop" aria-label="Close dialog" onclick={handleCancel}></button>
     <div
-      class="modal"
+      class="ui-modal modal"
       role="dialog"
       aria-modal="true"
       aria-labelledby="modal-title"
@@ -55,7 +55,7 @@
       bind:this={dialogEl}
       onkeydown={(event) => { if (event.key === 'Escape') handleCancel() }}
     >
-      <div class="panel" class:danger={props.danger}>
+      <div class="ui-panel panel" class:danger={props.danger}>
         <div class="modal-content">
           {#if props.danger}
             <div class="icon-wrapper danger">
@@ -76,10 +76,10 @@
           {/if}
         </div>
         <footer class="modal-footer">
-          <button type="button" class="btn btn-secondary" onclick={handleCancel}>
+          <button type="button" class="ui-btn ui-btn-secondary" onclick={handleCancel}>
             {props.cancelText || 'Cancel'}
           </button>
-          <button type="button" class={`btn ${props.danger ? 'btn-danger' : 'btn-primary'}`} onclick={handleConfirm}>
+          <button type="button" class={`ui-btn ${props.danger ? 'ui-btn-danger' : 'ui-btn-primary'}`} onclick={handleConfirm}>
             {props.confirmText || 'Confirm'}
           </button>
         </footer>
@@ -89,82 +89,27 @@
 {/if}
 
 <style>
+  /* Overlay stacking + panel size are local; chrome and buttons are shared */
   .modal-overlay {
     position: fixed;
     inset: 0;
     z-index: 1100;
   }
-  :global(:root[data-fancy-effects="true"]) .modal-overlay {
-    animation: fadeIn 0.15s ease-out;
-  }
-
-  @keyframes fadeIn {
-    from { opacity: 0; }
-    to { opacity: 1; }
-  }
-
-  @keyframes slideUp {
-    from {
-      opacity: 0;
-      transform: scale(0.96) translateY(8px);
-    }
-    to {
-      opacity: 1;
-      transform: scale(1) translateY(0);
-    }
-  }
-
-  .backdrop {
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.4);
-    border: 0;
-    padding: 0;
-    cursor: pointer;
-  }
-  :global(:root[data-fancy-effects="true"]) .backdrop {
-    backdrop-filter: blur(4px);
-    -webkit-backdrop-filter: blur(4px);
-  }
-
   .modal {
-    position: fixed;
-    inset: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 24px;
     pointer-events: none;
   }
-
   .panel {
     width: min(calc(100vw - 48px), 360px);
-    background: var(--panel);
-    border: 1px solid var(--border);
-    border-radius: 16px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-    color: var(--text);
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
     pointer-events: auto;
-  }
-  :global(:root[data-fancy-effects="true"]) .panel {
-    box-shadow:
-      0 0 0 1px rgba(0, 0, 0, 0.03),
-      0 4px 8px rgba(0, 0, 0, 0.04),
-      0 16px 32px rgba(0, 0, 0, 0.08),
-      0 32px 64px rgba(0, 0, 0, 0.12);
-    animation: slideUp 0.2s ease-out;
   }
 
   .modal-content {
-    padding: 24px 24px 20px 24px;
+    padding: var(--s5) var(--s5) 20px var(--s5);
     display: flex;
     flex-direction: column;
     align-items: center;
     text-align: center;
-    gap: 16px;
+    gap: var(--s4);
   }
 
   .icon-wrapper {
@@ -177,20 +122,20 @@
   }
 
   .icon-wrapper.danger {
-    background: rgba(220, 80, 80, 0.12);
-    color: #dc5050;
+    background: color-mix(in srgb, var(--danger) 12%, transparent);
+    color: var(--danger);
   }
 
   .text-content {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: var(--s2);
   }
 
   .checkbox-row {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--s2);
     cursor: pointer;
     margin-top: 4px;
   }
@@ -223,72 +168,26 @@
   .modal-footer {
     display: flex;
     align-items: center;
-    gap: 10px;
-    padding: 0 24px 24px 24px;
+    gap: var(--s2);
+    padding: 0 var(--s5) var(--s5) var(--s5);
   }
 
-  .btn {
+  .modal-footer .ui-btn {
     flex: 1;
-    border: none;
-    border-radius: 10px;
-    padding: 12px 18px;
-    font: inherit;
-    font-size: 0.9rem;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.15s ease;
-  }
-
-  .btn-secondary {
-    background: color-mix(in srgb, var(--text) 8%, transparent);
-    color: var(--text);
-  }
-
-  .btn-secondary:hover {
-    background: color-mix(in srgb, var(--text) 12%, transparent);
-  }
-
-  .btn-primary {
-    background: var(--accent);
-    color: white;
-  }
-
-  .btn-primary:hover {
-    background: color-mix(in srgb, var(--accent) 85%, black 15%);
-    transform: translateY(-1px);
-  }
-
-  .btn-primary:active {
-    transform: translateY(0);
-  }
-
-  .btn-danger {
-    background: #dc5050;
-    color: white;
-  }
-
-  .btn-danger:hover {
-    background: #c44040;
-    transform: translateY(-1px);
-  }
-
-  .btn-danger:active {
-    transform: translateY(0);
   }
 
   @media (max-width: 640px) {
     .modal {
-      padding: 16px;
+      padding: var(--s4);
       align-items: flex-end;
     }
 
     .panel {
       width: 100%;
-      border-radius: 20px 20px 12px 12px;
     }
 
     :global(:root[data-fancy-effects="true"]) .panel {
-      animation: slideUpMobile 0.25s ease-out;
+      animation: slideUpMobile 0.25s var(--ease-out);
     }
 
     @keyframes slideUpMobile {
@@ -303,11 +202,11 @@
     }
 
     .modal-content {
-      padding: 24px 20px 20px 20px;
+      padding: var(--s5) 20px 20px 20px;
     }
 
     .modal-footer {
-      padding: 0 20px 24px 20px;
+      padding: 0 20px var(--s5) 20px;
     }
   }
 </style>

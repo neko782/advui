@@ -190,29 +190,29 @@
     <div class="tab-content">
       {#if activeTab === 'general'}
         <div class="menu-section">
-          <label class="switch" title="Stream">
+          <label class="ui-switch" title="Stream">
             <input type="checkbox" checked={!!props.streaming} disabled={props.disabled}
               onchange={(e) => (!props.disabled && props.onInputStreaming?.(e.currentTarget.checked))} aria-label="Stream" />
-            <span class="switch-ui" aria-hidden="true"></span>
-            <span class="switch-label">Stream</span>
+            <span class="ui-switch-ui" aria-hidden="true"></span>
+            <span class="ui-switch-label">Stream</span>
           </label>
         </div>
         {#if supportsResponsesApiFeatures}
           <div class="menu-section">
-            <label class="switch">
+            <label class="ui-switch">
               <input type="checkbox" checked={!!props.webSearchEnabled} disabled={props.disabled}
                 onchange={(e) => (!props.disabled && props.onInputWebSearchEnabled?.(e.currentTarget.checked))} aria-label="Web search" />
-              <span class="switch-ui" aria-hidden="true"></span>
-              <span class="switch-label">Web search</span>
+              <span class="ui-switch-ui" aria-hidden="true"></span>
+              <span class="ui-switch-label">Web search</span>
             </label>
           </div>
           <div class="menu-section">
             <div class="tool-header-row">
-              <label class="switch">
+              <label class="ui-switch">
                 <input type="checkbox" checked={!!props.codeInterpreterEnabled} disabled={props.disabled}
                   onchange={(e) => (!props.disabled && props.onInputCodeInterpreterEnabled?.(e.currentTarget.checked))} aria-label="Code interpreter" />
-                <span class="switch-ui" aria-hidden="true"></span>
-                <span class="switch-label">Code interpreter</span>
+                <span class="ui-switch-ui" aria-hidden="true"></span>
+                <span class="ui-switch-label">Code interpreter</span>
               </label>
               {#if props.codeInterpreterEnabled}
                 <button type="button" class="tool-settings-btn"
@@ -228,11 +228,11 @@
           </div>
           <div class="menu-section">
             <div class="tool-header-row">
-              <label class="switch">
+              <label class="ui-switch">
                 <input type="checkbox" checked={!!props.shellEnabled} disabled={props.disabled}
                   onchange={(e) => (!props.disabled && props.onInputShellEnabled?.(e.currentTarget.checked))} aria-label="Shell" />
-                <span class="switch-ui" aria-hidden="true"></span>
-                <span class="switch-label">Shell</span>
+                <span class="ui-switch-ui" aria-hidden="true"></span>
+                <span class="ui-switch-label">Shell</span>
               </label>
               {#if props.shellEnabled}
                 <button type="button" class="tool-settings-btn"
@@ -248,11 +248,11 @@
           </div>
           <div class="menu-section">
             <div class="tool-header-row">
-              <label class="switch">
+              <label class="ui-switch">
                 <input type="checkbox" checked={!!props.imageGenerationEnabled} disabled={props.disabled}
                   onchange={(e) => (!props.disabled && props.onInputImageGenerationEnabled?.(e.currentTarget.checked))} aria-label="Image generation" />
-                <span class="switch-ui" aria-hidden="true"></span>
-                <span class="switch-label">Image generation</span>
+                <span class="ui-switch-ui" aria-hidden="true"></span>
+                <span class="ui-switch-label">Image generation</span>
               </label>
               {#if props.imageGenerationEnabled}
                 <button type="button" class="tool-settings-btn"
@@ -268,11 +268,11 @@
           </div>
           <div class="menu-section">
             <div class="tool-header-row">
-              <label class="switch">
+              <label class="ui-switch">
                 <input type="checkbox" checked={!!props.mcpEnabled} disabled={props.disabled}
                   onchange={(e) => (!props.disabled && props.onInputMcpEnabled?.(e.currentTarget.checked))} aria-label="MCP" />
-                <span class="switch-ui" aria-hidden="true"></span>
-                <span class="switch-label">MCP</span>
+                <span class="ui-switch-ui" aria-hidden="true"></span>
+                <span class="ui-switch-label">MCP</span>
               </label>
               {#if props.mcpEnabled}
                 <button type="button" class="tool-settings-btn"
@@ -334,11 +334,11 @@
         </div>
         {#if props.showThinkingControls}
           <div class="menu-section">
-            <label class="switch" title="Enable Anthropic thinking">
+            <label class="ui-switch" title="Enable Anthropic thinking">
               <input type="checkbox" checked={!!props.thinkingEnabled} disabled={props.disabled}
                 onchange={(e) => (!props.disabled && props.onInputThinkingEnabled?.(e.currentTarget.checked))} aria-label="Enable Anthropic thinking" />
-              <span class="switch-ui" aria-hidden="true"></span>
-              <span class="switch-label">Anthropic thinking</span>
+              <span class="ui-switch-ui" aria-hidden="true"></span>
+              <span class="ui-switch-label">Anthropic thinking</span>
             </label>
             <input type="number" min="1" step="100" placeholder="Budget tokens" value={props.thinkingBudgetTokens ?? ''}
               disabled={props.disabled || !props.thinkingEnabled}
@@ -394,11 +394,11 @@
     style="bottom: {toolPopupPosition.bottom}px; left: {toolPopupPosition.left}px;">
     {#if activeToolPopup === 'codeInterpreter'}
       <div class="tool-popup-content">
-        <label class="switch">
+        <label class="ui-switch">
           <input type="checkbox" checked={!!props.codeInterpreterNetworkEnabled} disabled={props.disabled}
             onchange={(e) => (!props.disabled && props.onInputCodeInterpreterNetworkEnabled?.(e.currentTarget.checked))} aria-label="Allow network" />
-          <span class="switch-ui" aria-hidden="true"></span>
-          <span class="switch-label">Allow network</span>
+          <span class="ui-switch-ui" aria-hidden="true"></span>
+          <span class="ui-switch-label">Allow network</span>
         </label>
         {#if props.codeInterpreterNetworkEnabled}
           <input type="text" placeholder="Allowed domains (comma-separated)" value={props.codeInterpreterAllowedDomains || ''}
@@ -409,11 +409,11 @@
       </div>
     {:else if activeToolPopup === 'shell'}
       <div class="tool-popup-content">
-        <label class="switch">
+        <label class="ui-switch">
           <input type="checkbox" checked={!!props.shellNetworkEnabled} disabled={props.disabled}
             onchange={(e) => (!props.disabled && props.onInputShellNetworkEnabled?.(e.currentTarget.checked))} aria-label="Allow network" />
-          <span class="switch-ui" aria-hidden="true"></span>
-          <span class="switch-label">Allow network</span>
+          <span class="ui-switch-ui" aria-hidden="true"></span>
+          <span class="ui-switch-label">Allow network</span>
         </label>
         {#if props.shellNetworkEnabled}
           <input type="text" placeholder="Allowed domains (comma-separated)" value={props.shellAllowedDomains || ''}
@@ -470,15 +470,6 @@
   input[type="text"], input[type="number"], select { width: 100%; border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; background: var(--bg); color: var(--text); font: inherit; box-sizing: border-box; transition: border-color .15s ease, box-shadow .15s ease; }
   input[type="text"]:hover, input[type="number"]:hover, select:hover { border-color: color-mix(in srgb, var(--border) 70%, var(--accent)); }
   input[type="text"]:focus, input[type="number"]:focus, select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 15%, transparent); }
-  .switch { display: inline-flex; align-items: center; gap: 10px; cursor: pointer; user-select: none; }
-  .switch > input { position: absolute; opacity: 0; width: 1px; height: 1px; pointer-events: none; }
-  .switch-ui { width: 38px; height: 22px; border-radius: 999px; background: var(--border); position: relative; transition: background-color .15s ease; box-shadow: inset 0 0 0 1px var(--border); flex-shrink: 0; }
-  .switch-ui::after { content: ''; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,0.15); transition: transform .15s ease, background-color .15s ease; }
-  :global(:root[data-theme='dark']) .switch-ui { background: #2a2a2a; box-shadow: inset 0 0 0 1px #2f2f2f; }
-  :global(:root[data-theme='dark']) .switch-ui::after { background: #e6e6e6; }
-  .switch > input:checked + .switch-ui { background: color-mix(in srgb, var(--accent), #0000 70%); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent), #0000 60%); }
-  .switch > input:checked + .switch-ui::after { transform: translateX(16px); }
-  .switch-label { font-size: .95rem; }
   .chat-settings-group { position: relative; display: grid; place-items: center; }
   .chat-settings-menu { display: grid; gap: 0; position: absolute; top: auto; bottom: calc(100% + 10px); left: 8px; right: auto; background: var(--panel); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--float-shadow); max-height: calc(100vh - 120px); overflow-y: auto; overscroll-behavior: contain; opacity: 0; transform: scale(0.95) translateY(8px); transform-origin: bottom left; transition: opacity 180ms cubic-bezier(0.2, 0.9, 0.3, 1), transform 180ms cubic-bezier(0.2, 0.9, 0.3, 1); pointer-events: none; z-index: 20; }
   .chat-settings-group.open .chat-settings-menu { opacity: 1; pointer-events: auto; transform: scale(1) translateY(0); }

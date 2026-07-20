@@ -264,64 +264,66 @@
 <svelte:window onkeydown={(e) => { if (props.open && e.key === 'Escape') props.onClose?.() }} />
 
 {#if props.open}
-  <button type="button" class="backdrop" aria-label="Close tavern settings overlay" onclick={() => props.onClose?.()}></button>
+  <button type="button" class="ui-backdrop" aria-label="Close tavern settings overlay" onclick={() => props.onClose?.()}></button>
   <div
-    class="modal"
+    class="ui-modal"
     role="dialog"
     aria-modal="true"
     aria-label="Tavern settings"
     tabindex="-1"
     onpointerdown={(event) => { if (event.target === event.currentTarget) props.onClose?.() }}
   >
-    <div class="panel">
-      <header class="modal-head">
-        <div class="title">Tavern Settings</div>
-        <button class="icon-btn" onclick={() => props.onClose?.()} aria-label="Close">
+    <div class="ui-panel ui-panel-full panel">
+      <header class="ui-modal-head">
+        <div class="ui-modal-title">Tavern Settings</div>
+        <button class="ui-icon-btn" onclick={() => props.onClose?.()} aria-label="Close">
           <IconClose style="font-size: 20px;" />
         </button>
       </header>
-      <div class="tab-bar" role="tablist" aria-label="Tavern settings sections">
+      <div class="ui-tab-bar" role="tablist" aria-label="Tavern settings sections">
+        <div class="ui-segmented">
         {#each TABS as t (t.id)}
           <button
             type="button"
             role="tab"
-            class={`tab ${t.id === tab ? 'active' : ''}`}
+            class={`ui-segment ${t.id === tab ? 'active' : ''}`}
             aria-selected={t.id === tab}
             onclick={() => (tab = t.id)}
           >
             {t.label}
           </button>
         {/each}
+        </div>
       </div>
-      <div class="modal-body" role="tabpanel">
-        <div class="modal-scroller">
+      <div class="ui-modal-body" role="tabpanel">
+        <div class="ui-modal-scroller">
           {#if tab === 'general'}
-            <div class="group">
-              <div class="group-title">Preset</div>
-              <div class="field">
-                <span class="field-label">{perChatPresets ? 'Preset for new tavern chats' : 'Preset for all tavern chats'}</span>
-                <select class="select" value={connectionPresetId} onchange={(e) => (connectionPresetId = e.currentTarget.value)} aria-label="Tavern preset">
+            <div class="ui-group">
+              <div class="ui-group-title">Preset</div>
+              <div class="ui-field">
+                <span class="ui-field-label">{perChatPresets ? 'Preset for new tavern chats' : 'Preset for all tavern chats'}</span>
+                <select class="ui-select" value={connectionPresetId} onchange={(e) => (connectionPresetId = e.currentTarget.value)} aria-label="Tavern preset">
                   {#each (props.connectionPresets || []) as preset (preset.id)}
                     <option value={preset.id}>{preset.name || 'Preset'}{preset.model ? ` — ${preset.model}` : ''}</option>
                   {/each}
                 </select>
               </div>
-              <label class="switch">
+              <label class="ui-switch">
                 <input type="checkbox" checked={perChatPresets} onchange={(e) => (perChatPresets = e.currentTarget.checked)} style="display: none;" />
-                <span class="switch-ui" data-on={perChatPresets}></span>
-                <span class="switch-label">Per-chat presets (like Chat mode)</span>
+                <span class="ui-switch-ui" data-on={perChatPresets}></span>
+                <span class="ui-switch-label">Per-chat presets (like Chat mode)</span>
               </label>
               {#if perChatPresets}
-                <div class="hint">Each character chat keeps its own settings. Picking a preset in the composer or tweaking chat settings only affects that chat — the preset itself is never modified.</div>
+                <div class="ui-hint">Each character chat keeps its own settings. Picking a preset in the composer or tweaking chat settings only affects that chat — the preset itself is never modified.</div>
               {:else}
-                <div class="hint">Applies to all tavern chats. The chat settings button in a character chat quick-edits this preset. Presets are managed in the main Settings and are never exported.</div>
+                <div class="ui-hint">Applies to all tavern chats. The chat settings button in a character chat quick-edits this preset. Presets are managed in the main Settings and are never exported.</div>
               {/if}
             </div>
 
-            <div class="group">
-              <div class="group-title">Appearance</div>
-              <div class="field">
-                <span class="field-label">Message avatar shape</span>
+            <div class="ui-group">
+              <div class="ui-group-title">Appearance</div>
+              <div class="ui-field">
+                <span class="ui-field-label">Message avatar shape</span>
                 <div class="shape-switch" role="radiogroup" aria-label="Avatar shape">
                   <button type="button" class="shape-option {avatarShape === 'circle' ? 'active' : ''}" role="radio" aria-checked={avatarShape === 'circle'} onclick={() => (avatarShape = 'circle')}>
                     <span class="shape-preview circle"></span> Circle
@@ -333,41 +335,41 @@
                     <span class="shape-preview card"></span> Card (2:3)
                   </button>
                 </div>
-                <div class="hint">Card keeps the original character card aspect ratio (400×600).</div>
+                <div class="ui-hint">Card keeps the original character card aspect ratio (400×600).</div>
               </div>
             </div>
           {:else if tab === 'prompts'}
-            <div class="group">
-              <div class="group-head">
-                <div class="group-title">Prompt preset</div>
-                <div class="row">
-                  <button type="button" class="icon-btn small" title="New preset" onclick={addPreset}><IconAdd style="font-size: 18px;" /></button>
-                  <button type="button" class="icon-btn small" title="Duplicate preset" onclick={duplicatePreset}><IconContentCopy style="font-size: 18px;" /></button>
-                  <button type="button" class="icon-btn small" title="Import (shareable JSON)" onclick={() => importInput?.click()}><IconUpload style="font-size: 18px;" /></button>
-                  <button type="button" class="icon-btn small" title="Export (shareable JSON)" onclick={handleExport}><IconDownload style="font-size: 18px;" /></button>
-                  <button type="button" class="icon-btn small danger" title="Delete preset" disabled={presets.length <= 1} onclick={deletePreset}><IconDelete style="font-size: 18px;" /></button>
+            <div class="ui-group">
+              <div class="ui-group-head">
+                <div class="ui-group-title">Prompt preset</div>
+                <div class="ui-row">
+                  <button type="button" class="ui-icon-btn ui-icon-btn-sm" title="New preset" onclick={addPreset}><IconAdd style="font-size: 18px;" /></button>
+                  <button type="button" class="ui-icon-btn ui-icon-btn-sm" title="Duplicate preset" onclick={duplicatePreset}><IconContentCopy style="font-size: 18px;" /></button>
+                  <button type="button" class="ui-icon-btn ui-icon-btn-sm" title="Import (shareable JSON)" onclick={() => importInput?.click()}><IconUpload style="font-size: 18px;" /></button>
+                  <button type="button" class="ui-icon-btn ui-icon-btn-sm" title="Export (shareable JSON)" onclick={handleExport}><IconDownload style="font-size: 18px;" /></button>
+                  <button type="button" class="ui-icon-btn ui-icon-btn-sm danger" title="Delete preset" disabled={presets.length <= 1} onclick={deletePreset}><IconDelete style="font-size: 18px;" /></button>
                   <input type="file" accept=".json,application/json" bind:this={importInput} onchange={handleImportFile} style="display: none;" />
                 </div>
               </div>
-              <div class="row">
-                <select class="select grow" value={selectedId} onchange={(e) => (selectedId = e.currentTarget.value)} aria-label="Prompt preset">
+              <div class="ui-row">
+                <select class="ui-select" value={selectedId} onchange={(e) => (selectedId = e.currentTarget.value)} aria-label="Prompt preset">
                   {#each presets as preset (preset.id)}
                     <option value={preset.id}>{preset.name}</option>
                   {/each}
                 </select>
               </div>
               {#if current}
-                <div class="field">
-                  <span class="field-label">Name</span>
-                  <input class="input" value={current.name} oninput={(e) => updateCurrent(p => ({ ...p, name: e.currentTarget.value }))} aria-label="Preset name" />
+                <div class="ui-field">
+                  <span class="ui-field-label">Name</span>
+                  <input class="ui-input" value={current.name} oninput={(e) => updateCurrent(p => ({ ...p, name: e.currentTarget.value }))} aria-label="Preset name" />
                 </div>
               {/if}
-              <div class="hint">Prompt presets are shareable — they contain no API keys.</div>
+              <div class="ui-hint">Prompt presets are shareable — they contain no API keys.</div>
             </div>
 
             {#if current}
-              <div class="group">
-                <div class="group-title">Blocks (in order)</div>
+              <div class="ui-group">
+                <div class="ui-group-title">Blocks (in order)</div>
                 <div class="blocks">
                   {#each current.blocks as block, index (block.id)}
                     <div class="block {block.enabled ? '' : 'disabled'} {block.marker ? 'marker' : ''} {expandedBlockId === block.id ? 'open' : ''}">
@@ -382,32 +384,32 @@
                           <IconChevronRight style="font-size: 16px;" />
                           <span class="block-name">{block.marker ? MARKER_LABELS[block.marker] : (block.name || 'Block')}</span>
                           {#if block.marker}
-                            <span class="badge">marker</span>
+                            <span class="ui-item-badge neutral">marker</span>
                           {:else}
-                            <span class="badge role">{block.role}</span>
+                            <span class="ui-item-badge">{block.role}</span>
                           {/if}
                         </button>
                         <div class="block-actions">
-                          <button type="button" class="mini-btn" title="Move up" disabled={index === 0} onclick={() => moveBlock(block.id, -1)}><IconArrowUpward style="font-size: 15px;" /></button>
-                          <button type="button" class="mini-btn" title="Move down" disabled={index === current.blocks.length - 1} onclick={() => moveBlock(block.id, 1)}><IconArrowDownward style="font-size: 15px;" /></button>
-                          <button type="button" class="mini-btn danger" title="Delete block" onclick={() => removeBlock(block.id)}><IconDelete style="font-size: 15px;" /></button>
+                          <button type="button" class="ui-icon-btn ui-icon-btn-sm" title="Move up" disabled={index === 0} onclick={() => moveBlock(block.id, -1)}><IconArrowUpward style="font-size: 15px;" /></button>
+                          <button type="button" class="ui-icon-btn ui-icon-btn-sm" title="Move down" disabled={index === current.blocks.length - 1} onclick={() => moveBlock(block.id, 1)}><IconArrowDownward style="font-size: 15px;" /></button>
+                          <button type="button" class="ui-icon-btn ui-icon-btn-sm danger" title="Delete block" onclick={() => removeBlock(block.id)}><IconDelete style="font-size: 15px;" /></button>
                         </div>
                       </div>
                       {#if expandedBlockId === block.id}
                         <div class="block-body">
                           {#if block.marker}
-                            <div class="hint">{MARKER_HINTS[block.marker]}</div>
+                            <div class="ui-hint">{MARKER_HINTS[block.marker]}</div>
                           {:else}
-                            <div class="row">
-                              <input class="input grow" value={block.name} oninput={(e) => updateBlock(block.id, { name: e.currentTarget.value })} aria-label="Block name" placeholder="Block name" />
-                              <select class="select" value={block.role} onchange={(e) => updateBlock(block.id, { role: e.currentTarget.value as PromptBlock['role'] })} aria-label="Block role">
+                            <div class="ui-row">
+                              <input class="ui-input" value={block.name} oninput={(e) => updateBlock(block.id, { name: e.currentTarget.value })} aria-label="Block name" placeholder="Block name" />
+                              <select class="ui-select" value={block.role} onchange={(e) => updateBlock(block.id, { role: e.currentTarget.value as PromptBlock['role'] })} aria-label="Block role">
                                 <option value="system">system</option>
                                 <option value="user">user</option>
                                 <option value="assistant">assistant</option>
                               </select>
                             </div>
                             <textarea
-                              class="textarea"
+                              class="ui-textarea"
                               value={block.content}
                               oninput={(e) => updateBlock(block.id, { content: e.currentTarget.value })}
                               placeholder={'Prompt text... supports {{char}}, {{user}}, {{persona}}, {{description}}'}
@@ -418,26 +420,26 @@
                     </div>
                   {/each}
                 </div>
-                <div class="row">
-                  <button type="button" class="add-btn" onclick={addBlock}><IconAdd style="font-size: 18px;" /> Block</button>
+                <div class="ui-row">
+                  <button type="button" class="ui-btn ui-btn-accent" onclick={addBlock}><IconAdd style="font-size: 18px;" /> Block</button>
                   {#each missingMarkers as marker (marker)}
-                    <button type="button" class="add-btn" onclick={() => addMarker(marker)}><IconAdd style="font-size: 18px;" /> {MARKER_LABELS[marker]}</button>
+                    <button type="button" class="ui-btn ui-btn-accent" onclick={() => addMarker(marker)}><IconAdd style="font-size: 18px;" /> {MARKER_LABELS[marker]}</button>
                   {/each}
                 </div>
               </div>
             {/if}
           {:else}
-            <div class="group">
-              <div class="group-head">
-                <div class="group-title">Personas</div>
-                <button type="button" class="add-btn" onclick={addPersona}><IconAdd style="font-size: 18px;" /> Persona</button>
+            <div class="ui-group">
+              <div class="ui-group-head">
+                <div class="ui-group-title">Personas</div>
+                <button type="button" class="ui-btn ui-btn-accent" onclick={addPersona}><IconAdd style="font-size: 18px;" /> Persona</button>
               </div>
-              <div class="hint">The active persona replaces {'{{user}}'} and fills the Persona prompt block.</div>
+              <div class="ui-hint">The active persona replaces {'{{user}}'} and fills the Persona prompt block.</div>
               <div class="personas">
                 {#each personas as persona (persona.id)}
                   <div class="persona {selectedPersonaId === persona.id ? 'active' : ''}">
                     <div class="persona-head">
-                      <input class="input grow" value={persona.name} oninput={(e) => updatePersona(persona.id!, { name: e.currentTarget.value })} aria-label="Persona name" placeholder="Name" />
+                      <input class="ui-input" value={persona.name} oninput={(e) => updatePersona(persona.id!, { name: e.currentTarget.value })} aria-label="Persona name" placeholder="Name" />
                       <label class="active-toggle" title="Use this persona as {'{{user}}'}">
                         <input
                           type="radio"
@@ -447,10 +449,10 @@
                         />
                         <span>Active</span>
                       </label>
-                      <button type="button" class="mini-btn danger" title="Delete persona" disabled={personas.length <= 1} onclick={() => deletePersona(persona.id!)}><IconDelete style="font-size: 15px;" /></button>
+                      <button type="button" class="ui-icon-btn ui-icon-btn-sm danger" title="Delete persona" disabled={personas.length <= 1} onclick={() => deletePersona(persona.id!)}><IconDelete style="font-size: 15px;" /></button>
                     </div>
                     <textarea
-                      class="textarea"
+                      class="ui-textarea"
                       value={persona.description}
                       oninput={(e) => updatePersona(persona.id!, { description: e.currentTarget.value })}
                       placeholder={'Who {{user}} is... (injected via the Persona block)'}
@@ -462,7 +464,7 @@
           {/if}
 
           {#if errorText}
-            <div class="error-text">{errorText}</div>
+            <div class="ui-error-text">{errorText}</div>
           {/if}
         </div>
       </div>
@@ -471,236 +473,38 @@
 {/if}
 
 <style>
-  /* Chrome mirrors SettingsModal for a consistent look */
-  .backdrop {
-    position: fixed; inset: 0;
-    background: rgba(0,0,0,0.6);
-    z-index: 1000;
-    border: 0;
-    padding: 0;
-  }
-  :global(:root[data-fancy-effects="true"]) .backdrop {
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
-    animation: backdrop-fade-in 0.2s ease-out;
-  }
-  @keyframes backdrop-fade-in {
-    from { opacity: 0; }
-    to { opacity: 1; }
-  }
-  .modal {
-    position: fixed; inset: 0;
-    display: flex; align-items: center; justify-content: center;
-    padding: 24px;
-    z-index: 1001;
-  }
-  .panel {
-    width: min(calc(100vw - 48px), 760px);
-    height: min(calc(100vh - 48px), 780px);
-    height: min(calc(100dvh - 48px), 780px);
-    background: var(--panel);
-    border: 1px solid var(--border);
-    border-radius: 20px;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-    color: var(--text);
-    display: flex; flex-direction: column;
-    overflow: hidden;
-  }
-  :global(:root[data-fancy-effects="true"]) .panel {
-    animation: panel-slide-in 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-  }
-  @keyframes panel-slide-in {
-    from { opacity: 0; transform: scale(0.96) translateY(8px); }
-    to { opacity: 1; transform: scale(1) translateY(0); }
-  }
-  .modal-head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 20px 28px;
-    border-bottom: 1px solid var(--border);
-    background: linear-gradient(180deg, var(--panel), color-mix(in srgb, var(--panel) 95%, var(--bg) 5%));
-  }
-  .title {
-    font-weight: 700;
-    font-size: 1.15rem;
-    letter-spacing: -0.01em;
-  }
-  .tab-bar {
-    display: flex;
-    gap: 6px;
-    padding: 12px 24px;
-    border-bottom: 1px solid var(--border);
-    overflow: hidden;
-    background: color-mix(in srgb, var(--panel) 98%, var(--bg) 2%);
-  }
-  .tab {
-    border: 0;
-    background: transparent;
-    color: var(--muted);
-    font: inherit;
-    font-weight: 500;
-    padding: 10px 18px;
-    white-space: nowrap;
-    cursor: pointer;
-    border-radius: 10px;
-    transition: color 0.15s ease, background 0.15s ease;
-  }
-  .tab:hover:not(.active) {
-    color: var(--text);
-    background: color-mix(in srgb, var(--border) 40%, transparent);
-  }
-  .tab:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-  .tab.active {
-    color: var(--text);
-    background: color-mix(in srgb, var(--border) 60%, transparent);
-  }
-  .modal-body { flex: 1; overflow: hidden; }
-  .modal-scroller {
-    height: 100%;
-    overflow-y: auto;
-    padding: 28px;
-    display: grid;
-    gap: 20px;
-    align-content: start;
-  }
-  .modal-scroller::-webkit-scrollbar { width: 8px; }
-  .modal-scroller::-webkit-scrollbar-track { background: transparent; }
-  .modal-scroller::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
-  .modal-scroller::-webkit-scrollbar-thumb:hover { background: var(--muted); }
-  .icon-btn {
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    background: var(--panel);
-    width: 36px;
-    height: 36px;
-    display: grid;
-    place-items: center;
-    line-height: 1;
-    color: var(--text);
-    transition: all 0.15s ease;
-    cursor: pointer;
-  }
-  .icon-btn:hover:not(:disabled) {
-    background: var(--bg);
-    border-color: color-mix(in srgb, var(--border) 70%, var(--accent) 30%);
-    transform: translateY(-1px);
-  }
-  .icon-btn:disabled { opacity: .5; cursor: not-allowed; }
-  .icon-btn.small { width: 34px; height: 34px; background: var(--bg); }
-  .icon-btn.danger:hover:not(:disabled) {
-    color: #e53935;
-    border-color: color-mix(in srgb, #e53935 35%, var(--border));
-  }
-
-  /* Group cards, fields — same vocabulary as SettingsModal */
-  .group {
-    display: grid;
-    min-width: 0;
-    gap: 12px;
-    padding: 20px;
-    background: var(--panel);
-    border: 1px solid var(--border);
-    border-radius: 14px;
-    transition: border-color 0.15s ease;
-  }
-  .group:hover { border-color: color-mix(in srgb, var(--border) 80%, var(--text) 20%); }
-  .group-title { font-weight: 600; font-size: 1rem; letter-spacing: -0.01em; color: var(--text); }
-  .group-head { display: flex; align-items: center; justify-content: space-between; gap: 8px 12px; flex-wrap: wrap; min-width: 0; }
-  .field { display: grid; gap: 6px; min-width: 0; }
-  .field-label { font-size: 0.85rem; color: var(--muted); }
-  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; min-width: 0; }
-  .grow { flex: 1 1 auto; min-width: 0; }
-  .hint { color: var(--muted); font-size: .85rem; line-height: 1.4; overflow-wrap: anywhere; }
-  .input, .select, .textarea {
-    box-sizing: border-box;
-    padding: 9px 12px;
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    background: var(--bg);
-    color: var(--text);
-    font: inherit;
-    font-size: 0.9rem;
-    min-width: 0;
-  }
-  .input:hover, .select:hover, .textarea:hover { border-color: color-mix(in srgb, var(--border) 70%, var(--accent)); }
-  .input:focus, .select:focus, .textarea:focus {
-    outline: none;
-    border-color: var(--accent);
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 15%, transparent);
-  }
-  .textarea { width: 100%; min-height: 90px; resize: vertical; }
-
-  /* Toggle switch — same as SettingsModal */
-  .switch { display: inline-flex; align-items: center; gap: 10px; cursor: pointer; user-select: none; }
-  .switch-ui {
-    width: 46px;
-    height: 26px;
-    border-radius: 999px;
-    background: color-mix(in srgb, var(--border) 80%, var(--muted) 20%);
-    position: relative;
-    transition: background-color .2s ease, box-shadow .2s ease;
-    box-shadow: inset 0 1px 3px rgba(0,0,0,0.1);
-  }
-  .switch-ui::after {
-    content: '';
-    position: absolute;
-    top: 3px;
-    left: 3px;
-    width: 20px;
-    height: 20px;
-    border-radius: 50%;
-    background: #fff;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.2), 0 2px 6px rgba(0,0,0,0.1);
-    transition: transform .2s cubic-bezier(0.34, 1.56, 0.64, 1);
-  }
-  .switch-ui[data-on="true"] { background: var(--accent); }
-  .switch-ui[data-on="true"]::after { transform: translateX(20px); }
-  :global(:root[data-theme='dark']) .switch-ui { background: #2a2a2a; box-shadow: inset 0 1px 3px rgba(0,0,0,0.3); }
-  :global(:root[data-theme='dark']) .switch-ui[data-on="true"] { background: var(--accent); }
-  :global(:root[data-theme='dark']) .switch-ui::after { background: #e6e6e6; }
-  .switch-label { font-size: .95rem; font-weight: 500; color: var(--text); }
-
-  /* Add buttons — same as SettingsModal .add-btn */
-  .add-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    padding: 9px 14px;
-    border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
-    border-radius: 10px;
-    background: color-mix(in srgb, var(--accent) 10%, var(--panel) 90%);
-    color: var(--accent);
-    font: inherit;
-    font-weight: 500;
-    font-size: 0.88rem;
-    cursor: pointer;
-    transition: all 0.15s ease;
-  }
-  .add-btn:hover:not(:disabled) {
-    background: color-mix(in srgb, var(--accent) 18%, var(--panel) 82%);
-    border-color: color-mix(in srgb, var(--accent) 50%, transparent);
-    transform: translateY(-1px);
+  /* Chrome, tabs, groups, fields, switches and buttons come from shared ui.css.
+     Only the panel size and tavern-specific widgets are local. */
+  @media (min-width: 641px) {
+    .panel {
+      width: min(calc(100vw - 48px), 760px);
+      height: min(calc(100vh - 48px), 780px);
+      height: min(calc(100dvh - 48px), 780px);
+    }
   }
 
   /* Avatar shape picker */
-  .shape-switch { display: flex; gap: 8px; }
+  .shape-switch { display: flex; gap: var(--s2); flex-wrap: wrap; }
   .shape-option {
     display: inline-flex;
     align-items: center;
-    gap: 8px;
-    padding: 10px 16px;
+    gap: var(--s2);
+    padding: 10px var(--s4);
     border: 1px solid var(--border);
-    border-radius: 10px;
+    border-radius: var(--r-md);
     background: var(--bg);
     color: var(--text);
     font: inherit;
     font-size: 0.9rem;
     cursor: pointer;
-    transition: all 0.15s ease;
+    transition: border-color var(--dur) var(--ease), background-color var(--dur) var(--ease), color var(--dur) var(--ease);
   }
-  .shape-option:hover { border-color: color-mix(in srgb, var(--border) 60%, var(--accent) 40%); }
-  .shape-option.active { border-color: var(--accent); color: var(--accent); background: color-mix(in srgb, var(--accent) 6%, var(--bg) 94%); }
+  .shape-option:hover { border-color: color-mix(in srgb, var(--border) 55%, var(--accent) 45%); }
+  .shape-option.active {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 6%, var(--bg));
+  }
   .shape-preview {
     width: 22px;
     height: 22px;
@@ -708,22 +512,21 @@
     display: inline-block;
   }
   .shape-preview.circle { border-radius: 50%; }
-  .shape-preview.rounded { border-radius: 6px; }
+  .shape-preview.rounded { border-radius: var(--r-xs); }
   .shape-preview.card { width: 16px; height: 24px; border-radius: 4px; }
-  .shape-switch { flex-wrap: wrap; }
 
   /* Prompt blocks */
   .blocks { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
   .block {
     border: 1px solid var(--border);
-    border-radius: 12px;
+    border-radius: var(--r-lg);
     background: var(--bg);
-    transition: border-color 0.15s ease;
+    transition: border-color var(--dur) var(--ease);
   }
-  .block:hover { border-color: color-mix(in srgb, var(--border) 60%, var(--accent) 40%); }
+  .block:hover { border-color: color-mix(in srgb, var(--border) 55%, var(--accent) 45%); }
   .block.disabled { opacity: 0.55; }
   .block.marker { border-style: dashed; }
-  .block-head { display: flex; align-items: center; gap: 8px; padding: 8px 10px; min-width: 0; }
+  .block-head { display: flex; align-items: center; gap: var(--s2); padding: var(--s2) 10px; min-width: 0; }
   .block-head input[type='checkbox'] { width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer; flex: 0 0 auto; }
   .block-title {
     display: flex;
@@ -741,59 +544,33 @@
     text-align: left;
     padding: 2px 0;
   }
-  .block-title :global(svg) { transition: transform 150ms ease; color: var(--muted); flex: 0 0 auto; }
+  .block-title :global(svg) { transition: transform var(--dur) var(--ease); color: var(--muted); flex: 0 0 auto; }
   .block.open .block-title :global(svg) { transform: rotate(90deg); }
   .block-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .badge {
-    font-size: 0.65rem;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    padding: 2px 7px;
-    border-radius: 999px;
-    background: color-mix(in srgb, var(--border) 60%, transparent);
-    color: var(--muted);
-    flex: 0 0 auto;
-  }
-  .badge.role { background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); }
   .block-actions { display: flex; gap: 1px; flex: 0 0 auto; opacity: 0.6; transition: opacity 120ms ease; }
   .block:hover .block-actions, .block:focus-within .block-actions { opacity: 1; }
-  .mini-btn {
-    width: 26px;
-    height: 26px;
-    display: grid;
-    place-items: center;
-    border: 0;
-    border-radius: 8px;
-    background: transparent;
-    color: var(--muted);
-    cursor: pointer;
-    transition: all 0.15s ease;
-  }
-  .mini-btn:hover:not(:disabled) { color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
-  .mini-btn.danger:hover:not(:disabled) { color: #e53935; background: rgba(229, 57, 53, 0.12); }
-  .mini-btn:disabled { opacity: 0.35; cursor: default; }
-  .block-body { padding: 0 10px 10px; display: flex; flex-direction: column; gap: 8px; }
+  .block-body { padding: 0 10px 10px; display: flex; flex-direction: column; gap: var(--s2); }
 
   /* Personas */
   .personas { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
   .persona {
     border: 1px solid var(--border);
-    border-radius: 12px;
+    border-radius: var(--r-lg);
     padding: 10px;
     background: var(--bg);
     display: flex;
     flex-direction: column;
-    gap: 8px;
-    transition: all 0.15s ease;
+    gap: var(--s2);
+    transition: border-color var(--dur) var(--ease), background-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
   }
-  .persona:hover { border-color: color-mix(in srgb, var(--border) 60%, var(--accent) 40%); }
+  .persona:hover { border-color: color-mix(in srgb, var(--border) 55%, var(--accent) 45%); }
   .persona.active {
     border-color: var(--accent);
-    background: color-mix(in srgb, var(--accent) 6%, var(--bg) 94%);
-    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 12%, transparent);
+    background: color-mix(in srgb, var(--accent) 6%, var(--bg));
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 15%, transparent);
   }
-  .persona-head { display: flex; align-items: center; gap: 8px; min-width: 0; flex-wrap: wrap; }
-  .persona-head .input.grow { flex: 1 1 140px; }
+  .persona-head { display: flex; align-items: center; gap: var(--s2); min-width: 0; flex-wrap: wrap; }
+  .persona-head .ui-input { flex: 1 1 140px; width: auto; }
   .active-toggle {
     display: inline-flex;
     align-items: center;
@@ -803,30 +580,24 @@
     cursor: pointer;
     flex: 0 0 auto;
     padding: 6px 10px;
-    border-radius: 8px;
+    border-radius: var(--r-sm);
     user-select: none;
+    transition: background-color var(--dur) var(--ease);
   }
-  .active-toggle:hover { background: color-mix(in srgb, var(--text) 6%, transparent); }
+  .active-toggle:hover { background: var(--hover-bg); }
   .persona.active .active-toggle { color: var(--accent); }
   .active-toggle input[type='radio'] { accent-color: var(--accent); cursor: pointer; margin: 0; }
 
-  .error-text { color: #e53935; font-size: 0.85rem; }
-
   @media (max-width: 640px) {
-    .modal { padding: 0; }
-    .panel { width: 100%; height: 100%; height: 100dvh; border-radius: 0; border: none; }
-    .modal-head { padding: 12px 16px; }
-    .tab-bar { padding: 8px 12px; gap: 4px; }
-    .tab { padding: 8px 14px; font-size: 0.9rem; }
-    .modal-scroller {
-      padding: 12px;
-      padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
-      gap: 12px;
-    }
-    .group { padding: 12px; border-radius: 12px; }
     /* Icon-button toolbars (prompt preset actions) wrap under the title
-       instead of forcing the group wider than the screen. */
-    .group-head .row { flex: 1 1 100%; justify-content: flex-start; }
+       instead of forcing the group wider than the screen. The wrapped row
+       keeps its own gap, so undo the header overflow compensation. */
+    .ui-group-head .ui-row {
+      flex: 1 1 100%;
+      justify-content: flex-start;
+      margin-top: 0;
+      margin-bottom: 0;
+    }
     .block-actions { opacity: 1; }
   }
 </style>

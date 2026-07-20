@@ -1,3 +1,6 @@
+/* Shared UI primitives (modals, settings, tavern surfaces) */
+@import './lib/styles/ui.css';
+
 :root {
   color-scheme: light;
   --font: system-ui, ui-sans-serif, -apple-system, Segoe UI, Roboto, Inter, "Noto Sans", Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
@@ -13,6 +16,41 @@
   --assistant: #f3f4f6;
   --user: #e5e7eb;
   --float-shadow: 0 10px 30px rgba(0,0,0,0.08), 0 2px 10px rgba(0,0,0,0.06);
+
+  /* Radius scale — the app speaks 8–14px; nothing rounder than --r-xl */
+  --r-xs: 6px;
+  --r-sm: 8px;
+  --r-md: 10px;
+  --r-lg: 12px;
+  --r-xl: 14px;
+  --r-pill: 999px;
+
+  /* Spacing scale (4px rhythm) */
+  --s1: 4px;
+  --s2: 8px;
+  --s3: 12px;
+  --s4: 16px;
+  --s5: 24px;
+  --s6: 32px;
+
+  /* Interaction surfaces: tint with text color, never with --border
+     (border colors are tuned for 1px strokes and look muddy as fills) */
+  --hover-bg: color-mix(in oklab, var(--bg), var(--text) 8%);
+  --active-bg: color-mix(in oklab, var(--bg), var(--text) 13%);
+  --switch-off: color-mix(in oklab, var(--bg), var(--text) 18%);
+  --switch-off-hover: color-mix(in oklab, var(--bg), var(--text) 26%);
+
+  /* Semantic colors */
+  --danger: #ef4444;
+
+  /* Overlay + elevation (single, quiet shadow recipe) */
+  --backdrop-bg: rgba(15, 15, 16, 0.4);
+  --modal-shadow: 0 8px 24px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.08);
+
+  /* Motion: fast, no bounce; hover never lifts, :active may press */
+  --dur: 150ms;
+  --ease: ease;
+  --ease-out: cubic-bezier(0.2, 0.9, 0.3, 1);
 }
 
 :root[data-theme='dark'] {
@@ -23,6 +61,8 @@
   --muted: #a3a3a3;
   --assistant: #1c1c1c;
   --user: #222222;
+  --backdrop-bg: rgba(0, 0, 0, 0.6);
+  --modal-shadow: 0 8px 24px rgba(0,0,0,0.45), 0 2px 8px rgba(0,0,0,0.35);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -34,6 +74,8 @@
     --muted: #a3a3a3;
     --assistant: #1c1c1c;
     --user: #222222;
+    --backdrop-bg: rgba(0, 0, 0, 0.6);
+    --modal-shadow: 0 8px 24px rgba(0,0,0,0.45), 0 2px 8px rgba(0,0,0,0.35);
   }
 }
 

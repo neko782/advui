@@ -38,24 +38,24 @@ describe('App settings modal integration', () => {
     expect(settingsBtn, 'sidebar settings button').toBeTruthy()
     settingsBtn.click()
     flushSync()
-    expect(document.querySelector('.modal'), 'modal should open').toBeTruthy()
+    expect(document.querySelector('.ui-modal'), 'modal should open').toBeTruthy()
 
     // Close via the X button
-    const closeBtn = document.querySelector('.modal-head .icon-btn') as HTMLButtonElement
+    const closeBtn = document.querySelector('.ui-modal-head .ui-icon-btn') as HTMLButtonElement
     expect(closeBtn, 'close button').toBeTruthy()
     closeBtn.click()
     flushSync()
     await sleep(20)
     flushSync()
-    expect(document.querySelector('.modal'), 'modal should close').toBeFalsy()
+    expect(document.querySelector('.ui-modal'), 'modal should close').toBeFalsy()
 
     // Reopen and close via Escape
     settingsBtn.click()
     flushSync()
-    expect(document.querySelector('.modal')).toBeTruthy()
+    expect(document.querySelector('.ui-modal')).toBeTruthy()
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
     flushSync()
-    expect(document.querySelector('.modal')).toBeFalsy()
+    expect(document.querySelector('.ui-modal')).toBeFalsy()
 
     await unmount(component)
   })

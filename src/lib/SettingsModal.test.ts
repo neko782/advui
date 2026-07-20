@@ -30,9 +30,9 @@ describe('SettingsModal', () => {
     })
     flushSync()
 
-    expect(document.querySelector('.modal')).toBeTruthy()
+    expect(document.querySelector('.ui-modal')).toBeTruthy()
 
-    const closeBtn = document.querySelector('.modal-head .icon-btn') as HTMLButtonElement
+    const closeBtn = document.querySelector('.ui-modal-head .ui-icon-btn') as HTMLButtonElement
     expect(closeBtn).toBeTruthy()
     closeBtn.click()
     flushSync()
@@ -49,7 +49,7 @@ describe('SettingsModal', () => {
     })
     flushSync()
 
-    const backdrop = document.querySelector('.backdrop') as HTMLButtonElement
+    const backdrop = document.querySelector('.ui-backdrop') as HTMLButtonElement
     expect(backdrop).toBeTruthy()
     backdrop.click()
     flushSync()

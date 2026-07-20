@@ -169,11 +169,12 @@
   }
 </script>
 
-            <section class="group">
-              <div class="group-title">Appearance</div>
-              <label class="field">
+            <section class="ui-group">
+              <div class="ui-group-title">Appearance</div>
+              <label class="ui-field">
                 <span>Theme</span>
                 <select
+                  class="ui-select"
                   value={themeState.mode}
                   onchange={(event) => {
                     const next = event.currentTarget.value
@@ -186,13 +187,14 @@
                   <option value="dark">Dark</option>
                 </select>
               </label>
-              <p class="hint">Choose whether to match your device setting or force a light or dark theme.</p>
+              <p class="ui-hint">Choose whether to match your device setting or force a light or dark theme.</p>
             </section>
-            <section class="group">
-              <div class="group-title">Keyboard shortcuts</div>
-              <label class="field">
+            <section class="ui-group">
+              <div class="ui-group-title">Keyboard shortcuts</div>
+              <label class="ui-field">
                 <span>Send message</span>
                 <select
+                  class="ui-select"
                   value={local.keybinds?.sendMessage || 'Enter'}
                   onchange={(event) => { local.keybinds = { ...local.keybinds, sendMessage: event.currentTarget.value }; persistSettings() }}
                   aria-label="Send message keybind"
@@ -204,9 +206,10 @@
                   <option value="None">None</option>
                 </select>
               </label>
-              <label class="field">
+              <label class="ui-field">
                 <span>New line</span>
                 <select
+                  class="ui-select"
                   value={local.keybinds?.newLine || 'Shift+Enter'}
                   onchange={(event) => { local.keybinds = { ...local.keybinds, newLine: event.currentTarget.value }; persistSettings() }}
                   aria-label="New line keybind"
@@ -218,10 +221,10 @@
                   <option value="None">None</option>
                 </select>
               </label>
-              <p class="hint">Configure keyboard shortcuts for actions in the composer. Does not apply on mobile devices.</p>
+              <p class="ui-hint">Configure keyboard shortcuts for actions in the composer. Does not apply on mobile devices.</p>
             </section>
-            <section class="group">
-              <div class="group-title">Data</div>
+            <section class="ui-group">
+              <div class="ui-group-title">Data</div>
               <div class="data-actions">
                 <button
                   type="button"
@@ -257,7 +260,7 @@
                   <span>Import all data</span>
                 </button>
               </div>
-              <label class="switch data-media-switch" title="Include media in all-data exports">
+              <label class="ui-switch" title="Include media in all-data exports">
                 <input
                   type="checkbox"
                   checked={exportIncludesMedia}
@@ -265,19 +268,19 @@
                   onchange={(event) => (exportIncludesMedia = !!event.currentTarget.checked)}
                   aria-label="Include media in export"
                 />
-                <span class="switch-ui" aria-hidden="true"></span>
-                <span class="switch-label">Include media in export</span>
+                <span class="ui-switch-ui" aria-hidden="true"></span>
+                <span class="ui-switch-label">Include media in export</span>
               </label>
               {#if importExportStatus}
-                <p class="hint" aria-live="polite">{importExportStatus}</p>
+                <p class="ui-hint" aria-live="polite">{importExportStatus}</p>
               {:else}
-                <p class="hint">Import chats, settings, and images. Export all data skips media unless enabled. {exportSizeEstimateText}</p>
+                <p class="ui-hint">Import chats, settings, and images. Export all data skips media unless enabled. {exportSizeEstimateText}</p>
               {/if}
             </section>
-            <section class="group legal-group">
-              <div class="group-title">Open-source notice</div>
-              <p class="hint">This program is licensed under the GNU Affero General Public License, version 3 or any later version.</p>
-              <p class="hint">You can access the complete corresponding source code here:</p>
+            <section class="ui-group legal-group">
+              <div class="ui-group-title">Open-source notice</div>
+              <p class="ui-hint">This program is licensed under the GNU Affero General Public License, version 3 or any later version.</p>
+              <p class="ui-hint">You can access the complete corresponding source code here:</p>
               <a
                 class="legal-link"
                 href={SOURCE_CODE_URL}
@@ -286,90 +289,25 @@
               >
                 {SOURCE_CODE_URL}
               </a>
-              <p class="hint">This software is provided without warranty, to the extent permitted by law.</p>
+              <p class="ui-hint">This software is provided without warranty, to the extent permitted by law.</p>
             </section>
-            <section class="group developer-group">
-              <div class="group-title">Developer</div>
-              <label class="switch">
+            <section class="ui-group developer-group">
+              <div class="ui-group-title">Developer</div>
+              <label class="ui-switch">
                 <input
                   type="checkbox"
                   bind:checked={local.debug}
                   onchange={() => persistSettings()}
                   aria-label="Debug Mode"
                 />
-                <span class="switch-ui" aria-hidden="true"></span>
-                <span class="switch-label">Debug mode</span>
+                <span class="ui-switch-ui" aria-hidden="true"></span>
+                <span class="ui-switch-label">Debug mode</span>
               </label>
-              <p class="hint">Useless and dangerous tools used for debugging. You don't need these.</p>
+              <p class="ui-hint">Useless and dangerous tools used for debugging. You don't need these.</p>
             </section>
 
 <style>
-  @keyframes backdrop-fade-in {
-    from { opacity: 0;
-    }
-    to { opacity: 1;
-    }
-  }
-  @keyframes panel-slide-in {
-    from {
-      opacity: 0;
-      transform: scale(0.96) translateY(8px);
-    }
-    to {
-      opacity: 1;
-      transform: scale(1) translateY(0);
-    }
-  }
-  .field { display: grid; gap: 6px;
-  }
-  .field > span {
-    font-size: .875rem;
-    font-weight: 500;
-    color: var(--muted);
-  }
-  select {
-    flex: 1;
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 11px 14px;
-    background: var(--panel);
-    color: var(--text);
-    font: inherit;
-    transition: border-color 0.15s ease, box-shadow 0.15s ease;
-  }
-  select:focus {
-    outline: none;
-    border-color: var(--accent);
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 15%, transparent);
-  }
-  select:hover:not(:focus) {
-    border-color: color-mix(in srgb, var(--border) 70%, var(--text) 30%);
-  }
-  .hint {
-    color: var(--muted);
-    font-size: .85rem;
-    margin-top: 2px;
-    line-height: 1.4;
-  }
-  /* API key action buttons size */
-  .group {
-    display: grid;
-    gap: 12px;
-    padding: 20px;
-    background: var(--panel);
-    border: 1px solid var(--border);
-    border-radius: 14px;
-    transition: border-color 0.15s ease;
-  }
-  .group:hover {
-    border-color: color-mix(in srgb, var(--border) 80%, var(--text) 20%);
-  }
-  .group-title {
-    font-weight: 600;
-    font-size: 1rem;
-    letter-spacing: -0.01em;
-    color: var(--text);
-  }
+  /* group/field/hint/switch/select primitives come from shared ui.css */
   .developer-group {
     background: color-mix(in srgb, var(--panel) 95%, var(--muted) 5%);
     border-style: dashed;
@@ -387,106 +325,40 @@
   .legal-link:hover, .legal-link:focus-visible {
     color: color-mix(in srgb, var(--accent) 80%, var(--text) 20%);
   }
-  /* Item list for connections and presets */
-  /* Reorder list with smooth transitions */
-  /* Remove old drag-over highlight - items now shift visually */
-  /* Mobile: always show drag handle clearly */
-  /* Form section styling */
-  /* Add button styling */
-  /* Legacy styles kept for backward compatibility */
-  /* Toggle switch */
-  .switch {
-    display: inline-flex;
-    align-items: center;
-    gap: 10px;
-    cursor: pointer;
-    user-select: none;
-  }
-  .switch > input { position: absolute; opacity: 0; width: 1px; height: 1px; pointer-events: none;
-  }
-  .switch-ui {
-    width: 46px;
-    height: 26px;
-    border-radius: 999px;
-    background: color-mix(in srgb, var(--border) 80%, var(--muted) 20%);
-    position: relative;
-    transition: background-color .2s ease, box-shadow .2s ease;
-    box-shadow: inset 0 1px 3px rgba(0,0,0,0.1);
-  }
-  .switch-ui::after {
-    content: '';
-    position: absolute;
-    top: 3px;
-    left: 3px;
-    width: 20px;
-    height: 20px;
-    border-radius: 50%;
-    background: #fff;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.2), 0 2px 6px rgba(0,0,0,0.1);
-    transition: transform .2s cubic-bezier(0.34, 1.56, 0.64, 1);
-  }
-  .switch:hover .switch-ui {
-    background: color-mix(in srgb, var(--border) 60%, var(--muted) 40%);
-  }
-  :global(:root[data-theme='dark']) .switch-ui {
-    background: #2a2a2a;
-    box-shadow: inset 0 1px 3px rgba(0,0,0,0.3);
-  }
-  :global(:root[data-theme='dark']) .switch-ui::after { background: #e6e6e6;
-  }
-  .switch > input:checked + .switch-ui {
-    background: var(--accent);
-    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 20%, transparent);
-  }
-  .switch > input:checked + .switch-ui::after { transform: translateX(20px);
-  }
-  .switch-label {
-    font-size: .95rem;
-    font-weight: 500;
-    color: var(--text);
-  }
   .data-actions {
     display: flex;
     flex-wrap: wrap;
-    gap: 10px;
+    gap: var(--s2);
   }
   .data-action-btn {
     display: inline-flex;
     align-items: center;
     gap: 10px;
-    padding: 12px 16px;
+    padding: 12px var(--s4);
     border: 1px solid var(--border);
-    border-radius: 10px;
+    border-radius: var(--r-md);
     background: var(--bg);
     color: var(--text);
     font: inherit;
     font-weight: 500;
     cursor: pointer;
-    transition: all 0.15s ease;
+    transition: background-color var(--dur) var(--ease), border-color var(--dur) var(--ease), transform 100ms var(--ease);
   }
   .data-action-btn:hover:not(:disabled) {
-    background: var(--panel);
-    border-color: color-mix(in srgb, var(--border) 60%, var(--accent) 40%);
-    transform: translateY(-1px);
-    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    background: var(--hover-bg);
+    border-color: color-mix(in srgb, var(--border) 55%, var(--accent) 45%);
   }
   .data-action-btn:active:not(:disabled) {
-    transform: translateY(0);
+    transform: scale(0.97);
   }
   .data-action-btn:disabled {
     opacity: 0.5;
     cursor: not-allowed;
   }
   @media (max-width: 640px) {
-    .group { padding: 16px; border-radius: 12px;
-    }
     .data-actions { flex-direction: column;
     }
     .data-action-btn { width: 100%; justify-content: center;
     }
   }
-  /* Smooth scrollbar styling */
-  /* Reset button */
-  /* Action item in message buttons list */
-  /* Tools grid */
 </style>

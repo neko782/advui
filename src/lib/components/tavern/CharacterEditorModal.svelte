@@ -191,9 +191,9 @@
 <svelte:window onkeydown={(e) => { if (props.open && !deleteConfirmOpen && e.key === 'Escape') props.onCancel?.() }} />
 
 {#if props.open && draft}
-  <button type="button" class="backdrop" aria-label="Close character editor overlay" onclick={() => props.onCancel?.()}></button>
+  <button type="button" class="ui-backdrop" aria-label="Close character editor overlay" onclick={() => props.onCancel?.()}></button>
   <div
-    class="modal"
+    class="ui-modal modal"
     role="dialog"
     aria-modal="true"
     aria-labelledby="char-editor-title"
@@ -201,16 +201,16 @@
     bind:this={modalEl}
     onpointerdown={(event) => { if (event.target === event.currentTarget) props.onCancel?.() }}
   >
-    <div class="panel">
-      <header class="modal-head">
-        <div id="char-editor-title" class="title">Character</div>
-        <button type="button" class="icon-btn" aria-label="Close" onclick={() => props.onCancel?.()}>
+    <div class="ui-panel ui-panel-full panel">
+      <header class="ui-modal-head">
+        <div id="char-editor-title" class="ui-modal-title">Character</div>
+        <button type="button" class="ui-icon-btn" aria-label="Close" onclick={() => props.onCancel?.()}>
           <IconClose style="font-size: 20px;" />
         </button>
       </header>
 
-      <div class="modal-body">
-        <div class="modal-scroller" bind:this={scrollerEl} onfocusin={handleFocusIn} onfocusout={handleFocusOut}>
+      <div class="ui-modal-body modal-body">
+        <div class="ui-modal-scroller modal-scroller" bind:this={scrollerEl} onfocusin={handleFocusIn} onfocusout={handleFocusOut}>
           <!-- Identity: always visible, everything else lives behind the bubbles -->
           <div class="identity">
             <button type="button" class="avatar-wrap" title="Change avatar" aria-label="Change avatar" onclick={() => avatarInput?.click()}>
@@ -223,8 +223,8 @@
             </button>
             <input type="file" accept="image/png,image/jpeg,image/webp" bind:this={avatarInput} onchange={handleAvatarChange} style="display: none;" />
             <div class="identity-fields">
-              <input class="input name-input" value={draft.name} oninput={(e) => updateField('name', e.currentTarget.value)} placeholder="Name" aria-label="Name" />
-              <input class="input" value={draft.nickname} oninput={(e) => updateField('nickname', e.currentTarget.value)} placeholder={'Nickname — replaces {{char}} (optional)'} aria-label="Nickname" />
+              <input class="ui-input name-input" value={draft.name} oninput={(e) => updateField('name', e.currentTarget.value)} placeholder="Name" aria-label="Name" />
+              <input class="ui-input" value={draft.nickname} oninput={(e) => updateField('nickname', e.currentTarget.value)} placeholder={'Nickname — replaces {{char}} (optional)'} aria-label="Nickname" />
             </div>
           </div>
 
@@ -243,72 +243,72 @@
 
           <div class="section-body" role="tabpanel">
             {#if activeSection === 'description'}
-              <label class="field">
-                <span class="field-label">Description</span>
-                <textarea class="textarea tall" value={draft.description} oninput={(e) => updateField('description', e.currentTarget.value)} placeholder={'Who {{char}} is...'} aria-label="Description"></textarea>
+              <label class="ui-field">
+                <span class="ui-field-label">Description</span>
+                <textarea class="ui-textarea tall" value={draft.description} oninput={(e) => updateField('description', e.currentTarget.value)} placeholder={'Who {{char}} is...'} aria-label="Description"></textarea>
               </label>
             {:else if activeSection === 'greetings'}
-              <label class="field">
-                <span class="field-label">First message</span>
-                <textarea class="textarea" value={draft.firstMes} oninput={(e) => updateField('firstMes', e.currentTarget.value)}></textarea>
+              <label class="ui-field">
+                <span class="ui-field-label">First message</span>
+                <textarea class="ui-textarea" value={draft.firstMes} oninput={(e) => updateField('firstMes', e.currentTarget.value)}></textarea>
               </label>
               {#each draft.alternateGreetings as greeting, index (index)}
                 <div class="greeting-row">
-                  <textarea class="textarea" value={greeting} oninput={(e) => updateGreeting(index, e.currentTarget.value)} placeholder={`Alternate greeting ${index + 1}`}></textarea>
-                  <button type="button" class="small-btn danger" aria-label="Remove greeting" onclick={() => removeGreeting(index)}>
+                  <textarea class="ui-textarea" value={greeting} oninput={(e) => updateGreeting(index, e.currentTarget.value)} placeholder={`Alternate greeting ${index + 1}`}></textarea>
+                  <button type="button" class="ui-icon-btn ui-icon-btn-sm danger" aria-label="Remove greeting" onclick={() => removeGreeting(index)}>
                     <IconDelete style="font-size: 16px;" />
                   </button>
                 </div>
               {/each}
-              <button type="button" class="small-btn" onclick={addGreeting}>
+              <button type="button" class="ui-btn ui-btn-accent ui-btn-sm" onclick={addGreeting}>
                 <IconAdd style="font-size: 16px;" /> Alternate greeting
               </button>
             {:else if activeSection === 'behavior'}
-              <label class="field">
-                <span class="field-label">Personality</span>
-                <textarea class="textarea" value={draft.personality} oninput={(e) => updateField('personality', e.currentTarget.value)}></textarea>
+              <label class="ui-field">
+                <span class="ui-field-label">Personality</span>
+                <textarea class="ui-textarea" value={draft.personality} oninput={(e) => updateField('personality', e.currentTarget.value)}></textarea>
               </label>
-              <label class="field">
-                <span class="field-label">Scenario</span>
-                <textarea class="textarea" value={draft.scenario} oninput={(e) => updateField('scenario', e.currentTarget.value)}></textarea>
+              <label class="ui-field">
+                <span class="ui-field-label">Scenario</span>
+                <textarea class="ui-textarea" value={draft.scenario} oninput={(e) => updateField('scenario', e.currentTarget.value)}></textarea>
               </label>
-              <label class="field">
-                <span class="field-label">Example dialogue</span>
-                <textarea class="textarea" value={draft.mesExample} oninput={(e) => updateField('mesExample', e.currentTarget.value)}></textarea>
+              <label class="ui-field">
+                <span class="ui-field-label">Example dialogue</span>
+                <textarea class="ui-textarea" value={draft.mesExample} oninput={(e) => updateField('mesExample', e.currentTarget.value)}></textarea>
               </label>
             {:else if activeSection === 'overrides'}
-              <label class="field">
-                <span class="field-label">System prompt (replaces the main prompt; supports {'{{original}}'})</span>
-                <textarea class="textarea" value={draft.systemPrompt} oninput={(e) => updateField('systemPrompt', e.currentTarget.value)}></textarea>
+              <label class="ui-field">
+                <span class="ui-field-label">System prompt (replaces the main prompt; supports {'{{original}}'})</span>
+                <textarea class="ui-textarea" value={draft.systemPrompt} oninput={(e) => updateField('systemPrompt', e.currentTarget.value)}></textarea>
               </label>
-              <label class="field">
-                <span class="field-label">Post-history instructions (supports {'{{original}}'})</span>
-                <textarea class="textarea" value={draft.postHistoryInstructions} oninput={(e) => updateField('postHistoryInstructions', e.currentTarget.value)}></textarea>
+              <label class="ui-field">
+                <span class="ui-field-label">Post-history instructions (supports {'{{original}}'})</span>
+                <textarea class="ui-textarea" value={draft.postHistoryInstructions} oninput={(e) => updateField('postHistoryInstructions', e.currentTarget.value)}></textarea>
               </label>
             {:else}
               <div class="grid-2">
-                <label class="field">
-                  <span class="field-label">Creator</span>
-                  <input class="input" value={draft.creator} oninput={(e) => updateField('creator', e.currentTarget.value)} />
+                <label class="ui-field">
+                  <span class="ui-field-label">Creator</span>
+                  <input class="ui-input" value={draft.creator} oninput={(e) => updateField('creator', e.currentTarget.value)} />
                 </label>
-                <label class="field">
-                  <span class="field-label">Version</span>
-                  <input class="input" value={draft.characterVersion} oninput={(e) => updateField('characterVersion', e.currentTarget.value)} />
+                <label class="ui-field">
+                  <span class="ui-field-label">Version</span>
+                  <input class="ui-input" value={draft.characterVersion} oninput={(e) => updateField('characterVersion', e.currentTarget.value)} />
                 </label>
               </div>
-              <label class="field">
-                <span class="field-label">Tags (comma separated)</span>
-                <input class="input" value={tagsText} oninput={(e) => (tagsText = e.currentTarget.value)} />
+              <label class="ui-field">
+                <span class="ui-field-label">Tags (comma separated)</span>
+                <input class="ui-input" value={tagsText} oninput={(e) => (tagsText = e.currentTarget.value)} />
               </label>
-              <label class="field">
-                <span class="field-label">Creator notes (not sent to the model)</span>
-                <textarea class="textarea" value={draft.creatorNotes} oninput={(e) => updateField('creatorNotes', e.currentTarget.value)}></textarea>
+              <label class="ui-field">
+                <span class="ui-field-label">Creator notes (not sent to the model)</span>
+                <textarea class="ui-textarea" value={draft.creatorNotes} oninput={(e) => updateField('creatorNotes', e.currentTarget.value)}></textarea>
               </label>
             {/if}
           </div>
 
           {#if errorText}
-            <div class="error-text">{errorText}</div>
+            <div class="ui-error-text">{errorText}</div>
           {/if}
         </div>
         {#if fieldExpanded}
@@ -324,17 +324,17 @@
       </div>
 
       <footer class="modal-foot">
-        <button type="button" class="icon-btn" onclick={handleExport} title="Export card (PNG/JSON)" aria-label="Export card">
+        <button type="button" class="ui-icon-btn" onclick={handleExport} title="Export card (PNG/JSON)" aria-label="Export card">
           <IconDownload style="font-size: 20px;" />
         </button>
         {#if props.canDelete}
-          <button type="button" class="icon-btn delete-btn" onclick={() => (deleteConfirmOpen = true)} title="Delete character" aria-label="Delete character">
+          <button type="button" class="ui-icon-btn danger" onclick={() => (deleteConfirmOpen = true)} title="Delete character" aria-label="Delete character">
             <IconDelete style="font-size: 20px;" />
           </button>
         {/if}
         <div class="foot-spacer"></div>
-        <button type="button" class="foot-btn" onclick={() => props.onCancel?.()}>Cancel</button>
-        <button type="button" class="foot-btn primary" onclick={handleSave}>Save</button>
+        <button type="button" class="ui-btn ui-btn-outline" onclick={() => props.onCancel?.()}>Cancel</button>
+        <button type="button" class="ui-btn ui-btn-primary" onclick={handleSave}>Save</button>
       </footer>
     </div>
   </div>
@@ -352,87 +352,23 @@
 />
 
 <style>
-  /* Chrome mirrors SettingsModal for a consistent look */
-  .backdrop {
-    position: fixed; inset: 0;
-    background: rgba(0,0,0,0.6);
-    z-index: 1000;
-    border: 0;
-    padding: 0;
-  }
-  :global(:root[data-fancy-effects="true"]) .backdrop {
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
-    animation: backdrop-fade-in 0.2s ease-out;
-  }
-  @keyframes backdrop-fade-in {
-    from { opacity: 0; }
-    to { opacity: 1; }
-  }
+  /* Chrome, fields, switches and buttons come from shared ui.css.
+     Local: panel sizing, visual-viewport pinning, identity block,
+     sticky section tabs and the mobile fullscreen-field behavior. */
   .modal {
-    position: fixed; inset: 0;
-    display: flex; align-items: center; justify-content: center;
-    padding: 24px;
-    z-index: 1001;
     box-sizing: border-box;
     overflow: hidden;
   }
-  .panel {
-    width: min(calc(100vw - 48px), 640px);
-    height: min(calc(100vh - 48px), 780px);
-    height: min(calc(100dvh - 48px), 780px);
-    min-height: 0;
-    max-height: calc(100dvh - 48px);
-    background: var(--panel);
-    border: 1px solid var(--border);
-    border-radius: 20px;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-    color: var(--text);
-    display: flex; flex-direction: column;
-    overflow: hidden;
+  @media (min-width: 641px) {
+    .panel {
+      width: min(calc(100vw - 48px), 640px);
+      height: min(calc(100vh - 48px), 780px);
+      height: min(calc(100dvh - 48px), 780px);
+      min-height: 0;
+      max-height: calc(100dvh - 48px);
+    }
   }
-  :global(:root[data-fancy-effects="true"]) .panel {
-    animation: panel-slide-in 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-  }
-  @keyframes panel-slide-in {
-    from { opacity: 0; transform: scale(0.96) translateY(8px); }
-    to { opacity: 1; transform: scale(1) translateY(0); }
-  }
-  .modal-head {
-    flex: 0 0 auto;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 20px 28px;
-    border-bottom: 1px solid var(--border);
-    background: linear-gradient(180deg, var(--panel), color-mix(in srgb, var(--panel) 95%, var(--bg) 5%));
-  }
-  .title {
-    font-weight: 700;
-    font-size: 1.15rem;
-    letter-spacing: -0.01em;
-  }
-  .icon-btn {
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    background: var(--panel);
-    width: 36px;
-    height: 36px;
-    display: grid;
-    place-items: center;
-    line-height: 1;
-    color: var(--text);
-    transition: all 0.15s ease;
-    cursor: pointer;
-  }
-  .icon-btn:hover:not(:disabled) {
-    background: var(--bg);
-    border-color: color-mix(in srgb, var(--border) 70%, var(--accent) 30%);
-    transform: translateY(-1px);
-  }
-  .icon-btn.delete-btn { color: #dc5050; }
-  .icon-btn.delete-btn:hover { border-color: #dc5050; background: rgba(220, 80, 80, 0.1); }
-  .modal-body { flex: 1 1 auto; min-height: 0; overflow: hidden; position: relative; }
+  .modal-body { position: relative; }
   /* Floating collapse control for the mobile fullscreen field editor */
   .collapse-btn {
     display: none;
@@ -444,77 +380,41 @@
     gap: 6px;
     padding: 6px 12px;
     border: 1px solid var(--border);
-    border-radius: 999px;
+    border-radius: var(--r-pill);
     background: var(--bg);
     color: var(--text);
     font: inherit;
     font-size: 0.8rem;
     font-weight: 500;
     cursor: pointer;
-    box-shadow: 0 2px 6px rgba(0,0,0,0.18);
+    box-shadow: var(--modal-shadow);
   }
   .modal-scroller {
-    height: 100%;
     box-sizing: border-box;
-    overflow-y: auto;
-    overscroll-behavior: contain;
     scrollbar-gutter: stable;
-    padding: 0 28px 48px;
-    scroll-padding-bottom: 48px;
+    padding: 0 var(--s5) var(--s6);
+    gap: var(--s4);
+    scroll-padding-bottom: var(--s6);
     scroll-padding-top: 56px;
-    display: grid;
-    gap: 12px;
-    align-content: start;
   }
-  .modal-scroller::-webkit-scrollbar { width: 8px; }
-  .modal-scroller::-webkit-scrollbar-track { background: transparent; }
-  .modal-scroller::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
-  .modal-scroller::-webkit-scrollbar-thumb:hover { background: var(--muted); }
   .modal-foot {
     flex: 0 0 auto;
     display: flex;
     align-items: center;
-    gap: 10px;
-    padding: 14px 28px;
+    gap: var(--s2);
+    padding: var(--s3) var(--s5);
     border-top: 1px solid var(--border);
   }
   .foot-spacer { flex: 1 1 auto; }
-  .foot-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 10px;
-    padding: 10px 18px;
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    background: var(--bg);
-    color: var(--text);
-    font: inherit;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.15s ease;
-  }
-  .foot-btn:hover {
-    background: var(--panel);
-    border-color: color-mix(in srgb, var(--border) 60%, var(--accent) 40%);
-    transform: translateY(-1px);
-  }
-  .foot-btn.primary {
-    background: var(--accent);
-    border-color: transparent;
-    color: #fff;
-  }
-  .foot-btn.primary:hover {
-    background: color-mix(in srgb, var(--accent) 85%, black 15%);
-  }
 
-  .identity { display: flex; gap: 12px; align-items: stretch; margin-bottom: 4px; padding-top: 20px; }
+  .identity { display: flex; gap: var(--s3); align-items: stretch; padding-top: var(--s4); }
   .avatar-wrap {
     position: relative;
     border: 0;
     padding: 0;
     background: transparent;
     cursor: pointer;
-    border-radius: 10px;
+    border-radius: var(--r-md);
     overflow: hidden;
     flex: 0 0 auto;
   }
@@ -522,7 +422,7 @@
     /* Official card aspect ratio (2:3) */
     width: 72px;
     aspect-ratio: 2 / 3;
-    border-radius: 10px;
+    border-radius: var(--r-md);
     object-fit: cover;
     background: var(--border);
     display: block;
@@ -540,7 +440,7 @@
     transition: opacity 120ms ease;
   }
   .avatar-wrap:hover .avatar-hint { opacity: 1; }
-  .identity-fields { flex: 1 1 auto; display: flex; flex-direction: column; gap: 8px; justify-content: center; min-width: 0; }
+  .identity-fields { flex: 1 1 auto; display: flex; flex-direction: column; gap: var(--s2); justify-content: center; min-width: 0; }
   .name-input { font-weight: 600; }
 
   /* Bubble row: replaces the stack of collapsed section headers */
@@ -549,156 +449,92 @@
     top: 0;
     z-index: 5;
     display: flex;
-    gap: 6px;
+    gap: 2px;
     overflow-x: auto;
     overscroll-behavior-x: contain;
     scrollbar-width: none;
     /* Bleed into the scroller padding so stuck content can't peek through */
-    margin: 0 -28px;
-    padding: 8px 28px;
+    margin: 0 calc(-1 * var(--s5));
+    padding: var(--s2) var(--s5);
     background: var(--panel);
-    box-shadow: 0 6px 8px -8px rgba(0,0,0,0.25);
+    border-bottom: 1px solid var(--border);
   }
   .section-tabs::-webkit-scrollbar { display: none; }
   .tab-bubble {
     flex: 0 0 auto;
-    border: 1px solid var(--border);
-    border-radius: 999px;
-    padding: 6px 13px;
-    background: var(--bg);
-    color: var(--text);
+    border: 1px solid transparent;
+    border-radius: var(--r-sm);
+    padding: 6px var(--s3);
+    background: transparent;
+    color: var(--muted);
     font: inherit;
     font-size: 0.85rem;
     font-weight: 500;
     white-space: nowrap;
     cursor: pointer;
-    transition: background-color .15s ease, color .15s ease, border-color .15s ease;
+    transition: background-color var(--dur) var(--ease), color var(--dur) var(--ease);
   }
-  .tab-bubble:hover { border-color: color-mix(in srgb, var(--border) 55%, var(--accent) 45%); }
+  .tab-bubble:hover { color: var(--text); background: var(--hover-bg); }
   .tab-bubble.active {
-    background: var(--accent);
-    border-color: transparent;
-    color: #fff;
-    box-shadow: 0 2px 5px rgba(0,0,0,0.14);
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
+    color: var(--accent);
   }
   .section-body {
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: var(--s3);
   }
 
-  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-  .field { display: grid; gap: 6px; min-width: 0; }
-  .field-label { font-size: 0.85rem; color: var(--muted); }
-  .input, .textarea {
-    width: 100%;
-    box-sizing: border-box;
-    padding: 9px 12px;
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    background: var(--panel);
-    color: var(--text);
-    font: inherit;
-    font-size: 0.9rem;
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s3); }
+  .ui-textarea {
     /* Keep natively focus-scrolled fields clear of the sticky bubble row */
     scroll-margin-top: 56px;
-  }
-  .input:hover, .textarea:hover { border-color: color-mix(in srgb, var(--border) 70%, var(--accent)); }
-  .input:focus, .textarea:focus {
-    outline: none;
-    border-color: var(--accent);
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 15%, transparent);
-  }
-  .textarea {
     min-height: 68px;
-    resize: vertical;
     /* Expand-on-hover/focus: collapse is delayed so sweeping the pointer
        across fields doesn't cause jittery reflows. */
-    transition: min-height .18s ease .25s;
+    transition:
+      min-height .18s ease .25s,
+      border-color var(--dur) var(--ease),
+      box-shadow var(--dur) var(--ease);
   }
-  .textarea.tall { min-height: 130px; }
+  .ui-textarea.tall { min-height: 130px; }
   @media (hover: hover) and (pointer: fine) {
-    .textarea:hover { min-height: 320px; transition-delay: .12s; }
+    .ui-textarea:hover { min-height: 320px; transition-delay: .12s; }
   }
-  .textarea:focus { min-height: 320px; transition-delay: 0s; }
-  .greeting-row { display: flex; gap: 6px; align-items: flex-start; }
-  .greeting-row .textarea { flex: 1 1 auto; }
-  .small-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    padding: 8px 12px;
-    border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
-    border-radius: 10px;
-    background: color-mix(in srgb, var(--accent) 10%, var(--panel) 90%);
-    color: var(--accent);
-    font: inherit;
-    font-weight: 500;
-    font-size: 0.85rem;
-    cursor: pointer;
-    align-self: flex-start;
-    transition: all 0.15s ease;
-  }
-  .small-btn:hover {
-    background: color-mix(in srgb, var(--accent) 18%, var(--panel) 82%);
-    border-color: color-mix(in srgb, var(--accent) 50%, transparent);
-    transform: translateY(-1px);
-  }
-  .small-btn.danger {
-    border-color: var(--border);
-    background: var(--panel);
-    color: var(--muted);
-    padding: 8px 10px;
-  }
-  .small-btn.danger:hover {
-    border-color: color-mix(in srgb, #e53935 35%, var(--border));
-    background: rgba(229, 57, 53, 0.08);
-    color: #e53935;
-  }
-  .error-text { color: #e53935; font-size: 0.85rem; }
+  .ui-textarea:focus { min-height: 320px; transition-delay: 0s; }
+  .greeting-row { display: flex; gap: var(--s2); align-items: flex-start; }
+  .greeting-row .ui-textarea { width: auto; flex: 1 1 auto; }
 
   @media (max-width: 640px) {
-    .modal { padding: 0; align-items: flex-start; }
+    .modal { align-items: flex-start; }
     .panel {
-      width: 100%;
-      height: 100dvh;
       /* Track the visual viewport: the keyboard shrinks the panel instead of
          scrolling the page, so the footer stays reachable and nothing jumps. */
       height: var(--vv-height, 100dvh);
       transform: translateY(var(--vv-top, 0px));
-      border-radius: 0;
-      border: none;
     }
-    /* Compact chrome so the content gets the space */
-    .modal-head { padding: 8px 12px; }
-    .title { font-size: 1rem; }
-    .modal-head .icon-btn { width: 32px; height: 32px; }
     .modal-scroller {
-      padding: 0 12px 24px;
-      scroll-padding-bottom: 24px;
-      scroll-padding-top: 52px;
-      gap: 8px;
+      padding: 0 var(--s4) var(--s5);
+      scroll-padding-bottom: var(--s5);
+      gap: var(--s3);
     }
     .identity { padding-top: 10px; gap: 10px; }
     .avatar { width: 56px; }
     .identity-fields { gap: 6px; }
-    .section-tabs { margin: 0 -12px; padding: 6px 12px; }
-    .input, .textarea { scroll-margin-top: 52px; }
+    .section-tabs { margin: 0 calc(-1 * var(--s4)); padding: 6px var(--s4); }
+    .ui-textarea { scroll-margin-top: 52px; min-height: 72px; resize: none; transition: none; }
+    .ui-textarea.tall { min-height: 120px; }
     .modal-foot {
-      padding: 8px 12px;
-      padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
-      gap: 8px;
+      padding: var(--s2) var(--s4);
+      padding-bottom: calc(var(--s2) + env(safe-area-inset-bottom, 0px));
     }
-    .foot-btn { flex: 1 1 auto; justify-content: center; padding: 9px 14px; }
-    .modal-foot .icon-btn { flex: 0 0 auto; }
+    .modal-foot .ui-btn { flex: 1 1 auto; }
+    .modal-foot .ui-icon-btn { flex: 0 0 auto; }
     .grid-2 { grid-template-columns: 1fr; }
-    /* Fields stay compact until focused. Drag-resize is useless on touch. */
-    .textarea { min-height: 72px; resize: none; transition: none; }
-    .textarea.tall { min-height: 120px; }
     /* Focused textarea takes over the entire modal body, covering the
        identity block and bubbles: nothing underneath can scroll while the
        keyboard is open. The floating button collapses it back. */
-    .field:has(.textarea):focus-within,
+    .ui-field:has(.ui-textarea):focus-within,
     .greeting-row:focus-within {
       position: absolute;
       inset: 0;
@@ -711,22 +547,22 @@
       box-sizing: border-box;
       background: var(--panel);
     }
-    .field:has(.textarea):focus-within .field-label {
+    .ui-field:has(.ui-textarea):focus-within .ui-field-label {
       /* Keep the label clear of the floating collapse button */
       padding-right: 110px;
       min-height: 24px;
       display: flex;
       align-items: center;
     }
-    .field:has(.textarea):focus-within .textarea,
-    .greeting-row:focus-within .textarea {
+    .ui-field:has(.ui-textarea):focus-within .ui-textarea,
+    .greeting-row:focus-within .ui-textarea {
       flex: 1 1 auto;
       min-height: 0;
       height: auto;
     }
     /* Greeting rows have no label; pad for the collapse button instead */
     .greeting-row:focus-within { padding-top: 44px; }
-    .greeting-row:focus-within .small-btn.danger { display: none; }
+    .greeting-row:focus-within .ui-icon-btn { display: none; }
     .collapse-btn { display: inline-flex; }
   }
 </style>
