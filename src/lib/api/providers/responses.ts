@@ -230,6 +230,23 @@ function collectSourcesFromWebSearchItem(item: Record<string, unknown>, sources:
   }
 }
 
+// Image generation output items vary by provider: OpenAI uses
+// "image_generation_call", OpenRouter-style proxies use
+// "openrouter:image_generation" (with the data in result/imageUrl).
+function isImageGenerationItemType(type: unknown): boolean {
+  return typeof type === 'string' && type.includes('image_generation');
+}
+
+function imageResultFromItem(item: Record<string, unknown> | undefined): unknown {
+  if (!item) return undefined;
+  return item.result ?? item.imageUrl ?? item.image_url;
+}
+
+function revisedPromptFromItem(item: Record<string, unknown> | undefined): string | undefined {
+  const raw = item?.revised_prompt ?? item?.revisedPrompt ?? item?.prompt;
+  return typeof raw === 'string' && raw ? raw : undefined;
+}
+
 // Image results may arrive as raw base64 or as a data URL
 // (e.g. "data:image/png;base64,...."). Normalize to raw base64 + mime type.
 function parseImageResult(result: unknown): { data: string; mimeType?: string } | null {
@@ -250,10 +267,10 @@ export function extractGeneratedImages(res: unknown): GeneratedImage[] | undefin
     if (!Array.isArray(output)) return;
     for (const item of output as Array<Record<string, unknown>>) {
       // Extract generated images from image_generation_call
-      if (item?.type === 'image_generation_call') {
-        const parsed = parseImageResult(item.result);
+      if (isImageGenerationItemType(item?.type)) {
+        const parsed = parseImageResult(imageResultFromItem(item));
         const id = item.id as string | undefined;
-        const revisedPrompt = item.revised_prompt as string | undefined;
+        const revisedPrompt = revisedPromptFromItem(item);
         if (parsed) {
           const exists = images.some(img => img.id === id);
           if (!exists) {
@@ -378,7 +395,7 @@ function buildToolLineFromItem(item: Record<string, unknown>): string {
     return `**Code interpreter** \u2014 *${typeof item.status === 'string' ? item.status : 'completed'}*`;
   } else if (type === 'shell_call') {
     return `**Shell** \u2014 *${typeof item.status === 'string' ? item.status : 'completed'}*`;
-  } else if (type === 'image_generation_call') {
+  } else if (isImageGenerationItemType(type)) {
     return `**Image generation** \u2014 *${typeof item.status === 'string' ? item.status : 'completed'}*`;
   } else if (type === 'mcp_list_tools') {
     const sl = formatMcpLabel(typeof item.server_label === 'string' ? item.server_label : '');
@@ -614,11 +631,11 @@ async function respondStreaming(ctx: ProviderRequestContext): Promise<Generation
     // ---- Completed output items (image results arrive here when streaming) ----
     } else if (t === 'response.output_item.done') {
       const item = event?.item as Record<string, unknown> | undefined;
-      if (item?.type === 'image_generation_call') {
+      if (isImageGenerationItemType(item?.type)) {
         collectGeneratedImage({
-          result: item.result,
-          id: typeof item.id === 'string' ? item.id : undefined,
-          revisedPrompt: typeof item.revised_prompt === 'string' ? item.revised_prompt : undefined,
+          result: imageResultFromItem(item),
+          id: typeof item?.id === 'string' ? item.id : undefined,
+          revisedPrompt: revisedPromptFromItem(item),
         });
       }
     // ---- Web search streaming events ----
@@ -675,9 +692,9 @@ async function respondStreaming(ctx: ProviderRequestContext): Promise<Generation
       emitToolActivityDelta(event);
       const item = event?.item as Record<string, unknown> | undefined;
       collectGeneratedImage({
-        result: item?.result ?? event?.result,
+        result: imageResultFromItem(item) ?? imageResultFromItem(event),
         id: (item?.id || event?.id || event?.item_id) as string | undefined,
-        revisedPrompt: (item?.revised_prompt || event?.revised_prompt) as string | undefined,
+        revisedPrompt: revisedPromptFromItem(item) ?? revisedPromptFromItem(event),
       });
     // ---- MCP streaming events ----
     } else if (t === 'response.mcp_list_tools.in_progress') {
@@ -723,11 +740,11 @@ async function respondStreaming(ctx: ProviderRequestContext): Promise<Generation
           collectCitationsFromMessageItem(item, webSearchCitations);
           collectSourcesFromWebSearchItem(item, webSearchSources);
           // Extract generated images from image_generation_call
-          if (item?.type === 'image_generation_call') {
+          if (isImageGenerationItemType(item?.type)) {
             collectGeneratedImage({
-              result: item.result,
+              result: imageResultFromItem(item),
               id: typeof item.id === 'string' ? item.id : undefined,
-              revisedPrompt: typeof item.revised_prompt === 'string' ? item.revised_prompt : undefined,
+              revisedPrompt: revisedPromptFromItem(item),
             });
           }
         }
@@ -738,7 +755,7 @@ async function respondStreaming(ctx: ProviderRequestContext): Promise<Generation
           const outType = typeof outItem.type === 'string' ? outItem.type : '';
           const outId = typeof outItem.id === 'string' ? outItem.id : '';
           if (!outId) continue;
-          if (!['mcp_list_tools', 'mcp_call', 'web_search_call', 'code_interpreter_call', 'shell_call', 'image_generation_call'].includes(outType)) continue;
+          if (!['mcp_list_tools', 'mcp_call', 'web_search_call', 'code_interpreter_call', 'shell_call'].includes(outType) && !isImageGenerationItemType(outType)) continue;
           const text = buildToolLineFromItem(outItem);
           if (!text) continue;
           const existing = toolActivityByKey.get(outId);
