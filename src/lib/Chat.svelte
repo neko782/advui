@@ -54,6 +54,8 @@
 
   interface Props {
     chatId: string
+    /** Current shared character card for this chat, kept live by the app shell. */
+    tavernCharacter?: Character | null
     onNewChat?: (options?: { presetId?: string }) => void
     onChatUpdated?: (updated?: StoredChat) => void
   }
@@ -149,6 +151,14 @@
   // Tavern: character bound to this chat (null for normal chats)
   let characterId = $state<string | null>(null)
   let character = $state<Character | null>(null)
+
+  // Character cards are shared by every chat that references their id. Keep
+  // mounted chats synced when a card is edited instead of retaining the copy
+  // that happened to be loaded when the chat first opened.
+  $effect(() => {
+    const shared = props.tavernCharacter
+    if (characterId && shared?.id === characterId) character = shared
+  })
 
   // Persistence: signature tracking, throttling and retries live in the persister.
   const persister = createChatPersister({
@@ -1228,12 +1238,16 @@
         nextNodeId = result.nextNodeId
         chatSettings = result.chatSettings
         characterId = result.characterId || null
-        character = null
+        character = props.tavernCharacter?.id === result.characterId
+          ? props.tavernCharacter
+          : null
         if (result.characterId) {
           const charId = result.characterId
-          getCharacter(charId).then((loadedChar) => {
+          if (!character) getCharacter(charId).then((loadedChar) => {
             if (props.chatId === cid && characterId === charId) {
-              character = loadedChar
+              character = props.tavernCharacter?.id === charId
+                ? props.tavernCharacter
+                : loadedChar
             }
           }).catch(() => {})
         }

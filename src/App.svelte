@@ -474,6 +474,7 @@
       <div class="chat-wrapper {selectedId === c.id ? 'active' : 'hidden'}">
         <Chat
           chatId={c.id}
+          tavernCharacter={c.characterId ? characters.find(character => character.id === c.characterId) ?? null : null}
           onNewChat={onNewChat}
           onChatUpdated={onChatUpdated}
         />
