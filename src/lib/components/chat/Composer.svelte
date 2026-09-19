@@ -83,7 +83,6 @@
 
   const props: Props = $props()
   let inputEl: HTMLTextAreaElement | undefined
-  let fileInputEl: HTMLInputElement | undefined
   let isDragging = $state(false)
   // Auto-grow on mount
   $effect(() => { queueMicrotask(() => autoGrow(inputEl)) })
@@ -144,14 +143,14 @@
   }
 
   function handleFileSelect(e) {
-    const files = e.target.files
+    const files = e.currentTarget.files
     if (files && files.length > 0) {
       const accepted = Array.from(files).filter(isSupportedAttachment)
       if (accepted.length > 0) {
         props.onFilesSelected?.(accepted)
       }
     }
-    if (fileInputEl) fileInputEl.value = ''
+    e.currentTarget.value = ''
   }
 
   // Depth counter: dragleave fires when moving over child elements, so track
@@ -197,18 +196,20 @@
     }
   }
 
-  function triggerFileInput() {
-    fileInputEl?.click()
-  }
+  let pasteHandled = false
 
-  function handlePaste(e) {
-    const clipboard = e?.clipboardData
+  function handlePaste(e: ClipboardEvent | InputEvent) {
+    if (props.locked) return
+    const isPaste = e.type === 'paste'
+    if (!isPaste && (e as InputEvent).inputType !== 'insertFromPaste') return
+    if (!isPaste && pasteHandled) return
+    const clipboard = isPaste ? (e as ClipboardEvent).clipboardData : (e as InputEvent).dataTransfer
     if (!clipboard) return
 
-    const pastedFiles = []
+    const pastedFiles: File[] = []
     const items = clipboard.items
     if (items && items.length > 0) {
-      for (const item of items) {
+      for (const item of Array.from(items)) {
         if (!item || item.kind !== 'file') continue
         const file = item.getAsFile?.()
         if (file && isSupportedAttachment(file)) {
@@ -230,7 +231,7 @@
     const hasTextData = (() => {
       try {
         if (!clipboard.types) return false
-        for (const type of clipboard.types) {
+        for (const type of Array.from(clipboard.types)) {
           if (type === 'text/plain' || type === 'text/html') {
             const data = clipboard.getData?.(type)
             if (typeof data === 'string' && data.trim()) return true
@@ -244,19 +245,16 @@
       e.preventDefault()
     }
 
+    if (isPaste) {
+      // A single paste can also dispatch beforeinput with the same files.
+      pasteHandled = true
+      setTimeout(() => { pasteHandled = false }, 0)
+    }
     props.onFilesSelected?.(pastedFiles)
   }
 </script>
 
 <footer class="composer" class:dragging={isDragging} ondragenter={handleDragEnter} ondragover={handleDragOver} ondragleave={handleDragLeave} ondragend={handleDragEnd} ondrop={handleDrop}>
-  <input
-    type="file"
-    accept="*/*"
-    multiple
-    style="display: none"
-    onchange={handleFileSelect}
-    bind:this={fileInputEl}
-  />
   <div class="composer-inner" class:mobile-input-focused={hideAuxControls}>
     <div class="chat-settings-slot">
       <ChatSettingsPopover
@@ -315,9 +313,16 @@
       />
     </div>
 
-    <button class="icon-btn attachment-btn" onclick={triggerFileInput} disabled={props.locked} aria-label="Attach image" title="Attach image">
+    <label class="icon-btn attachment-btn" class:disabled={props.locked} title="Attach files">
       <IconAdd style="font-size: 22px;" />
-    </button>
+      <input
+        type="file"
+        multiple
+        disabled={props.locked}
+        aria-label="Attach files"
+        onchange={handleFileSelect}
+      />
+    </label>
 
     <div class="input-wrapper">
       {#if props.attachedImages && props.attachedImages.length > 0}
@@ -364,6 +369,7 @@
         oninput={(e) => { props.onInput?.(e.currentTarget.value); queueMicrotask(() => autoGrow(inputEl)) }}
         onkeydown={onKey}
         onpaste={handlePaste}
+        onbeforeinput={handlePaste}
         onfocus={() => { isInputFocused = true }}
         onblur={() => { isInputFocused = false }}
         bind:this={inputEl}
@@ -477,6 +483,18 @@
     opacity: .5;
     cursor: not-allowed;
   }
+  .attachment-btn { position: relative; overflow: hidden; }
+  .attachment-btn input {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+    cursor: pointer;
+  }
+  .attachment-btn:focus-within { outline: 2px solid var(--accent); }
+  .attachment-btn.disabled { opacity: .5; }
+  .attachment-btn input:disabled { cursor: not-allowed; }
   .input-wrapper {
     width: 100%;
     display: flex;
@@ -724,11 +742,10 @@
 
   @media (max-width: 640px) {
     .composer-inner.mobile-input-focused {
-      grid-template-columns: 1fr auto;
+      grid-template-columns: auto 1fr auto;
       gap: 10px;
     }
-    .composer-inner.mobile-input-focused .chat-settings-slot,
-    .composer-inner.mobile-input-focused .attachment-btn {
+    .composer-inner.mobile-input-focused .chat-settings-slot {
       display: none;
     }
     .composer-inner.mobile-input-focused .chat-settings-group {

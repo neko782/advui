@@ -72,7 +72,7 @@ export class ChatImageManager {
 
   async handleFilesSelected(files: File[] | FileList | null): Promise<void> {
     try {
-      const incoming = Array.isArray(files) ? files : [];
+      const incoming = Array.from(files || []);
       const accepted = incoming.filter(isSupportedAttachment);
       if (!accepted.length) return;
       const imagePromises = accepted.map(async (file) => {
