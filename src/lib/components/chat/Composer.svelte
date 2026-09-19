@@ -1,6 +1,7 @@
 <script lang="ts">
   import { IconAdd, IconClose, IconStop, IconSend, IconEditSquare } from '../../icons'
-  import { autoGrow } from '../../utils/dom'
+  import { autoGrow, placeCaretAtEnd } from '../../utils/dom'
+  import { readEditableText } from '../../utils/editableText'
   import {
     isSupportedAttachment,
     isImageAttachment,
@@ -82,12 +83,62 @@
   }
 
   const props: Props = $props()
-  let inputEl: HTMLTextAreaElement | undefined
+  // Gecko on Android only advertises image clipboard/keyboard content to rich
+  // editors. plaintext-only and textarea inputs don't enable that native path.
+  const useRichInput = typeof navigator !== 'undefined'
+    && /Android/i.test(navigator.userAgent) && /Firefox\//i.test(navigator.userAgent)
+  let inputEl = $state<HTMLTextAreaElement | HTMLDivElement>()
   let isDragging = $state(false)
   // Auto-grow on mount
   $effect(() => { queueMicrotask(() => autoGrow(inputEl)) })
   // Also auto-grow whenever parent updates the input value (e.g., after send/add clears it)
   $effect(() => { void props.input; queueMicrotask(() => autoGrow(inputEl)) })
+
+  $effect(() => {
+    const value = props.input || ''
+    if (useRichInput && inputEl && (readEditableText(inputEl) !== value || (!value && inputEl.hasChildNodes()))) {
+      // Avoid replacing DOM during ordinary typing: that resets selection/IME.
+      inputEl.textContent = value
+      if (document.activeElement === inputEl) placeCaretAtEnd(inputEl)
+    }
+  })
+
+  function handleEditorInput() {
+    if (!inputEl) return
+    props.onInput?.(readEditableText(inputEl))
+    queueMicrotask(() => autoGrow(inputEl))
+  }
+
+  function insertEditorText(text: string) {
+    if (!text || !inputEl) return
+    // insertText preserves the browser's undo stack. Keep a DOM fallback for
+    // environments that don't implement this editing command.
+    if (!document.execCommand?.('insertText', false, text)) {
+      const selection = window.getSelection()
+      if (!selection) return
+      if (!selection.rangeCount || !inputEl.contains(selection.getRangeAt(0).commonAncestorContainer)) {
+        placeCaretAtEnd(inputEl)
+      }
+      if (!selection.rangeCount) return
+      const range = selection.getRangeAt(0)
+      range.deleteContents()
+      const node = document.createTextNode(text)
+      range.insertNode(node)
+      range.setStartAfter(node)
+      range.collapse(true)
+      selection.removeAllRanges()
+      selection.addRange(range)
+    }
+    handleEditorInput()
+  }
+
+  function handleBeforeInput(e: InputEvent) {
+    if (useRichInput && e.inputType.startsWith('format')) {
+      e.preventDefault()
+      return
+    }
+    handlePaste(e)
+  }
 
   let isInputFocused = $state(false)
   let isMobileViewport = $state(false)
@@ -113,7 +164,7 @@
   const getAttachmentDisplayName = attachmentDisplayName
 
   function onKey(e) {
-    if (isMobileViewport) return
+    if (e.isComposing || isMobileViewport) return
     if (props.locked) return
     if (e.key !== 'Enter') return
 
@@ -199,10 +250,13 @@
   let pasteHandled = false
 
   function handlePaste(e: ClipboardEvent | InputEvent) {
-    if (props.locked) return
     const isPaste = e.type === 'paste'
     if (!isPaste && (e as InputEvent).inputType !== 'insertFromPaste') return
-    if (!isPaste && pasteHandled) return
+    if (props.locked && !useRichInput) return
+    if (!isPaste && pasteHandled) {
+      if (useRichInput) e.preventDefault()
+      return
+    }
     const clipboard = isPaste ? (e as ClipboardEvent).clipboardData : (e as InputEvent).dataTransfer
     if (!clipboard) return
 
@@ -226,7 +280,7 @@
       }
     }
 
-    if (pastedFiles.length === 0) return
+    if (pastedFiles.length === 0 && !useRichInput) return
 
     const hasTextData = (() => {
       try {
@@ -241,7 +295,13 @@
       return false
     })()
 
-    if (!hasTextData) {
+    if (useRichInput) {
+      // Images belong in the attachment tray; never insert clipboard HTML or
+      // inline images into the message editor. Preserve accompanying plain text.
+      e.preventDefault()
+      const text = clipboard.getData('text/plain')
+      insertEditorText(text)
+    } else if (!hasTextData) {
       e.preventDefault()
     }
 
@@ -250,7 +310,7 @@
       pasteHandled = true
       setTimeout(() => { pasteHandled = false }, 0)
     }
-    props.onFilesSelected?.(pastedFiles)
+    if (pastedFiles.length && !props.locked) props.onFilesSelected?.(pastedFiles)
   }
 </script>
 
@@ -361,19 +421,38 @@
           {/each}
         </div>
       {/if}
-      <textarea
-        class="composer-input"
-        rows="1"
-        placeholder="Type a message…"
-        value={props.input}
-        oninput={(e) => { props.onInput?.(e.currentTarget.value); queueMicrotask(() => autoGrow(inputEl)) }}
-        onkeydown={onKey}
-        onpaste={handlePaste}
-        onbeforeinput={handlePaste}
-        onfocus={() => { isInputFocused = true }}
-        onblur={() => { isInputFocused = false }}
-        bind:this={inputEl}
-      ></textarea>
+      {#if useRichInput}
+        <div
+          class="composer-input rich-input"
+          contenteditable="true"
+          role="textbox"
+          aria-label="Type a message"
+          aria-multiline="true"
+          data-placeholder="Type a message…"
+          tabindex="0"
+          oninput={handleEditorInput}
+          onkeydown={onKey}
+          onpaste={handlePaste}
+          onbeforeinput={handleBeforeInput}
+          onfocus={() => { isInputFocused = true }}
+          onblur={() => { isInputFocused = false }}
+          bind:this={inputEl}
+        ></div>
+      {:else}
+        <textarea
+          class="composer-input"
+          rows="1"
+          placeholder="Type a message…"
+          value={props.input}
+          oninput={(e) => { props.onInput?.(e.currentTarget.value); queueMicrotask(() => autoGrow(inputEl)) }}
+          onkeydown={onKey}
+          onpaste={handlePaste}
+          onbeforeinput={handlePaste}
+          onfocus={() => { isInputFocused = true }}
+          onblur={() => { isInputFocused = false }}
+          bind:this={inputEl}
+        ></textarea>
+      {/if}
     </div>
 
     <!-- Send area -->
@@ -630,6 +709,15 @@
     box-sizing: border-box;
     transition: border-color .15s ease, box-shadow .15s ease;
   }
+  .rich-input {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+  .rich-input:empty::before {
+    content: attr(data-placeholder);
+    color: var(--muted);
+    pointer-events: none;
+  }
   .composer-input:hover {
     border-color: color-mix(in srgb, var(--border) 70%, var(--accent));
   }
@@ -754,7 +842,8 @@
     .composer-inner.mobile-input-focused .add-group {
       display: none;
     }
-    .composer-input::placeholder {
+    .composer-input::placeholder,
+    .rich-input:empty::before {
       color: transparent;
       opacity: 0;
     }
