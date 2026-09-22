@@ -77,6 +77,7 @@ function normalizeConnection(
     ? connection.name.trim()
     : `Connection ${index + 1}`;
   connection.name = nameSource;
+  connection.openRouterEnabled = connection.openRouterEnabled === true;
   connection.apiKey = typeof connection.apiKey === 'string' ? connection.apiKey : '';
   connection.apiBaseUrl = normalizeApiBaseUrl(connection.apiBaseUrl);
   const rawMode = typeof connection.apiMode === 'string' ? connection.apiMode : fallbackApiMode;

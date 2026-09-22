@@ -210,7 +210,7 @@
       const list = Array.isArray(settings?.connections) ? settings.connections : []
       return list
         .filter(conn => conn && typeof conn.id === 'string')
-        .map(conn => ({ id: conn.id, name: conn.name || conn.id, apiMode: conn.apiMode }))
+        .map(conn => ({ id: conn.id, name: conn.name || conn.id, apiMode: conn.apiMode, openRouterEnabled: conn.openRouterEnabled }))
     } catch { return [] }
   })())
 
@@ -1457,6 +1457,7 @@
     chatReasoningEffort={chatSettings.reasoningEffort}
     chatReasoningSummary={chatSettings.reasoningSummary}
     chatTextVerbosity={chatSettings.textVerbosity}
+    chatOpenRouterProvider={chatSettings.openRouterProvider}
     chatThinkingEnabled={chatSettings.thinkingEnabled}
     chatThinkingBudgetTokens={chatSettings.thinkingBudgetTokens}
     chatWebSearchEnabled={chatSettings.webSearchEnabled}
@@ -1504,6 +1505,7 @@
     onChangeReasoningEffort={(val) => updateChatSettings({ reasoningEffort: normalizeReasoning(val) })}
     onChangeReasoningSummary={(val) => updateChatSettings({ reasoningSummary: normalizeReasoningSummary(val) })}
     onChangeTextVerbosity={(val) => updateChatSettings({ textVerbosity: normalizeVerbosity(val) })}
+    onChangeOpenRouterProvider={(val) => { chatSettings = { ...chatSettings, openRouterProvider: val } }}
     onChangeThinkingEnabled={(val) => updateChatSettings({ thinkingEnabled: !!val })}
     onChangeThinkingBudgetTokens={(val) => updateChatSettings({ thinkingBudgetTokens: toIntOrNull(val) })}
     onChangeWebSearchEnabled={(val) => updateChatSettings({ webSearchEnabled: !!val })}

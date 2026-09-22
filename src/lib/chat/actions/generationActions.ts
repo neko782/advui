@@ -515,6 +515,7 @@ export async function generateResponse(options: GenerateResponseOptions): Promis
     reasoningEffort: chatSettings.reasoningEffort,
     textVerbosity: chatSettings.textVerbosity,
     reasoningSummary: chatSettings.reasoningSummary,
+    openRouterProvider: chatSettings.openRouterProvider,
     thinkingEnabled: chatSettings.thinkingEnabled,
     thinkingBudgetTokens: chatSettings.thinkingBudgetTokens,
     connectionId,

@@ -22,12 +22,14 @@ export interface Connection {
   apiKey: string;
   apiBaseUrl: string;
   apiMode: ApiMode;
+  openRouterEnabled?: boolean;
 }
 
 export interface ConnectionOption {
   id: string;
   name: string;
   apiMode?: ApiMode;
+  openRouterEnabled?: boolean;
 }
 
 // ============================================================================

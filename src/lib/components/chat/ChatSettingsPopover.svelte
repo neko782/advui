@@ -18,6 +18,8 @@
     reasoningEffort?: ReasoningEffort
     reasoningSummary?: ReasoningSummary
     textVerbosity?: TextVerbosity
+    openRouterProvider?: string
+    onInputOpenRouterProvider?: (val: string) => void
     thinkingEnabled?: boolean
     thinkingBudgetTokens?: number | null
     webSearchEnabled?: boolean
@@ -85,6 +87,31 @@
     const currentConn = conns.find(c => c.id === props.connectionId) || conns[0]
     return currentConn?.apiMode === 'responses'
   })())
+
+  const supportsOpenRouter = $derived((() => {
+    const conns = props.connections || []
+    const conn = conns.find(c => c.id === props.connectionId) || conns[0]
+    return conn?.openRouterEnabled === true && conn.apiMode !== 'gemini'
+  })())
+
+  let providerOptions = $state<Array<{ slug: string; name: string }>>([])
+  $effect(() => {
+    if (!props.open || !supportsOpenRouter || providerOptions.length) return
+    const controller = new AbortController()
+    fetch('https://openrouter.ai/api/v1/providers', { signal: controller.signal })
+      .then(response => {
+        if (!response.ok) throw new Error('Could not load providers')
+        return response.json()
+      })
+      .then(result => {
+        if (controller.signal.aborted || !Array.isArray(result?.data)) return
+        providerOptions = result.data
+          .filter(provider => typeof provider?.slug === 'string' && typeof provider?.name === 'string')
+          .sort((a, b) => a.name.localeCompare(b.name))
+      })
+      .catch(() => {}) // Manual provider entry remains available offline.
+    return () => controller.abort()
+  })
 
   function updateMcpServers(transform: (servers: McpServerConfig[]) => McpServerConfig[]) {
     if (props.disabled) return
@@ -304,6 +331,20 @@
             {/each}
           </select>
         </div>
+        {#if supportsOpenRouter}
+          <div class="menu-section">
+            <label class="menu-label" for={`${modelDatalistId}-provider`}>OpenRouter provider</label>
+            <input id={`${modelDatalistId}-provider`} type="text" placeholder="Automatic"
+              list={`${modelDatalistId}-providers`} value={props.openRouterProvider || ''} disabled={props.disabled}
+              oninput={(e) => (!props.disabled && props.onInputOpenRouterProvider?.(e.currentTarget.value))} />
+            <datalist id={`${modelDatalistId}-providers`}>
+              {#each providerOptions as provider (provider.slug)}
+                <option value={provider.slug}>{provider.name}</option>
+              {/each}
+            </datalist>
+            <div class="tool-popup-hint">Provider slug, e.g. anthropic or google-vertex. Leave blank for automatic routing.</div>
+          </div>
+        {/if}
       {:else if activeTab === 'sampling'}
         <div class="menu-section">
           <div class="menu-label">Top P</div>

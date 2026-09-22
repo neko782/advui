@@ -253,6 +253,15 @@
                       <option value="gemini">Gemini API</option>
                     </select>
                   </label>
+                  {#if activeConnection.apiMode !== 'gemini'}
+                    <label class="ui-switch">
+                      <input type="checkbox" checked={!!activeConnection.openRouterEnabled}
+                        onchange={(event) => updateActiveConnection({ openRouterEnabled: event.currentTarget.checked })} />
+                      <span class="ui-switch-ui" aria-hidden="true"></span>
+                      <span class="ui-switch-label">OpenRouter provider selection</span>
+                    </label>
+                    <p class="ui-hint">Enable for OpenRouter connections to choose a provider per chat.</p>
+                  {/if}
                   {#if activeRefreshMsg}
                     <p class="ui-status-msg" aria-live="polite">{activeRefreshMsg}</p>
                   {/if}

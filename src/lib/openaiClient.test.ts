@@ -19,7 +19,7 @@ const localStorageMock = (() => {
 
 Object.defineProperty(globalThis, 'localStorage', { value: localStorageMock, writable: true })
 
-function configureConnection(apiMode: 'responses' | 'chat_completions' | 'gemini') {
+function configureConnection(apiMode: 'responses' | 'chat_completions' | 'gemini', openRouterEnabled = false) {
   saveSettings({
     connections: [
       {
@@ -28,6 +28,7 @@ function configureConnection(apiMode: 'responses' | 'chat_completions' | 'gemini
         apiKey: 'test-key',
         apiBaseUrl: 'https://example.test/v1',
         apiMode,
+        openRouterEnabled,
       },
     ],
     selectedConnectionId: connectionId,
@@ -656,5 +657,38 @@ describe('respond stream errors', () => {
         approvalRequestId: null,
       },
     ])
+  })
+})
+
+
+describe('OpenRouter provider routing', () => {
+  afterEach(() => {
+    localStorage.clear()
+    vi.unstubAllGlobals()
+  })
+
+  it.each(['responses', 'chat_completions'] as const)('pins providers for %s, including streaming', async (mode) => {
+    configureConnection(mode, true)
+    const fetchMock = vi.fn().mockImplementation(async () => new Response(JSON.stringify({ choices: [], output: [] })))
+    vi.stubGlobal('fetch', fetchMock)
+    for (const stream of [false, true]) {
+      if (stream) fetchMock.mockResolvedValueOnce(makeSseResponse(['data: [DONE]\n\n']))
+      await respond({ connectionId, model: 'test-model', prompt: 'hi', openRouterProvider: ' anthropic ', stream })
+      expect(JSON.parse(fetchMock.mock.lastCall![1].body).provider)
+        .toEqual({ only: ['anthropic'], allow_fallbacks: false })
+    }
+  })
+
+  it.each([
+    ['responses', false, 'anthropic'],
+    ['chat_completions', false, 'anthropic'],
+    ['gemini', true, 'anthropic'],
+    ['chat_completions', true, '   '],
+  ] as const)('omits routing for %s when enabled=%s and provider=%s', async (mode, enabled, provider) => {
+    configureConnection(mode, enabled)
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ choices: [], output: [], candidates: [] })))
+    vi.stubGlobal('fetch', fetchMock)
+    await respond({ connectionId, model: 'test-model', prompt: 'hi', openRouterProvider: provider })
+    expect(JSON.parse(fetchMock.mock.lastCall![1].body)).not.toHaveProperty('provider')
   })
 })

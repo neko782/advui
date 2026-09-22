@@ -50,6 +50,15 @@ describe('loadChat', () => {
     expect(result.chatSettings.model).toBe(DEFAULT_MODEL)
   })
 
+  it.each([null, 'character-1'])('restores the per-chat provider for character %s', async (characterId) => {
+    chatsStore.getChat.mockResolvedValue({
+      nodes: [], rootId: null, characterId,
+      settings: { openRouterProvider: 'anthropic' },
+    })
+    const result = await loadChat('provider-chat')
+    expect(result.chatSettings.openRouterProvider).toBe('anthropic')
+  })
+
   it('should load chat with nodes', async () => {
     const loadedChat = {
       nodes: [

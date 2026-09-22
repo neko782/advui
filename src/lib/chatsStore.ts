@@ -291,6 +291,7 @@ export async function saveChatContent(
         reasoningEffort: normalizeReasoning(pickSetting('reasoningEffort')),
         textVerbosity: normalizeVerbosity(pickSetting('textVerbosity')),
         reasoningSummary: normalizeReasoningSummary(pickSetting('reasoningSummary')),
+        openRouterProvider: typeof pickSetting('openRouterProvider') === 'string' ? pickSetting('openRouterProvider') as string : '',
         thinkingEnabled: !!pickSetting('thinkingEnabled'),
         thinkingBudgetTokens: toIntOrNull(pickSetting('thinkingBudgetTokens'), { belowMin: 'unset' }),
         connectionId: resolvedConnectionId,
@@ -508,6 +509,7 @@ export async function createChat(initial: CreateChatOptions = {}): Promise<{ id:
       reasoningEffort: normalizeReasoning(hasOwn(initial?.settings || {}, 'reasoningEffort') ? initial.settings!.reasoningEffort : preferredPreset.reasoningEffort),
       textVerbosity: normalizeVerbosity(hasOwn(initial?.settings || {}, 'textVerbosity') ? initial.settings!.textVerbosity : preferredPreset.textVerbosity),
       reasoningSummary: normalizeReasoningSummary(hasOwn(initial?.settings || {}, 'reasoningSummary') ? initial.settings!.reasoningSummary : preferredPreset.reasoningSummary),
+      openRouterProvider: typeof initial?.settings?.openRouterProvider === 'string' ? initial.settings.openRouterProvider : '',
       thinkingEnabled: (() => {
         if (hasOwn(initial?.settings || {}, 'thinkingEnabled')) {
           return !!initial.settings!.thinkingEnabled;

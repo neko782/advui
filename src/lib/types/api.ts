@@ -45,6 +45,7 @@ export interface OpenAIClientOptions {
 }
 
 export interface ResolvedConnection {
+  openRouterEnabled?: boolean;
   id: string | null;
   apiKey: string;
   apiBaseUrl?: string;
@@ -214,6 +215,7 @@ export interface RespondOptions {
   reasoningEffort?: ReasoningEffort;
   textVerbosity?: TextVerbosity;
   reasoningSummary?: ReasoningSummary;
+  openRouterProvider?: string;
   thinkingEnabled?: boolean;
   thinkingBudgetTokens?: number | null;
   onReasoningSummaryDelta?: (fullSummary: string, delta: string, event?: unknown) => void;

@@ -76,6 +76,7 @@ export interface ChatSettings {
   thinkingEnabled: boolean;
   thinkingBudgetTokens: number | null;
   connectionId: string | null;
+  openRouterProvider?: string;
   // Web Search settings (Responses API only)
   webSearchEnabled?: boolean;
   webSearchDomains?: string;

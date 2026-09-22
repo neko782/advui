@@ -69,6 +69,9 @@ function buildResponsesRequest(ctx: ProviderRequestContext): Record<string, unkn
     request.tools = tools;
   }
 
+  if (ctx.params.openRouterProvider) {
+    request.provider = { only: [ctx.params.openRouterProvider], allow_fallbacks: false };
+  }
   return request;
 }
 

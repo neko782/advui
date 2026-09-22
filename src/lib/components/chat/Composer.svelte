@@ -27,6 +27,7 @@
     chatReasoningEffort?: ReasoningEffort
     chatReasoningSummary?: ReasoningSummary
     chatTextVerbosity?: TextVerbosity
+    chatOpenRouterProvider?: string
     chatThinkingEnabled?: boolean
     chatThinkingBudgetTokens?: number | null
     chatWebSearchEnabled?: boolean
@@ -58,6 +59,7 @@
     onChangeReasoningEffort?: (val: string) => void
     onChangeReasoningSummary?: (val: string) => void
     onChangeTextVerbosity?: (val: string) => void
+    onChangeOpenRouterProvider?: (val: string) => void
     onChangeThinkingEnabled?: (val: boolean) => void
     onChangeThinkingBudgetTokens?: (val: string) => void
     onChangeWebSearchEnabled?: (val: boolean) => void
@@ -327,6 +329,8 @@
         reasoningEffort={props.chatReasoningEffort}
         reasoningSummary={props.chatReasoningSummary}
         textVerbosity={props.chatTextVerbosity}
+        openRouterProvider={props.chatOpenRouterProvider}
+        onInputOpenRouterProvider={props.onChangeOpenRouterProvider}
         thinkingEnabled={props.chatThinkingEnabled}
         thinkingBudgetTokens={props.chatThinkingBudgetTokens}
         webSearchEnabled={props.chatWebSearchEnabled}

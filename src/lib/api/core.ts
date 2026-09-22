@@ -57,7 +57,7 @@ export function resolveConnection(options: {
       : null;
     const apiKey = typeof connection.apiKey === 'string' ? connection.apiKey : '';
     const apiBaseUrl = connection.apiBaseUrl;
-    return { id, apiKey, apiBaseUrl, apiMode: normalizeApiMode(connection.apiMode) };
+    return { id, apiKey, apiBaseUrl, apiMode: normalizeApiMode(connection.apiMode), openRouterEnabled: connection.openRouterEnabled === true };
   }
   const srcSettings = settings || loadSettings();
   const resolved = findConnection(srcSettings, connectionId);
@@ -66,6 +66,7 @@ export function resolveConnection(options: {
     apiKey: typeof resolved?.apiKey === 'string' ? resolved.apiKey : '',
     apiBaseUrl: resolved?.apiBaseUrl,
     apiMode: normalizeApiMode(resolved?.apiMode),
+    openRouterEnabled: resolved?.openRouterEnabled === true,
   };
 }
 
@@ -132,6 +133,7 @@ export type ContentPart =
 export type ProviderInput = string | Array<{ role: string; content: string | ContentPart[] }>;
 
 export interface ProviderParams {
+  openRouterProvider?: string;
   maxOutputTokens?: number | null;
   topP?: number | null;
   temperature?: number | null;

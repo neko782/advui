@@ -412,6 +412,7 @@ export function loadChatSettings(
   const has = <K extends keyof ChatSettings>(key: K): boolean => isPlainObject(s) && key in s;
 
   return {
+    openRouterProvider: typeof s.openRouterProvider === 'string' ? s.openRouterProvider : '',
     model: s.model || preset.model || DEFAULT_MODEL,
     streaming: typeof s.streaming === 'boolean' ? s.streaming : preset.streaming,
     presetId: (typeof loaded?.presetId === 'string') ? loaded.presetId : preset.id,

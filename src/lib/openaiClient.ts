@@ -113,6 +113,8 @@ export async function respond(options: RespondOptions): Promise<GenerationRespon
       reasoningEffort: options.reasoningEffort,
       textVerbosity: options.textVerbosity,
       reasoningSummary: options.reasoningSummary,
+      openRouterProvider: resolvedConnection.openRouterEnabled && resolvedConnection.apiMode !== 'gemini'
+        ? options.openRouterProvider?.trim() || undefined : undefined,
       thinkingEnabled: options.thinkingEnabled,
       thinkingBudgetTokens: options.thinkingBudgetTokens,
     },

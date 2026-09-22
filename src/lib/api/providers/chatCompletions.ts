@@ -96,6 +96,9 @@ function buildChatRequest(ctx: ProviderRequestContext): Record<string, unknown> 
     chatRequest.thinking = thinkingConfig;
     chatRequest.extra_body = { ...(chatRequest.extra_body as object || {}), thinking: thinkingConfig };
   }
+  if (ctx.params.openRouterProvider) {
+    chatRequest.provider = { only: [ctx.params.openRouterProvider], allow_fallbacks: false };
+  }
   return chatRequest;
 }
 

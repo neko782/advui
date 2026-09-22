@@ -2,6 +2,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { computePersistSig } from './chatPersistence.js'
 
 describe('computePersistSig', () => {
+  it('detects provider changes and clearing the selection', () => {
+    const signatures = ['', 'anthropic', 'openai'].map(openRouterProvider =>
+      computePersistSig([], { model: 'test', openRouterProvider }, null))
+    expect(new Set(signatures).size).toBe(3)
+  })
+
   it('should return empty string on error', () => {
     // Pass null which might cause issues
     const result = computePersistSig(null, null, null)
