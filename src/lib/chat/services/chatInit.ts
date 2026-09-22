@@ -54,6 +54,7 @@ export function presetSignature(state: Partial<Settings> | null): string {
     p?.thinkingEnabled ? '1' : '0',
     p?.thinkingBudgetTokens ?? '',
     p?.connectionId || '',
+    p?.openRouterProvider || '',
     p?.systemPrompt || '',
   ].join('|')).join(';');
 }

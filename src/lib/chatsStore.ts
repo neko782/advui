@@ -509,7 +509,7 @@ export async function createChat(initial: CreateChatOptions = {}): Promise<{ id:
       reasoningEffort: normalizeReasoning(hasOwn(initial?.settings || {}, 'reasoningEffort') ? initial.settings!.reasoningEffort : preferredPreset.reasoningEffort),
       textVerbosity: normalizeVerbosity(hasOwn(initial?.settings || {}, 'textVerbosity') ? initial.settings!.textVerbosity : preferredPreset.textVerbosity),
       reasoningSummary: normalizeReasoningSummary(hasOwn(initial?.settings || {}, 'reasoningSummary') ? initial.settings!.reasoningSummary : preferredPreset.reasoningSummary),
-      openRouterProvider: typeof initial?.settings?.openRouterProvider === 'string' ? initial.settings.openRouterProvider : '',
+      openRouterProvider: typeof initial?.settings?.openRouterProvider === 'string' ? initial.settings.openRouterProvider : preferredPreset.openRouterProvider || '',
       thinkingEnabled: (() => {
         if (hasOwn(initial?.settings || {}, 'thinkingEnabled')) {
           return !!initial.settings!.thinkingEnabled;

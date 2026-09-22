@@ -138,6 +138,7 @@
     reasoningEffort: initialPreset.reasoningEffort,
     textVerbosity: initialPreset.textVerbosity,
     reasoningSummary: initialPreset.reasoningSummary,
+    openRouterProvider: initialPreset.openRouterProvider || '',
     thinkingEnabled: initialPreset.thinkingEnabled,
     thinkingBudgetTokens: initialPreset.thinkingBudgetTokens,
     connectionId: initialConnectionId,
@@ -1155,7 +1156,7 @@
     persistTavernPresetPatch(patch as Record<string, unknown>)
   }
 
-  function handleSelectPreset(preset) {
+  function handleSelectPreset(preset, applyProvider = true) {
     if (!preset || typeof preset !== 'object') return
     // Apply preset settings (excluding systemPrompt)
     chatSettings = {
@@ -1170,6 +1171,7 @@
       reasoningSummary: preset.reasoningSummary || chatSettings.reasoningSummary,
       thinkingEnabled: typeof preset.thinkingEnabled === 'boolean' ? preset.thinkingEnabled : chatSettings.thinkingEnabled,
       thinkingBudgetTokens: preset.thinkingBudgetTokens ?? chatSettings.thinkingBudgetTokens,
+      openRouterProvider: applyProvider ? preset.openRouterProvider || '' : chatSettings.openRouterProvider,
       connectionId: preset.connectionId || chatSettings.connectionId,
       presetId: preset.id || chatSettings.presetId,
       // Web Search settings
@@ -1289,7 +1291,8 @@
     const sig = JSON.stringify(preset)
     if (chatSettings?.presetId === selectedId && sig === appliedTavernPresetSig) return
     appliedTavernPresetSig = sig
-    handleSelectPreset(preset)
+    // Automatic Tavern sync preserves the saved per-chat provider override.
+    handleSelectPreset(preset, false)
   })
 
   $effect(() => {

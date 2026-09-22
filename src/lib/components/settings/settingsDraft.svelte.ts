@@ -274,6 +274,7 @@ export class SettingsDraft {
       reasoningEffort: base?.reasoningEffort || 'default',
       textVerbosity: base?.textVerbosity || 'medium',
       reasoningSummary: base?.reasoningSummary || 'auto',
+      openRouterProvider: base?.openRouterProvider || '',
       thinkingEnabled: !!base?.thinkingEnabled,
       thinkingBudgetTokens: base?.thinkingBudgetTokens ?? null,
       connectionId: base?.connectionId || this.local?.selectedConnectionId || this.activeConnectionId || (this.local?.connections?.[0]?.id || ''),

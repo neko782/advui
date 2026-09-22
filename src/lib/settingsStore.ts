@@ -230,6 +230,7 @@ function attachCompatFields(out: Partial<Settings> & Record<string, unknown>): S
     reasoningEffort: active.reasoningEffort || 'default',
     textVerbosity: active.textVerbosity || 'medium',
     reasoningSummary: active.reasoningSummary || 'auto',
+    openRouterProvider: active.openRouterProvider || '',
     thinkingEnabled: !!active.thinkingEnabled,
     thinkingBudgetTokens: toIntOrNull(active.thinkingBudgetTokens),
     connectionId: active.connectionId || fallbackConnectionId,

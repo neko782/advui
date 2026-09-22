@@ -1,4 +1,5 @@
 <script lang="ts">
+  import OpenRouterProviderInput from '../OpenRouterProviderInput.svelte'
   import { onMount } from 'svelte'
   import { IconAdd, IconDelete, IconDragHandle, IconTravelExplore, IconCodeBlocks, IconTerminal, IconImagesmode, IconExtension } from '../../icons'
   import { DEFAULT_MODEL, DEFAULT_SYSTEM_PROMPT } from '../../utils/presetHelpers'
@@ -23,6 +24,7 @@
 
   const presetsForRender = () => draft.presets
   const activePreset = $derived(draft.activePreset)
+  const presetConnection = $derived((local?.connections || []).find(c => c.id === activePreset?.connectionId))
   const activePresetId = $derived(draft.activePresetId)
   const activePresetModels = $derived(draft.activePresetModels)
   const activePresetSupportsResponsesApiFeatures = $derived(draft.activePresetSupportsResponsesApiFeatures)
@@ -485,6 +487,12 @@
                       {/each}
                     </select>
                   </label>
+                  {#if presetConnection?.openRouterEnabled && presetConnection.apiMode !== 'gemini'}
+                    <div class="ui-field">
+                      <OpenRouterProviderInput value={activePreset.openRouterProvider}
+                        onInput={(value) => updateActivePreset({ openRouterProvider: value })} />
+                    </div>
+                  {/if}
                 {/if}
 
                 <div class="preset-group-divider"></div>

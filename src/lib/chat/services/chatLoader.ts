@@ -95,7 +95,7 @@ export async function loadChat(chatId: string | null): Promise<LoadedChat> {
 
       // Provider routing remains per-chat even when Tavern follows a shared preset.
       nextChatSettings.openRouterProvider = typeof loaded.settings?.openRouterProvider === 'string'
-        ? loaded.settings.openRouterProvider : '';
+        ? loaded.settings.openRouterProvider : nextChatSettings.openRouterProvider || '';
 
       if (!nextNodes.length) {
         if (loaded?.rootId == null) {

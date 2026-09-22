@@ -34,6 +34,7 @@ export const DEFAULT_PRESET_FIELDS: PresetFields = {
   thinkingEnabled: false,
   thinkingBudgetTokens: null,
   connectionId: null,
+  openRouterProvider: '',
   systemPrompt: DEFAULT_SYSTEM_PROMPT,
   // Web Search defaults
   webSearchEnabled: false,
@@ -168,6 +169,7 @@ export function normalizePreset(
     reasoningEffort,
     textVerbosity,
     reasoningSummary,
+    openRouterProvider: typeof base.openRouterProvider === 'string' ? base.openRouterProvider.trim() : '',
     thinkingEnabled,
     thinkingBudgetTokens,
     connectionId,
@@ -279,6 +281,7 @@ export function deriveDefaultPreset(
     reasoningEffort: (defaultChat?.reasoningEffort as string) || DEFAULT_PRESET_FIELDS.reasoningEffort,
     textVerbosity: (defaultChat?.textVerbosity as string) || DEFAULT_PRESET_FIELDS.textVerbosity,
     reasoningSummary: (defaultChat?.reasoningSummary as string) || DEFAULT_PRESET_FIELDS.reasoningSummary,
+    openRouterProvider: typeof defaultChat?.openRouterProvider === 'string' ? defaultChat.openRouterProvider : '',
     thinkingEnabled: !!defaultChat?.thinkingEnabled,
     thinkingBudgetTokens: (defaultChat?.thinkingBudgetTokens as number | null) ?? null,
     connectionId: (defaultChat?.connectionId as string)
@@ -370,6 +373,7 @@ export function buildChatSettings(preset: Preset, settings: Partial<Settings> | 
     reasoningEffort: preset.reasoningEffort,
     textVerbosity: preset.textVerbosity,
     reasoningSummary: preset.reasoningSummary,
+    openRouterProvider: preset.openRouterProvider || '',
     thinkingEnabled: !!preset.thinkingEnabled,
     thinkingBudgetTokens: parseThinkingBudgetTokens(preset.thinkingBudgetTokens),
     connectionId: computeConnectionId({ preset, settings }),
@@ -412,7 +416,7 @@ export function loadChatSettings(
   const has = <K extends keyof ChatSettings>(key: K): boolean => isPlainObject(s) && key in s;
 
   return {
-    openRouterProvider: typeof s.openRouterProvider === 'string' ? s.openRouterProvider : '',
+    openRouterProvider: typeof s.openRouterProvider === 'string' ? s.openRouterProvider : preset.openRouterProvider || '',
     model: s.model || preset.model || DEFAULT_MODEL,
     streaming: typeof s.streaming === 'boolean' ? s.streaming : preset.streaming,
     presetId: (typeof loaded?.presetId === 'string') ? loaded.presetId : preset.id,
