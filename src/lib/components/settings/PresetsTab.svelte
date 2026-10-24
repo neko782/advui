@@ -1,8 +1,9 @@
 <script lang="ts">
   import OpenRouterProviderInput from '../OpenRouterProviderInput.svelte'
+  import ModelInput from '../ModelInput.svelte'
   import { onMount } from 'svelte'
   import { IconAdd, IconDelete, IconDragHandle } from '../../icons'
-  import { DEFAULT_MODEL, DEFAULT_SYSTEM_PROMPT } from '../../utils/presetHelpers'
+  import { DEFAULT_SYSTEM_PROMPT } from '../../utils/presetHelpers'
   import {
     parseTopP,
     parseTemperature,
@@ -255,25 +256,11 @@
                       aria-label="System prompt"
                     ></textarea>
                   </label>
-                  <label class="ui-field">
+                  <div class="ui-field">
                     <span>Model</span>
-                    <input
-                      class="ui-input"
-                      type="text"
-                      placeholder={DEFAULT_MODEL}
-                      value={activePreset.model || ''}
-                      oninput={(event) => updateActivePreset({ model: event.currentTarget.value })}
-                      list="preset-model-suggestions"
-                      aria-label="Model"
-                    />
-                    {#if activePresetModels?.length}
-                      <datalist id="preset-model-suggestions">
-                        {#each activePresetModels as mid}
-                          <option value={mid}>{mid}</option>
-                        {/each}
-                      </datalist>
-                    {/if}
-                  </label>
+                    <ModelInput value={activePreset.model || ''} models={activePresetModels}
+                      onInput={(value) => updateActivePreset({ model: value })} />
+                  </div>
 
                 <div class="preset-group-divider"></div>
                 <button class="preset-group-header" onclick={() => togglePresetGroup('general')}>

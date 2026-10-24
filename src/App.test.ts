@@ -3,7 +3,7 @@ import 'fake-indexeddb/auto'
 import { describe, it, expect, beforeEach } from 'vitest'
 import { mount, unmount, flushSync } from 'svelte'
 import App from './App.svelte'
-import { createChat, getChatListItems, deleteChat } from './lib/chatsStore'
+import { createChat, getChat, getChatListItems, deleteChat } from './lib/chatsStore'
 
 const localStorageMock = (() => {
   let store: Record<string, string> = {}
@@ -82,6 +82,36 @@ describe('App settings modal integration', () => {
         expect(document.querySelectorAll('.chat-row')).toHaveLength(1)
         expect(document.querySelector('.chat-title')?.textContent).not.toBe('Delete me')
       })
+    } finally {
+      await unmount(component)
+    }
+  })
+
+  it('keeps model input focused when a saved chat refreshes the sidebar', async () => {
+    for (const chat of await getChatListItems()) await deleteChat(chat.id)
+    const created = await createChat({ title: 'Model editing' })
+    const component = mount(App, { target: document.body })
+    try {
+      await vi.waitFor(() => {
+        flushSync()
+        expect(document.querySelector('.bubble')).toBeTruthy()
+      })
+      ;(document.querySelector('[aria-label="Chat settings"]') as HTMLButtonElement).click()
+      flushSync()
+      const input = document.querySelector<HTMLInputElement>('input[aria-label="Model"]')!
+      input.focus()
+      input.value = 'custom-model'
+      input.dispatchEvent(new Event('input', { bubbles: true }))
+      flushSync()
+      await vi.waitFor(async () => {
+        expect((await getChat(created.id))?.settings?.model).toBe('custom-model')
+      })
+      // Let the deferred sidebar refresh run after the storage write.
+      await sleep(20)
+      flushSync()
+      expect(document.querySelector('.chat-settings-group')?.classList.contains('open')).toBe(true)
+      expect(document.activeElement).toBe(input)
+      expect(input.value).toBe('custom-model')
     } finally {
       await unmount(component)
     }

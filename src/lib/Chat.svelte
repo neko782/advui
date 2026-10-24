@@ -2,7 +2,7 @@
   // Chat view: renders a ChatController and forwards user intent to it. All
   // conversation behavior lives in chat/chatController.svelte.ts; this
   // component only owns view state (popovers, dialogs, model list, scroll).
-  import { onDestroy } from 'svelte'
+  import { onDestroy, untrack } from 'svelte'
   import { settingsStore, generationRegistry } from './stores/appState.svelte'
   import { ensureModels, loadModelsCache } from './modelsStore'
   import { copyText as copyToClipboard } from './utils/clipboard'
@@ -49,6 +49,9 @@
   const settings = $derived(chat.settings)
   const chatSettings = $derived(chat.chatSettings)
   const modelConnectionId = $derived(chatSettings.connectionId)
+  // Sidebar saves replace the chat summary object, even when its id is the
+  // same. Only a different id should reset this view's open settings.
+  const viewChatId = $derived(props.chatId)
 
   const connectionOptions = $derived.by(() => {
     const list = Array.isArray(settings?.connections) ? settings.connections : []
@@ -65,9 +68,11 @@
   $effect(() => { chat.ensureValidConnection() })
   $effect(() => { chat.autoPersist() })
   $effect(() => {
-    const cid = props.chatId
-    chatSettingsOpen = false
-    void chat.load(cid)
+    const cid = viewChatId
+    untrack(() => {
+      chatSettingsOpen = false
+      void chat.load(cid)
+    })
   })
 
   // Debounce image loading to reduce frequent effect runs

@@ -1,11 +1,7 @@
-<script lang="ts" module>
-  let datalistUid = 0
-</script>
-
 <script lang="ts">
   import OpenRouterProviderInput from '../OpenRouterProviderInput.svelte'
+  import ModelInput from '../ModelInput.svelte'
   import { IconTune, IconLayers } from '../../icons'
-  import { DEFAULT_MODEL } from '../../utils/presetHelpers'
   import type { Preset, ReasoningEffort, TextVerbosity, ReasoningSummary, ConnectionOption, McpServerConfig } from '../../types'
 
   interface Props {
@@ -67,15 +63,8 @@
   }
 
   const props: Props = $props()
-  const modelDatalistId = `model-suggestions-${++datalistUid}`
-  let modelDraft = $state('')
-  let modelFocused = $state(false)
-  // Tavern normalizes the shared preset on every edit. Keep those updates
-  // from rewriting the active input and resetting mobile selection/IME.
-  $effect(() => {
-    if (!modelFocused) modelDraft = props.model ?? ''
-  })
   let root: HTMLDivElement | undefined
+  let menuBounds = $state({ left: 8, width: 300, height: 500, suggestionsHeight: 176 })
   let activeTab = $state<'general' | 'sampling' | 'reasoning'>('general')
   let presetMenuOpen = $state(false)
   let presetMenuEl = $state<HTMLDivElement | null>(null)
@@ -193,13 +182,55 @@
   })
 
   $effect(() => { if (!props.open) activeToolPopup = null })
+
+  $effect(() => {
+    if (!props.open || !root) return
+    const viewport = window.visualViewport
+    let frame = 0
+    const measure = () => {
+      if (!root) return
+      const rect = root.getBoundingClientRect()
+      const left = viewport?.offsetLeft ?? 0
+      const top = viewport?.offsetTop ?? 0
+      const width = Math.min(340, (viewport?.width ?? window.innerWidth) - 16)
+      // Leave room for the floating sidebar button on narrow screens.
+      const topInset = (viewport?.width ?? window.innerWidth) <= 640 ? 52 : 8
+      const height = Math.max(0, rect.top - top - 10 - topInset)
+      menuBounds = {
+        left: Math.max(left + 8, Math.min(rect.left + 8, left + (viewport?.width ?? window.innerWidth) - width - 8)) - rect.left,
+        width,
+        height,
+        suggestionsHeight: Math.max(0, Math.min(176, height - (height < 240 ? 104 : 160))),
+      }
+    }
+    const update = () => {
+      cancelAnimationFrame(frame)
+      frame = requestAnimationFrame(measure)
+    }
+    measure()
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(update)
+    observer?.observe(root)
+    const composer = root.closest('.composer')
+    if (composer) observer?.observe(composer)
+    viewport?.addEventListener('resize', update)
+    viewport?.addEventListener('scroll', update)
+    window.addEventListener('resize', update)
+    return () => {
+      cancelAnimationFrame(frame)
+      observer?.disconnect()
+      viewport?.removeEventListener('resize', update)
+      viewport?.removeEventListener('scroll', update)
+      window.removeEventListener('resize', update)
+    }
+  })
 </script>
 
 <div class={`chat-settings-group ${props.open ? 'open' : ''}`} bind:this={root}>
   <button class="icon-btn" aria-label="Chat settings" disabled={props.disabled} onclick={() => (!props.disabled && props.onToggle?.())}>
     <IconTune style="font-size: 22px;" />
   </button>
-  <div class="send-menu chat-settings-menu" role="menu" aria-label="Chat settings">
+  <div class="send-menu chat-settings-menu" class:compact-model={menuBounds.height < 240} role="menu" aria-label="Chat settings"
+    style={`--settings-left: ${menuBounds.left}px; --settings-width: ${menuBounds.width}px; --settings-height: ${menuBounds.height}px; --model-suggestions-height: ${menuBounds.suggestionsHeight}px`}>
     <!-- Tab content -->
     <div class="tab-content">
       {#if activeTab === 'general'}
@@ -374,13 +405,11 @@
       <button class={`settings-tab ${activeTab === 'reasoning' ? 'active' : ''}`} role="tab" aria-selected={activeTab === 'reasoning'} onclick={() => activeTab = 'reasoning'}>Reasoning</button>
     </div>
     <!-- Model -->
-    <div class="menu-section">
+    <div class="menu-section model-section">
       <div class="menu-label">Model</div>
       <div class="model-input-wrapper">
-        <input type="text" placeholder={DEFAULT_MODEL} bind:value={modelDraft} disabled={props.disabled}
-          onfocus={() => { modelFocused = true }} onblur={() => { modelFocused = false }}
-          oninput={(e) => (!props.disabled && props.onInputModel?.(e.currentTarget.value))}
-          autocapitalize="off" spellcheck={false} list={modelDatalistId} aria-label="Model" />
+        <ModelInput value={props.model} models={props.modelIds} disabled={props.disabled}
+          active={!!props.open} suggestionsAbove onInput={props.onInputModel} />
         {#if Array.isArray(props.presets) && props.presets.length > 0}
           <div class="preset-toggle-wrapper">
             <button type="button" class="preset-toggle-btn" bind:this={presetButtonEl}
@@ -390,11 +419,6 @@
           </div>
         {/if}
       </div>
-      {#if props.modelIds?.length}
-        <datalist id={modelDatalistId}>
-          {#each props.modelIds as mid}<option value={mid}>{mid}</option>{/each}
-        </datalist>
-      {/if}
     </div>
   </div>
 </div>
@@ -480,7 +504,7 @@
   .icon-btn:hover:not(:disabled) { background: var(--panel); border-color: var(--accent); color: var(--accent); }
   .icon-btn:active:not(:disabled) { transform: scale(0.95); }
   .icon-btn:disabled { opacity: .5; cursor: not-allowed; }
-  .chat-settings-menu { min-width: 270px; padding: 14px; }
+  .chat-settings-menu { min-width: 0; width: var(--settings-width); box-sizing: border-box; padding: 14px; }
   .menu-section { display: grid; gap: 6px; margin-bottom: 10px; }
   .menu-label { font-size: .9rem; color: var(--muted); font-weight: 500; }
   .settings-tabs { display: flex; gap: 2px; margin: 6px 0 10px; background: var(--bg); border-radius: 8px; padding: 3px; }
@@ -489,15 +513,21 @@
   .settings-tab:active { transform: scale(0.97); }
   .settings-tab.active { background: var(--panel); color: var(--accent); box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
   .tab-content > .menu-section:last-child { margin-bottom: 0; }
+  .tab-content { min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+  .settings-tabs, .model-section { flex-shrink: 0; }
+  .model-section { margin-bottom: 0; }
+  /* When the keyboard leaves very little room, give it to the model being
+     edited. The other controls return when suggestions are dismissed. */
+  .compact-model:has(:global(.model-input input[aria-expanded='true'])) .tab-content,
+  .compact-model:has(:global(.model-input input[aria-expanded='true'])) .settings-tabs { display: none; }
   input[type="text"], input[type="number"], select { width: 100%; border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; background: var(--bg); color: var(--text); font: inherit; box-sizing: border-box; transition: border-color .15s ease, box-shadow .15s ease; }
   input[type="text"]:hover, input[type="number"]:hover, select:hover { border-color: color-mix(in srgb, var(--border) 70%, var(--accent)); }
   input[type="text"]:focus, input[type="number"]:focus, select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 15%, transparent); }
   .chat-settings-group { position: relative; display: grid; place-items: center; }
-  .chat-settings-menu { display: grid; gap: 0; position: absolute; top: auto; bottom: calc(100% + 10px); left: 8px; right: auto; background: var(--panel); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--float-shadow); max-height: calc(100vh - 120px); overflow-y: auto; overscroll-behavior: contain; opacity: 0; transform: scale(0.95) translateY(8px); transform-origin: bottom left; transition: opacity 180ms cubic-bezier(0.2, 0.9, 0.3, 1), transform 180ms cubic-bezier(0.2, 0.9, 0.3, 1); pointer-events: none; z-index: 20; }
+  .chat-settings-menu { display: flex; flex-direction: column; gap: 0; position: absolute; top: auto; bottom: calc(100% + 10px); left: var(--settings-left); right: auto; background: var(--panel); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--float-shadow); max-height: var(--settings-height); overflow-y: auto; overscroll-behavior: contain; opacity: 0; transform: scale(0.95) translateY(8px); transform-origin: bottom left; transition: opacity 180ms cubic-bezier(0.2, 0.9, 0.3, 1), transform 180ms cubic-bezier(0.2, 0.9, 0.3, 1); pointer-events: none; z-index: 20; }
   .chat-settings-group.open .chat-settings-menu { opacity: 1; pointer-events: auto; transform: scale(1) translateY(0); }
   .chat-settings-group::before { content: ''; position: absolute; left: 0; bottom: 100%; width: 220px; height: 12px; }
-  .model-input-wrapper { display: grid; grid-template-columns: 1fr auto; gap: 6px; align-items: center; }
-  .model-input-wrapper > input { min-width: 0; }
+  .model-input-wrapper { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; align-items: end; }
   .preset-toggle-wrapper { position: relative; }
   .preset-toggle-btn { width: 36px; height: 36px; display: grid; place-items: center; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); cursor: pointer; transition: background-color .15s ease, border-color .15s ease, color .15s ease, transform .1s ease; flex-shrink: 0; }
   .preset-toggle-btn:hover:not(:disabled) { background: var(--panel); border-color: var(--accent); color: var(--accent); }
