@@ -3,6 +3,7 @@ import 'fake-indexeddb/auto'
 import { describe, it, expect, beforeEach } from 'vitest'
 import { mount, unmount, flushSync } from 'svelte'
 import App from './App.svelte'
+import { createChat, getChatListItems, deleteChat } from './lib/chatsStore'
 
 const localStorageMock = (() => {
   let store: Record<string, string> = {}
@@ -59,5 +60,30 @@ describe('App settings modal integration', () => {
     expect(document.querySelector('.ui-modal')).toBeFalsy()
 
     await unmount(component)
+  })
+
+  it('removes the last deleted chat before showing its replacement', async () => {
+    for (const chat of await getChatListItems()) await deleteChat(chat.id)
+    const created = await createChat({ title: 'Delete me' })
+    const component = mount(App, { target: document.body })
+    try {
+      await vi.waitFor(() => { flushSync(); expect(document.querySelectorAll('.chat-row')).toHaveLength(1) })
+      ;(document.querySelector('[aria-label="Chat options"]') as HTMLButtonElement).click()
+      flushSync()
+      const remove = [...document.querySelectorAll<HTMLButtonElement>('.chat-menu-item')].find(button => button.textContent?.trim() === 'Delete')!
+      remove.click()
+      flushSync()
+      ;(document.querySelector('.ui-modal .ui-btn-danger') as HTMLButtonElement).click()
+      await vi.waitFor(async () => {
+        const list = await getChatListItems()
+        expect(list).toHaveLength(1)
+        expect(list[0]?.id).not.toBe(created.id)
+        flushSync()
+        expect(document.querySelectorAll('.chat-row')).toHaveLength(1)
+        expect(document.querySelector('.chat-title')?.textContent).not.toBe('Delete me')
+      })
+    } finally {
+      await unmount(component)
+    }
   })
 })

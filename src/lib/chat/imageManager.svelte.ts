@@ -17,6 +17,10 @@ export interface ImageCacheEntry {
 type GeneratedImageRef = ImageRef & { revisedPrompt?: string };
 
 export function toImageRef(img: unknown): ImageRef | null {
+  if (typeof img === 'string') {
+    const id = img.trim();
+    return id ? { id } : null;
+  }
   if (!img || typeof img !== 'object') return null;
   const obj = img as Record<string, unknown>;
   const id = typeof obj.id === 'string' && obj.id.trim() ? obj.id.trim() : null;

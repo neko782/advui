@@ -322,6 +322,7 @@
   async function onDeleteChat(id: string) {
     if (!id) return
     await deleteChat(id)
+    chats = chats.filter(chat => chat.id !== id)
     generationRegistry.setGenerating(id, false)
     // Clear previous if the deleted chat was the previous one
     if (previousSelectedId === id) {

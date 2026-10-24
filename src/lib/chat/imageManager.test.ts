@@ -53,3 +53,19 @@ it('fails visibly for missing request media and ignores media after the generati
   await expect(manager.prepareRequestNodes(nodes as any, 1, null)).rejects.toThrow('Could not load attachment: missing');
   await expect(manager.prepareRequestNodes(nodes as any, 1, 1)).resolves.toEqual(nodes);
 });
+
+it('preserves legacy string refs on every branch and hydrates them for requests', async () => {
+  vi.mocked(getImage).mockResolvedValue({ id: 'photo', data: 'AQID', mimeType: 'image/png', timestamp: 0 });
+  const manager = new ChatImageManager();
+  const nodes = [{ id: 1, active: 0, variants: [
+    { id: 1, role: 'user', content: 'Describe it', time: 0, typing: false, images: [' photo ', { id: 'photo', mimeType: 'image/png' }, ''], next: null },
+    { id: 2, role: 'user', content: 'Alternate', time: 0, typing: false, images: ['other-photo'], next: null },
+  ] }];
+  const sanitized = manager.sanitizeNodesImageData(nodes as never);
+  expect(sanitized[0]?.variants[0]?.images).toEqual([{ id: 'photo' }]);
+  expect(sanitized[0]?.variants[1]?.images).toEqual([{ id: 'other-photo' }]);
+  const enriched = await manager.prepareRequestNodes(sanitized, 1, null);
+  expect(buildProviderInput(buildVisible(enriched, 1).map(vm => vm.m) as never, undefined)).toEqual([
+    { role: 'user', content: [{ type: 'input_text', text: 'Describe it' }, { type: 'input_image', image_url: 'data:image/png;base64,AQID' }] },
+  ]);
+});

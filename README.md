@@ -8,12 +8,14 @@ Single-page advanced chat UI built with Svelte 5 and Vite 8, using Rolldown and 
 - Branching/variant message graph workflow
 - Preset and connection management in-app
 - Local persistence with IndexedDB fallback handling
+- Single active tab per origin to prevent concurrent chat edits
 - Chat/data import and export tools
 
 ## Requirements
 
 - Node.js 22.12+ on the 22.x line, Node.js 24.x, or Node.js 26+
 - Bun 1.4.4+ for package management and running scripts
+- A browser with Web Locks support, served over HTTPS or localhost
 
 ## Quick Start
 
