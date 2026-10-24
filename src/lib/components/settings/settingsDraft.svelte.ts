@@ -152,13 +152,18 @@ export class SettingsDraft {
   persist(): void {
     // Debounce to avoid blocking on rapid state changes
     if (this.persistTimer) clearTimeout(this.persistTimer);
-    this.persistTimer = setTimeout(() => {
-      this.persistTimer = null;
-      this.syncActiveConnection();
-      this.syncActivePreset();
-      saveSettings(this.local);
-      try { this.onSaved?.(); } catch { /* ignore */ }
-    }, 0);
+    this.persistTimer = setTimeout(() => this.flush(), 0);
+  }
+
+  /** Finish a pending live edit before hiding or reloading the settings. */
+  flush(): void {
+    if (!this.persistTimer) return;
+    clearTimeout(this.persistTimer);
+    this.persistTimer = null;
+    this.syncActiveConnection();
+    this.syncActivePreset();
+    saveSettings(this.local);
+    try { this.onSaved?.(); } catch { /* ignore */ }
   }
 
   syncActiveConnection(): void {

@@ -6,6 +6,8 @@
   import PresetsTab from './components/settings/PresetsTab.svelte'
   import FeaturesTab from './components/settings/FeaturesTab.svelte'
   import { SettingsDraft } from './components/settings/settingsDraft.svelte'
+  import FieldEditor from './components/FieldEditor.svelte'
+  import { rememberScroll } from './utils/rememberScroll'
 
   interface Props {
     open?: boolean
@@ -24,23 +26,33 @@
     { id: 'presets', label: 'Presets' },
   ]
   let activeTab = $state<'general' | 'connection' | 'presets' | 'features'>('general')
+  let hasOpened = $state(false)
+  let visitedTabs = $state(new Set(['general']))
 
   function setTab(id: string) {
     if (TABS.some(tab => tab.id === id)) {
       activeTab = id as typeof activeTab
+      visitedTabs = new Set([...visitedTabs, id])
     }
   }
 
   function close() {
-    // Reset draft state to the persisted settings the next time we open
-    draft.reset()
-    activeTab = 'general'
+    draft.flush()
     props.onClose?.()
   }
 
   let wasOpen = false
   $effect(() => {
-    if (props.open && !wasOpen) untrack(() => draft.reset())
+    if (props.open && !wasOpen) untrack(() => {
+      hasOpened = true
+      const presetId = draft.activePresetId
+      const connectionId = draft.activeConnectionId
+      draft.reset()
+      if (draft.presets.some(p => p.id === presetId)) draft.activePresetId = presetId
+      if (draft.connections.some(c => c.id === connectionId)) draft.activeConnectionId = connectionId
+      draft.loadModelCaches()
+    })
+    if (!props.open && wasOpen) untrack(() => draft.flush())
     wasOpen = !!props.open
   })
 
@@ -55,7 +67,8 @@
 
 <svelte:window onkeydown={(e) => { if (props.open && e.key === 'Escape') close() }} />
 
-{#if props.open}
+{#if hasOpened}
+  <div class="settings-session" class:session-hidden={!props.open} inert={!props.open}>
   <button type="button" class="ui-backdrop" aria-label="Close settings overlay" onclick={close}></button>
   <div
     class="ui-modal"
@@ -94,23 +107,32 @@
         role="tabpanel"
         aria-labelledby={`settings-tab-${activeTab}`}
       >
-        <div class="ui-modal-scroller">
-          {#if activeTab === 'general'}
+        <FieldEditor active={!!props.open}>
+        {#each TABS as section (section.id)}
+        {#if visitedTabs.has(section.id)}
+        <div class="ui-modal-scroller" style:display={activeTab === section.id ? undefined : 'none'}
+          inert={activeTab !== section.id} use:rememberScroll={{ active: !!props.open && activeTab === section.id }}>
+          {#if section.id === 'general'}
             <GeneralTab draft={draft} />
-          {:else if activeTab === 'connection'}
+          {:else if section.id === 'connection'}
             <ConnectionsTab draft={draft} />
-          {:else if activeTab === 'presets'}
-            <PresetsTab draft={draft} />
-          {:else if activeTab === 'features'}
+          {:else if section.id === 'presets'}
+            <PresetsTab draft={draft} active={!!props.open && activeTab === 'presets'} />
+          {:else if section.id === 'features'}
             <FeaturesTab draft={draft} />
           {/if}
         </div>
+        {/if}
+        {/each}
+        </FieldEditor>
       </div>
     </div>
+  </div>
   </div>
 {/if}
 
 <style>
+  .session-hidden { display: none; }
   /* Chrome, controls and cards come from shared ui.css — only the
      desktop panel size is local. Mobile fullscreen is .ui-panel-full. */
   @media (min-width: 641px) {

@@ -1,5 +1,7 @@
 <script lang="ts">
-  import { IconClose, IconAdd, IconDelete, IconDownload, IconPerson, IconCollapseContent } from '../../icons'
+  import { IconClose, IconAdd, IconDelete, IconDownload, IconPerson } from '../../icons'
+  import FieldEditor from '../FieldEditor.svelte'
+  import { rememberScroll } from '../../utils/rememberScroll'
   import ConfirmModal from '../ConfirmModal.svelte'
   import { exportCharacterCard } from '../../tavern/characterCard'
   import type { Character } from '../../types/tavern'
@@ -25,8 +27,10 @@
   let activeSection = $state<SectionId>('description')
   let deleteConfirmOpen = $state(false)
   let modalEl = $state<HTMLDivElement | null>(null)
-  let scrollerEl = $state<HTMLDivElement | null>(null)
   let tabsEl = $state<HTMLElement | null>(null)
+
+  const sectionMemory = new Map<string, SectionId>()
+  $effect(() => { if (props.open && lastLoadedKey) sectionMemory.set(lastLoadedKey, activeSection) })
 
   // Re-seed the draft whenever the modal opens for a (possibly different) character
   $effect(() => {
@@ -41,7 +45,7 @@
     lastLoadedKey = key
     errorText = ''
     deleteConfirmOpen = false
-    activeSection = 'description'
+    activeSection = sectionMemory.get(key) ?? 'description'
     draft = source
       ? { ...source, alternateGreetings: [...(source.alternateGreetings || [])], tags: [...(source.tags || [])] }
       : null
@@ -49,7 +53,6 @@
   })
 
   function selectSection(id: SectionId, event: MouseEvent) {
-    const changed = activeSection !== id
     activeSection = id
     // Center the tapped bubble by scrolling ONLY the tab strip horizontally,
     // so the tap never drags the vertical scroll position around.
@@ -58,9 +61,6 @@
       const left = btn.offsetLeft - (tabsEl.clientWidth - btn.offsetWidth) / 2
       tabsEl.scrollTo({ left: Math.max(0, left), behavior: 'smooth' })
     }
-    // Section content swapped underneath: reset to the top so the view never
-    // lands on a random mid-scroll position of the new content.
-    if (changed && scrollerEl) scrollerEl.scrollTo({ top: 0 })
   }
 
   // Keep the modal pinned to the *visual* viewport so the on-screen keyboard
@@ -88,25 +88,6 @@
       }
     }
   })
-
-  // On mobile a focused textarea takes over the whole modal body (CSS
-  // :focus-within), so no scrolling ever happens while typing. This state
-  // just drives the floating "collapse" button.
-  let fieldExpanded = $state(false)
-
-  function handleFocusIn(event: FocusEvent) {
-    if (event.target instanceof HTMLTextAreaElement) fieldExpanded = true
-  }
-
-  function handleFocusOut(event: FocusEvent) {
-    if (!(event.relatedTarget instanceof HTMLTextAreaElement)) fieldExpanded = false
-  }
-
-  function collapseField() {
-    const active = document.activeElement
-    if (active instanceof HTMLElement) active.blur()
-    fieldExpanded = false
-  }
 
   function updateField<K extends keyof Character>(key: K, value: Character[K]) {
     if (!draft) return
@@ -190,7 +171,8 @@
 
 <svelte:window onkeydown={(e) => { if (props.open && !deleteConfirmOpen && e.key === 'Escape') props.onCancel?.() }} />
 
-{#if props.open && draft}
+{#if draft}
+  <div class:session-hidden={!props.open} inert={!props.open}>
   <button type="button" class="ui-backdrop" aria-label="Close character editor overlay" onclick={() => props.onCancel?.()}></button>
   <div
     class="ui-modal modal"
@@ -210,7 +192,8 @@
       </header>
 
       <div class="ui-modal-body modal-body">
-        <div class="ui-modal-scroller modal-scroller" bind:this={scrollerEl} onfocusin={handleFocusIn} onfocusout={handleFocusOut}>
+        <FieldEditor active={!!props.open}>
+        <div class="ui-modal-scroller modal-scroller" use:rememberScroll={{ active: !!props.open, key: `${draft.id}:${activeSection}` }}>
           <!-- Identity: always visible, everything else lives behind the bubbles -->
           <div class="identity">
             <button type="button" class="avatar-wrap" title="Change avatar" aria-label="Change avatar" onclick={() => avatarInput?.click()}>
@@ -229,7 +212,7 @@
           </div>
 
           <!-- Section bubbles: one compact row replaces five collapsed headers -->
-          <div class="section-tabs" role="tablist" aria-label="Character sections" bind:this={tabsEl}>
+          <div class="section-tabs" role="tablist" aria-label="Character sections" bind:this={tabsEl} use:rememberScroll={{ active: !!props.open, key: draft.id }}>
             {#each sections as section (section.id)}
               <button
                 type="button"
@@ -241,13 +224,14 @@
             {/each}
           </div>
 
-          <div class="section-body" role="tabpanel">
-            {#if activeSection === 'description'}
+          {#each sections as section (section.id)}
+          <div class="section-body" role="tabpanel" style:display={activeSection === section.id ? undefined : 'none'}>
+            {#if section.id === 'description'}
               <label class="ui-field">
                 <span class="ui-field-label">Description</span>
                 <textarea class="ui-textarea tall" value={draft.description} oninput={(e) => updateField('description', e.currentTarget.value)} placeholder={'Who {{char}} is...'} aria-label="Description"></textarea>
               </label>
-            {:else if activeSection === 'greetings'}
+            {:else if section.id === 'greetings'}
               <label class="ui-field">
                 <span class="ui-field-label">First message</span>
                 <textarea class="ui-textarea" value={draft.firstMes} oninput={(e) => updateField('firstMes', e.currentTarget.value)}></textarea>
@@ -263,7 +247,7 @@
               <button type="button" class="ui-btn ui-btn-accent ui-btn-sm" onclick={addGreeting}>
                 <IconAdd style="font-size: 16px;" /> Alternate greeting
               </button>
-            {:else if activeSection === 'behavior'}
+            {:else if section.id === 'behavior'}
               <label class="ui-field">
                 <span class="ui-field-label">Personality</span>
                 <textarea class="ui-textarea" value={draft.personality} oninput={(e) => updateField('personality', e.currentTarget.value)}></textarea>
@@ -276,7 +260,7 @@
                 <span class="ui-field-label">Example dialogue</span>
                 <textarea class="ui-textarea" value={draft.mesExample} oninput={(e) => updateField('mesExample', e.currentTarget.value)}></textarea>
               </label>
-            {:else if activeSection === 'overrides'}
+            {:else if section.id === 'overrides'}
               <label class="ui-field">
                 <span class="ui-field-label">System prompt (replaces the main prompt; supports {'{{original}}'})</span>
                 <textarea class="ui-textarea" value={draft.systemPrompt} oninput={(e) => updateField('systemPrompt', e.currentTarget.value)}></textarea>
@@ -307,20 +291,13 @@
             {/if}
           </div>
 
+          {/each}
+
           {#if errorText}
             <div class="ui-error-text">{errorText}</div>
           {/if}
         </div>
-        {#if fieldExpanded}
-          <button
-            type="button"
-            class="collapse-btn"
-            onpointerdown={(e) => e.preventDefault()}
-            onclick={collapseField}
-          >
-            <IconCollapseContent style="font-size: 16px;" /> Collapse
-          </button>
-        {/if}
+        </FieldEditor>
       </div>
 
       <footer class="modal-foot">
@@ -338,6 +315,7 @@
       </footer>
     </div>
   </div>
+  </div>
 {/if}
 
 <ConfirmModal
@@ -352,6 +330,7 @@
 />
 
 <style>
+  .session-hidden { display: none; }
   /* Chrome, fields, switches and buttons come from shared ui.css.
      Local: panel sizing, visual-viewport pinning, identity block,
      sticky section tabs and the mobile fullscreen-field behavior. */
@@ -369,26 +348,6 @@
     }
   }
   .modal-body { position: relative; }
-  /* Floating collapse control for the mobile fullscreen field editor */
-  .collapse-btn {
-    display: none;
-    position: absolute;
-    top: 8px;
-    right: 12px;
-    z-index: 11;
-    align-items: center;
-    gap: 6px;
-    padding: 6px 12px;
-    border: 1px solid var(--border);
-    border-radius: var(--r-pill);
-    background: var(--bg);
-    color: var(--text);
-    font: inherit;
-    font-size: 0.8rem;
-    font-weight: 500;
-    cursor: pointer;
-    box-shadow: var(--modal-shadow);
-  }
   .modal-scroller {
     box-sizing: border-box;
     scrollbar-gutter: stable;
@@ -486,22 +445,8 @@
   }
 
   .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s3); }
-  .ui-textarea {
-    /* Keep natively focus-scrolled fields clear of the sticky bubble row */
-    scroll-margin-top: 56px;
-    min-height: 68px;
-    /* Expand-on-hover/focus: collapse is delayed so sweeping the pointer
-       across fields doesn't cause jittery reflows. */
-    transition:
-      min-height .18s ease .25s,
-      border-color var(--dur) var(--ease),
-      box-shadow var(--dur) var(--ease);
-  }
+  .ui-textarea { scroll-margin-top: 56px; }
   .ui-textarea.tall { min-height: 130px; }
-  @media (hover: hover) and (pointer: fine) {
-    .ui-textarea:hover { min-height: 320px; transition-delay: .12s; }
-  }
-  .ui-textarea:focus { min-height: 320px; transition-delay: 0s; }
   .greeting-row { display: flex; gap: var(--s2); align-items: flex-start; }
   .greeting-row .ui-textarea { width: auto; flex: 1 1 auto; }
 
@@ -531,38 +476,5 @@
     .modal-foot .ui-btn { flex: 1 1 auto; }
     .modal-foot .ui-icon-btn { flex: 0 0 auto; }
     .grid-2 { grid-template-columns: 1fr; }
-    /* Focused textarea takes over the entire modal body, covering the
-       identity block and bubbles: nothing underneath can scroll while the
-       keyboard is open. The floating button collapses it back. */
-    .ui-field:has(.ui-textarea):focus-within,
-    .greeting-row:focus-within {
-      position: absolute;
-      inset: 0;
-      z-index: 10;
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-      margin: 0;
-      padding: 10px 12px 12px;
-      box-sizing: border-box;
-      background: var(--panel);
-    }
-    .ui-field:has(.ui-textarea):focus-within .ui-field-label {
-      /* Keep the label clear of the floating collapse button */
-      padding-right: 110px;
-      min-height: 24px;
-      display: flex;
-      align-items: center;
-    }
-    .ui-field:has(.ui-textarea):focus-within .ui-textarea,
-    .greeting-row:focus-within .ui-textarea {
-      flex: 1 1 auto;
-      min-height: 0;
-      height: auto;
-    }
-    /* Greeting rows have no label; pad for the collapse button instead */
-    .greeting-row:focus-within { padding-top: 44px; }
-    .greeting-row:focus-within .ui-icon-btn { display: none; }
-    .collapse-btn { display: inline-flex; }
   }
 </style>

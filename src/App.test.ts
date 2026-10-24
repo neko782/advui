@@ -49,7 +49,7 @@ describe('App settings modal integration', () => {
     flushSync()
     await sleep(20)
     flushSync()
-    expect(document.querySelector('.ui-modal'), 'modal should close').toBeFalsy()
+    expect(document.querySelector('.settings-session')?.classList.contains('session-hidden'), 'modal should hide').toBe(true)
 
     // Reopen and close via Escape
     settingsBtn.click()
@@ -57,7 +57,7 @@ describe('App settings modal integration', () => {
     expect(document.querySelector('.ui-modal')).toBeTruthy()
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
     flushSync()
-    expect(document.querySelector('.ui-modal')).toBeFalsy()
+    expect(document.querySelector('.settings-session')?.classList.contains('session-hidden')).toBe(true)
 
     await unmount(component)
   })

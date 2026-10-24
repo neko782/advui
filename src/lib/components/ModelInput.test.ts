@@ -100,18 +100,28 @@ describe('custom model suggestions', () => {
     expect(input.getAttribute('aria-expanded')).toBe('false')
   })
 
-  it('shrinks its results when the visual viewport changes with the keyboard', () => {
+  it('floats outside layout, flips above the input, and fits the keyboard viewport', async () => {
     const viewport = new EventTarget()
-    Object.defineProperty(viewport, 'height', { value: 240, configurable: true })
+    Object.defineProperties(viewport, {
+      height: { value: 844, configurable: true },
+      width: { value: 390 },
+    })
+    vi.spyOn(HTMLInputElement.prototype, 'getBoundingClientRect').mockReturnValue(new DOMRect(16, 180, 220, 44))
     vi.stubGlobal('visualViewport', viewport)
     try {
       setup()
       const suggestions = document.querySelector<HTMLElement>('.suggestions')!
-      expect(suggestions.style.getPropertyValue('--model-viewport-height')).toBe('128px')
-      Object.defineProperty(viewport, 'height', { value: 180 })
+      expect(suggestions.getAttribute('popover')).toBe('manual')
+      expect(suggestions.style.top).toBe('232px')
+      expect(suggestions.style.height).toBe('420px')
+      expect(suggestions.style.width).toBe('374px')
+      Object.defineProperty(viewport, 'height', { value: 280 })
       viewport.dispatchEvent(new Event('resize'))
-      flushSync()
-      expect(suggestions.style.getPropertyValue('--model-viewport-height')).toBe('68px')
+      await vi.waitFor(() => {
+        flushSync()
+        expect(suggestions.style.top).toBe('auto')
+        expect(suggestions.style.height).toBe('164px')
+      })
     } finally {
       vi.unstubAllGlobals()
     }

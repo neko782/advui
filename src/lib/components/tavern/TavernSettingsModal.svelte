@@ -1,4 +1,6 @@
 <script lang="ts">
+  import FieldEditor from '../FieldEditor.svelte'
+  import { rememberScroll } from '../../utils/rememberScroll'
   import { IconClose, IconAdd, IconDelete, IconDownload, IconUpload, IconArrowUpward, IconArrowDownward, IconContentCopy, IconChevronRight } from '../../icons'
   import {
     generatePromptPresetId,
@@ -44,6 +46,7 @@
     { id: 'personas', label: 'Personas' },
   ] as const
 
+  let hasOpened = $state(false)
   let tab = $state<'general' | 'prompts' | 'personas'>('general')
   let presets = $state<PromptPreset[]>([])
   let selectedId = $state('')
@@ -59,7 +62,7 @@
 
   $effect(() => {
     if (props.open && !wasOpen) {
-      tab = 'general'
+      hasOpened = true
       presets = JSON.parse(JSON.stringify(props.promptPresets || []))
       if (!presets.length) presets = [makeDefaultPromptPreset()]
       selectedId = presets.some(p => p.id === props.selectedPromptPresetId)
@@ -73,7 +76,6 @@
       connectionPresetId = props.tavernSelectedPresetId || (props.connectionPresets?.[0]?.id ?? '') || ''
       perChatPresets = !!props.tavernPerChatPresets
       avatarShape = props.avatarShape === 'rounded' || props.avatarShape === 'card' ? props.avatarShape : 'circle'
-      expandedBlockId = null
       errorText = ''
     }
     wasOpen = !!props.open
@@ -263,7 +265,8 @@
 
 <svelte:window onkeydown={(e) => { if (props.open && e.key === 'Escape') props.onClose?.() }} />
 
-{#if props.open}
+{#if hasOpened}
+  <div class:session-hidden={!props.open} inert={!props.open}>
   <button type="button" class="ui-backdrop" aria-label="Close tavern settings overlay" onclick={() => props.onClose?.()}></button>
   <div
     class="ui-modal"
@@ -296,8 +299,9 @@
         </div>
       </div>
       <div class="ui-modal-body" role="tabpanel">
-        <div class="ui-modal-scroller">
-          {#if tab === 'general'}
+        <FieldEditor active={!!props.open}>
+        <div class="ui-modal-scroller" use:rememberScroll={{ active: !!props.open, key: tab }}>
+          <div style:display={tab === 'general' ? 'contents' : 'none'}>
             <div class="ui-group">
               <div class="ui-group-title">Preset</div>
               <div class="ui-field">
@@ -338,7 +342,8 @@
                 <div class="ui-hint">Card keeps the original character card aspect ratio (400×600).</div>
               </div>
             </div>
-          {:else if tab === 'prompts'}
+          </div>
+          <div style:display={tab === 'prompts' ? 'contents' : 'none'}>
             <div class="ui-group">
               <div class="ui-group-head">
                 <div class="ui-group-title">Prompt preset</div>
@@ -408,12 +413,16 @@
                                 <option value="assistant">assistant</option>
                               </select>
                             </div>
+                            <label class="ui-field">
+                            <span class="ui-field-label">Prompt</span>
                             <textarea
+                              aria-label="Prompt text"
                               class="ui-textarea"
                               value={block.content}
                               oninput={(e) => updateBlock(block.id, { content: e.currentTarget.value })}
                               placeholder={'Prompt text... supports {{char}}, {{user}}, {{persona}}, {{description}}'}
                             ></textarea>
+                            </label>
                           {/if}
                         </div>
                       {/if}
@@ -428,7 +437,8 @@
                 </div>
               </div>
             {/if}
-          {:else}
+          </div>
+          <div style:display={tab === 'personas' ? 'contents' : 'none'}>
             <div class="ui-group">
               <div class="ui-group-head">
                 <div class="ui-group-title">Personas</div>
@@ -451,28 +461,34 @@
                       </label>
                       <button type="button" class="ui-icon-btn ui-icon-btn-sm danger" title="Delete persona" disabled={personas.length <= 1} onclick={() => deletePersona(persona.id!)}><IconDelete style="font-size: 15px;" /></button>
                     </div>
+                    <label class="ui-field">
+                    <span class="ui-field-label">Persona description</span>
                     <textarea
                       class="ui-textarea"
                       value={persona.description}
                       oninput={(e) => updatePersona(persona.id!, { description: e.currentTarget.value })}
                       placeholder={'Who {{user}} is... (injected via the Persona block)'}
                     ></textarea>
+                    </label>
                   </div>
                 {/each}
               </div>
             </div>
-          {/if}
+          </div>
 
           {#if errorText}
             <div class="ui-error-text">{errorText}</div>
           {/if}
         </div>
+        </FieldEditor>
       </div>
     </div>
+  </div>
   </div>
 {/if}
 
 <style>
+  .session-hidden { display: none; }
   /* Chrome, tabs, groups, fields, switches and buttons come from shared ui.css.
      Only the panel size and tavern-specific widgets are local. */
   @media (min-width: 641px) {

@@ -1,13 +1,13 @@
 <script lang="ts">
   import { tick } from 'svelte'
+  import FloatingPopover from './FloatingPopover.svelte'
   import { DEFAULT_MODEL } from '../utils/presetHelpers'
 
-  let { value = '', models = [], disabled = false, active = true, suggestionsAbove = false, onInput }: {
+  let { value = '', models = [], disabled = false, active = true, onInput }: {
     value?: string
     models?: string[]
     disabled?: boolean
     active?: boolean
-    suggestionsAbove?: boolean
     onInput?: (value: string) => void
   } = $props()
 
@@ -18,9 +18,8 @@
   let query = $state('')
   let highlighted = $state(-1)
   let root: HTMLDivElement
-  let input: HTMLInputElement
+  let input = $state<HTMLInputElement>()
   let list = $state<HTMLDivElement>()
-  let viewportHeight = $state(176)
 
   const options = $derived([...new Set(models)])
   const matches = $derived.by(() => {
@@ -36,44 +35,17 @@
     if (!active || disabled) {
       expanded = false
       focused = false
-      if (document.activeElement === input) input.blur()
+      if (document.activeElement === input) input?.blur()
     }
   })
 
   $effect(() => {
     if (!showSuggestions) return
-    const viewport = window.visualViewport
-    let frame = 0
-    let disposed = false
-    const update = () => {
-      viewportHeight = Math.max(0, Math.min(176, (viewport?.height ?? window.innerHeight) - 112))
-      cancelAnimationFrame(frame)
-      frame = requestAnimationFrame(async () => {
-        // A modal's scroller can be shorter than the visual viewport because
-        // its header and tabs also need room. Fit the field and list together.
-        for (let parent = root.parentElement; parent; parent = parent.parentElement) {
-          const style = getComputedStyle(parent)
-          if (!/auto|scroll/.test(style.overflowY) || !parent.clientHeight) continue
-          const available = parent.clientHeight - parseFloat(style.paddingTop || '0') - parseFloat(style.paddingBottom || '0')
-          const controlHeight = input.getBoundingClientRect().height
-          viewportHeight = Math.max(0, Math.min(viewportHeight, available - controlHeight - 6))
-          break
-        }
-        await tick()
-        // Suggestions occupy layout space. Scroll the containing settings
-        // panel just enough to reveal them, including after keyboard resize.
-        if (!disposed) root.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })
-      })
+    const onPointerDown = (event: PointerEvent) => {
+      if (!root.contains(event.target as Node)) expanded = false
     }
-    update()
-    viewport?.addEventListener('resize', update)
-    window.addEventListener('resize', update)
-    return () => {
-      disposed = true
-      cancelAnimationFrame(frame)
-      viewport?.removeEventListener('resize', update)
-      window.removeEventListener('resize', update)
-    }
+    window.addEventListener('pointerdown', onPointerDown, true)
+    return () => window.removeEventListener('pointerdown', onPointerDown, true)
   })
 
   function openSuggestions() {
@@ -88,7 +60,7 @@
     onInput?.(model)
     expanded = false
     highlighted = -1
-    input.focus({ preventScroll: true })
+    input?.focus({ preventScroll: true })
   }
 
   async function onKeydown(event: KeyboardEvent) {
@@ -124,7 +96,7 @@
   }
 </script>
 
-<div class="model-input" class:above={suggestionsAbove} bind:this={root}
+<div class="model-input" bind:this={root}
   onfocusout={(event) => {
     if (!root.contains(event.relatedTarget as Node | null)) expanded = false
   }}>
@@ -153,7 +125,7 @@
         onpointerdown={(event) => event.preventDefault()}
         onclick={() => {
           if (showSuggestions) expanded = false
-          else { input.focus({ preventScroll: true }); openSuggestions() }
+          else { input?.focus({ preventScroll: true }); openSuggestions() }
         }}>
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
           <path d={showSuggestions ? 'm6 15 6-6 6 6' : 'm6 9 6 6 6-6'} />
@@ -161,8 +133,7 @@
       </button>
     {/if}
   </div>
-  {#if showSuggestions}
-    <div class="suggestions" style={`--model-viewport-height: ${viewportHeight}px`}>
+  <FloatingPopover open={showSuggestions} anchor={input} fill className="suggestions">
       <div class="model-options" id={`${uid}-models`} role="listbox" aria-label="Model suggestions" bind:this={list}>
         {#each visible as model, index (model)}
           <button type="button" role="option" id={`${uid}-model-${index}`} tabindex="-1"
@@ -176,12 +147,11 @@
       {:else if matches.length > visible.length}
         <div class="model-hint catalog-count">Showing {visible.length} of {matches.length}. Type to narrow.</div>
       {/if}
-    </div>
-  {/if}
+  </FloatingPopover>
 </div>
 
 <style>
-  .model-input { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+  .model-input { min-width: 0; }
   .model-control { display: flex; align-items: stretch; min-width: 0; }
   input { flex: 1; min-width: 0; width: 100%; box-sizing: border-box; border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; background: var(--bg); color: var(--text); font: inherit; font-size: max(16px, 1rem); }
   input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 15%, transparent); }
@@ -190,8 +160,6 @@
   .suggestions-toggle:hover { color: var(--accent); background: var(--panel); }
   .suggestions-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   .suggestions-toggle:disabled { opacity: .5; cursor: not-allowed; }
-  .suggestions { display: flex; flex-direction: column; container-type: size; height: min(var(--model-suggestions-height, 176px), var(--model-viewport-height)); min-height: 0; overflow: hidden; box-sizing: border-box; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); }
-  .above .suggestions { order: -1; }
   .model-options { position: relative; flex: 1; overflow-y: auto; overflow-x: hidden; min-height: 0; overscroll-behavior: contain; scrollbar-width: thin; touch-action: pan-y; }
   .model-options:empty { display: none; }
   .model-options button { display: block; width: 100%; min-height: 44px; padding: 10px 12px; box-sizing: border-box; border: 0; border-radius: 0; background: transparent; color: var(--text); font: inherit; font-size: .9rem; text-align: left; overflow-wrap: anywhere; cursor: pointer; }

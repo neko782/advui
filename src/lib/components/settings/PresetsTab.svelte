@@ -16,6 +16,7 @@
 
   interface Props {
     draft: SettingsDraft
+    active?: boolean
   }
 
   const props: Props = $props()
@@ -258,7 +259,7 @@
                   </label>
                   <div class="ui-field">
                     <span>Model</span>
-                    <ModelInput value={activePreset.model || ''} models={activePresetModels}
+                    <ModelInput active={props.active ?? true} value={activePreset.model || ''} models={activePresetModels}
                       onInput={(value) => updateActivePreset({ model: value })} />
                   </div>
 
@@ -460,8 +461,9 @@
                       <option value="high">high</option>
                     </select>
                   </label>
-                  <label class="ui-field">
+                  <div class="ui-field">
                     <span>Connection</span>
+                    <div class="connection-row">
                     <select
                       class="ui-select"
                       value={activePreset.connectionId || ''}
@@ -472,13 +474,12 @@
                         <option value={connection.id}>{connection?.name || connection?.id || 'Connection'}</option>
                       {/each}
                     </select>
-                  </label>
                   {#if presetConnection?.openRouterEnabled && presetConnection.apiMode !== 'gemini'}
-                    <div class="ui-field">
-                      <OpenRouterProviderInput value={activePreset.openRouterProvider}
+                      <OpenRouterProviderInput value={activePreset.openRouterProvider} active={props.active ?? true}
                         onInput={(value) => updateActivePreset({ openRouterProvider: value })} />
-                    </div>
                   {/if}
+                    </div>
+                  </div>
                 {/if}
 
                 <div class="preset-group-divider"></div>
@@ -592,6 +593,7 @@
             </section>
 
 <style>
+  .connection-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 6px; }
   /* Chrome, form controls, lists, switches and buttons come from shared ui.css.
      Only preset-specific styles remain. */
   .preset-group-divider {
