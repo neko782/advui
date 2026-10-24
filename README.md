@@ -1,6 +1,6 @@
 # advui
 
-Single-page advanced chat UI built with Svelte 5 and Vite.
+Single-page advanced chat UI built with Svelte 5 and Vite 8, using Rolldown and Oxc for bundling and minification.
 
 ## Features
 
@@ -12,26 +12,32 @@ Single-page advanced chat UI built with Svelte 5 and Vite.
 
 ## Requirements
 
-- Node.js 20+
-- npm 10+
+- Node.js 22.12+ on the 22.x line, Node.js 24.x, or Node.js 26+
+- Bun 1.4.4+ for package management and running scripts
 
 ## Quick Start
 
 ```bash
-npm install
-npm run dev
+bun install --frozen-lockfile
+bun run dev
 ```
 
 Open the local URL shown by Vite.
 
+Dependencies are locked in `bun.lock`. Use `bun add` / `bun remove` to change dependencies and commit the updated lockfile. Vite and Vitest run on Node.js; Bun manages packages and invokes their scripts.
+
 ## Scripts
 
-- `npm run dev` - start local development server
-- `npm run build` - production build
-- `npm run preview` - preview the production build
-- `npm test` - run tests
-- `npm run test:ui` - run tests with Vitest UI
-- `npm run test:coverage` - run tests with coverage
+- `bun run dev` - start local development server
+- `bun run build` - production build as a single HTML file
+- `bun run preview` - preview the production build
+- `bun run test` - run Vitest in watch mode
+- `bun run test --run` - run the test suite once
+- `bun run test:ui` - run tests with Vitest UI
+- `bun run test:coverage --run` - run tests with coverage
+- `ANALYZE=1 bun run build` - build and write bundle analysis to `stats.json`
+
+Use `bun run test` rather than `bun test`: the suite uses Vitest and its happy-dom environment.
 
 ## Project Layout
 
@@ -58,4 +64,4 @@ Open the local URL shown by Vite.
   - optional `CLOUDFLARE_PAGES_PROJECT` (defaults to `advui`)
   - optional `CLOUDFLARE_PAGES_BRANCH` (defaults to `main`, your production branch)
 - Manual deploy command:
-  - `npm run build && npm run deploy:pages`
+  - `bun run build && bun run deploy:pages`
