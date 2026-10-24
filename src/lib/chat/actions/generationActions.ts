@@ -425,7 +425,12 @@ export async function generateResponse(options: GenerateResponseOptions): Promis
   } = options;
 
   const buildVisible = () => _buildVisible(nodes, rootId);
-  let history: HistoryMessage[] = buildVisible()
+  const visible = buildVisible();
+  const targetIndex = typingVariantId == null
+    ? -1
+    : visible.findIndex(vm => vm.m.id === typingVariantId);
+  const historyPath = targetIndex >= 0 ? visible.slice(0, targetIndex) : visible;
+  let history: HistoryMessage[] = historyPath
     .map(vm => vm.m)
     .filter(m => !m.typing)
     .map(({ role, content, images }) => {

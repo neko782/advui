@@ -135,4 +135,38 @@ describe('createChatPersister', () => {
     expect(host.onChatUpdated).toHaveBeenCalledTimes(1)
     expect(host.onChatUpdated.mock.calls[0][0]).toMatchObject({ id: 'chat-1' })
   })
+  it('saves edits made while a write is in flight without overwriting them', async () => {
+    const host = makeHost();
+    let finish;
+    saveChatContent.mockImplementationOnce((id, payload) => new Promise(resolve => {
+      finish = () => resolve({ id, ...payload });
+    }));
+    const persister = createChatPersister(host);
+    const pending = persister.persistNow();
+    host.state.nodes[0].variants[0].content = 'new content';
+    host.state.chatSettings.model = 'new-model';
+    persister.requestPersist();
+    await persister.persistNow(); // explicit overlapping saves are coalesced too
+    expect(saveChatContent).toHaveBeenCalledTimes(1);
+    expect(saveChatContent.mock.calls[0][1].nodes[0].variants[0].content).toBe('hi');
+    finish();
+    await pending;
+    await vi.runAllTimersAsync();
+    expect(saveChatContent).toHaveBeenCalledTimes(2);
+    expect(saveChatContent.mock.lastCall[1].nodes[0].variants[0].content).toBe('new content');
+    expect(saveChatContent.mock.lastCall[1].settings.model).toBe('new-model');
+  });
+
+  it('backs off after a failed write instead of immediately rescheduling it', async () => {
+    const host = makeHost();
+    saveChatContent.mockRejectedValueOnce(new Error('disk full'));
+    const persister = createChatPersister(host);
+    await persister.persistNow();
+    await vi.advanceTimersByTimeAsync(749);
+    expect(saveChatContent).toHaveBeenCalledTimes(1);
+    await vi.runAllTimersAsync();
+    expect(saveChatContent).toHaveBeenCalledTimes(2);
+    expect(host.onSaveError).toHaveBeenCalledWith('disk full');
+  });
+
 })

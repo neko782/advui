@@ -463,3 +463,45 @@ export function loadChatSettings(
     mcpServers: normalizeMcpServerList(has('mcpServers') ? s.mcpServers : preset.mcpServers),
   };
 }
+
+/** Applies an explicitly selected preset, including null sampling values. */
+export function applyPresetToChatSettings(current: ChatSettings, preset: Partial<Preset>, applyProvider = true): ChatSettings {
+  return {
+    ...current,
+    model: preset.model || current.model,
+    streaming: typeof preset.streaming === 'boolean' ? preset.streaming : current.streaming,
+    maxOutputTokens: preset.maxOutputTokens !== undefined ? preset.maxOutputTokens : current.maxOutputTokens,
+    topP: preset.topP !== undefined ? preset.topP : current.topP,
+    temperature: preset.temperature !== undefined ? preset.temperature : current.temperature,
+    reasoningEffort: preset.reasoningEffort || current.reasoningEffort,
+    textVerbosity: preset.textVerbosity || current.textVerbosity,
+    reasoningSummary: preset.reasoningSummary || current.reasoningSummary,
+    thinkingEnabled: typeof preset.thinkingEnabled === 'boolean' ? preset.thinkingEnabled : current.thinkingEnabled,
+    thinkingBudgetTokens: preset.thinkingBudgetTokens !== undefined ? preset.thinkingBudgetTokens : current.thinkingBudgetTokens,
+    openRouterProvider: applyProvider ? preset.openRouterProvider || '' : current.openRouterProvider,
+    connectionId: preset.connectionId || current.connectionId,
+    presetId: preset.id || current.presetId,
+    // Web Search settings
+    webSearchEnabled: typeof preset.webSearchEnabled === 'boolean' ? preset.webSearchEnabled : current.webSearchEnabled,
+    webSearchDomains: preset.webSearchDomains ?? current.webSearchDomains,
+    webSearchCountry: preset.webSearchCountry ?? current.webSearchCountry,
+    webSearchCity: preset.webSearchCity ?? current.webSearchCity,
+    webSearchRegion: preset.webSearchRegion ?? current.webSearchRegion,
+    webSearchTimezone: preset.webSearchTimezone ?? current.webSearchTimezone,
+    webSearchCacheOnly: typeof preset.webSearchCacheOnly === 'boolean' ? preset.webSearchCacheOnly : current.webSearchCacheOnly,
+    // Code Interpreter settings
+    codeInterpreterEnabled: typeof preset.codeInterpreterEnabled === 'boolean' ? preset.codeInterpreterEnabled : current.codeInterpreterEnabled,
+    codeInterpreterNetworkEnabled: typeof preset.codeInterpreterNetworkEnabled === 'boolean' ? preset.codeInterpreterNetworkEnabled : current.codeInterpreterNetworkEnabled,
+    codeInterpreterAllowedDomains: 'codeInterpreterAllowedDomains' in preset ? preset.codeInterpreterAllowedDomains : current.codeInterpreterAllowedDomains,
+    // Shell settings
+    shellEnabled: typeof preset.shellEnabled === 'boolean' ? preset.shellEnabled : current.shellEnabled,
+    shellNetworkEnabled: typeof preset.shellNetworkEnabled === 'boolean' ? preset.shellNetworkEnabled : current.shellNetworkEnabled,
+    shellAllowedDomains: 'shellAllowedDomains' in preset ? preset.shellAllowedDomains : current.shellAllowedDomains,
+    // Image Generation settings
+    imageGenerationEnabled: typeof preset.imageGenerationEnabled === 'boolean' ? preset.imageGenerationEnabled : current.imageGenerationEnabled,
+    imageGenerationModel: preset.imageGenerationModel ?? current.imageGenerationModel,
+    // MCP settings
+    mcpEnabled: typeof preset.mcpEnabled === 'boolean' ? preset.mcpEnabled : current.mcpEnabled,
+    mcpServers: preset.mcpServers ?? current.mcpServers,
+  };
+}

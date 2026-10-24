@@ -41,8 +41,16 @@ function getStorageBackend(): StorageBackend {
     return activeBackend;
   }
 
-  // Try IndexedDB first
-  if (idbStorage.isIndexedDBAvailable()) {
+  // A fallback may contain newer writes than IndexedDB. Keep using it across
+  // reloads instead of silently returning to an older copy of the chats.
+  let hasFallbackData = false;
+  try {
+    hasFallbackData = localStorage.getItem(BACKEND_KEY) === 'localstorage'
+      && localStorage.getItem('advui.chats.store.v1') !== null;
+  } catch { /* unavailable */ }
+  if (hasFallbackData) {
+    activeBackend = lsStorage;
+  } else if (idbStorage.isIndexedDBAvailable()) {
     activeBackend = idbStorage;
     persistBackendChoice('indexeddb');
   } else {

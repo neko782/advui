@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { normalizePreset, buildChatSettings, loadChatSettings } from './presetHelpers.js'
+import { normalizePreset, buildChatSettings, loadChatSettings, applyPresetToChatSettings } from './presetHelpers.js'
 import { presetSignature } from '../chat/services/chatInit.js'
 
 describe('OpenRouter provider presets', () => {
@@ -31,3 +31,14 @@ describe('OpenRouter provider presets', () => {
       presetSignature({ presets: [{ ...preset, openRouterProvider: 'openai' }] }))
   })
 })
+
+it('clears previous sampling limits when selecting an automatic preset', () => {
+  const current = buildChatSettings(normalizePreset({ temperature: 1.7, topP: 0.8, maxOutputTokens: 128, thinkingBudgetTokens: 1024 }), null);
+  const next = applyPresetToChatSettings(current, normalizePreset({ id: 'automatic' }));
+  expect(next).toMatchObject({ presetId: 'automatic', temperature: null, topP: null, maxOutputTokens: null, thinkingBudgetTokens: null });
+});
+
+it('clears an old tool allowlist when the chosen preset has no restrictions', () => {
+  const current = buildChatSettings(normalizePreset({ shellAllowedDomains: 'old.example' }), null);
+  expect(applyPresetToChatSettings(current, normalizePreset({})).shellAllowedDomains).toBeUndefined();
+});

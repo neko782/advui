@@ -305,8 +305,12 @@ export async function saveChatContent(
         webSearchCacheOnly: !!pickSetting('webSearchCacheOnly'),
         // Code Interpreter settings
         codeInterpreterEnabled: !!pickSetting('codeInterpreterEnabled'),
+        codeInterpreterNetworkEnabled: !!pickSetting('codeInterpreterNetworkEnabled'),
+        codeInterpreterAllowedDomains: pickSetting('codeInterpreterAllowedDomains') || '',
         // Shell settings
         shellEnabled: !!pickSetting('shellEnabled'),
+        shellNetworkEnabled: !!pickSetting('shellNetworkEnabled'),
+        shellAllowedDomains: pickSetting('shellAllowedDomains') || '',
         // Image Generation settings
         imageGenerationEnabled: !!pickSetting('imageGenerationEnabled'),
         imageGenerationModel: pickSetting('imageGenerationModel') || undefined,
@@ -342,6 +346,10 @@ export async function saveChatContent(
       const presetId = (typeof settings?.presetId === 'string')
         ? settings.presetId
         : (typeof existing?.presetId === 'string' ? existing.presetId : (basePreset?.id || null));
+      const titleManuallySet = existing.titleManuallySet ?? (
+        !existing.characterId && typeof existing.title === 'string' && !!existing.title.trim() && existing.title !== 'New Chat'
+        && existing.title !== computeTitleFromNodes(existing.nodes, existing.rootId)
+      );
       const updated: Chat = {
         ...(existing || { id }),
         id,
@@ -349,7 +357,9 @@ export async function saveChatContent(
         rootId: nextRootId,
         settings: baseSettings,
         presetId,
+        titleManuallySet,
         title: (() => {
+          if (titleManuallySet) return existing.title;
           const computed = computeTitleFromNodes(nextNodes, nextRootId);
           // Tavern chats keep their character-name title until a user message exists
           if (existing?.characterId && computed === 'New Chat') {
@@ -362,8 +372,7 @@ export async function saveChatContent(
       return updated;
     });
   } catch (err) {
-    console.error('Failed to save chat content:', err);
-    return null;
+    throw err;
   }
 }
 
@@ -382,6 +391,7 @@ export async function renameChat(id: string, title: string): Promise<Chat | null
     return {
       ...chat,
       title: nextTitle,
+      titleManuallySet: true,
       updatedAt: Date.now(),
     };
   });
@@ -398,6 +408,7 @@ export async function duplicateChat(id: string): Promise<{ id: string; chat: Cha
     settings: deepClone(original.settings || {}),
     presetId: original.presetId || undefined,
     title: `${baseTitle} (copy)`,
+    titleManuallySet: true,
     characterId: original.characterId || undefined,
   });
 }
@@ -415,6 +426,7 @@ export interface CreateChatOptions {
   updatedAt?: number;
   /** Optional: preserve original title (for imports) */
   title?: string;
+  titleManuallySet?: boolean;
   /** Tavern: character this chat belongs to */
   characterId?: string | null;
 }
@@ -497,6 +509,7 @@ export async function createChat(initial: CreateChatOptions = {}): Promise<{ id:
   const chat: Chat = {
     id,
     title: initial?.title || computeTitleFromNodes(baseNodes, rootId),
+    titleManuallySet: initial?.titleManuallySet ?? (!!initial?.title && !initial?.characterId && initial.title !== computeTitleFromNodes(baseNodes, rootId)),
     updatedAt: initial?.updatedAt || Date.now(),
     settings: {
       model: initial?.settings?.model || initial?.model || preferredPreset.model || DEFAULT_MODEL,
@@ -528,8 +541,12 @@ export async function createChat(initial: CreateChatOptions = {}): Promise<{ id:
       webSearchCacheOnly: hasOwn(initial?.settings || {}, 'webSearchCacheOnly') ? !!initial.settings!.webSearchCacheOnly : !!preferredPreset.webSearchCacheOnly,
       // Code Interpreter settings
       codeInterpreterEnabled: hasOwn(initial?.settings || {}, 'codeInterpreterEnabled') ? !!initial.settings!.codeInterpreterEnabled : !!preferredPreset.codeInterpreterEnabled,
+      codeInterpreterNetworkEnabled: hasOwn(initial?.settings || {}, 'codeInterpreterNetworkEnabled') ? !!initial.settings!.codeInterpreterNetworkEnabled : !!preferredPreset.codeInterpreterNetworkEnabled,
+      codeInterpreterAllowedDomains: (hasOwn(initial?.settings || {}, 'codeInterpreterAllowedDomains') ? initial.settings!.codeInterpreterAllowedDomains : preferredPreset.codeInterpreterAllowedDomains) || '',
       // Shell settings
       shellEnabled: hasOwn(initial?.settings || {}, 'shellEnabled') ? !!initial.settings!.shellEnabled : !!preferredPreset.shellEnabled,
+      shellNetworkEnabled: hasOwn(initial?.settings || {}, 'shellNetworkEnabled') ? !!initial.settings!.shellNetworkEnabled : !!preferredPreset.shellNetworkEnabled,
+      shellAllowedDomains: (hasOwn(initial?.settings || {}, 'shellAllowedDomains') ? initial.settings!.shellAllowedDomains : preferredPreset.shellAllowedDomains) || '',
       // Image Generation settings
       imageGenerationEnabled: hasOwn(initial?.settings || {}, 'imageGenerationEnabled') ? !!initial.settings!.imageGenerationEnabled : !!preferredPreset.imageGenerationEnabled,
       imageGenerationModel: (hasOwn(initial?.settings || {}, 'imageGenerationModel') ? initial.settings!.imageGenerationModel : preferredPreset.imageGenerationModel) || undefined,

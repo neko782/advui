@@ -136,3 +136,11 @@ describe('computePersistSig', () => {
     expect(sig.length).toBeGreaterThan(0)
   })
 })
+
+it.each([
+  ['shellNetworkEnabled', true], ['shellAllowedDomains', 'example.com'],
+  ['codeInterpreterNetworkEnabled', true], ['codeInterpreterAllowedDomains', 'example.org'],
+])('detects changes to %s', (field, value) => {
+  expect(computePersistSig([], { model: 'test' }, null)).not.toBe(
+    computePersistSig([], { model: 'test', [field]: value }, null));
+});

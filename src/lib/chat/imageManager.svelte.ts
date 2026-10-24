@@ -4,6 +4,7 @@
 // re-enrichment of nodes with cached data for API requests.
 
 import { storeImage, generateImageId, fileToBase64, getImage } from '../imageStore.js';
+import { buildVisible } from '../branching.js';
 import { isSupportedAttachment, inferMimeType } from '../attachments/mime.js';
 import type { Image, ImageRef, ChatNode, VisibleMessage, GenerationResponse } from '../types/index.js';
 
@@ -68,7 +69,7 @@ export function buildGeneratedImageRefs(list: unknown): GeneratedImageRef[] {
 export class ChatImageManager {
   attachedImages = $state<Image[]>([]);
   imageCache = $state<Record<string, ImageCacheEntry>>({});
-  private pendingImageLoads = new Set<string>();
+  private pendingImageLoads = new Map<string, Promise<void>>();
 
   async handleFilesSelected(files: File[] | FileList | null): Promise<void> {
     try {
@@ -143,7 +144,7 @@ export class ChatImageManager {
         try {
           await storeImage(id, data, mimeType, name);
         } catch (err) {
-          console.warn('Failed to store generated image in media:', err);
+          throw new Error(`Could not save generated image: ${err instanceof Error ? err.message : String(err)}`);
         }
       }
 
@@ -156,25 +157,38 @@ export class ChatImageManager {
 
   private async fetchImageRecord(meta: { id?: string; mimeType?: string; name?: string }): Promise<void> {
     const id = typeof meta?.id === 'string' && meta.id.trim() ? meta.id.trim() : null;
-    if (!id) return;
-    if (this.pendingImageLoads.has(id)) return;
-    if (this.imageCache[id]?.data) return;
-    if (typeof indexedDB === 'undefined') return;
-    this.pendingImageLoads.add(id);
-    try {
+    if (!id || this.imageCache[id]?.data) return;
+    const pending = this.pendingImageLoads.get(id);
+    if (pending) return pending;
+    const task = (async () => {
       const record = await getImage(id);
-      if (record && typeof record.data === 'string' && record.data) {
-        this.cacheImageData({
-          id,
-          data: record.data,
-          mimeType: record.mimeType || meta?.mimeType,
-          name: record.name || meta?.name,
-        });
+      if (record?.data) {
+        this.cacheImageData({ id, data: record.data, mimeType: record.mimeType || meta.mimeType, name: record.name || meta.name });
       }
-    } catch { /* ignore */ }
-    finally {
-      this.pendingImageLoads.delete(id);
+    })();
+    this.pendingImageLoads.set(id, task);
+    try { await task; }
+    finally { this.pendingImageLoads.delete(id); }
+  }
+
+  /** Wait for media in the request history, including loads already started by the UI. */
+  async prepareRequestNodes(nodes: ChatNode[], rootId: number | null, typingVariantId: number | null): Promise<ChatNode[]> {
+    const visible = buildVisible(nodes, rootId);
+    const targetIndex = visible.findIndex(vm => vm.m.id === typingVariantId);
+    const history = targetIndex >= 0 ? visible.slice(0, targetIndex) : visible;
+    const refs = new Map<string, ImageRef>();
+    for (const { m } of history) {
+      for (const image of m.images || []) {
+        if (image && typeof image === 'object' && typeof (image as Image).data === 'string') this.cacheImageData(image);
+        const ref = typeof image === 'string' ? { id: image } : toImageRef(image);
+        if (ref) refs.set(ref.id, ref);
+      }
     }
+    await Promise.all([...refs.values()].map(async ref => {
+      await this.fetchImageRecord(ref);
+      if (!this.imageCache[ref.id]?.data) throw new Error(`Could not load attachment: ${ref.name || ref.id}`);
+    }));
+    return this.withImageData(nodes);
   }
 
   ensureImagesAvailable(list: Array<{ id?: string; mimeType?: string; name?: string }>): void {

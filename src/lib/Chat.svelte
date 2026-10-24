@@ -13,6 +13,7 @@
 
   // Chat module imports
   import { loadChat } from './chat/services/chatLoader'
+  import { applyPresetToChatSettings } from './utils/presetHelpers'
   import { pickPresetFromSettings, presetSignature } from './chat/services/chatInit'
   import { getCharacter } from './tavern/charactersStore'
   import { buildPromptInjections, resolvePromptPreset } from './tavern/promptPresets'
@@ -363,7 +364,6 @@
   const removeAttachedImage = (id) => images.removeAttachedImage(id)
   const storeGeneratedImagesInMedia = (reply) => images.storeGeneratedImagesInMedia(reply)
   const sanitizeNodesImageData = (nodesInput) => images.sanitizeNodesImageData(nodesInput)
-  const withImageData = (nodesInput) => images.withImageData(nodesInput)
 
   let imageLoadTimer: ReturnType<typeof setTimeout> | null = null
   $effect(() => {
@@ -717,7 +717,8 @@
     let generationFinalized = false
     try {
       let summaryBuffer = ''
-      const requestNodes = withImageData(nodes)
+      const requestNodes = await images.prepareRequestNodes(deepClone(nodes), rootId, typingVariantId)
+      if (!generationState.isSequenceValid(genSeq)) return
       logGenerationEvent(debug, 'Starting API request', { typingVariantId, ...logContext })
       // Tavern: inject prompt preset blocks around the history for character chats
       const injections = (characterId && character)
@@ -1159,44 +1160,7 @@
   function handleSelectPreset(preset, applyProvider = true) {
     if (!preset || typeof preset !== 'object') return
     // Apply preset settings (excluding systemPrompt)
-    chatSettings = {
-      ...chatSettings,
-      model: preset.model || chatSettings.model,
-      streaming: typeof preset.streaming === 'boolean' ? preset.streaming : chatSettings.streaming,
-      maxOutputTokens: preset.maxOutputTokens ?? chatSettings.maxOutputTokens,
-      topP: preset.topP ?? chatSettings.topP,
-      temperature: preset.temperature ?? chatSettings.temperature,
-      reasoningEffort: preset.reasoningEffort || chatSettings.reasoningEffort,
-      textVerbosity: preset.textVerbosity || chatSettings.textVerbosity,
-      reasoningSummary: preset.reasoningSummary || chatSettings.reasoningSummary,
-      thinkingEnabled: typeof preset.thinkingEnabled === 'boolean' ? preset.thinkingEnabled : chatSettings.thinkingEnabled,
-      thinkingBudgetTokens: preset.thinkingBudgetTokens ?? chatSettings.thinkingBudgetTokens,
-      openRouterProvider: applyProvider ? preset.openRouterProvider || '' : chatSettings.openRouterProvider,
-      connectionId: preset.connectionId || chatSettings.connectionId,
-      presetId: preset.id || chatSettings.presetId,
-      // Web Search settings
-      webSearchEnabled: typeof preset.webSearchEnabled === 'boolean' ? preset.webSearchEnabled : chatSettings.webSearchEnabled,
-      webSearchDomains: preset.webSearchDomains ?? chatSettings.webSearchDomains,
-      webSearchCountry: preset.webSearchCountry ?? chatSettings.webSearchCountry,
-      webSearchCity: preset.webSearchCity ?? chatSettings.webSearchCity,
-      webSearchRegion: preset.webSearchRegion ?? chatSettings.webSearchRegion,
-      webSearchTimezone: preset.webSearchTimezone ?? chatSettings.webSearchTimezone,
-      webSearchCacheOnly: typeof preset.webSearchCacheOnly === 'boolean' ? preset.webSearchCacheOnly : chatSettings.webSearchCacheOnly,
-      // Code Interpreter settings
-      codeInterpreterEnabled: typeof preset.codeInterpreterEnabled === 'boolean' ? preset.codeInterpreterEnabled : chatSettings.codeInterpreterEnabled,
-      codeInterpreterNetworkEnabled: typeof preset.codeInterpreterNetworkEnabled === 'boolean' ? preset.codeInterpreterNetworkEnabled : chatSettings.codeInterpreterNetworkEnabled,
-      codeInterpreterAllowedDomains: preset.codeInterpreterAllowedDomains ?? chatSettings.codeInterpreterAllowedDomains,
-      // Shell settings
-      shellEnabled: typeof preset.shellEnabled === 'boolean' ? preset.shellEnabled : chatSettings.shellEnabled,
-      shellNetworkEnabled: typeof preset.shellNetworkEnabled === 'boolean' ? preset.shellNetworkEnabled : chatSettings.shellNetworkEnabled,
-      shellAllowedDomains: preset.shellAllowedDomains ?? chatSettings.shellAllowedDomains,
-      // Image Generation settings
-      imageGenerationEnabled: typeof preset.imageGenerationEnabled === 'boolean' ? preset.imageGenerationEnabled : chatSettings.imageGenerationEnabled,
-      imageGenerationModel: preset.imageGenerationModel ?? chatSettings.imageGenerationModel,
-      // MCP settings
-      mcpEnabled: typeof preset.mcpEnabled === 'boolean' ? preset.mcpEnabled : chatSettings.mcpEnabled,
-      mcpServers: preset.mcpServers ?? chatSettings.mcpServers,
-    }
+    chatSettings = applyPresetToChatSettings(chatSettings, preset, applyProvider)
     // Tavern: picking a preset from the composer switches the tavern-wide
     // selection — unless per-chat presets are enabled, in which case the pick
     // only affects this chat (same as chat mode).

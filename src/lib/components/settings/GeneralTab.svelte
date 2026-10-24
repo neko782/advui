@@ -106,6 +106,9 @@
       try {
         const results = await importAllData(file)
         let msg = `Import complete: ${results.chatsImported} chats`
+        if (results.charactersImported > 0) {
+          msg += `, ${results.charactersImported} characters`
+        }
         if (results.imagesImported > 0) {
           msg += `, ${results.imagesImported} images`
         }
@@ -119,7 +122,7 @@
         setTimeout(() => {
           importExportStatus = ''
           // Refresh the page to reload all data
-          if (results.chatsImported > 0 || results.settingsImported) {
+          if (results.chatsImported > 0 || results.settingsImported || results.charactersImported > 0) {
             window.location.reload()
           }
         }, 3000)

@@ -6,12 +6,15 @@ import type {
   ChatManifestEntry,
   ImageManifestEntry,
   TarArchive,
-  Settings
+  Settings,
+  StoredImage,
+  Character
 } from '../types/index.js';
 
 import { getChatListItems, getChat, createChat } from '../chatsStore.js';
 import { loadSettings, saveSettings } from '../settingsStore.js';
-import { getAllImages, storeImage } from '../imageStore.js';
+import { getAllImages, getImage, storeImage } from '../imageStore.js';
+import { getAllCharacters, getCharacter, putCharacter } from '../tavern/charactersStore.js';
 import Tar from 'tar-js';
 import untar from 'js-untar';
 
@@ -35,7 +38,9 @@ export async function exportChat(chatId: string): Promise<void> {
       version: 1,
       type: 'single_chat',
       exportedAt: new Date().toISOString(),
-      chat
+      chat,
+      images: await collectChatMedia(chat),
+      character: chat.characterId ? (await getCharacter(chat.characterId)) || undefined : undefined
     };
 
     const jsonStr = JSON.stringify(exportData, null, 2);
@@ -65,14 +70,20 @@ export async function importChat(file: File): Promise<{ id: string; chat: Chat }
     }
 
     const chat = data.chat;
+    for (const image of data.images || []) {
+      await storeImage(image.id, normalizeBase64Data(image.data), image.mimeType || '', image.name || '');
+    }
+    if (data.character) await putCharacter(data.character);
 
     // Create a new chat with the imported data
     const result = await createChat({
       nodes: chat.nodes,
       rootId: chat.rootId,
       settings: chat.settings,
+      characterId: chat.characterId,
       presetId: chat.presetId || undefined,
       updatedAt: chat.updatedAt,
+      titleManuallySet: chat.titleManuallySet,
       title: chat.title || undefined
     });
 
@@ -81,6 +92,23 @@ export async function importChat(file: File): Promise<{ id: string; chat: Chat }
     console.error('Failed to import chat:', err);
     throw err;
   }
+}
+
+// Include media from every branch, including generated images, without copying
+// unrelated attachments from other chats into a single-chat export.
+async function collectChatMedia(chat: Chat): Promise<StoredImage[]> {
+  const media = new Map<string, StoredImage>();
+  for (const node of chat.nodes || []) {
+    for (const variant of node.variants || []) {
+      for (const ref of [...(variant.images || []), ...(variant.generatedImages || [])]) {
+        if (media.has(ref.id)) continue;
+        const image = await getImage(ref.id);
+        if (!image) throw new Error(`Missing attachment: ${ref.name || ref.id}`);
+        media.set(ref.id, image);
+      }
+    }
+  }
+  return [...media.values()];
 }
 
 export interface ExportAllDataOptions {
@@ -184,6 +212,8 @@ export async function estimateExportAllDataSize(options: ExportAllDataOptions = 
   };
   let totalBytes = tarEntrySize(encodedLength(JSON.stringify(settingsData, null, 2))) + chatEntryTotal + 1024;
 
+  totalBytes += tarEntrySize(encodedLength(JSON.stringify({ version: 1, characters: await getAllCharacters() }, null, 2)));
+
   if (manifestEntries.length > 0) {
     const manifestBytes = encodedLength(
       JSON.stringify(
@@ -262,6 +292,7 @@ async function appendExportArchiveToTar(tar: Tar, includeMedia: boolean): Promis
     settings
   };
   tar.append('settings.json', encodeText(JSON.stringify(settingsData, null, 2)));
+  tar.append('characters.json', encodeText(JSON.stringify({ version: 1, characters: await getAllCharacters() }, null, 2)));
 
   if (includeMedia) {
     try {
@@ -375,6 +406,7 @@ async function appendExportArchiveToStream(writer: FileSystemWriteStream, includ
     settings: loadSettings()
   };
   await writeTarTextEntry(writer, 'settings.json', JSON.stringify(settingsData, null, 2));
+  await writeTarTextEntry(writer, 'characters.json', JSON.stringify({ version: 1, characters: await getAllCharacters() }, null, 2));
 
   if (includeMedia) {
     try {
@@ -421,6 +453,7 @@ export async function importAllData(file: File): Promise<ImportResult> {
       chatsImported: 0,
       settingsImported: false,
       imagesImported: 0,
+      charactersImported: 0,
       errors: []
     };
 
@@ -443,6 +476,24 @@ export async function importAllData(file: File): Promise<ImportResult> {
     } catch (err) {
       console.error('Failed to import settings:', err);
       results.errors.push(`Settings: ${err instanceof Error ? err.message : String(err)}`);
+    }
+
+    // Restore characters before chats so their associations can resolve immediately.
+    try {
+      const text = await archive.getText('characters.json');
+      if (text) {
+        const data = JSON.parse(text) as { characters?: Character[] };
+        for (const character of data.characters || []) {
+          try {
+            await putCharacter(character);
+            results.charactersImported++;
+          } catch (err) {
+            results.errors.push(`Character ${character.id}: ${err instanceof Error ? err.message : String(err)}`);
+          }
+        }
+      }
+    } catch (err) {
+      results.errors.push(`Characters: ${err instanceof Error ? err.message : String(err)}`);
     }
 
     // Import images
@@ -548,9 +599,11 @@ async function importChatsFromArchive(archive: TarArchive): Promise<{ count: num
           nodes: chat.nodes,
           rootId: chat.rootId,
           settings: chat.settings,
+          characterId: chat.characterId,
           presetId: chat.presetId || undefined,
           // Preserve original updatedAt and title from manifest or chat data
           updatedAt: manifestEntry?.updatedAt || chat.updatedAt,
+          titleManuallySet: chat.titleManuallySet,
           title: chat.title || undefined
         });
         count++;
@@ -581,9 +634,11 @@ async function importChatsFromArchive(archive: TarArchive): Promise<{ count: num
             nodes: chat.nodes,
             rootId: chat.rootId,
             settings: chat.settings,
+            characterId: chat.characterId,
             presetId: chat.presetId || undefined,
             // Preserve original updatedAt and title
             updatedAt: chat.updatedAt,
+            titleManuallySet: chat.titleManuallySet,
             title: chat.title || undefined
           });
           count++;

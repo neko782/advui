@@ -2,6 +2,7 @@
 // global write throttling, retry-on-failure, and parent refresh debouncing.
 // Single owner of the "when and how do we save a chat" policy.
 import { saveChatContent } from '../../chatsStore.js';
+import { deepClone } from '../../utils/immutable.js';
 import { isConcurrencyConflict } from '../../storage.errors.js';
 import { sanitizeGraphComprehensive } from './graphValidation.js';
 import type { Chat, ChatNode, ChatSettings, PersistenceResult, PersistenceScheduler, ImageReference } from '../../types/index.js';
@@ -324,8 +325,12 @@ export function computePersistSig(nodes: ChatNode[], chatSettings: ChatSettings,
         webSearchCacheOnly: !!chatSettings?.webSearchCacheOnly,
         // Code Interpreter settings
         codeInterpreterEnabled: !!chatSettings?.codeInterpreterEnabled,
+        codeInterpreterNetworkEnabled: !!chatSettings?.codeInterpreterNetworkEnabled,
+        codeInterpreterAllowedDomains: chatSettings?.codeInterpreterAllowedDomains || '',
         // Shell settings
         shellEnabled: !!chatSettings?.shellEnabled,
+        shellNetworkEnabled: !!chatSettings?.shellNetworkEnabled,
+        shellAllowedDomains: chatSettings?.shellAllowedDomains || '',
         // Image Generation settings
         imageGenerationEnabled: !!chatSettings?.imageGenerationEnabled,
         imageGenerationModel: chatSettings?.imageGenerationModel || '',
@@ -561,18 +566,20 @@ export function createChatPersister(host: ChatPersisterHost): ChatPersister {
 
   async function persistNow(): Promise<void> {
     const cid = host.getChatId();
-    if (!cid || !host.canPersist()) return;
+    if (!cid || !host.canPersist() || inFlight > 0) return;
     inFlight += 1;
     try {
-      const s = host.getState();
+      const s = deepClone(host.getState());
+      const submittedSig = computePersistSig(s.nodes, s.chatSettings, s.rootId);
       const result = await persistChatContent(cid, s.nodes, s.chatSettings, s.rootId, s.debug, true);
       if (host.isDestroyed()) return;
-      if (result.notice) {
-        // Only update host state if sanitization actually made corrections
+      const current = host.getState();
+      if (result.notice && computePersistSig(current.nodes, current.chatSettings, current.rootId) === submittedSig) {
         host.onSanitized(result);
       }
-      const after = host.getState();
-      persistedSig = computePersistSig(after.nodes, after.chatSettings, after.rootId);
+      // A write acknowledges only its submitted snapshot, never edits made
+      // while storage was busy. The finally block schedules those edits.
+      persistedSig = computePersistSig(result.nodes, s.chatSettings, result.rootId);
       scheduledPersistSig = persistedSig;
       clearRetry();
       refreshScheduler.scheduleRefresh((updated) => host.onChatUpdated(updated ?? null), result.updated);
@@ -598,7 +605,7 @@ export function createChatPersister(host: ChatPersisterHost): ChatPersister {
 
   function requestPersist(): void {
     const cid = host.getChatId();
-    if (!cid || !host.canPersist() || host.isBusy() || inFlight > 0) return;
+    if (!cid || !host.canPersist() || host.isBusy() || inFlight > 0 || retryTimer) return;
     try {
       const s = host.getState();
       const sig = computePersistSig(s.nodes, s.chatSettings, s.rootId);

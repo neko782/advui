@@ -377,3 +377,13 @@ describe('loadChat', () => {
     expect(result.chatSettings.streaming).toBe(true)
   })
 })
+
+it('restores the saved Tavern preset and overrides in per-chat mode', async () => {
+  settingsStore.loadSettings.mockReturnValue({
+    selectedPresetId: 'shared', tavernSelectedPresetId: 'shared', tavernPerChatPresets: true,
+    presets: [{ id: 'shared', model: 'shared-model', temperature: 1 }, { id: 'private', model: 'private-model', temperature: 0.2 }],
+  });
+  chatsStore.getChat.mockResolvedValue({ characterId: 'cat', presetId: 'private', nodes: [], rootId: null, settings: { streaming: false } });
+  const result = await loadChat('per-chat');
+  expect(result.chatSettings).toMatchObject({ presetId: 'private', model: 'private-model', temperature: 0.2, streaming: false });
+});

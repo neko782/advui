@@ -1,6 +1,6 @@
 // Storage migration utilities
 import type { Chat } from '../types/index.js';
-import { putChatAtomic, getBackendName } from '../storage.js';
+import { updateChatAtomic, getBackendName } from '../storage.js';
 
 const OLD_LS_KEY = 'advui.chats.store.v1';
 const MIGRATION_FLAG_KEY = 'storage.migration.completed.v1';
@@ -89,9 +89,10 @@ export function getMigrationStatus(): MigrationStatus {
   const chats = getChatsFromLocalStorage();
   const indexedDBAvailable = isIndexedDBAvailable();
   
+  const completed = !!flag?.completed && !flag.stats?.failed;
   return {
-    completed: flag?.completed ?? false,
-    needsMigration: chats.length > 0 && !flag?.completed && indexedDBAvailable,
+    completed,
+    needsMigration: chats.length > 0 && !completed && indexedDBAvailable,
     chatsInLocalStorage: chats.length,
     indexedDBAvailable,
   };
@@ -129,7 +130,7 @@ export async function migrateChatsToIndexedDB(): Promise<MigrationResult> {
 
   // Check if already completed
   const flag = getMigrationFlag();
-  if (flag?.completed) {
+  if (flag?.completed && !flag.stats?.failed) {
     result.reason = 'Already completed';
     return result;
   }
@@ -161,18 +162,32 @@ export async function migrateChatsToIndexedDB(): Promise<MigrationResult> {
   
   for (const chat of chats) {
     try {
-      await putChatAtomic(chat);
-      result.migrated++;
+      let skipped = false;
+      await updateChatAtomic(chat.id, current => {
+        if (current && (Number(current.updatedAt) || 0) >= (Number(chat.updatedAt) || 0)) {
+          skipped = true;
+          return undefined;
+        }
+        return chat;
+      });
+      if (skipped) result.skipped++;
+      else result.migrated++;
     } catch (err) {
       result.failed++;
       result.errors.push(`Failed to migrate chat ${chat.id}: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 
-  // A fully-failed migration must be retried later: don't mark it completed.
-  if (result.migrated === 0 && result.failed > 0) {
+  // Keep partial failures retryable; existing destination chats are skipped.
+  if (result.failed > 0) {
     result.success = false;
-    result.reason = 'Migration failed for all chats';
+    result.reason = result.migrated === 0 ? 'Migration failed for all chats' : 'Migration partially failed';
+    return result;
+  }
+
+  if (getBackendName() !== 'indexeddb') {
+    result.success = false;
+    result.reason = 'Storage backend changed during migration';
     return result;
   }
 
@@ -186,7 +201,7 @@ export async function migrateChatsToIndexedDB(): Promise<MigrationResult> {
   // Clear localStorage after successful migration, but only if the backend is
   // still IndexedDB (a mid-migration fallback would have written the chats to
   // OLD_LS_KEY itself, and removing it would be total data loss).
-  if (result.migrated > 0 && result.failed === 0 && getBackendName() === 'indexeddb') {
+  if (result.migrated + result.skipped > 0 && result.failed === 0 && getBackendName() === 'indexeddb') {
     try {
       localStorage.removeItem(OLD_LS_KEY);
     } catch {

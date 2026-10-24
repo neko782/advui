@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 
 const storageMock = vi.hoisted(() => ({
-  putChatAtomic: vi.fn(),
+  updateChatAtomic: vi.fn(),
   getBackendName: vi.fn(() => 'indexeddb'),
 }))
 
@@ -41,7 +41,7 @@ describe('migrateChatsToIndexedDB safety guards', () => {
     localStorage.clear()
     vi.stubGlobal('indexedDB', {})
     storageMock.getBackendName.mockReturnValue('indexeddb')
-    storageMock.putChatAtomic.mockImplementation(async (chat) => chat)
+    storageMock.updateChatAtomic.mockImplementation(async (_id, updater) => updater(null))
     localStorage.setItem(OLD_LS_KEY, JSON.stringify(mockChatData))
   })
 
@@ -52,7 +52,7 @@ describe('migrateChatsToIndexedDB safety guards', () => {
 
     expect(result.success).toBe(false)
     expect(result.reason).toBe('Active storage backend is not IndexedDB')
-    expect(storageMock.putChatAtomic).not.toHaveBeenCalled()
+    expect(storageMock.updateChatAtomic).not.toHaveBeenCalled()
     // The old data must be preserved and the migration must stay retryable
     expect(localStorage.getItem(OLD_LS_KEY)).not.toBeNull()
     expect(localStorage.getItem(MIGRATION_FLAG_KEY)).toBeNull()
@@ -71,7 +71,7 @@ describe('migrateChatsToIndexedDB safety guards', () => {
   })
 
   it('does not mark migration as completed when every chat fails', async () => {
-    storageMock.putChatAtomic.mockRejectedValue(new Error('write failed'))
+    storageMock.updateChatAtomic.mockRejectedValue(new Error('write failed'))
 
     const result = await migrateChatsToIndexedDB()
 
@@ -83,7 +83,7 @@ describe('migrateChatsToIndexedDB safety guards', () => {
     expect(localStorage.getItem(OLD_LS_KEY)).not.toBeNull()
 
     // A later attempt retries instead of reporting "Already completed"
-    storageMock.putChatAtomic.mockImplementation(async (chat) => chat)
+    storageMock.updateChatAtomic.mockImplementation(async (_id, updater) => updater(null))
     const retry = await migrateChatsToIndexedDB()
     expect(retry.migrated).toBe(2)
   })
@@ -98,4 +98,38 @@ describe('migrateChatsToIndexedDB safety guards', () => {
     const flag = JSON.parse(localStorage.getItem(MIGRATION_FLAG_KEY))
     expect(flag.completed).toBe(true)
   })
+  it('retries partial failures without overwriting chats already migrated', async () => {
+    const destination = new Map();
+    let fail = true;
+    storageMock.updateChatAtomic.mockImplementation(async (id, updater) => {
+      if (id === 'chat-2' && fail) throw new Error('temporary failure');
+      const next = updater(destination.get(id) || null);
+      if (next !== undefined) destination.set(id, next);
+      return destination.get(id);
+    });
+    const first = await migrateChatsToIndexedDB();
+    expect(first.success).toBe(false);
+    expect(first.failed).toBe(1);
+    expect(localStorage.getItem(MIGRATION_FLAG_KEY)).toBeNull();
+    destination.set('chat-1', { ...destination.get('chat-1'), title: 'edited after migration' });
+    fail = false;
+    const retry = await migrateChatsToIndexedDB();
+    expect(retry).toMatchObject({ success: true, skipped: 1, migrated: 1, failed: 0 });
+    expect(destination.get('chat-1').title).toBe('edited after migration');
+    expect(localStorage.getItem(OLD_LS_KEY)).toBeNull();
+  });
+
+  it('recovers legacy partial-completion flags and migrates a newer source record', async () => {
+    localStorage.setItem(MIGRATION_FLAG_KEY, JSON.stringify({ completed: true, stats: { failed: 1 } }));
+    const destination = new Map([['chat-1', { ...mockChatData.byId['chat-1'], title: 'older destination', updatedAt: 0 }]]);
+    storageMock.updateChatAtomic.mockImplementation(async (id, updater) => {
+      const next = updater(destination.get(id) || null);
+      if (next !== undefined) destination.set(id, next);
+      return destination.get(id);
+    });
+    const result = await migrateChatsToIndexedDB();
+    expect(result).toMatchObject({ success: true, migrated: 2 });
+    expect(destination.get('chat-1').title).toBe('Test Chat 1');
+  });
+
 })

@@ -81,7 +81,7 @@ export async function loadChat(chatId: string | null): Promise<LoadedChat> {
 
       nextCharacterId = (typeof loaded.characterId === 'string' && loaded.characterId) ? loaded.characterId : null;
 
-      if (nextCharacterId) {
+      if (nextCharacterId && !nextSettings.tavernPerChatPresets) {
         // Tavern chats follow the tavern preset selection (independent from
         // chat mode unless sharing is enabled) instead of per-chat settings.
         const tavernPresetId = resolveTavernPresetId(nextSettings);
@@ -90,7 +90,8 @@ export async function loadChat(chatId: string | null): Promise<LoadedChat> {
       } else {
         // Use centralized loadChatSettings to merge loaded settings with preset defaults.
         // When adding new ChatSettings fields, add them to loadChatSettings() in presetHelpers.ts
-        nextChatSettings = loadChatSettings(loaded, basePreset, nextSettings);
+        const savedPreset = presetsList.find(p => p?.id === loaded.presetId);
+        nextChatSettings = loadChatSettings(loaded, savedPreset ? normalizePreset(savedPreset) : basePreset, nextSettings);
       }
 
       // Provider routing remains per-chat even when Tavern follows a shared preset.

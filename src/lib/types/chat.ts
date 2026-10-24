@@ -104,6 +104,7 @@ export interface ChatSettings {
 export interface Chat {
   id: string;
   title: string;
+  titleManuallySet?: boolean;
   updatedAt: number;
   settings: ChatSettings;
   nodes: ChatNode[];

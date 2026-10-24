@@ -4,6 +4,7 @@
 // ============================================================================
 
 import type { Chat, ChatListItem } from './chat.js';
+import type { Character } from './tavern.js';
 
 // ============================================================================
 // Stored Media Types
@@ -77,12 +78,15 @@ export interface ExportedChat {
   type: 'single_chat';
   exportedAt: string;
   chat: Chat;
+  images?: StoredImage[];
+  character?: Character;
 }
 
 export interface ImportResult {
   chatsImported: number;
   settingsImported: boolean;
   imagesImported: number;
+  charactersImported: number;
   errors: string[];
 }
 

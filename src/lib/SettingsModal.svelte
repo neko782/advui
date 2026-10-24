@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from 'svelte'
   import { IconClose } from './icons'
   import GeneralTab from './components/settings/GeneralTab.svelte'
   import ConnectionsTab from './components/settings/ConnectionsTab.svelte'
@@ -36,6 +37,12 @@
     activeTab = 'general'
     props.onClose?.()
   }
+
+  let wasOpen = false
+  $effect(() => {
+    if (props.open && !wasOpen) untrack(() => draft.reset())
+    wasOpen = !!props.open
+  })
 
   // Defer sync to avoid blocking during initialization
   $effect(() => {

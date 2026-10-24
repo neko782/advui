@@ -146,3 +146,29 @@ describe('storage backend fallback policy', () => {
     unsubscribe()
   })
 })
+
+it('keeps fallback writes visible when storage is initialized again', async () => {
+  vi.clearAllMocks(); localStorage.clear();
+  idbMock.isIndexedDBAvailable.mockReturnValue(true);
+  let storage = await freshStorage();
+  idbMock.putChat.mockRejectedValueOnce(infraError());
+  lsMock.putChat.mockImplementationOnce(async chat => {
+    localStorage.setItem('advui.chats.store.v1', JSON.stringify({ byId: { [chat.id]: chat } }));
+    return chat;
+  });
+  await storage.putChat(validChat);
+  expect(storage.getBackendName()).toBe('localstorage');
+  lsMock.getChat.mockResolvedValueOnce({ ...validChat, title: 'latest fallback content' });
+  storage = await freshStorage();
+  expect(storage.getBackendName()).toBe('localstorage');
+  expect((await storage.getChat(validChat.id)).title).toBe('latest fallback content');
+  expect(idbMock.getChat).not.toHaveBeenCalled();
+});
+
+it('returns to IndexedDB if a previous fallback never stored any chats', async () => {
+  localStorage.clear(); vi.clearAllMocks();
+  localStorage.setItem('storage.backend.v1', 'localstorage');
+  idbMock.isIndexedDBAvailable.mockReturnValue(true);
+  const storage = await freshStorage();
+  expect(storage.getBackendName()).toBe('indexeddb');
+});

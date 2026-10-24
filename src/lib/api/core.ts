@@ -432,6 +432,11 @@ export function extractOutputText(res: unknown): string {
     // Try Responses API shape - iterate through all output items to find message
     const parts = (resObj?.output ?? resObj?.choices ?? []) as unknown[];
     if (Array.isArray(parts) && parts.length) {
+      const messages = (parts as Array<Record<string, unknown>>).filter(part => part?.type === 'message');
+      if (messages.length) {
+        const text = messages.map(part => collectContentText(part.content)).join('');
+        if (text) return text;
+      }
       for (const part of parts as Array<Record<string, unknown>>) {
         // Look for message type items (skip reasoning, web_search_call, etc.)
         if (part?.type === 'message' && part?.content) {

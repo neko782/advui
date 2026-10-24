@@ -278,25 +278,33 @@ export class SettingsDraft {
       thinkingEnabled: !!base?.thinkingEnabled,
       thinkingBudgetTokens: base?.thinkingBudgetTokens ?? null,
       connectionId: base?.connectionId || this.local?.selectedConnectionId || this.activeConnectionId || (this.local?.connections?.[0]?.id || ''),
-      webSearchEnabled: !!base?.webSearchEnabled,
+      webSearchEnabled: this.local.defaultTools?.webSearch ?? DEFAULT_TOOL_SETTINGS.webSearch,
       webSearchDomains: base?.webSearchDomains,
       webSearchCountry: base?.webSearchCountry,
       webSearchCity: base?.webSearchCity,
       webSearchRegion: base?.webSearchRegion,
       webSearchTimezone: base?.webSearchTimezone,
       webSearchCacheOnly: !!base?.webSearchCacheOnly,
-      codeInterpreterEnabled: !!base?.codeInterpreterEnabled,
+      codeInterpreterEnabled: this.local.defaultTools?.codeInterpreter ?? DEFAULT_TOOL_SETTINGS.codeInterpreter,
       codeInterpreterNetworkEnabled: !!base?.codeInterpreterNetworkEnabled,
       codeInterpreterAllowedDomains: base?.codeInterpreterAllowedDomains,
-      shellEnabled: !!base?.shellEnabled,
+      shellEnabled: this.local.defaultTools?.shell ?? DEFAULT_TOOL_SETTINGS.shell,
       shellNetworkEnabled: !!base?.shellNetworkEnabled,
       shellAllowedDomains: base?.shellAllowedDomains,
-      imageGenerationEnabled: !!base?.imageGenerationEnabled,
+      imageGenerationEnabled: this.local.defaultTools?.imageGeneration ?? DEFAULT_TOOL_SETTINGS.imageGeneration,
       imageGenerationModel: base?.imageGenerationModel,
-      mcpEnabled: !!base?.mcpEnabled,
+      mcpEnabled: this.local.defaultTools?.mcp ?? DEFAULT_TOOL_SETTINGS.mcp,
       mcpServers: Array.isArray(base?.mcpServers) ? base.mcpServers.map(server => ({ label: server?.label || '', url: server?.url || '' })) : [],
       systemPrompt: typeof base?.systemPrompt === 'string' ? base.systemPrompt : DEFAULT_SYSTEM_PROMPT,
     };
+    const connection = this.connections.find(c => c.id === preset.connectionId);
+    if (connection?.apiMode !== 'responses') {
+      preset.webSearchEnabled = false;
+      preset.codeInterpreterEnabled = false;
+      preset.shellEnabled = false;
+      preset.imageGenerationEnabled = false;
+      preset.mcpEnabled = false;
+    }
     this.local.presets = [...list, preset];
     this.activePresetId = preset.id!;
     this.local.selectedPresetId = preset.id!;

@@ -117,11 +117,12 @@ function resolveConnection(input: ConnectionInput | string | null | undefined): 
   const id = typeof input?.id === 'string' && input.id.trim()
     ? input.id.trim()
     : (typeof input?.connectionId === 'string' && input.connectionId.trim() ? input.connectionId.trim() : null);
+  const saved = id ? findConnection(loadSettings(), id) : null;
   return {
-    id: id || 'default',
-    apiKey: typeof input?.apiKey === 'string' ? input.apiKey : '',
-    apiBaseUrl: input?.apiBaseUrl,
-    apiMode: input?.apiMode,
+    id: saved?.id || id || 'default',
+    apiKey: input.apiKey ?? saved?.apiKey ?? '',
+    apiBaseUrl: input.apiBaseUrl ?? saved?.apiBaseUrl,
+    apiMode: input.apiMode ?? saved?.apiMode,
   };
 }
 

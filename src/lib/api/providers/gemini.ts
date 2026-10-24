@@ -168,8 +168,15 @@ function buildGeminiRequest(ctx: ProviderRequestContext): GeminiRequest {
   return geminiRequest;
 }
 
+function normalizeGeminiBaseUrl(baseURL?: string): string {
+  const configured = baseURL?.trim().replace(/\/+$/, '');
+  // Connections historically stored the OpenAI default for every API mode.
+  if (!configured || configured === 'https://api.openai.com/v1') return DEFAULT_GEMINI_BASE_URL;
+  return configured;
+}
+
 function geminiBaseUrlFor(ctx: ProviderRequestContext): string {
-  return ctx.apiBaseUrl?.trim() || DEFAULT_GEMINI_BASE_URL;
+  return normalizeGeminiBaseUrl(ctx.apiBaseUrl);
 }
 
 async function respondStreaming(ctx: ProviderRequestContext): Promise<GenerationResponse> {
@@ -230,9 +237,7 @@ async function respondOnce(ctx: ProviderRequestContext): Promise<GenerationRespo
 }
 
 async function listModels({ apiKey, baseURL }: { apiKey: string; baseURL: string }): Promise<string[]> {
-  const geminiBaseUrl = baseURL.includes('generativelanguage.googleapis.com')
-    ? baseURL
-    : DEFAULT_GEMINI_BASE_URL;
+  const geminiBaseUrl = normalizeGeminiBaseUrl(baseURL);
   const response = await fetch(`${geminiBaseUrl}/models?key=${apiKey}`, {
     method: 'GET',
   });
