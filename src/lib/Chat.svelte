@@ -48,6 +48,7 @@
 
   const settings = $derived(chat.settings)
   const chatSettings = $derived(chat.chatSettings)
+  const modelConnectionId = $derived(chatSettings.connectionId)
 
   const connectionOptions = $derived.by(() => {
     const list = Array.isArray(settings?.connections) ? settings.connections : []
@@ -79,7 +80,7 @@
   // ---- Model list ----------------------------------------------------------
 
   $effect(() => {
-    const connectionId = chatSettings?.connectionId
+    const connectionId = modelConnectionId
     const cachedIds = loadModelsCache(connectionId)?.ids || []
     modelIds = cachedIds
     if (cachedIds.length) return
@@ -92,7 +93,7 @@
 
   $effect(() => {
     if (chatSettingsOpen) {
-      try { modelIds = loadModelsCache(chat.chatSettings?.connectionId).ids || [] } catch {}
+      try { modelIds = loadModelsCache(modelConnectionId).ids || [] } catch {}
     }
   })
 

@@ -68,6 +68,13 @@
 
   const props: Props = $props()
   const modelDatalistId = `model-suggestions-${++datalistUid}`
+  let modelDraft = $state('')
+  let modelFocused = $state(false)
+  // Tavern normalizes the shared preset on every edit. Keep those updates
+  // from rewriting the active input and resetting mobile selection/IME.
+  $effect(() => {
+    if (!modelFocused) modelDraft = props.model ?? ''
+  })
   let root: HTMLDivElement | undefined
   let activeTab = $state<'general' | 'sampling' | 'reasoning'>('general')
   let presetMenuOpen = $state(false)
@@ -370,8 +377,10 @@
     <div class="menu-section">
       <div class="menu-label">Model</div>
       <div class="model-input-wrapper">
-        <input type="text" placeholder={DEFAULT_MODEL} value={props.model} disabled={props.disabled}
-          oninput={(e) => (!props.disabled && props.onInputModel?.(e.currentTarget.value))} list={modelDatalistId} aria-label="Model" />
+        <input type="text" placeholder={DEFAULT_MODEL} bind:value={modelDraft} disabled={props.disabled}
+          onfocus={() => { modelFocused = true }} onblur={() => { modelFocused = false }}
+          oninput={(e) => (!props.disabled && props.onInputModel?.(e.currentTarget.value))}
+          autocapitalize="off" spellcheck={false} list={modelDatalistId} aria-label="Model" />
         {#if Array.isArray(props.presets) && props.presets.length > 0}
           <div class="preset-toggle-wrapper">
             <button type="button" class="preset-toggle-btn" bind:this={presetButtonEl}
