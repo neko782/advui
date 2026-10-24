@@ -25,3 +25,4 @@ stats.json
 *.njsproj
 *.sln
 *.sw?
+.svelte-check/
