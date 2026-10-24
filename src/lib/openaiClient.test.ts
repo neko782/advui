@@ -259,7 +259,7 @@ describe('respond stream errors', () => {
       codeInterpreter: { enabled: true },
     })
 
-    const [, init] = fetchMock.mock.calls[0]
+    const [, init] = fetchMock.mock.calls[0]!
     const body = JSON.parse(init.body as string)
     expect(body.tools).toEqual([
       { type: 'web_search' },
@@ -291,8 +291,8 @@ describe('respond stream errors', () => {
       reasoningSummary: 'none',
     })
 
-    const defaultBody = JSON.parse(fetchMock.mock.calls[0][1].body as string)
-    const noneBody = JSON.parse(fetchMock.mock.calls[1][1].body as string)
+    const defaultBody = JSON.parse(fetchMock.mock.calls[0]![1].body as string)
+    const noneBody = JSON.parse(fetchMock.mock.calls[1]![1].body as string)
     expect(defaultBody.reasoning).toBeUndefined()
     expect(noneBody.reasoning).toEqual({ effort: 'none' })
   })
@@ -314,7 +314,7 @@ describe('respond stream errors', () => {
       codeInterpreter: { enabled: true },
     })
 
-    const [, init] = fetchMock.mock.calls[0]
+    const [, init] = fetchMock.mock.calls[0]!
     const body = JSON.parse(init.body as string)
     expect(body.tools).toBeUndefined()
   })
@@ -334,7 +334,7 @@ describe('respond stream errors', () => {
       shell: { enabled: true },
     })
 
-    const [, init] = fetchMock.mock.calls[0]
+    const [, init] = fetchMock.mock.calls[0]!
     const body = JSON.parse(init.body as string)
     expect(body.tools).toEqual([
       { type: 'shell', environment: { type: 'container_auto' } },
@@ -358,7 +358,7 @@ describe('respond stream errors', () => {
       shell: { enabled: true },
     })
 
-    const [, init] = fetchMock.mock.calls[0]
+    const [, init] = fetchMock.mock.calls[0]!
     const body = JSON.parse(init.body as string)
     expect(body.tools).toBeUndefined()
   })
@@ -455,7 +455,7 @@ describe('respond stream errors', () => {
       ],
     })
 
-    const [, init] = fetchMock.mock.calls[0]
+    const [, init] = fetchMock.mock.calls[0]!
     const body = JSON.parse(init.body as string)
     expect(body.tools).toEqual([
       {
@@ -502,7 +502,7 @@ describe('respond stream errors', () => {
       thinkingBudgetTokens: 128,
     })
 
-    const [url, init] = fetchMock.mock.calls[0]
+    const [url, init] = fetchMock.mock.calls[0]!
     expect(url).toBe('https://example.test/v1/responses')
     const body = JSON.parse(init.body as string)
     expect(body.model).toBe('gpt-5.4')
@@ -550,7 +550,7 @@ describe('respond stream errors', () => {
       reasoningEffort: 'low',
     })
 
-    const [url, init] = fetchMock.mock.calls[0]
+    const [url, init] = fetchMock.mock.calls[0]!
     expect(url).toBe('https://example.test/v1/chat/completions')
     const body = JSON.parse(init.body as string)
     expect(body.max_completion_tokens).toBe(256)
@@ -585,7 +585,7 @@ describe('respond stream errors', () => {
       temperature: 0.7,
     })
 
-    const [url, init] = fetchMock.mock.calls[0]
+    const [url, init] = fetchMock.mock.calls[0]!
     expect(url).toBe('https://example.test/v1/models/gemini-2.5-flash:generateContent?key=test-key')
     const body = JSON.parse(init.body as string)
     expect(body.systemInstruction).toEqual({ parts: [{ text: 'be nice' }] })

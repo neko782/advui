@@ -13,6 +13,11 @@
     "url": "https://github.com/neko782/advui/issues"
   },
   "type": "module",
+  "packageManager": "bun@1.4.4",
+  "engines": {
+    "node": "^22.12.0 || ^24.0.0 || >=26.0.0",
+    "bun": ">=1.4.4"
+  },
   "scripts": {
     "dev": "vite",
     "build": "vite build",
@@ -23,25 +28,26 @@
     "test:coverage": "vitest --coverage"
   },
   "devDependencies": {
-    "@iconify/json": "^2.2.389",
-    "@sveltejs/vite-plugin-svelte": "^6.1.1",
-    "@vitest/ui": "^3.2.4",
-    "happy-dom": "^20.0.1",
-    "rollup-plugin-visualizer": "^6.0.5",
-    "svelte": "^5.38.1",
-    "typescript": "^5.9.3",
-    "unplugin-icons": "^22.3.0",
-    "vite": "^7.1.2",
-    "vite-plugin-singlefile": "^2.3.0",
-    "vitest": "^3.2.4"
+    "@iconify/json": "^2.2.547",
+    "@sveltejs/vite-plugin-svelte": "^7.3.1",
+    "@vitest/coverage-v8": "^5.0.5",
+    "@vitest/ui": "^5.0.5",
+    "happy-dom": "^21.0.4",
+    "rollup-plugin-visualizer": "^7.1.1",
+    "svelte": "^5.57.2",
+    "typescript": "^7.0.2",
+    "unplugin-icons": "^24.0.0",
+    "vite": "^8.3.5",
+    "vite-plugin-singlefile": "^2.3.4",
+    "vitest": "^5.0.5"
   },
   "dependencies": {
-    "@tanstack/svelte-virtual": "^3.13.18",
-    "highlight.js": "^11.11.1",
+    "@tanstack/svelte-virtual": "^3.13.48",
+    "highlight.js": "^11.12.0",
     "js-untar": "^2.0.0",
-    "katex": "^0.17.0",
+    "katex": "^0.19.1",
     "klona": "^2.0.6",
-    "marked": "^17.0.1",
+    "marked": "^18.1.1",
     "tar-js": "^0.3.0"
   }
 }

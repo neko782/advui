@@ -45,9 +45,9 @@ else
 fi
 
 if [[ ! -d dist ]]; then
-  echo "dist/ not found. Run npm run build first." >&2
+  echo "dist/ not found. Run bun run build first." >&2
   exit 1
 fi
 
 echo "Deploying dist/ to Cloudflare Pages project '$PROJECT_NAME' (branch: $DEPLOY_BRANCH)"
-npx --yes wrangler@4 pages deploy dist --project-name "$PROJECT_NAME" --branch "$DEPLOY_BRANCH"
+bunx wrangler@4 pages deploy dist --project-name "$PROJECT_NAME" --branch "$DEPLOY_BRANCH"
