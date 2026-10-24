@@ -6,7 +6,7 @@
   import OpenRouterProviderInput from '../OpenRouterProviderInput.svelte'
   import { IconTune, IconLayers } from '../../icons'
   import { DEFAULT_MODEL } from '../../utils/presetHelpers'
-  import type { Preset, ReasoningEffort, TextVerbosity, ReasoningSummary, ConnectionOption, ApiMode, McpServerConfig } from '../../types'
+  import type { Preset, ReasoningEffort, TextVerbosity, ReasoningSummary, ConnectionOption, McpServerConfig } from '../../types'
 
   interface Props {
     open?: boolean
@@ -69,8 +69,6 @@
   const props: Props = $props()
   const modelDatalistId = `model-suggestions-${++datalistUid}`
   let root: HTMLDivElement | undefined
-  let menu: HTMLDivElement | undefined
-  let wasOpen = false
   let activeTab = $state<'general' | 'sampling' | 'reasoning'>('general')
   let presetMenuOpen = $state(false)
   let presetMenuEl = $state<HTMLDivElement | null>(null)
@@ -134,7 +132,7 @@
 
   function closePresetMenu() { presetMenuOpen = false }
 
-  function selectPreset(preset) {
+  function selectPreset(preset: Preset) {
     closePresetMenu()
     props.onSelectPreset?.(preset)
   }
@@ -160,21 +158,22 @@
     // Only listen while something is actually open; avoids document-level
     // listeners for every mounted (but closed) instance.
     if (!props.open && !presetMenuOpen && !activeToolPopup) return
-    function onDocClick(e) {
+    function onDocClick(e: MouseEvent) {
+      const target = e.target as Element
       try {
-        const isInPresetMenu = presetMenuEl && presetMenuEl.contains(e.target)
-        const isPresetWrapper = e.target.closest('.preset-toggle-wrapper')
-        const isInToolPopup = toolPopupEl && toolPopupEl.contains(e.target)
-        const isToolBtn = e.target.closest('.tool-settings-btn')
+        const isInPresetMenu = presetMenuEl && presetMenuEl.contains(target)
+        const isPresetWrapper = target.closest('.preset-toggle-wrapper')
+        const isInToolPopup = toolPopupEl && toolPopupEl.contains(target)
+        const isToolBtn = target.closest('.tool-settings-btn')
 
-        if (props.open && root && !root.contains(e.target) && !isInPresetMenu && !isPresetWrapper && !isInToolPopup && !isToolBtn) {
+        if (props.open && root && !root.contains(target) && !isInPresetMenu && !isPresetWrapper && !isInToolPopup && !isToolBtn) {
           props.onClose?.()
         }
         if (presetMenuOpen && !isInPresetMenu && !isPresetWrapper) closePresetMenu()
         if (activeToolPopup && !isInToolPopup && !isToolBtn) activeToolPopup = null
       } catch {}
     }
-    function onKeydown(e) {
+    function onKeydown(e: KeyboardEvent) {
       if (e.key === 'Escape') {
         if (activeToolPopup) { activeToolPopup = null }
         else if (presetMenuOpen) closePresetMenu()
@@ -186,7 +185,6 @@
     return () => { window.removeEventListener('click', onDocClick, true); window.removeEventListener('keydown', onKeydown) }
   })
 
-  $effect(() => { wasOpen = !!props.open })
   $effect(() => { if (!props.open) activeToolPopup = null })
 </script>
 
@@ -194,7 +192,7 @@
   <button class="icon-btn" aria-label="Chat settings" disabled={props.disabled} onclick={() => (!props.disabled && props.onToggle?.())}>
     <IconTune style="font-size: 22px;" />
   </button>
-  <div class="send-menu chat-settings-menu" role="menu" aria-label="Chat settings" bind:this={menu}>
+  <div class="send-menu chat-settings-menu" role="menu" aria-label="Chat settings">
     <!-- Tab content -->
     <div class="tab-content">
       {#if activeTab === 'general'}

@@ -52,7 +52,7 @@
       }, 3000)
     } catch (err) {
       console.error('Export failed:', err)
-      importExportStatus = `Export failed: ${err.message}`
+      importExportStatus = `Export failed: ${err instanceof Error ? err.message : String(err)}`
       setTimeout(() => {
         importExportStatus = ''
       }, 5000)
@@ -97,8 +97,8 @@
     const input = document.createElement('input')
     input.type = 'file'
     input.accept = '.tar'
-    input.onchange = async (e) => {
-      const file = e.target.files?.[0]
+    input.onchange = async () => {
+      const file = input.files?.[0]
       if (!file) return
 
       importExportWorking = true
@@ -128,7 +128,7 @@
         }, 3000)
       } catch (err) {
         console.error('Import failed:', err)
-        importExportStatus = `Import failed: ${err.message}`
+        importExportStatus = `Import failed: ${err instanceof Error ? err.message : String(err)}`
         setTimeout(() => {
           importExportStatus = ''
         }, 5000)
@@ -144,8 +144,8 @@
     const input = document.createElement('input')
     input.type = 'file'
     input.accept = '.json'
-    input.onchange = async (e) => {
-      const file = e.target.files?.[0]
+    input.onchange = async () => {
+      const file = input.files?.[0]
       if (!file) return
 
       importExportWorking = true
@@ -160,7 +160,7 @@
         }, 2000)
       } catch (err) {
         console.error('Import failed:', err)
-        importExportStatus = `Import failed: ${err.message}`
+        importExportStatus = `Import failed: ${err instanceof Error ? err.message : String(err)}`
         setTimeout(() => {
           importExportStatus = ''
         }, 5000)
@@ -181,7 +181,7 @@
                   value={themeState.mode}
                   onchange={(event) => {
                     const next = event.currentTarget.value
-                    themeState = setThemeMode(next)
+                    themeState = setThemeMode(next as Parameters<typeof setThemeMode>[0])
                   }}
                   aria-label="Theme preference"
                 >

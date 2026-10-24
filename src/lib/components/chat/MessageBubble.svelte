@@ -2,7 +2,6 @@
   import { autoGrow } from '../../utils/dom'
   import {
     isImageAttachment,
-    isPdfAttachment,
     isVideoAttachment,
     isAudioAttachment,
     attachmentDisplayName,
@@ -35,7 +34,10 @@
 
 // Attachment type detection & display lives in ../../attachments/mime.ts (shared).
 
-function resolveAttachment(attachment, imageCache) {
+type ImageCache = Props['imageCache']
+type AttachmentLike = { id?: string; data?: string; mimeType?: string; name?: string; revisedPrompt?: string; [key: string]: unknown }
+
+function resolveAttachment(attachment: string | AttachmentLike | null | undefined, imageCache: ImageCache): AttachmentLike | null {
   if (attachment == null) return null
   if (typeof attachment === 'string') {
     const id = attachment.trim()
@@ -62,10 +64,10 @@ function resolveAttachment(attachment, imageCache) {
 const resolvedAttachments = $derived.by(() => {
   const attachments = Array.isArray(props.message?.images) ? props.message.images : []
   if (!attachments.length) return []
-  return attachments.map((attachment) => resolveAttachment(attachment, props.imageCache)).filter(Boolean)
+  return attachments.map((attachment) => resolveAttachment(attachment as AttachmentLike, props.imageCache)).filter((a): a is AttachmentLike => !!a)
 })
 
-function resolveGeneratedImage(image, imageCache) {
+function resolveGeneratedImage(image: AttachmentLike | null | undefined, imageCache: ImageCache): AttachmentLike | null {
   if (!image || typeof image !== 'object') return null
   if (typeof image.data === 'string' && image.data) return image
   const id = typeof image.id === 'string' && image.id.trim() ? image.id.trim() : null
@@ -83,18 +85,19 @@ function resolveGeneratedImage(image, imageCache) {
 const resolvedGeneratedImages = $derived.by(() => {
   const images = Array.isArray(props.message?.generatedImages) ? props.message.generatedImages : []
   if (!images.length) return []
-  return images.map((image) => resolveGeneratedImage(image, props.imageCache)).filter(Boolean)
+  return images.map((image) => resolveGeneratedImage(image as AttachmentLike, props.imageCache)).filter((a): a is AttachmentLike => !!a)
 })
 
-  function extractReasoningSummary(msg) {
-    const raw = msg?.reasoningSummary
+  function extractReasoningSummary(msg: Message | null | undefined) {
+    const raw: unknown = msg?.reasoningSummary
     if (typeof raw === 'string') return raw
     if (Array.isArray(raw)) {
       try {
         return raw
-          .map((part) => {
+          .map((part: unknown) => {
             if (typeof part === 'string') return part
-            if (part && typeof part === 'object' && typeof part.text === 'string') return part.text
+            const text = (part as { text?: unknown } | null)?.text
+            if (typeof text === 'string') return text
             return ''
           })
           .filter(Boolean)
@@ -177,12 +180,12 @@ const resolvedGeneratedImages = $derived.by(() => {
     autoOpened = true
   }
 
-  function onPaste(e) {
+  function onPaste(e: ClipboardEvent) {
     try {
       const text = e.clipboardData?.getData('text/plain')
       if (text != null) {
         e.preventDefault()
-        const target = e.currentTarget
+        const target = e.currentTarget as HTMLTextAreaElement | null
         if (target && typeof target.setRangeText === 'function') {
           const start = target.selectionStart ?? target.value.length
           const end = target.selectionEnd ?? target.value.length

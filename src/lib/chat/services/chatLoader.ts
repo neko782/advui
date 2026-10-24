@@ -16,7 +16,7 @@ import { migrateLegacyGraphToNodes } from './legacyMigration.js';
 import { validateRootId } from '../../branching.js';
 import { computePersistSig } from './chatPersistence.js';
 import { loadChatSettings } from '../../utils/presetHelpers.js';
-import type { ChatNode, ChatSettings, Settings, LoadedChat, Chat, Preset } from '../../types/index.js';
+import type { ChatNode, ChatSettings, LoadedChat } from '../../types/index.js';
 
 export async function loadChat(chatId: string | null): Promise<LoadedChat> {
   const nextSettings = loadSettings();
@@ -51,11 +51,13 @@ export async function loadChat(chatId: string | null): Promise<LoadedChat> {
     };
   }
 
-  try {
-    // Check in-memory cache first for instant loading of new chats
-    const cached = getCachedChat(chatId);
-    const loaded = cached || await loadChatById(chatId);
+  // Storage is authoritative: the creation-time cache only covers a chat
+  // whose first write is not visible yet, and would otherwise hide edits
+  // saved since. Storage failures propagate: substituting an empty chat
+  // here would let the next save overwrite the real one.
+  const loaded = (await loadChatById(chatId)) || getCachedChat(chatId) || null;
 
+  try {
     if (loaded) {
       if (Array.isArray(loaded.nodes)) {
         nextNodes = loaded.nodes.slice();

@@ -12,9 +12,6 @@ import type {
   PresetFields,
   Settings,
   ChatSettings,
-  ReasoningEffort,
-  TextVerbosity,
-  ReasoningSummary
 } from '../types/index.js';
 import { isPlainObject } from './objects.js';
 import { normalizeMcpServerList } from './mcp.js';
@@ -243,7 +240,7 @@ export function ensurePresetList(
 
   const seen = new Set<string>();
   return normalized.map((preset) => {
-    let id = preset.id;
+    let id = preset.id ?? generatePresetId();
     while (seen.has(id)) {
       id = generatePresetId();
     }
@@ -366,7 +363,7 @@ export function buildChatSettings(preset: Preset, settings: Partial<Settings> | 
   return {
     model: preset.model,
     streaming: preset.streaming,
-    presetId: preset.id,
+    presetId: preset.id ?? undefined,
     maxOutputTokens: preset.maxOutputTokens,
     topP: preset.topP,
     temperature: preset.temperature,
@@ -419,7 +416,7 @@ export function loadChatSettings(
     openRouterProvider: typeof s.openRouterProvider === 'string' ? s.openRouterProvider : preset.openRouterProvider || '',
     model: s.model || preset.model || DEFAULT_MODEL,
     streaming: typeof s.streaming === 'boolean' ? s.streaming : preset.streaming,
-    presetId: (typeof loaded?.presetId === 'string') ? loaded.presetId : preset.id,
+    presetId: (typeof loaded?.presetId === 'string') ? loaded.presetId : (preset.id ?? undefined),
     maxOutputTokens: parseMaxTokens(has('maxOutputTokens') ? s.maxOutputTokens : preset.maxOutputTokens),
     topP: parseTopP(has('topP') ? s.topP : preset.topP),
     temperature: parseTemperature(has('temperature') ? s.temperature : preset.temperature),

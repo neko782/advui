@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+import 'fake-indexeddb/auto'
 import { describe, it, expect, beforeEach } from 'vitest'
 import { mount, unmount, flushSync } from 'svelte'
 import App from './App.svelte'

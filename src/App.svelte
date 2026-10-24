@@ -5,7 +5,7 @@
   import CharacterEditorModal from './lib/components/tavern/CharacterEditorModal.svelte'
   import TavernSettingsModal from './lib/components/tavern/TavernSettingsModal.svelte'
   import SettingsModal from './lib/SettingsModal.svelte'
-  import { loadAll, getChatListItems, createChat, setSelected, getChat, deleteChat, renameChat, duplicateChat, toChatListItem, unlockAllChats } from './lib/chatsStore'
+  import { loadAll, getChatListItems, createChat, setSelected, deleteChat, renameChat, duplicateChat, toChatListItem, unlockAllChats } from './lib/chatsStore'
   import { loadSettings } from './lib/settingsStore'
   import { settingsStore, generationRegistry } from './lib/stores/appState.svelte'
   import { ensureModels } from './lib/modelsStore'
@@ -13,8 +13,16 @@
   import { getAllCharacters, putCharacter, deleteCharacter } from './lib/tavern/charactersStore'
   import { parseCharacterFile, makeBlankCharacter } from './lib/tavern/characterCard'
   import { createCharacterChat } from './lib/tavern/tavernChat'
+  import { probeStorage } from './lib/storage'
   import type { Chat as ChatType, ChatListItem, Preset } from './lib/types'
   import type { Character, PromptPreset, Persona } from './lib/types/tavern'
+
+  // Chat storage (IndexedDB) is required. 'unavailable' blocks the app with
+  // an explanation instead of presenting an outage as an empty chat list.
+  let storageState = $state<'starting' | 'ready' | 'unavailable'>('starting')
+  let storageError = $state('')
+  // Non-fatal: the last chat list refresh failed; the shown list may be stale.
+  let listError = $state('')
 
   let chats = $state<ChatListItem[]>([])
   let selectedId = $state<string | null>(null)
@@ -69,7 +77,7 @@
       return raw === '1'
     } catch { return true }
   }
-  function saveSidebarPref(val) {
+  function saveSidebarPref(val: boolean) {
     try { localStorage.setItem(SIDEBAR_KEY, val ? '1' : '0') } catch {}
   }
 
@@ -84,10 +92,10 @@
     return viewportWidth < COLLAPSE_THRESHOLD
   }
 
-  function handleGlobalPointerDown(event) {
+  function handleGlobalPointerDown(event: PointerEvent) {
     if (!sidebarOpen) return
     if (event?.defaultPrevented) return
-    const target = event?.target
+    const target = event?.target as Element | null
     if (target && typeof target.closest === 'function' && target.closest('.sidebar')) return
     if (!shouldCollapseForViewport()) return
     sidebarOpen = false
@@ -112,24 +120,33 @@
     chats = sortChats(next)
   }
 
+  function errorText(err: unknown): string {
+    return err instanceof Error && err.message ? err.message : String(err || 'Unknown error')
+  }
+
+  async function loadChatList() {
+    // Show most recent chats first
+    const list = sortChats(await getChatListItems())
+    chats = list
+    generationRegistry.prune(list.map(item => item.id))
+    const saved = loadAll().selectedId
+    if (saved && list.some(item => item.id === saved)) {
+      if (selectedId !== saved) selectedId = saved
+    } else if (list.length) {
+      const first = list[0]?.id || null
+      if (selectedId !== first) selectedId = first
+    } else if (selectedId !== null) {
+      selectedId = null
+    }
+    listError = ''
+  }
+
   async function refresh() {
     try {
-      // Show most recent chats first
-      const list = sortChats(await getChatListItems())
-      chats = list
-      generationRegistry.prune(list.map(item => item.id))
-      const saved = loadAll().selectedId
-      if (saved && await getChat(saved)) {
-        if (selectedId !== saved) selectedId = saved
-      } else if (list.length) {
-        const first = list[0]?.id || null
-        if (selectedId !== first) selectedId = first
-      } else if (selectedId !== null) {
-        selectedId = null
-      }
-    } catch {
-      chats = []
-      selectedId = null
+      await loadChatList()
+    } catch (err) {
+      // Keep the current list: an outage is not the same as having no chats.
+      listError = `Could not refresh the chat list: ${errorText(err)}`
     }
   }
 
@@ -144,6 +161,34 @@
 
   import { onMount } from 'svelte'
   import { migrateChatsToIndexedDB } from './lib/utils/storageMigration'
+
+  async function startStorage() {
+    storageState = 'starting'
+    storageError = ''
+    try {
+      await probeStorage()
+
+      // Migrate chats left in localStorage by older versions
+      try {
+        const migrationResult = await migrateChatsToIndexedDB()
+        if (migrationResult.success && migrationResult.migrated > 0) {
+          console.log(`Successfully migrated ${migrationResult.migrated} chats to IndexedDB`)
+        } else if (!migrationResult.success) {
+          console.error('Chat migration incomplete:', migrationResult.reason, migrationResult.errors)
+        }
+      } catch (err) {
+        console.error('Failed to migrate chats:', err)
+      }
+
+      await unlockAllChats()
+      await ensureOneChat()
+      await loadChatList()
+      storageState = 'ready'
+    } catch (err) {
+      storageError = errorText(err)
+      storageState = 'unavailable'
+    }
+  }
 
   async function ensureStartupModels() {
     try {
@@ -175,20 +220,7 @@
       mode = loadModePref()
       settingsStore.reload()
       refreshCharacters().catch(() => {})
-
-      // Migrate chats from localStorage to IndexedDB if needed
-      try {
-        const migrationResult = await migrateChatsToIndexedDB()
-        if (migrationResult.success && migrationResult.migrated > 0) {
-          console.log(`Successfully migrated ${migrationResult.migrated} chats to IndexedDB`)
-        }
-      } catch (err) {
-        console.error('Failed to migrate chats:', err)
-      }
-
-      await unlockAllChats()
-      await ensureOneChat()
-      await refresh()
+      await startStorage()
     }, 0)
   })
 
@@ -229,7 +261,7 @@
     }
   })
 
-  function onSelectChat(id) {
+  function onSelectChat(id: string) {
     // Track previous selection before changing (for keeping chat mounted)
     if (selectedId && selectedId !== id) {
       previousSelectedId = selectedId
@@ -237,7 +269,7 @@
     setSelected(id)
     selectedId = id
   }
-  async function onNewChat(options = {}) {
+  async function onNewChat(options: { presetId?: string } = {}) {
     const settings = loadSettings()
     const list = Array.isArray(settings?.presets) ? settings.presets : []
     const requestedId = typeof options?.presetId === 'string' ? options.presetId : null
@@ -248,7 +280,7 @@
       : null
     const preset = requested || preferredDefault || list.find(p => !p?.tavernOnly) || list[0] || null
     const initial = preset
-      ? { presetId: preset.id, preset }
+      ? { presetId: preset.id ?? undefined, preset: preset as unknown as Record<string, unknown> }
       : {}
     const c = await createChat(initial)
     // Track previous selection before changing
@@ -287,7 +319,7 @@
 
   function onOpenSettings() { showSettings = true }
 
-  async function onDeleteChat(id) {
+  async function onDeleteChat(id: string) {
     if (!id) return
     await deleteChat(id)
     generationRegistry.setGenerating(id, false)
@@ -297,21 +329,28 @@
     }
     const wasSelected = selectedId === id
     if (wasSelected) selectedId = null
-    const remaining = await getChatListItems()
-    if (!Array.isArray(remaining) || remaining.length === 0) {
+    let remaining: ChatListItem[]
+    try {
+      remaining = await getChatListItems()
+    } catch (err) {
+      listError = `Could not refresh the chat list: ${errorText(err)}`
+      chats = chats.filter(chat => chat.id !== id)
+      return
+    }
+    if (remaining.length === 0) {
       await onNewChat()
       return
     }
     await refresh()
   }
 
-  async function onRenameChat(id, title) {
+  async function onRenameChat(id: string, title: string) {
     if (!id) return
     await renameChat(id, title)
     await refresh()
   }
 
-  async function onDuplicateChat(id) {
+  async function onDuplicateChat(id: string) {
     if (!id) return
     const duplicated = await duplicateChat(id)
     if (!duplicated) return
@@ -427,7 +466,30 @@
   }
 </script>
 
+{#if storageState === 'unavailable'}
+  <main class="storage-unavailable" role="alert">
+    <h1>Chat storage is unavailable</h1>
+    <p>{storageError}</p>
+    <p>
+      This app keeps chats in the browser's IndexedDB storage. Nothing has been deleted;
+      chats already saved will be back once storage works again.
+    </p>
+    <ul>
+      <li>Private or incognito windows, and some privacy settings, block IndexedDB.</li>
+      <li>If the browser storage is full, free up space for this site.</li>
+      <li>Another tab running an older version can block the database — close other tabs of this app.</li>
+    </ul>
+    <button type="button" class="ui-btn" onclick={startStorage}>Retry</button>
+  </main>
+{:else}
 <div class="app-shell">
+  {#if listError}
+    <div class="list-error" role="status">
+      <span>{listError}</span>
+      <button type="button" class="ui-btn" onclick={refresh}>Retry</button>
+      <button type="button" class="ui-btn" onclick={() => (listError = '')}>Dismiss</button>
+    </div>
+  {/if}
   {#if mode === 'chat'}
     <Sidebar
       open={sidebarOpen}
@@ -513,6 +575,7 @@
     onCancel={() => { characterEditorOpen = false; characterEditorTarget = null }}
   />
 </div>
+{/if}
 
 <style>
   :global(#app) { height: 100dvh; height: var(--app-height, 100dvh); }
@@ -536,6 +599,33 @@
   .chat-wrapper.hidden {
     visibility: hidden;
     pointer-events: none;
+  }
+  .storage-unavailable {
+    min-height: 100dvh;
+    max-width: 60ch;
+    margin: 0 auto;
+    padding: 48px 24px;
+    display: grid;
+    align-content: center;
+    gap: 12px;
+  }
+  .storage-unavailable h1 { margin: 0; font-size: 1.4rem; }
+  .storage-unavailable p, .storage-unavailable ul { margin: 0; }
+  .storage-unavailable .ui-btn { justify-self: start; }
+  .list-error {
+    position: absolute;
+    top: 8px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 50;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    border-radius: 8px;
+    background: var(--panel, #fff);
+    border: 1px solid color-mix(in srgb, #d33 50%, transparent);
+    box-shadow: 0 4px 16px rgba(0,0,0,0.12);
   }
   .app-fade { position: absolute; inset: 0; pointer-events: none; background: linear-gradient(180deg, transparent, transparent 35%, rgba(0,0,0,0.06) 100%); opacity: .18; }
   :global(:root[data-fancy-effects="true"]) .app-fade { mix-blend-mode: multiply; }

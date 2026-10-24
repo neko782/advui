@@ -38,7 +38,7 @@
     props.onCancel?.()
   }
 
-  function handleKeydown(event) {
+  function handleKeydown(event: KeyboardEvent) {
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault()
       handleConfirm()

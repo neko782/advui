@@ -12,7 +12,7 @@
   } from '../../attachments/mime'
   import ChatSettingsPopover from './ChatSettingsPopover.svelte'
   import { onMount } from 'svelte'
-  import type { Image, Preset, Connection, ConnectionOption, Keybinds, ReasoningEffort, TextVerbosity, ReasoningSummary, MessageRole, ApiMode, McpServerConfig } from '../../types'
+  import type { Image, Preset, ConnectionOption, Keybinds, ReasoningEffort, TextVerbosity, ReasoningSummary, MessageRole, McpServerConfig } from '../../types'
 
   interface Props {
     input?: string
@@ -92,9 +92,9 @@
   let inputEl = $state<HTMLTextAreaElement | HTMLDivElement>()
   let isDragging = $state(false)
   // Auto-grow on mount
-  $effect(() => { queueMicrotask(() => autoGrow(inputEl)) })
+  $effect(() => { queueMicrotask(() => autoGrow(inputEl ?? null)) })
   // Also auto-grow whenever parent updates the input value (e.g., after send/add clears it)
-  $effect(() => { void props.input; queueMicrotask(() => autoGrow(inputEl)) })
+  $effect(() => { void props.input; queueMicrotask(() => autoGrow(inputEl ?? null)) })
 
   $effect(() => {
     const value = props.input || ''
@@ -108,7 +108,7 @@
   function handleEditorInput() {
     if (!inputEl) return
     props.onInput?.(readEditableText(inputEl))
-    queueMicrotask(() => autoGrow(inputEl))
+    queueMicrotask(() => autoGrow(inputEl ?? null))
   }
 
   function insertEditorText(text: string) {
@@ -159,13 +159,14 @@
       mql.addListener(update)
       return () => { mql.removeListener(update) }
     }
+    return undefined
   })
 
   // Attachment type detection lives in ../../attachments/mime.ts (shared).
   const getAttachmentTypeLabel = attachmentTypeLabel
   const getAttachmentDisplayName = attachmentDisplayName
 
-  function onKey(e) {
+  function onKey(e: KeyboardEvent) {
     if (e.isComposing || isMobileViewport) return
     if (props.locked) return
     if (e.key !== 'Enter') return
@@ -195,10 +196,10 @@
     }
   }
 
-  function handleFileSelect(e) {
+  function handleFileSelect(e: Event & { currentTarget: HTMLInputElement }) {
     const files = e.currentTarget.files
     if (files && files.length > 0) {
-      const accepted = Array.from(files).filter(isSupportedAttachment)
+      const accepted = Array.from(files).filter(isSupportedAttachment) as File[]
       if (accepted.length > 0) {
         props.onFilesSelected?.(accepted)
       }
@@ -210,19 +211,19 @@
   // enter/leave pairs to avoid indicator flicker.
   let dragDepth = 0
 
-  function handleDragEnter(e) {
+  function handleDragEnter(e: DragEvent) {
     e.preventDefault()
     e.stopPropagation()
     dragDepth++
     if (!isDragging) isDragging = true
   }
 
-  function handleDragOver(e) {
+  function handleDragOver(e: DragEvent) {
     e.preventDefault()
     e.stopPropagation()
   }
 
-  function handleDragLeave(e) {
+  function handleDragLeave(e: DragEvent) {
     e.preventDefault()
     e.stopPropagation()
     dragDepth = Math.max(0, dragDepth - 1)
@@ -234,7 +235,7 @@
     isDragging = false
   }
 
-  function handleDrop(e) {
+  function handleDrop(e: DragEvent) {
     e.preventDefault()
     e.stopPropagation()
     dragDepth = 0
@@ -242,7 +243,7 @@
 
     const files = e.dataTransfer?.files
     if (files && files.length > 0) {
-      const acceptedFiles = Array.from(files).filter(isSupportedAttachment)
+      const acceptedFiles = Array.from(files).filter(isSupportedAttachment) as File[]
       if (acceptedFiles.length > 0) {
         props.onFilesSelected?.(acceptedFiles)
       }
@@ -448,7 +449,7 @@
           rows="1"
           placeholder="Type a message…"
           value={props.input}
-          oninput={(e) => { props.onInput?.(e.currentTarget.value); queueMicrotask(() => autoGrow(inputEl)) }}
+          oninput={(e) => { props.onInput?.(e.currentTarget.value); queueMicrotask(() => autoGrow(inputEl ?? null)) }}
           onkeydown={onKey}
           onpaste={handlePaste}
           onbeforeinput={handlePaste}

@@ -260,50 +260,6 @@ export interface SanitizedGraphResult {
 }
 
 // ============================================================================
-// Notice Types
-// ============================================================================
-
-export interface NoticeState {
-  dismissed: string;
-  missingApiKey: string;
-}
-
-export interface NoticeManager {
-  showMissingApiKeyNotice(currentDismissed: string): NoticeState;
-  clearMissingApiKeyNotice(): { missingApiKey: string };
-  dismissNotice(assembledNotice: string): string;
-}
-
-// ============================================================================
-// Generation State Manager Types
-// ============================================================================
-
-export interface GenerationStateSnapshot {
-  sequence: number;
-  typingVariantId: number | null;
-  abortRequested: boolean;
-}
-
-export interface GenerationStateManager {
-  reset(): void;
-  startGeneration(): number;
-  completeGeneration(sequence: number): boolean;
-  isGenerationActive(): boolean;
-  getGenerationSequence(): number;
-  getStateSnapshot(): GenerationStateSnapshot;
-  guardedUpdate<T>(snapshot: GenerationStateSnapshot, update: () => T): { applied: boolean; result: T | null };
-  isSequenceValid(sequence: number): boolean;
-  registerAbortHandler(sequence: number, fn: (() => void) | null): boolean;
-  requestAbort(): boolean;
-  forceStopGeneration(): boolean;
-  setTypingVariantId(variantId: number | null): void;
-  getTypingVariantId(): number | null;
-  isAbortRequested(): boolean;
-  getStateVersion(): number;
-  incrementStateVersion(): void;
-}
-
-// ============================================================================
 // Persistence Scheduler Types
 // ============================================================================
 

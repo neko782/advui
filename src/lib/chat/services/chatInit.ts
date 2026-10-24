@@ -1,5 +1,4 @@
 // Chat initialization and preset management
-import { loadSettings } from '../../settingsStore.js';
 import {
   DEFAULT_SYSTEM_PROMPT,
   normalizePreset as normalizePresetHelper,

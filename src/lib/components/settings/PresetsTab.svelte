@@ -1,10 +1,9 @@
 <script lang="ts">
   import OpenRouterProviderInput from '../OpenRouterProviderInput.svelte'
   import { onMount } from 'svelte'
-  import { IconAdd, IconDelete, IconDragHandle, IconTravelExplore, IconCodeBlocks, IconTerminal, IconImagesmode, IconExtension } from '../../icons'
+  import { IconAdd, IconDelete, IconDragHandle } from '../../icons'
   import { DEFAULT_MODEL, DEFAULT_SYSTEM_PROMPT } from '../../utils/presetHelpers'
   import {
-    parseMaxTokens,
     parseTopP,
     parseTemperature,
     parseReasoning,
@@ -29,10 +28,10 @@
   const activePresetModels = $derived(draft.activePresetModels)
   const activePresetSupportsResponsesApiFeatures = $derived(draft.activePresetSupportsResponsesApiFeatures)
 
-  const selectPreset = (id) => draft.selectPreset(id)
+  const selectPreset = (id: string) => draft.selectPreset(id)
   const addPreset = () => draft.addPreset()
-  const removePreset = (id) => draft.removePreset(id)
-  const updateActivePreset = (patch) => draft.updateActivePreset(patch)
+  const removePreset = (id: string) => draft.removePreset(id)
+  const updateActivePreset = (patch: Parameters<SettingsDraft['updateActivePreset']>[0]) => draft.updateActivePreset(patch)
 
   // Default preset for new chat-mode chats (skips the preset menu)
   const isDefaultForNewChats = $derived(
@@ -61,7 +60,7 @@
 
   let expandedPresetGroups = $state<{ general: boolean, sampling: boolean, reasoning: boolean }>({ general: false, sampling: false, reasoning: false })
 
-  function togglePresetGroup(group) {
+  function togglePresetGroup(group: keyof typeof expandedPresetGroups) {
     expandedPresetGroups = { ...expandedPresetGroups, [group]: !expandedPresetGroups[group] }
   }
 
@@ -110,7 +109,7 @@
   function handlePresetTouchMove(e: TouchEvent) {
     if (!touchDragId || !touchListRef) return
     e.preventDefault()
-    const touchY = e.touches[0].clientY
+    const touchY = e.touches[0]?.clientY ?? 0
 
     // Find which item the touch is over
     const items = touchListRef.querySelectorAll('.ui-list-item')
@@ -161,8 +160,8 @@
                     class="ui-list-item {preset.id === activePresetId ? 'active' : ''} {isDragging ? 'dragging' : ''} {isDragOver ? 'drag-over' : ''}"
                     data-id={preset.id}
                     draggable="true"
-                    ondragstart={(e) => handlePresetDragStart(e, preset.id)}
-                    ondragover={(e) => handlePresetDragOver(e, preset.id)}
+                    ondragstart={(e) => handlePresetDragStart(e, preset.id ?? '')}
+                    ondragover={(e) => handlePresetDragOver(e, preset.id ?? '')}
                     ondrop={handlePresetDrop}
                     ondragend={handlePresetDragEnd}
                     role="listitem"
@@ -170,7 +169,7 @@
                     <div
                       class="ui-drag-handle"
                       aria-label="Drag to reorder"
-                      ontouchstart={(e) => handlePresetTouchStart(e, preset.id)}
+                      ontouchstart={(e) => handlePresetTouchStart(e, preset.id ?? '')}
                       ontouchmove={handlePresetTouchMove}
                       ontouchend={handlePresetTouchEnd}
                       ontouchcancel={resetTouchState}
@@ -180,7 +179,7 @@
                     <button
                       type="button"
                       class="ui-item-content"
-                      onclick={() => selectPreset(preset.id)}
+                      onclick={() => selectPreset(preset.id ?? '')}
                     >
                       <span class="ui-item-name">
                         {preset.name || 'Untitled'}
@@ -197,7 +196,7 @@
                       <button
                         type="button"
                         class="ui-item-delete"
-                        onclick={() => removePreset(preset.id)}
+                        onclick={() => removePreset(preset.id ?? '')}
                         title="Delete preset"
                         aria-label="Delete preset"
                       >

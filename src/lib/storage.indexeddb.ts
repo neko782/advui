@@ -436,6 +436,13 @@ function deleteOne(id: string, expectedVersion?: number): Promise<Chat | null> {
 }
 
 /**
+ * Open (and if needed create) the chat database (public API)
+ */
+export async function openDatabase(): Promise<void> {
+  await openDB();
+}
+
+/**
  * Get all chats (public API)
  */
 export async function getAllChats(): Promise<Chat[]> {

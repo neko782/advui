@@ -3,6 +3,7 @@
   import { IconAdd, IconVisibility, IconVisibilityOff, IconAutorenew, IconDelete, IconDragHandle } from '../../icons'
   import { DEFAULT_API_BASE_URL } from './settingsDraft.svelte'
   import type { SettingsDraft } from './settingsDraft.svelte'
+  import type { ApiMode } from '../../types'
 
   interface Props {
     draft: SettingsDraft
@@ -18,12 +19,12 @@
   const activeRefreshMsg = $derived(draft.activeRefreshMsg)
   const activeConnectionRefreshing = $derived(draft.activeConnectionRefreshing)
 
-  const selectConnection = (id) => draft.selectConnection(id)
+  const selectConnection = (id: string) => draft.selectConnection(id)
   const addConnection = () => draft.addConnection()
-  const removeConnection = (id) => draft.removeConnection(id)
-  const updateActiveConnection = (patch) => draft.updateActiveConnection(patch)
+  const removeConnection = (id: string) => draft.removeConnection(id)
+  const updateActiveConnection = (patch: Parameters<SettingsDraft['updateActiveConnection']>[0]) => draft.updateActiveConnection(patch)
   const invalidateActiveConnectionModelCache = () => draft.invalidateActiveConnectionModelCache()
-  const refreshModelsNow = (targetId?, options?) => draft.refreshModelsNow(targetId, options)
+  const refreshModelsNow = (...args: Parameters<SettingsDraft['refreshModelsNow']>) => draft.refreshModelsNow(...args)
 
   let revealKey = $state(false)
   let connectionFormReady = $state(false)
@@ -87,7 +88,7 @@
   function handleConnectionTouchMove(e: TouchEvent) {
     if (!touchDragId || !touchListRef) return
     e.preventDefault()
-    const touchY = e.touches[0].clientY
+    const touchY = e.touches[0]?.clientY ?? 0
 
     // Find which item the touch is over
     const items = touchListRef.querySelectorAll('.ui-list-item')
@@ -245,7 +246,7 @@
                     <select
                       class="ui-select"
                       value={activeConnection.apiMode || 'responses'}
-                      onchange={(event) => updateActiveConnection({ apiMode: event.currentTarget.value })}
+                      onchange={(event) => updateActiveConnection({ apiMode: event.currentTarget.value as ApiMode })}
                       aria-label="API mode"
                     >
                       <option value="responses">Responses API</option>

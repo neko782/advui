@@ -27,13 +27,13 @@
     open = false
   }
 
-  function handleSelect(role) {
+  function handleSelect(role: MessageRole) {
     props.onSetRole?.(role)
     closeMenu()
     triggerEl?.focus()
   }
 
-  function handleMenuKeydown(event) {
+  function handleMenuKeydown(event: KeyboardEvent) {
     if (event.key === 'Escape') {
       event.preventDefault()
       closeMenu()
@@ -41,9 +41,9 @@
     }
   }
 
-  function handleFocusOut(event) {
+  function handleFocusOut(event: FocusEvent) {
     if (!open) return
-    if (groupEl && !groupEl.contains(event.relatedTarget)) {
+    if (groupEl && !groupEl.contains(event.relatedTarget as Node | null)) {
       closeMenu()
     }
   }
@@ -51,13 +51,13 @@
   $effect(() => {
     if (!open) return
 
-    const handlePointerDown = (event) => {
-      if (!groupEl?.contains(event.target)) {
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!groupEl?.contains(event.target as Node | null)) {
         closeMenu()
       }
     }
 
-    const handleKeydown = (event) => {
+    const handleKeydown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         closeMenu()
         triggerEl?.focus()

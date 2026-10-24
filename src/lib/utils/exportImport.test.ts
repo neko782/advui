@@ -19,7 +19,7 @@ vi.mock('../imageStore.js', () => ({
 vi.mock('../tavern/charactersStore.js', () => ({
   getAllCharacters: async () => [...stores.characters.values()],
   getCharacter: async (id: string) => stores.characters.get(id),
-  putCharacter: async (character) => stores.characters.set(character.id, character),
+  putCharacter: async (character: { id: string }) => stores.characters.set(character.id, character),
 }));
 vi.mock('../settingsStore.js', () => ({ loadSettings: () => ({}), saveSettings: vi.fn() }));
 // Read actual exported TAR headers without js-untar's browser Worker dependency.
@@ -66,7 +66,7 @@ describe('portable chat exports', () => {
   it('restores attachments from all branches and the associated character on an empty store', async () => {
     await exportChat(chat.id);
     const text = await downloaded.text();
-    expect(JSON.parse(text).images.map(image => image.id)).toEqual(['upload', 'generated']);
+    expect(JSON.parse(text).images.map((image: { id: string }) => image.id)).toEqual(['upload', 'generated']);
     stores.chats.clear(); stores.images.clear(); stores.characters.clear();
     const result = await importChat({ text: async () => text } as File);
     expect(result.chat.characterId).toBe(character.id);

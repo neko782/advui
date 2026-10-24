@@ -1,4 +1,4 @@
-import type { Chat, ChatNode, MessageVariant, ChatValidationResult, MessageRole } from '../types/index.js';
+import type { Chat, MessageVariant, ChatValidationResult } from '../types/index.js';
 import { isPlainObject } from './objects.js';
 
 const VALID_ROLES: ReadonlySet<string> = new Set(['system', 'user', 'assistant', 'tool']);

@@ -2,7 +2,7 @@
 import { listModels } from './openaiClient.js';
 import { loadSettings, findConnection } from './settingsStore.js';
 import { safeRead, safeWrite } from './utils/localStorageHelper.js';
-import type { ModelsCacheEntry, ModelsStore, Connection } from './types/index.js';
+import type { ModelsCacheEntry, ModelsStore } from './types/index.js';
 
 const MODELS_KEY = 'openai.models.v2';
 const DEFAULT_CACHE_ENTRY: ModelsCacheEntry = { ids: [], fetchedAt: 0 };

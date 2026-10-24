@@ -23,3 +23,23 @@ export function isConcurrencyConflict(err: unknown): boolean {
   const message = err instanceof Error ? err.message : String(err || '');
   return message.toLowerCase().includes('concurrent') && message.toLowerCase().includes('conflict');
 }
+
+/**
+ * IndexedDB is missing, blocked, full, or otherwise failing. Chats cannot be
+ * read or written until the underlying problem is resolved. This is never
+ * the same as "no chats exist" and must not be treated as an empty store.
+ */
+export class StorageUnavailableError extends Error {
+  readonly cause: unknown;
+
+  constructor(message: string, cause?: unknown) {
+    super(message);
+    this.name = 'StorageUnavailableError';
+    this.cause = cause;
+  }
+}
+
+export function isStorageUnavailable(err: unknown): boolean {
+  if (err instanceof StorageUnavailableError) return true;
+  return !!err && typeof err === 'object' && (err as { name?: unknown }).name === 'StorageUnavailableError';
+}

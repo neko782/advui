@@ -1,5 +1,7 @@
-// Chat store persisted in localStorage. One entry per chat.
+// Chat store persisted in IndexedDB (via storage.ts). One entry per chat.
 // We keep selectedId in localStorage for quick access.
+// Reads propagate storage errors: an outage must never look like an empty
+// store or a missing chat, or callers would create/overwrite chats.
 
 import { loadSettings } from './settingsStore.js';
 import { enforceUniqueParents, normalizeNodesActive, validateRootId } from './branching.js';
@@ -21,6 +23,7 @@ import { hasOwn } from './utils/objects.js';
 import { normalizeMcpServerList } from './utils/mcp.js';
 
 export const SELECTED_KEY = 'openai.chats.selected.v1';
+export const INTERRUPTED_GENERATION_ERROR = 'The reply was interrupted before it finished. Regenerate to try again.';
 
 // In-memory cache for newly created chats to avoid storage roundtrip delay
 const chatCache = new Map<string, Chat>();
@@ -45,8 +48,13 @@ function sanitizeVariantLockState(variant: MessageVariant | null | undefined): M
     mutated = true;
   }
   if (next?.typing) {
+    // A generation that never finished (tab closed or crashed mid-stream).
+    // Drop the placeholder text and say what happened instead of showing a
+    // message that looks finished.
     if (!mutated) next = { ...next };
     next.typing = false;
+    if (next.content === 'typing') next.content = '';
+    if (!next.content && !next.error) next.error = INTERRUPTED_GENERATION_ERROR;
     mutated = true;
   } else if (hasOwn(next, 'typing') && typeof next.typing !== 'boolean') {
     if (!mutated) next = { ...next };
@@ -164,7 +172,7 @@ export function setSelected(id: string | null): ChatSelection {
 
 export async function getChats(): Promise<Chat[]> {
   // Return all chats; sort done by callers if needed
-  try { return await storeGetAll(); } catch { return []; }
+  return storeGetAll();
 }
 
 export function toChatListItem(chat: Chat | null | undefined): ChatListItem | null {
@@ -178,7 +186,7 @@ export function toChatListItem(chat: Chat | null | undefined): ChatListItem | nu
 }
 
 export async function getChatListItems(): Promise<ChatListItem[]> {
-  try { return await storeGetAllListItems(); } catch { return []; }
+  return storeGetAllListItems();
 }
 
 export async function unlockAllChats(): Promise<void> {
@@ -201,7 +209,7 @@ export async function unlockAllChats(): Promise<void> {
 }
 
 export async function getChat(id: string): Promise<Chat | null> {
-  try { return await storeGetOne(id); } catch { return null; }
+  return storeGetOne(id);
 }
 
 export function computeTitleFromNodes(nodes: ChatNode[] | null, rootId: number | null): string {

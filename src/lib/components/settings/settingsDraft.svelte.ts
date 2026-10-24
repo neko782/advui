@@ -6,6 +6,7 @@ import { loadSettings, saveSettings } from '../../settingsStore.js';
 import { setModelsCache, loadAllModelCaches } from '../../modelsStore.js';
 import { listModelsWithKey } from '../../openaiClient.js';
 import { DEFAULT_MODEL, DEFAULT_SYSTEM_PROMPT } from '../../utils/presetHelpers.js';
+import { normalizeReasoning, normalizeVerbosity, normalizeReasoningSummary } from '../../utils/validation.js';
 import { DEFAULT_MESSAGE_ACTIONS, DEFAULT_EDITOR_ACTIONS, DEFAULT_TOOL_SETTINGS } from '../../constants/defaults.js';
 import type {
   AppSettings,
@@ -46,17 +47,9 @@ export function parseTemperature(value: unknown): number | null {
   return Math.min(2, Math.max(0, num));
 }
 
-export function parseReasoning(value: unknown): string {
-  return REASONING_OPTIONS.includes(value as string) ? value as string : 'default';
-}
-
-export function parseVerbosity(value: unknown): string {
-  return TEXT_VERBOSITY_OPTIONS.includes(value as string) ? value as string : 'medium';
-}
-
-export function parseReasoningSummary(value: unknown): string {
-  return REASONING_SUMMARY_OPTIONS.includes(value as string) ? value as string : 'auto';
-}
+export const parseReasoning = normalizeReasoning;
+export const parseVerbosity = normalizeVerbosity;
+export const parseReasoningSummary = normalizeReasoningSummary;
 
 export function parseThinkingBudget(value: unknown): number | null {
   return parseMaxTokens(value);

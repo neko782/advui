@@ -15,6 +15,6 @@ describe('generation history at an insertion point', () => {
       historySuffix: [{ role: 'system', content: 'post-history instructions' }],
     });
     expect(vi.mocked(respond).mock.lastCall?.[0].messages?.map(m => m.content)).toEqual(['character prompt', 'first user', 'post-history instructions']);
-    expect(prepared.nodes.find(n => n.id === 4)?.variants[0].next).toBe(2);
+    expect(prepared.nodes.find(n => n.id === 4)?.variants[0]?.next).toBe(2);
   });
 });

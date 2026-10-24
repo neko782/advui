@@ -27,7 +27,7 @@
     editorActions?: EditorActionButton[]
     disableRoleSwitching?: boolean
     showInsertButtons?: boolean
-    followingMap?: Record<number, { has: boolean; id?: number; typing?: boolean }>
+    followingMap?: Record<number, { has: boolean; id?: number | null; typing?: boolean }>
     onDismissNotice?: () => void
     onSetRole?: (id: number, role: MessageRole) => void
     onEditInput?: (text: string) => void
@@ -261,9 +261,9 @@
           editingId={props.editingId}
           editingText={props.editingText}
           hasFollowingAssistant={props.followingMap?.[vm.i]?.has}
-          nextAssistantId={props.followingMap?.[vm.i]?.id}
+          nextAssistantId={props.followingMap?.[vm.i]?.id ?? undefined}
           nextAssistantTyping={props.followingMap?.[vm.i]?.typing}
-          parentId={(vm?.i > 0 && props.items?.[vm.i - 1]?.m?.id) ? props.items[vm.i - 1].m.id : null}
+          parentId={(vm?.i > 0 ? props.items?.[vm.i - 1]?.m?.id : null) ?? null}
           branchIndex={(typeof vm?.variantIndex === 'number') ? vm.variantIndex : 0}
           branchesLength={(typeof vm?.variantsLength === 'number') ? vm.variantsLength : 1}
           allowInlineHtml={props.allowInlineHtml}

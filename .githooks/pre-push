@@ -30,7 +30,8 @@ DEPLOY_BRANCH="${CF_PAGES_DEPLOY_BRANCH:-main}"
 
 echo "[pre-push] Remote: $REMOTE_NAME ($REMOTE_URL)"
 echo "[pre-push] Running tests"
-npm test -- --run
+npm run check
+npm run test:run
 
 echo "[pre-push] Building"
 npm run build

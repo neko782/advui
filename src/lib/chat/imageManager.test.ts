@@ -20,7 +20,7 @@ describe('attachment file collections', () => {
     expect(manager.attachedImages).toEqual([
       { id: 'image-id', data: 'aGVsbG8=', mimeType: 'text/plain', name: 'notes.txt' },
     ])
-    expect(manager.imageCache['image-id'].data).toBe('aGVsbG8=')
+    expect(manager.imageCache['image-id']?.data).toBe('aGVsbG8=')
   })
 })
 

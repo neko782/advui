@@ -505,6 +505,8 @@ export interface ChatPersisterHost {
   isBusy(): boolean;
   /** Called when persistence sanitized the graph (autofix notice). */
   onSanitized(result: PersistenceResult): void;
+  /** A save succeeded (clears earlier save-error notices). */
+  onSaved?(): void;
   /** Debounced notification that the stored chat changed. */
   onChatUpdated(updated: Chat | null): void;
   /** A concurrent modification from another tab was detected. */
@@ -582,6 +584,7 @@ export function createChatPersister(host: ChatPersisterHost): ChatPersister {
       persistedSig = computePersistSig(result.nodes, s.chatSettings, result.rootId);
       scheduledPersistSig = persistedSig;
       clearRetry();
+      host.onSaved?.();
       refreshScheduler.scheduleRefresh((updated) => host.onChatUpdated(updated ?? null), result.updated);
     } catch (err) {
       if (host.isDestroyed()) return;

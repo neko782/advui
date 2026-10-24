@@ -202,14 +202,11 @@ describe('loadChat', () => {
     expect(result.rootId).toBe(1)
   })
 
-  it('should handle load errors gracefully', async () => {
+  it('rejects on storage read failures instead of substituting an empty chat', async () => {
+    // Returning a blank chat here would let the next save overwrite the real one.
     chatsStore.getChat.mockRejectedValue(new Error('Load failed'))
 
-    const result = await loadChat('chat123')
-
-    expect(result.nodes).toHaveLength(1)
-    expect(result.nodes[0].variants[0].role).toBe('system')
-    expect(result.rootId).toBe(1)
+    await expect(loadChat('chat123')).rejects.toThrow('Load failed')
   })
 
   it('should compute persist signature for loaded chat', async () => {

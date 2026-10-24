@@ -140,7 +140,7 @@ export async function exportAllData(options: ExportAllDataOptions = {}): Promise
     await appendExportArchiveToTar(tar, includeMedia);
 
     const tarData = tar.out;
-    const blob = new Blob([tarData], { type: 'application/x-tar' });
+    const blob = new Blob([tarData as Uint8Array<ArrayBuffer>], { type: 'application/x-tar' });
     const url = URL.createObjectURL(blob);
 
     downloadFile(url, fileName);

@@ -1,74 +1,23 @@
-// Storage abstraction layer with IndexedDB backend (localStorage fallback)
+// Chat storage facade. IndexedDB is the only backend: there is deliberately
+// no runtime fallback, because silently switching backends hides existing
+// chats and splits a user's history between two stores. When IndexedDB is
+// unusable every operation rejects with StorageUnavailableError so callers
+// can tell "storage is broken" apart from "there are no chats".
 import * as idbStorage from './storage.indexeddb.js';
-import * as lsStorage from './storage.localStorage.js';
 import { createKeyedPersistenceQueue } from './utils/persistenceQueue.js';
-import { isConcurrencyConflict } from './storage.errors.js';
-import type { Chat, ChatListItem, StorageListener, StorageBackend } from './types/index.js';
+import { isConcurrencyConflict, StorageUnavailableError, isStorageUnavailable } from './storage.errors.js';
+import type { Chat, ChatListItem, StorageListener } from './types/index.js';
 
-export { ConflictError, isConcurrencyConflict } from './storage.errors.js';
+export { ConflictError, isConcurrencyConflict, StorageUnavailableError, isStorageUnavailable } from './storage.errors.js';
 
-const BACKEND_KEY = 'storage.backend.v1';
 const CHAT_STORE_QUEUE_KEY = 'chats.v1';
-
-let activeBackend: StorageBackend | null = null;
-let backendInitialized = false;
 
 const chatStoreQueue = createKeyedPersistenceQueue();
 
-function persistBackendChoice(name: 'indexeddb' | 'localstorage'): void {
-  try {
-    localStorage.setItem(BACKEND_KEY, name);
-  } catch {
-    // Ignore localStorage errors
-  }
-}
-
-function fallbackToLocalStorage(err?: unknown): StorageBackend {
-  if (activeBackend !== lsStorage) {
-    console.warn('IndexedDB operation failed, falling back to localStorage', err);
-  }
-  activeBackend = lsStorage;
-  backendInitialized = true;
-  persistBackendChoice('localstorage');
-  return activeBackend;
-}
-
-/**
- * Get the preferred storage backend
- */
-function getStorageBackend(): StorageBackend {
-  if (backendInitialized && activeBackend) {
-    return activeBackend;
-  }
-
-  // A fallback may contain newer writes than IndexedDB. Keep using it across
-  // reloads instead of silently returning to an older copy of the chats.
-  let hasFallbackData = false;
-  try {
-    hasFallbackData = localStorage.getItem(BACKEND_KEY) === 'localstorage'
-      && localStorage.getItem('advui.chats.store.v1') !== null;
-  } catch { /* unavailable */ }
-  if (hasFallbackData) {
-    activeBackend = lsStorage;
-  } else if (idbStorage.isIndexedDBAvailable()) {
-    activeBackend = idbStorage;
-    persistBackendChoice('indexeddb');
-  } else {
-    // Fallback to localStorage
-    console.warn('IndexedDB not available, falling back to localStorage');
-    activeBackend = lsStorage;
-    persistBackendChoice('localstorage');
-  }
-
-  backendInitialized = true;
-  return activeBackend;
-}
-
-// Error names that indicate an IndexedDB infrastructure failure (DB open,
-// availability, quota, or transaction problems). Only these may trigger a
-// permanent fallback to localStorage. Validation errors and optimistic
-// concurrency conflicts must NEVER cause a fallback (that would hide all
-// IndexedDB-stored chats from the user).
+// Error names IndexedDB uses for infrastructure failures (DB open, quota,
+// transaction problems). These are surfaced as StorageUnavailableError.
+// Validation errors and optimistic concurrency conflicts are not storage
+// outages and propagate unchanged.
 const INFRASTRUCTURE_ERROR_NAMES = new Set([
   'InvalidStateError',
   'UnknownError',
@@ -78,7 +27,6 @@ const INFRASTRUCTURE_ERROR_NAMES = new Set([
   'AbortError',
   'NotFoundError',
   'VersionError',
-  'ConstraintError',
   'NotAllowedError',
   'SecurityError',
   'TimeoutError',
@@ -88,7 +36,7 @@ const INFRASTRUCTURE_ERROR_NAMES = new Set([
 function isInfrastructureError(err: unknown): boolean {
   if (err == null) return false;
   if (isConcurrencyConflict(err)) return false;
-  if (typeof DOMException !== 'undefined' && err instanceof DOMException) return true;
+  if (isStorageUnavailable(err)) return true;
   const name = (err as { name?: unknown })?.name;
   if (typeof name === 'string' && INFRASTRUCTURE_ERROR_NAMES.has(name)) return true;
   const message = err instanceof Error ? err.message : String(err);
@@ -96,76 +44,83 @@ function isInfrastructureError(err: unknown): boolean {
   return message.toLowerCase().includes('indexeddb');
 }
 
-async function runWithBackendFallback<T>(
-  run: (backend: StorageBackend) => Promise<T>
-): Promise<T> {
-  let backend = getStorageBackend();
-  try {
-    return await run(backend);
-  } catch (err) {
-    if (backend !== idbStorage || !isInfrastructureError(err)) throw err;
-    backend = fallbackToLocalStorage(err);
-    return run(backend);
+function toStorageError(err: unknown): unknown {
+  if (isStorageUnavailable(err) || !isInfrastructureError(err)) return err;
+  return new StorageUnavailableError(describeError(err), err);
+}
+
+function describeError(err: unknown): string {
+  const name = (err as { name?: unknown })?.name;
+  if (name === 'QuotaExceededError' || name === 'NS_ERROR_DOM_QUOTA_REACHED') {
+    return 'Browser storage is full. Free up space or delete old chats, then retry.';
   }
+  if (name === 'SecurityError' || name === 'NotAllowedError') {
+    return 'The browser blocked access to IndexedDB (private browsing or site data settings may be disabling it).';
+  }
+  const message = err instanceof Error ? err.message : String(err || '');
+  return message ? `IndexedDB failed: ${message}` : 'IndexedDB failed.';
+}
+
+function assertAvailable(): void {
+  if (!idbStorage.isIndexedDBAvailable()) {
+    throw new StorageUnavailableError('This browser does not provide IndexedDB, which is required to store chats.');
+  }
+}
+
+async function run<T>(operation: () => Promise<T>): Promise<T> {
+  return chatStoreQueue.run(CHAT_STORE_QUEUE_KEY, async () => {
+    assertAvailable();
+    try {
+      return await operation();
+    } catch (err) {
+      throw toStorageError(err);
+    }
+  });
+}
+
+/**
+ * Opens the chat database. Resolves when storage is usable and rejects with
+ * StorageUnavailableError otherwise. Used at startup to decide whether the
+ * app can run at all.
+ */
+export async function probeStorage(): Promise<void> {
+  await run(() => idbStorage.openDatabase().then(() => undefined));
 }
 
 /**
  * Get all chats
  */
 export async function getAllChats(): Promise<Chat[]> {
-  return chatStoreQueue.run(CHAT_STORE_QUEUE_KEY, async () => {
-    return runWithBackendFallback((backend) => backend.getAllChats());
-  });
+  return run(() => idbStorage.getAllChats());
 }
 
 /**
  * Get lightweight chat list items
  */
 export async function getChatListItems(): Promise<ChatListItem[]> {
-  return chatStoreQueue.run(CHAT_STORE_QUEUE_KEY, async () => {
-    return runWithBackendFallback((backend) => backend.getChatListItems());
-  });
+  return run(() => idbStorage.getChatListItems());
 }
 
 /**
- * Get a single chat by ID
+ * Get a single chat by ID. Resolves null only when the chat does not exist;
+ * storage failures reject.
  */
 export async function getChat(id: string): Promise<Chat | null> {
-  return chatStoreQueue.run(CHAT_STORE_QUEUE_KEY, async () => {
-    return runWithBackendFallback((backend) => backend.getChat(id));
-  });
+  return run(() => idbStorage.getChat(id));
 }
 
 /**
  * Save a chat
  */
 export async function putChat(chat: Chat): Promise<Chat> {
-  return chatStoreQueue.run(CHAT_STORE_QUEUE_KEY, async () => {
-    return runWithBackendFallback((backend) => backend.putChat(chat));
-  });
+  return run(() => idbStorage.putChat(chat));
 }
 
 /**
  * Delete a chat
  */
 export async function deleteChat(id: string, expectedVersion?: number): Promise<Chat | null> {
-  return chatStoreQueue.run(CHAT_STORE_QUEUE_KEY, async () => {
-    return runWithBackendFallback((backend) => backend.deleteChat(id, expectedVersion));
-  });
-}
-
-// Errors explicitly marked as never eligible for backend fallback
-// (e.g. exceptions thrown by a user-supplied updater function).
-const nonFallbackErrors = new WeakSet<object>();
-
-function markNonFallbackError(err: unknown): unknown {
-  const e = err && typeof err === 'object' ? err : new Error(String(err));
-  nonFallbackErrors.add(e);
-  return e;
-}
-
-function isNonFallbackError(err: unknown): boolean {
-  return !!err && typeof err === 'object' && nonFallbackErrors.has(err);
+  return run(() => idbStorage.deleteChat(id, expectedVersion));
 }
 
 export type ChatUpdater = (current: Chat | null) => Chat | null | undefined | Promise<Chat | null | undefined>;
@@ -174,38 +129,38 @@ export interface AtomicChatOptions {
   retries?: number;
 }
 
+// Updater exceptions are caller bugs, not storage failures: they must reach
+// the caller unchanged instead of being reported as an outage.
+class UpdaterError extends Error {
+  readonly original: unknown;
+  constructor(original: unknown) {
+    super('updater failed');
+    this.original = original;
+  }
+}
+
 /**
- * Runs an atomic read-modify-write operation against the current backend,
- * retrying optimistic concurrency conflicts and falling back to localStorage
- * only on infrastructure failures. Serialized via the chat store queue.
- *
- * The single owner of the retry/fallback policy for all atomic operations.
+ * Runs an atomic read-modify-write operation, retrying optimistic
+ * concurrency conflicts (usually a write from another tab). Serialized via
+ * the chat store queue.
  */
 async function withAtomicRetry<T>(
   retries: number,
-  operation: (backend: StorageBackend) => Promise<T>,
+  operation: () => Promise<T>,
   operationName: string,
 ): Promise<T> {
   return chatStoreQueue.run(CHAT_STORE_QUEUE_KEY, async () => {
+    assertAvailable();
     let lastErr: unknown = null;
 
     for (let attempt = 0; attempt <= Math.max(0, retries); attempt += 1) {
-      const backend = getStorageBackend();
       try {
-        return await operation(backend);
+        return await operation();
       } catch (err) {
+        if (err instanceof UpdaterError) throw err.original;
         lastErr = err;
-        if (isConcurrencyConflict(err)) {
-          if (attempt < Math.max(0, retries)) continue;
-          throw err;
-        }
-        // Only infrastructure failures may trigger fallback; validation and
-        // updater errors must propagate to the caller.
-        if (backend === idbStorage && !isNonFallbackError(err) && isInfrastructureError(err)) {
-          fallbackToLocalStorage(err);
-          continue;
-        }
-        throw err;
+        if (isConcurrencyConflict(err) && attempt < Math.max(0, retries)) continue;
+        throw toStorageError(err);
       }
     }
 
@@ -227,15 +182,14 @@ export async function updateChatAtomic(
   if (!id) return null;
   if (typeof updater !== 'function') throw new Error('updateChatAtomic: updater must be a function');
 
-  return withAtomicRetry(retries, async (backend) => {
-    const current = await backend.getChat(id);
+  return withAtomicRetry(retries, async () => {
+    const current = await idbStorage.getChat(id);
 
     let next: Chat | null | undefined;
     try {
       next = await updater(current);
     } catch (updaterErr) {
-      // Updater exceptions are caller bugs, not storage failures: propagate.
-      throw markNonFallbackError(updaterErr);
+      throw new UpdaterError(updaterErr);
     }
 
     if (next === undefined) {
@@ -243,7 +197,7 @@ export async function updateChatAtomic(
     }
     if (next == null) {
       if (!current) return null;
-      return await backend.deleteChat(id, current?._version);
+      return await idbStorage.deleteChat(id, current?._version);
     }
 
     const toPersist: Chat = {
@@ -252,7 +206,7 @@ export async function updateChatAtomic(
       _expectedVersion: current?._version,
     };
 
-    return await backend.putChat(toPersist);
+    return await idbStorage.putChat(toPersist);
   }, 'updateChatAtomic');
 }
 
@@ -266,14 +220,14 @@ export async function putChatAtomic(
   const id = chat?.id;
   if (!id) throw new Error('putChatAtomic: chat.id is required');
 
-  return withAtomicRetry(retries, async (backend) => {
-    const current = await backend.getChat(id);
+  return withAtomicRetry(retries, async () => {
+    const current = await idbStorage.getChat(id);
     const toPersist: Chat = {
       ...chat,
       id,
       _expectedVersion: current?._version,
     };
-    return await backend.putChat(toPersist);
+    return await idbStorage.putChat(toPersist);
   }, 'putChatAtomic');
 }
 
@@ -286,10 +240,10 @@ export async function deleteChatAtomic(
 ): Promise<Chat | null> {
   if (!id) return null;
 
-  return withAtomicRetry(retries, async (backend) => {
-    const current = await backend.getChat(id);
+  return withAtomicRetry(retries, async () => {
+    const current = await idbStorage.getChat(id);
     if (!current) return null;
-    return await backend.deleteChat(id, current?._version);
+    return await idbStorage.deleteChat(id, current?._version);
   }, 'deleteChatAtomic');
 }
 
@@ -297,29 +251,5 @@ export async function deleteChatAtomic(
  * Subscribe to storage changes
  */
 export function subscribeChatStorage(listener: StorageListener): () => void {
-  getStorageBackend();
-  // Subscribe to both backends so subscribers keep receiving events after a
-  // runtime fallback from IndexedDB to localStorage (only the active backend
-  // actually emits events at any given time).
-  const unsubscribers = [
-    idbStorage.subscribeChatStorage(listener),
-    lsStorage.subscribeChatStorage(listener),
-  ];
-  return () => {
-    for (const unsubscribe of unsubscribers) {
-      try {
-        unsubscribe();
-      } catch {
-        // Ignore unsubscribe errors
-      }
-    }
-  };
-}
-
-/**
- * Get the current backend name (for debugging)
- */
-export function getBackendName(): 'indexeddb' | 'localstorage' {
-  const backend = getStorageBackend();
-  return backend === idbStorage ? 'indexeddb' : 'localstorage';
+  return idbStorage.subscribeChatStorage(listener);
 }

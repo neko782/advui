@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { tick, onMount, onDestroy } from 'svelte'
+  import { onMount, onDestroy } from 'svelte'
   import { IconMenu, IconEditSquare, IconClose, IconCheck, IconEdit, IconDelete, IconSettings, IconSearch, IconDescription, IconMoreVert, IconDownload, IconContentCopy } from '../icons'
   import ConfirmModal from './ConfirmModal.svelte'
   import EditModal from './EditModal.svelte'
@@ -37,7 +37,6 @@
   let confirmDeleteId = $state<string | null>(null)
   let editingId = $state<string | null>(null)
   let draftTitle = $state('')
-  let editingInput = $state<HTMLInputElement | null>(null)
   let suppressBlur = $state(false)
   let presetMenuOpen = $state(false)
   let presetMenuEl = $state<HTMLDivElement | null>(null)
@@ -67,40 +66,22 @@
   let scrollTop = $state(0)
   let containerHeight = $state(400)
 
-  function selectChat(id) {
+  function selectChat(id: string) {
     if (!id || editingId === id || confirmDeleteId === id) return
     props.onSelect?.(id)
   }
 
-  function requestDelete(id) {
-    confirmDeleteId = id
-    if (editingId === id) {
-      editingId = null
-      draftTitle = ''
-    }
-  }
-
-  function cancelDelete(id) {
+  function cancelDelete(id: string) {
     if (confirmDeleteId === id) confirmDeleteId = null
   }
 
-  async function confirmDelete(id) {
+  async function confirmDelete(id: string) {
     if (confirmDeleteId !== id) return
     confirmDeleteId = null
     await props.onDeleteChat?.(id)
   }
 
-  async function startEdit(chat) {
-    if (!chat) return
-    confirmDeleteId = null
-    editingId = chat.id
-    draftTitle = chat.title || 'New Chat'
-    await tick()
-    editingInput?.focus()
-    editingInput?.select?.()
-  }
-
-  function cancelEdit(id) {
+  function cancelEdit(id: string) {
     if (editingId === id) {
       editingId = null
       draftTitle = ''
@@ -108,7 +89,7 @@
     }
   }
 
-  async function applyEdit(id, originalTitle) {
+  async function applyEdit(id: string, originalTitle: string | undefined) {
     if (editingId !== id) return
     const trimmed = (draftTitle || '').trim()
     const nextTitle = trimmed || 'New Chat'
@@ -120,7 +101,7 @@
     }
   }
 
-  function handleInputBlur(id, originalTitle) {
+  function handleInputBlur(id: string, originalTitle: string | undefined) {
     if (suppressBlur) {
       suppressBlur = false
       return
@@ -136,7 +117,7 @@
     window.addEventListener('mouseup', () => { suppressBlur = false }, { once: true })
   }
 
-  function isGenerating(id) {
+  function isGenerating(id: string) {
     if (!id) return false
     try {
       const map = props.generatingMap
@@ -146,7 +127,7 @@
 
   function closePresetMenu() { presetMenuOpen = false }
 
-  function toggleChatMenu(chatId, event) {
+  function toggleChatMenu(chatId: string, event?: Event) {
     event?.stopPropagation()
     event?.preventDefault()
     chatMenuOpen = chatMenuOpen === chatId ? null : chatId
@@ -154,21 +135,21 @@
 
   function closeChatMenu() { chatMenuOpen = null }
 
-  function handleMenuEdit(chat, event) {
+  function handleMenuEdit(chat: ChatListItem, event?: Event) {
     event?.stopPropagation()
     closeChatMenu()
     editModalChat = chat
     editModalOpen = true
   }
 
-  function handleMenuDelete(chatId, event) {
+  function handleMenuDelete(chatId: string, event?: Event) {
     event?.stopPropagation()
     closeChatMenu()
     deleteModalChatId = chatId
     deleteModalOpen = true
   }
 
-  async function handleMenuExport(chatId, event) {
+  async function handleMenuExport(chatId: string, event?: Event) {
     event?.stopPropagation()
     closeChatMenu()
     try {
@@ -179,7 +160,7 @@
     }
   }
 
-  async function handleMenuDuplicate(chatId, event) {
+  async function handleMenuDuplicate(chatId: string, event?: Event) {
     event?.stopPropagation()
     closeChatMenu()
     try {
@@ -190,7 +171,7 @@
     }
   }
 
-  async function confirmEditModal(newTitle) {
+  async function confirmEditModal(newTitle: string) {
     if (!editModalChat) return
     const trimmed = (newTitle || '').trim()
     const nextTitle = trimmed || 'New Chat'
@@ -246,13 +227,13 @@
     presetMenuOpen = !presetMenuOpen
   }
 
-  function choosePreset(preset) {
+  function choosePreset(preset: Preset | null) {
     closePresetMenu()
     if (!preset) {
       props.onNewChat?.()
       return
     }
-    props.onNewChat?.({ presetId: preset.id })
+    props.onNewChat?.({ presetId: preset.id ?? undefined })
   }
 
   // Search functionality
@@ -421,16 +402,16 @@
   }
 
   onMount(() => {
-    function handlePointerDown(event) {
+    function handlePointerDown(event: PointerEvent) {
       if (presetMenuOpen) {
-        const target = event.target
+        const target = event.target as Element
         const inNewChatWrapper = target.closest('.new-chat-wrapper')
         if (!presetMenuEl?.contains(target) && !inNewChatWrapper) {
           presetMenuOpen = false
         }
       }
       if (chatMenuOpen) {
-        const target = event.target
+        const target = event.target as Element
         const chatMenuEl = target.closest('.chat-menu')
         const menuBtn = target.closest('.chat-menu-btn')
         if (!chatMenuEl && !menuBtn) {
@@ -438,7 +419,7 @@
         }
       }
     }
-    function handleKeydown(event) {
+    function handleKeydown(event: KeyboardEvent) {
       if (event.key === 'Escape') {
         if (presetMenuOpen) presetMenuOpen = false
         if (chatMenuOpen) chatMenuOpen = null
@@ -590,7 +571,6 @@
                     <div class="chat-main editing">
                       <input
                         class="chat-input"
-                        bind:this={editingInput}
                         value={draftTitle}
                         oninput={(event) => (draftTitle = event.currentTarget.value)}
                         onblur={() => handleInputBlur(c.id, c.title)}

@@ -3,7 +3,7 @@
 // Storage backends, caches, and export/import formats.
 // ============================================================================
 
-import type { Chat, ChatListItem } from './chat.js';
+import type { Chat } from './chat.js';
 import type { Character } from './tavern.js';
 
 // ============================================================================
@@ -50,16 +50,7 @@ export interface StorageChange {
 
 export type StorageListener = (change: StorageChange) => void;
 
-export interface StorageBackend {
-  getAllChats(): Promise<Chat[]>;
-  getChatListItems(): Promise<ChatListItem[]>;
-  getChat(id: string): Promise<Chat | null>;
-  putChat(chat: Chat): Promise<Chat>;
-  deleteChat(id: string, expectedVersion?: number): Promise<Chat | null>;
-  subscribeChatStorage(listener: StorageListener): () => void;
-  isIndexedDBAvailable?(): boolean;
-}
-
+/** Legacy localStorage chat store layout (migrated into IndexedDB). */
 export interface LocalStorageStore {
   version: number;
   byId: Record<string, Chat>;

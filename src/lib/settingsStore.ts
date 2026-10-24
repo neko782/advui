@@ -2,7 +2,6 @@
 import { toIntOrNull } from './utils/numbers.js';
 import { safeRead, safeWrite } from './utils/localStorageHelper.js';
 import {
-  DEFAULT_PRESET_FIELDS,
   makeDefaultPreset,
   ensurePresetList,
   deriveDefaultPreset
@@ -10,15 +9,15 @@ import {
 import type {
   Settings,
   Connection,
-  Preset,
   ApiMode,
   Keybinds,
-  DefaultChatSettings,
   MessageActionButton,
   MessageActionRole,
   MessageActionRoles,
   EditorActionButton,
   DefaultToolSettings,
+  MessageActionId,
+  EditorActionId,
 } from './types/index.js';
 import { DEFAULT_MESSAGE_ACTIONS, DEFAULT_EDITOR_ACTIONS, DEFAULT_TOOL_SETTINGS } from './constants/defaults.js';
 import { ensurePromptPresetList, ensurePersonaList, makeDefaultPromptPreset } from './tavern/promptPresets.js';
@@ -140,7 +139,7 @@ function normalizeMessageActions(raw: unknown): MessageActionButton[] {
   for (const item of raw) {
     if (!item || typeof item !== 'object') continue;
     const id = typeof (item as Record<string, unknown>).id === 'string' ? (item as Record<string, unknown>).id as string : '';
-    if (!VALID_ACTION_IDS.has(id) || seen.has(id)) continue;
+    if (!VALID_ACTION_IDS.has(id as MessageActionId) || seen.has(id)) continue;
     seen.add(id);
     const label = typeof (item as Record<string, unknown>).label === 'string' ? (item as Record<string, unknown>).label as string : getDefaultMessageAction(id).label;
     const enabled = typeof (item as Record<string, unknown>).enabled === 'boolean' ? (item as Record<string, unknown>).enabled as boolean : getDefaultMessageAction(id).enabled;
@@ -164,7 +163,7 @@ function normalizeEditorActions(raw: unknown): EditorActionButton[] {
   for (const item of raw) {
     if (!item || typeof item !== 'object') continue;
     const id = typeof (item as Record<string, unknown>).id === 'string' ? (item as Record<string, unknown>).id as string : '';
-    if (!VALID_EDITOR_IDS.has(id) || seen.has(id)) continue;
+    if (!VALID_EDITOR_IDS.has(id as EditorActionId) || seen.has(id)) continue;
     seen.add(id);
     const label = typeof (item as Record<string, unknown>).label === 'string' ? (item as Record<string, unknown>).label as string : DEFAULT_EDITOR_ACTIONS.find(a => a.id === id)!.label;
     const enabled = typeof (item as Record<string, unknown>).enabled === 'boolean' ? (item as Record<string, unknown>).enabled as boolean : true;
@@ -218,7 +217,7 @@ function attachCompatFields(out: Partial<Settings> & Record<string, unknown>): S
     ? candidatePresetId!
     : ensuredPresets[0]?.id || makeDefaultPreset(fallbackConnectionId).id;
   out.presets = ensuredPresets;
-  out.selectedPresetId = selectedPresetId;
+  out.selectedPresetId = selectedPresetId ?? undefined;
 
   const active = out.presets.find((p) => p.id === out.selectedPresetId) || out.presets[0] || makeDefaultPreset(fallbackConnectionId);
   out.defaultChat = {
@@ -387,7 +386,7 @@ export function loadSettings(): Settings {
       connections,
       selectedConnectionId,
       presets,
-      selectedPresetId,
+      selectedPresetId: selectedPresetId ?? undefined,
       debug,
       apiMode: mode,
       keybinds,
@@ -467,7 +466,7 @@ export function saveSettings(next: Partial<Settings>): Settings {
     connections,
     selectedConnectionId,
     presets,
-    selectedPresetId,
+    selectedPresetId: selectedPresetId ?? undefined,
     debug: !!next?.debug,
     apiMode: activeApiMode,
     keybinds,

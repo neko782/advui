@@ -232,7 +232,7 @@ const latexExtension = {
           type: 'inlineDollarLatex',
           raw: match[0],
           text: match[2],
-          displayMode: match[1].length === 2,
+          displayMode: (match[1] ?? '').length === 2,
         };
       },
       renderer(token: { text: string; displayMode: boolean }) {
@@ -408,7 +408,8 @@ function isRenderableToken(token: Token): boolean {
 
 function findLastRenderableTokenIndex(tokens: Token[]): number {
   for (let i = tokens.length - 1; i >= 0; i -= 1) {
-    if (isRenderableToken(tokens[i])) {
+    const token = tokens[i];
+    if (token && isRenderableToken(token)) {
       return i;
     }
   }
@@ -430,7 +431,7 @@ export function buildMarkdownBlocks(src: string, options: BuildMarkdownBlocksOpt
 
     for (let i = 0; i < tokens.length; i += 1) {
       const token = tokens[i];
-      if (!isRenderableToken(token)) {
+      if (!token || !isRenderableToken(token)) {
         continue;
       }
 
@@ -439,12 +440,13 @@ export function buildMarkdownBlocks(src: string, options: BuildMarkdownBlocksOpt
       const allowBlockHtml = !!options.allowInlineHtml && i !== lastRenderableIndex;
 
       if (token.type === 'code') {
-        const highlighted = highlightCodeBlock(token.text, token.lang || '');
+        const code = token as Tokens.Code;
+        const highlighted = highlightCodeBlock(code.text, code.lang || '');
         blocks.push({
           kind: 'code',
           key,
           codeHtml: highlighted.codeHtml,
-          codeText: token.text,
+          codeText: code.text,
           langLabel: highlighted.langLabel,
           langClass: highlighted.langClass,
         });
@@ -452,14 +454,15 @@ export function buildMarkdownBlocks(src: string, options: BuildMarkdownBlocksOpt
       }
 
       if (token.type === 'table') {
+        const table = token as Tokens.Table;
         blocks.push({
           kind: 'table',
           key,
-          header: token.header.map((cell) => ({
+          header: table.header.map((cell) => ({
             html: renderInlineTokens(cell.tokens, allowBlockHtml),
             align: cell.align,
           })),
-          rows: token.rows.map((row) => row.map((cell) => ({
+          rows: table.rows.map((row) => row.map((cell) => ({
             html: renderInlineTokens(cell.tokens, allowBlockHtml),
             align: cell.align,
           }))),

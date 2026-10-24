@@ -64,12 +64,12 @@
       if (!presets.length) presets = [makeDefaultPromptPreset()]
       selectedId = presets.some(p => p.id === props.selectedPromptPresetId)
         ? props.selectedPromptPresetId!
-        : presets[0].id
+        : presets[0]!.id
       personas = JSON.parse(JSON.stringify(props.personas || []))
       if (!personas.length) personas = [{ id: 'persona-default', name: 'User', description: '' }]
       selectedPersonaId = personas.some(p => p.id === props.selectedPersonaId)
         ? props.selectedPersonaId!
-        : personas[0].id!
+        : personas[0]!.id!
       connectionPresetId = props.tavernSelectedPresetId || (props.connectionPresets?.[0]?.id ?? '') || ''
       perChatPresets = !!props.tavernPerChatPresets
       avatarShape = props.avatarShape === 'rounded' || props.avatarShape === 'card' ? props.avatarShape : 'circle'
@@ -146,7 +146,7 @@
       if (index < 0 || target < 0 || target >= preset.blocks.length) return preset
       const blocks = preset.blocks.slice()
       const [moved] = blocks.splice(index, 1)
-      blocks.splice(target, 0, moved)
+      if (moved) blocks.splice(target, 0, moved)
       return { ...preset, blocks }
     })
   }

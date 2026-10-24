@@ -25,9 +25,9 @@
   ]
   let activeTab = $state<'general' | 'connection' | 'presets' | 'features'>('general')
 
-  function setTab(id) {
+  function setTab(id: string) {
     if (TABS.some(tab => tab.id === id)) {
-      activeTab = id
+      activeTab = id as typeof activeTab
     }
   }
 

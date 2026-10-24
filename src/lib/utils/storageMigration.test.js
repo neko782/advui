@@ -73,7 +73,7 @@ describe('Storage Migration', () => {
     expect(result).toHaveProperty('skipped')
   })
 
-  it('should not migrate if already completed', async () => {
+  it('has nothing to migrate when no legacy data remains', async () => {
     // Mark migration as completed
     localStorage.setItem(
       'storage.migration.completed.v1',
@@ -86,12 +86,12 @@ describe('Storage Migration', () => {
 
     const result = await migrateChatsToIndexedDB()
 
-    // Either IndexedDB not available or already completed
+    // Either IndexedDB not available or there is no legacy data left
     if (result.reason === 'IndexedDB not available') {
       expect(result.success).toBe(false)
     } else {
       expect(result.success).toBe(true)
-      expect(result.reason).toBe('Already completed')
+      expect(result.reason).toBe('No data to migrate')
     }
     expect(result.migrated).toBe(0)
   })

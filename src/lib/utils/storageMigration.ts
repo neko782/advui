@@ -1,9 +1,13 @@
-// Storage migration utilities
+// Migrates chats left in localStorage by older versions (which used it as
+// the primary store, and later as a fallback when IndexedDB failed) into
+// IndexedDB, which is now the only chat backend.
 import type { Chat } from '../types/index.js';
-import { updateChatAtomic, getBackendName } from '../storage.js';
+import { updateChatAtomic } from '../storage.js';
 
 const OLD_LS_KEY = 'advui.chats.store.v1';
 const MIGRATION_FLAG_KEY = 'storage.migration.completed.v1';
+// Written by the removed localStorage fallback; obsolete once migrated.
+const LEGACY_BACKEND_KEY = 'storage.backend.v1';
 
 interface LocalStorageStore {
   version: number;
@@ -89,10 +93,12 @@ export function getMigrationStatus(): MigrationStatus {
   const chats = getChatsFromLocalStorage();
   const indexedDBAvailable = isIndexedDBAvailable();
   
-  const completed = !!flag?.completed && !flag.stats?.failed;
+  // Any remaining legacy data needs migrating, even after an earlier
+  // successful run: the old fallback could write newer chats there later.
+  const completed = !!flag?.completed && !flag.stats?.failed && chats.length === 0;
   return {
     completed,
-    needsMigration: chats.length > 0 && !completed && indexedDBAvailable,
+    needsMigration: chats.length > 0 && indexedDBAvailable,
     chatsInLocalStorage: chats.length,
     indexedDBAvailable,
   };
@@ -119,28 +125,13 @@ export async function migrateChatsToIndexedDB(): Promise<MigrationResult> {
     return result;
   }
 
-  // The active backend must actually be IndexedDB. If storage has fallen back
-  // to localStorage, putChatAtomic would write to the SAME key as OLD_LS_KEY
-  // and removing it afterwards would destroy all chats.
-  if (getBackendName() !== 'indexeddb') {
-    result.success = false;
-    result.reason = 'Active storage backend is not IndexedDB';
-    return result;
-  }
-
-  // Check if already completed
-  const flag = getMigrationFlag();
-  if (flag?.completed && !flag.stats?.failed) {
-    result.reason = 'Already completed';
-    return result;
-  }
-
   // Check if there's data in localStorage
   let oldData: LocalStorageStore | null = null;
   try {
     const raw = localStorage.getItem(OLD_LS_KEY);
     if (!raw) {
       result.reason = 'No data to migrate';
+      try { localStorage.removeItem(LEGACY_BACKEND_KEY); } catch { /* ignore */ }
       setMigrationFlag({ migrated: 0, failed: 0, skipped: 0 });
       return result;
     }
@@ -154,6 +145,10 @@ export async function migrateChatsToIndexedDB(): Promise<MigrationResult> {
 
   if (!oldData || !oldData.byId || Object.keys(oldData.byId).length === 0) {
     result.reason = 'No chats to migrate';
+    try {
+      localStorage.removeItem(OLD_LS_KEY);
+      localStorage.removeItem(LEGACY_BACKEND_KEY);
+    } catch { /* ignore */ }
     setMigrationFlag({ migrated: 0, failed: 0, skipped: 0 });
     return result;
   }
@@ -185,12 +180,6 @@ export async function migrateChatsToIndexedDB(): Promise<MigrationResult> {
     return result;
   }
 
-  if (getBackendName() !== 'indexeddb') {
-    result.success = false;
-    result.reason = 'Storage backend changed during migration';
-    return result;
-  }
-
   // Mark migration as complete
   setMigrationFlag({
     migrated: result.migrated,
@@ -198,15 +187,13 @@ export async function migrateChatsToIndexedDB(): Promise<MigrationResult> {
     skipped: result.skipped,
   });
 
-  // Clear localStorage after successful migration, but only if the backend is
-  // still IndexedDB (a mid-migration fallback would have written the chats to
-  // OLD_LS_KEY itself, and removing it would be total data loss).
-  if (result.migrated + result.skipped > 0 && result.failed === 0 && getBackendName() === 'indexeddb') {
-    try {
-      localStorage.removeItem(OLD_LS_KEY);
-    } catch {
-      // Ignore cleanup errors
-    }
+  // Every legacy chat is now in IndexedDB (migrated, or already present with
+  // an equal or newer copy), so the legacy store can be removed.
+  try {
+    localStorage.removeItem(OLD_LS_KEY);
+    localStorage.removeItem(LEGACY_BACKEND_KEY);
+  } catch {
+    // Ignore cleanup errors
   }
 
   result.reason = `Migrated ${result.migrated} chats`;

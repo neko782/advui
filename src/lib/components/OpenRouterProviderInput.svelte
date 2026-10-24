@@ -18,7 +18,7 @@
       })
       .then(result => {
         if (controller.signal.aborted || !Array.isArray(result?.data)) return
-        providerOptions = result.data
+        providerOptions = (result.data as Array<{ slug: string; name: string }>)
           .filter(provider => typeof provider?.slug === 'string' && typeof provider?.name === 'string')
           .sort((a, b) => a.name.localeCompare(b.name))
       })

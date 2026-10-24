@@ -2,7 +2,6 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 
 const storageMock = vi.hoisted(() => ({
   updateChatAtomic: vi.fn(),
-  getBackendName: vi.fn(() => 'indexeddb'),
 }))
 
 vi.mock('../storage.js', () => storageMock)
@@ -40,34 +39,21 @@ describe('migrateChatsToIndexedDB safety guards', () => {
     vi.clearAllMocks()
     localStorage.clear()
     vi.stubGlobal('indexedDB', {})
-    storageMock.getBackendName.mockReturnValue('indexeddb')
     storageMock.updateChatAtomic.mockImplementation(async (_id, updater) => updater(null))
     localStorage.setItem(OLD_LS_KEY, JSON.stringify(mockChatData))
   })
 
-  it('refuses to migrate when the active backend is localStorage', async () => {
-    storageMock.getBackendName.mockReturnValue('localstorage')
+  it('migrates legacy data written after an earlier completed migration', async () => {
+    // Older builds could fall back to localStorage after migrating, leaving
+    // newer chats there. A completed flag must not hide them.
+    localStorage.setItem(MIGRATION_FLAG_KEY, JSON.stringify({ completed: true, stats: { migrated: 1, failed: 0, skipped: 0 } }))
+    localStorage.setItem('storage.backend.v1', 'localstorage')
 
     const result = await migrateChatsToIndexedDB()
 
-    expect(result.success).toBe(false)
-    expect(result.reason).toBe('Active storage backend is not IndexedDB')
-    expect(storageMock.updateChatAtomic).not.toHaveBeenCalled()
-    // The old data must be preserved and the migration must stay retryable
-    expect(localStorage.getItem(OLD_LS_KEY)).not.toBeNull()
-    expect(localStorage.getItem(MIGRATION_FLAG_KEY)).toBeNull()
-  })
-
-  it('does not remove OLD_LS_KEY when the backend fell back mid-migration', async () => {
-    storageMock.getBackendName
-      .mockReturnValueOnce('indexeddb') // pre-migration check
-      .mockReturnValue('localstorage') // post-migration check
-
-    const result = await migrateChatsToIndexedDB()
-
-    expect(result.migrated).toBe(2)
-    // Chats were written to OLD_LS_KEY by the fallback backend, so it must stay
-    expect(localStorage.getItem(OLD_LS_KEY)).not.toBeNull()
+    expect(result).toMatchObject({ success: true, migrated: 2 })
+    expect(localStorage.getItem(OLD_LS_KEY)).toBeNull()
+    expect(localStorage.getItem('storage.backend.v1')).toBeNull()
   })
 
   it('does not mark migration as completed when every chat fails', async () => {

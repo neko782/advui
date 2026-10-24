@@ -37,6 +37,8 @@
   }
 
   const props: Props = $props()
+  const branchCount = $derived(props.branchesLength ?? 0)
+  const branchIndex = $derived(props.branchIndex ?? 0)
   // Ensure message reference stays reactive with Svelte 5 runes
   const m = $derived(props.message)
 
@@ -122,13 +124,13 @@
       </button>
     {/if}
   {:else}
-    {#if props.branchesLength > 1}
+    {#if branchCount > 1}
       <span class="variants">
-        <button class="action-btn" onclick={() => props.onChangeVariant?.(-1)} aria-label="Previous branch" title="Previous" disabled={props.locked || m.typing || props.branchIndex <= 0}>
+        <button class="action-btn" onclick={() => props.onChangeVariant?.(-1)} aria-label="Previous branch" title="Previous" disabled={props.locked || m.typing || branchIndex <= 0}>
           <IconChevronLeft style="font-size: 20px;" />
         </button>
-        <span class="variant-counter" aria-live="polite">{(props.branchIndex || 0) + 1}/{props.branchesLength}</span>
-        <button class="action-btn" onclick={() => props.onChangeVariant?.(1)} aria-label="Next branch" title="Next" disabled={props.locked || m.typing || props.branchIndex >= (props.branchesLength - 1)}>
+        <span class="variant-counter" aria-live="polite">{branchIndex + 1}/{branchCount}</span>
+        <button class="action-btn" onclick={() => props.onChangeVariant?.(1)} aria-label="Next branch" title="Next" disabled={props.locked || m.typing || branchIndex >= (branchCount - 1)}>
           <IconChevronRight style="font-size: 20px;" />
         </button>
       </span>
@@ -140,11 +142,11 @@
           <IconAutorenew style="font-size: 20px;" />
         </button>
       {:else if action.render === 'regenerate-following'}
-        <button class="action-btn" onclick={() => props.onRefreshAssistant?.(props.nextAssistantId)} aria-label="Regenerate following response" title="Regenerate following response" disabled={props.locked || props.nextAssistantTyping}>
+        <button class="action-btn" onclick={() => { if (props.nextAssistantId != null) props.onRefreshAssistant?.(props.nextAssistantId) }} aria-label="Regenerate following response" title="Regenerate following response" disabled={props.locked || props.nextAssistantTyping}>
           <IconAutorenew style="font-size: 20px;" />
         </button>
       {:else if action.render === 'regenerate-after-user'}
-        <button class="action-btn" onclick={() => props.onRefreshAfterUserIndex?.(props.index)} aria-label="Generate following response" title="Generate following response" disabled={props.locked}>
+        <button class="action-btn" onclick={() => { if (props.index != null) props.onRefreshAfterUserIndex?.(props.index) }} aria-label="Generate following response" title="Generate following response" disabled={props.locked}>
           <IconAutorenew style="font-size: 20px;" />
         </button>
       {:else if action.render === 'copy'}

@@ -21,7 +21,6 @@ import type {
   CodeInterpreterOptions,
   ShellOptions,
   ImageGenerationOptions,
-  ContainerNetworkPolicy,
 } from '../../types/index.js';
 
 /**
@@ -83,7 +82,7 @@ export function validateTypingVariantDetailed(
     if (idx >= 0) {
       foundNode = node;
       foundVariantIndex = idx;
-      foundVariant = node.variants[idx];
+      foundVariant = node.variants[idx] ?? null;
       break;
     }
   }
@@ -163,7 +162,6 @@ export function createStreamingGuard(
   onInvalidate?: (reason: string) => void
 ): (update: () => void) => boolean {
   let invalidated = false;
-  let lastReason = '';
 
   return (update: () => void): boolean => {
     if (invalidated) {
@@ -173,7 +171,6 @@ export function createStreamingGuard(
     const result = validateTypingVariantDetailed(getNodes(), getRootId(), typingVariantId);
     if (!result.visible) {
       invalidated = true;
-      lastReason = result.reason;
       onInvalidate?.(result.reason);
       return false;
     }

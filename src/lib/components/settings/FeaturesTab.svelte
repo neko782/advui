@@ -23,12 +23,12 @@
   const editorActionsForRender = () => draft.editorActions
   const defaultToolsForRender = () => draft.defaultTools
 
-  const toggleMessageAction = (id) => draft.toggleMessageAction(id)
-  const toggleMessageActionRole = (id, role) => draft.toggleMessageActionRole(id, role)
+  const toggleMessageAction = (id: string) => draft.toggleMessageAction(id)
+  const toggleMessageActionRole = (id: string, role: MessageActionRole) => draft.toggleMessageActionRole(id, role)
   const resetMessageActions = () => draft.resetMessageActions()
-  const toggleEditorAction = (id) => draft.toggleEditorAction(id)
+  const toggleEditorAction = (id: string) => draft.toggleEditorAction(id)
   const resetEditorActions = () => draft.resetEditorActions()
-  const updateDefaultTool = (key, value) => draft.updateDefaultTool(key, value)
+  const updateDefaultTool = (...args: Parameters<SettingsDraft['updateDefaultTool']>) => draft.updateDefaultTool(...args)
 
   // Message actions drag state
   let draggedActionId = $state<string | null>(null)
@@ -75,7 +75,7 @@
   function handleActionTouchMove(e: TouchEvent) {
     if (!touchActionDragId || !touchActionListRef) return
     e.preventDefault()
-    const touchY = e.touches[0].clientY
+    const touchY = e.touches[0]?.clientY ?? 0
     const items = touchActionListRef.querySelectorAll('.ui-list-item')
     for (const item of items) {
       const id = item.getAttribute('data-id')

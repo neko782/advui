@@ -1,6 +1,6 @@
 // Graph validation and sanitization
 import { validateTree, enforceUniqueParents, enforceUniqueParentsWithInfo, normalizeNodesActive, validateRootId } from '../../branching.js';
-import { BUG_NOTICE, DEBUG_AUTOFIX_NOTICE } from '../../constants/index.js';
+import { BUG_NOTICE } from '../../constants/index.js';
 import type { ChatNode, SanitizedGraphResult } from '../../types/index.js';
 
 export { validateTree, enforceUniqueParents, enforceUniqueParentsWithInfo };
