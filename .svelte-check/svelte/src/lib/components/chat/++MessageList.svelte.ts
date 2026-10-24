@@ -1,0 +1,273 @@
+///<reference types="svelte" />
+;
+import MessageItem from './MessageItem.svelte'
+import { IconAdd } from '../../icons'
+import type { VisibleMessage, MessageRole, MessageActionButton, EditorActionButton } from '../../types'
+import type { Character } from '../../types/tavern';
+;
+
+  interface Props {
+    items?: VisibleMessage[]
+    /** Tavern: character bound to this chat (adds avatar + name to messages). */
+    character?: Character | null
+    /** Tavern: active persona name (labels user messages). */
+    personaName?: string
+    /** Tavern: avatar shape ('circle' default, or 'rounded' square). */
+    avatarShape?: 'circle' | 'rounded' | 'card'
+    imageCache?: Record<string, { data: string; mimeType?: string; name?: string }>
+    chatId?: string
+    notice?: string
+    total?: number
+    locked?: boolean
+    debug?: boolean
+    editingId?: number | null
+    editingText?: string
+    insertedMessageId?: number | null
+    allowInlineHtml?: boolean
+    renderLatex?: boolean
+    messageActions?: MessageActionButton[]
+    editorActions?: EditorActionButton[]
+    disableRoleSwitching?: boolean
+    showInsertButtons?: boolean
+    followingMap?: Record<number, { has: boolean; id?: number | null; typing?: boolean }>
+    onDismissNotice?: () => void
+    onSetRole?: (id: number, role: MessageRole) => void
+    onEditInput?: (text: string) => void
+    onEditKeydown?: (e: KeyboardEvent) => void
+    onApplyEditSend?: () => void
+    onApplyEditBranch?: () => void
+    onApplyEditReplace?: () => void
+    onCancelEdit?: () => void
+    onChangeVariant?: (id: number, delta: number) => void
+    onRefreshAssistant?: (id: number) => void
+    onRefreshAfterUserIndex?: (index: number) => void
+    onCopy?: (text: string) => void
+    onDelete?: (id: number) => void
+    onEdit?: (id: number) => void
+    onMoveDown?: (id: number) => void
+    onMoveUp?: (id: number) => void
+    onFork?: (id: number) => void
+    onDeleteInserted?: () => void
+    onDebugFuckBranch?: (id: number) => void
+    onDebugMessageDeath?: (id: number) => void
+    onInsertBetween?: (afterIndex: number) => void
+  };function $$render() {
+
+  
+  
+  
+  
+
+
+  const props: Props = $props()
+  
+  // Virtual scrolling state
+  let listEl: HTMLDivElement | undefined = $state()
+  let scrollTop = $state(0)
+  let containerHeight = $state(600)
+  
+  const BUFFER_COUNT = 3
+
+  // Height cache - persists across renders, only measures once per message
+  let heightCache = $state<Record<number, number>>({})
+  let heightVersion = $state(0)
+
+  // Check if all items have been measured
+  const allItemsMeasured = $derived.by(() => {
+    void heightVersion
+    const items = props.items ?? []
+    if (items.length === 0) return true
+    for (const item of items) {
+      if (!heightCache[item.m.id]) return false
+    }
+    return true
+  })
+
+  function getItemHeight(index: number): number {
+    void heightVersion
+    const id = props.items?.[index]?.m?.id
+    if (id !== undefined && heightCache[id]) {
+      return heightCache[id]
+    }
+    return 0 // Should not happen when virtualization is enabled
+  }
+
+  // Pre-compute offsets for all items (only used when virtualized)
+  const itemOffsets = $derived.by(() => {
+    void heightVersion
+    const items = props.items ?? []
+    const offsets: number[] = []
+    let offset = 0
+    for (let i = 0; i < items.length; i++) {
+      offsets.push(offset)
+      offset += getItemHeight(i)
+    }
+    return offsets
+  })
+
+  const totalHeight = $derived.by(() => {
+    void heightVersion
+    const items = props.items ?? []
+    if (items.length === 0) return 0
+    const lastOffset = itemOffsets[items.length - 1] ?? 0
+    return lastOffset + getItemHeight(items.length - 1)
+  })
+
+  const visibleRange = $derived.by(() => {
+    void heightVersion
+    const items = props.items ?? []
+    if (items.length === 0) return { startIndex: 0, endIndex: 0 }
+    
+    // If not all items measured, show all items (no virtualization)
+    if (!allItemsMeasured) {
+      return { startIndex: 0, endIndex: items.length }
+    }
+    
+    // Binary search for start index
+    let startIndex = 0
+    let lo = 0, hi = items.length - 1
+    while (lo <= hi) {
+      const mid = (lo + hi) >>> 1
+      const offset = itemOffsets[mid] ?? 0
+      const height = getItemHeight(mid)
+      if (offset + height < scrollTop) {
+        lo = mid + 1
+      } else {
+        hi = mid - 1
+      }
+    }
+    startIndex = Math.max(0, lo - BUFFER_COUNT)
+
+    // Find end index - use measured heights for buffer calculation
+    const viewEnd = scrollTop + containerHeight
+    let endIndex = startIndex
+    for (let i = startIndex; i < items.length; i++) {
+      endIndex = i + 1
+      const offset = itemOffsets[i] ?? 0
+      const height = getItemHeight(i)
+      if (offset > viewEnd + height * BUFFER_COUNT) break
+    }
+    
+    return { startIndex, endIndex: Math.min(items.length, endIndex) }
+  })
+
+  const visibleItems = $derived.by(() => {
+    const items = props.items ?? []
+    const { startIndex, endIndex } = visibleRange
+    const result: { vm: VisibleMessage; index: number; offsetY: number }[] = []
+    for (let i = startIndex; i < endIndex; i++) {
+      const vm = items[i]
+      if (vm) {
+        // When not virtualized (allItemsMeasured = false), offsetY is not used
+        result.push({ vm, index: i, offsetY: allItemsMeasured ? (itemOffsets[i] ?? 0) : 0 })
+      }
+    }
+    return result
+  })
+
+  function handleScroll() {
+    if (listEl) {
+      scrollTop = listEl.scrollTop
+    }
+  }
+
+  function measureItem(node: HTMLElement, id: number) {
+    const measure = () => {
+      const h = node.offsetHeight
+      if (h > 0 && heightCache[id] !== h) {
+        heightCache[id] = h
+        heightVersion++
+      }
+    }
+    
+    // Initial measure
+    requestAnimationFrame(measure)
+    
+    // Watch for size changes (e.g., video/image loading)
+    const ro = new ResizeObserver(() => {
+      measure()
+    })
+    ro.observe(node)
+    
+    return {
+      destroy() {
+        ro.disconnect()
+      }
+    }
+  }
+
+  // Track container size
+  $effect(() => {
+    if (!listEl) return
+    containerHeight = listEl.clientHeight
+    let lastWidth = listEl.clientWidth
+    const ro = new ResizeObserver((entries) => {
+      containerHeight = entries[0]?.contentRect.height ?? 600
+      const width = entries[0]?.contentRect.width ?? lastWidth
+      if (width !== lastWidth) {
+        lastWidth = width
+        // Cached heights are stale at a new width; clear so items re-measure.
+        heightCache = {}
+        heightVersion++
+      }
+    })
+    ro.observe(listEl)
+    return () => ro.disconnect()
+  })
+
+  // Prune cache entries for message ids no longer present
+  $effect(() => {
+    const ids = new Set((props.items ?? []).map((item) => item.m.id))
+    const stale = Object.keys(heightCache).filter((key) => !ids.has(Number(key)))
+    if (stale.length) {
+      for (const key of stale) delete heightCache[Number(key)]
+      heightVersion++
+    }
+  })
+
+  // Clear height cache when chat changes
+  let lastChatId: string | undefined
+  $effect(() => {
+    if (props.chatId !== lastChatId) {
+      lastChatId = props.chatId
+      heightCache = {}
+    }
+  })
+
+   function scrollToBottom(): void {
+    if (listEl) {
+      listEl.scrollTo({ top: listEl.scrollHeight, behavior: 'instant' })
+    }
+  }
+;
+async () => {
+
+ { const $$_div0 = svelteHTML.createElement("div", {    "class":`messages`,"onscroll":handleScroll,});listEl = $$_div0;
+   { svelteHTML.createElement("div", {   "class":`virtual-spacer`,"style":allItemsMeasured ? `height: ${totalHeight}px;` : '',});
+       for(let { vm, index: idx, offsetY } of __sveltets_2_ensureArray(visibleItems)){vm.m.id;
+       {const $$action_0 = __sveltets_2_ensureAction(measureItem(svelteHTML.mapElementTag('div'),(vm.m.id)));{ svelteHTML.createElement("div", __sveltets_2_union($$action_0), {       "class":allItemsMeasured ? 'virtual-item' : 'flow-item',"style":allItemsMeasured ? `transform: translateY(${offsetY}px);` : '',});
+        if(idx > 0 && props.showInsertButtons !== false){
+           { svelteHTML.createElement("div", {              "class":`insert-zone`,"role":`button`,"tabindex":props.locked ? -1 : 0,"aria-label":`Insert message here`,"aria-disabled":props.locked,"onclick":() => !props.locked && props.onInsertBetween?.(idx - 1),"onkeydown":(e) => { if (!props.locked && (e.key === 'Enter' || e.key === ' ')) { if (e.key === ' ') e.preventDefault(); props.onInsertBetween?.(idx - 1) } },});props.locked;
+             { svelteHTML.createElement("div", { "class":`insert-line`,}); }
+             { svelteHTML.createElement("span", {   "class":`insert-btn`,"aria-hidden":`true`,}); { const $$_ddAnocI5C = __sveltets_2_ensureComponent(IconAdd); new $$_ddAnocI5C({ target: __sveltets_2_any(), props: {  "style":`font-size: 18px;`,}});} }
+             { svelteHTML.createElement("div", { "class":`insert-line`,}); }
+           }
+        }
+         { const $$_metIegasseM3C = __sveltets_2_ensureComponent(MessageItem); new $$_metIegasseM3C({ target: __sveltets_2_any(), props: {                                                                                     "vm":vm,"character":props.character,"personaName":props.personaName,"avatarShape":props.avatarShape,"imageCache":props.imageCache,"total":props.total,"visibleCount":props.items?.length || 0,"locked":props.locked,"debug":props.debug,"editingId":props.editingId,"editingText":props.editingText,"hasFollowingAssistant":props.followingMap?.[vm.i]?.has,"nextAssistantId":props.followingMap?.[vm.i]?.id ?? undefined,"nextAssistantTyping":props.followingMap?.[vm.i]?.typing,"parentId":(vm?.i > 0 ? props.items?.[vm.i - 1]?.m?.id : null) ?? null,"branchIndex":(typeof vm?.variantIndex === 'number') ? vm.variantIndex : 0,"branchesLength":(typeof vm?.variantsLength === 'number') ? vm.variantsLength : 1,"allowInlineHtml":props.allowInlineHtml,"renderLatex":props.renderLatex,"messageActions":props.messageActions,"editorActions":props.editorActions,"isInsertedMessage":props.insertedMessageId != null && vm.m.id === props.insertedMessageId,"disableRoleSwitching":props.disableRoleSwitching,"onSetRole":props.onSetRole,"onEditInput":props.onEditInput,"onEditKeydown":props.onEditKeydown,"onApplyEditSend":props.onApplyEditSend,"onApplyEditBranch":props.onApplyEditBranch,"onApplyEditReplace":props.onApplyEditReplace,"onCancelEdit":props.onCancelEdit,"onChangeVariant":props.onChangeVariant,"onRefreshAssistant":props.onRefreshAssistant,"onRefreshAfterUserIndex":props.onRefreshAfterUserIndex,"onCopy":props.onCopy,"onDelete":props.onDelete,"onEdit":props.onEdit,"onMoveDown":props.onMoveDown,"onMoveUp":props.onMoveUp,"onFork":props.onFork,"onDeleteInserted":props.onDeleteInserted,"onDebugFuckBranch":props.onDebugFuckBranch,"onDebugMessageDeath":props.onDebugMessageDeath,}});}
+       }}
+    }
+   }
+  if(props.notice){
+     { svelteHTML.createElement("div", {     "class":`notice error`,"role":`status`,"aria-live":`polite`,});
+       { svelteHTML.createElement("span", { "class":`notice-text`,});props.notice; }
+       { svelteHTML.createElement("button", {     "class":`notice-close`,"aria-label":`Dismiss notice`,"onclick":() => props.onDismissNotice?.(),});  }
+     }
+  }
+ }
+
+
+};
+return { props: {} as any as Props, exports: {} as any as { scrollToBottom: typeof scrollToBottom }, bindings: __sveltets_$$bindings(''), slots: {}, events: {} }}
+const MessageList__SvelteComponent_ = __sveltets_2_fn_component($$render());
+/*Ωignore_startΩ*/type MessageList__SvelteComponent_ = ReturnType<typeof MessageList__SvelteComponent_>;
+/*Ωignore_endΩ*/export default MessageList__SvelteComponent_;

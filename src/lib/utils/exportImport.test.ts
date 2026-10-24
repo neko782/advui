@@ -93,7 +93,7 @@ it.each([false, true])('restores Tavern characters and associations from a TAR b
   }
   await exportAllData({ includeMedia: true });
   const buffer = streaming
-    ? await new NodeBlob(chunks).arrayBuffer()
+    ? await new NodeBlob(chunks as ConstructorParameters<typeof NodeBlob>[0]).arrayBuffer()
     : await downloaded.arrayBuffer();
   stores.chats.clear(); stores.characters.clear(); stores.images.clear();
   const result = await importAllData({ arrayBuffer: async () => buffer } as File);

@@ -29,8 +29,7 @@
     "types": ["vitest/globals"],
     "paths": {
       "$lib/*": ["./src/lib/*"]
-    },
-    "baseUrl": "."
+    }
   },
   "include": [
     "src/**/*.ts",
