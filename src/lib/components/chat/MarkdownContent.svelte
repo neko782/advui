@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onDestroy } from 'svelte'
-  import 'katex/dist/katex.min.css'
+  import { loadedFeatures, loadFeature } from '../../features.svelte'
   import { copyText } from '../../utils/clipboard'
   import { buildMarkdownBlocks, type MarkdownCodeBlock } from '../../utils/markdown'
 
@@ -16,10 +16,15 @@
   let copyFeedback = $state<{ key: string; ok: boolean } | null>(null)
   let copyResetTimer: ReturnType<typeof setTimeout> | null = null
 
+  $effect(() => {
+    if (props.renderLatex) void loadFeature('latex').catch(() => {})
+  })
+
   const blocks = $derived(
     buildMarkdownBlocks(props.content ?? '', {
       allowInlineHtml: props.allowInlineHtml,
       renderLatex: props.renderLatex,
+      latexRenderer: props.renderLatex ? loadedFeatures.latex?.renderLatex : undefined,
       streaming: props.streaming,
     })
   )

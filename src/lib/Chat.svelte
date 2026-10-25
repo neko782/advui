@@ -188,7 +188,7 @@
     editingText={chat.editingText}
     insertedMessageId={chat.insertedMessageId}
     allowInlineHtml={settings?.allowInlineHtml}
-    renderLatex={settings?.renderLatex !== false}
+    renderLatex={settings?.renderLatex === true}
     messageActions={settings?.messageActions}
     editorActions={settings?.editorActions}
     disableRoleSwitching={settings?.disableRoleSwitching}

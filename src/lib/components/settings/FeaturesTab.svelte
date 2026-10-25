@@ -147,7 +147,7 @@
               <label class="ui-switch" title="Render LaTeX math">
                 <input
                   type="checkbox"
-                  checked={local.renderLatex !== false}
+                  checked={local.renderLatex === true}
                   onchange={(event) => {
                     local.renderLatex = !!event.currentTarget.checked
                     persistSettings()

@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { buildMarkdownBlocks, renderMarkdown } from './markdown.js'
+import { renderLatex as latexRenderer } from './latex'
+const mathOptions = { renderLatex: true, latexRenderer }
 
 describe('renderMarkdown link sanitization', () => {
   it('blocks javascript URLs', () => {
@@ -39,23 +41,29 @@ describe('renderMarkdown link sanitization', () => {
 })
 
 describe('renderMarkdown LaTeX', () => {
+  it('keeps math as text by default and while its renderer is unavailable', () => {
+    expect(renderMarkdown('Default $x^2$')).not.toContain('class="katex"')
+    expect(renderMarkdown('Pending $x^2$', { renderLatex: true })).not.toContain('class="katex"')
+    expect(renderMarkdown('Pending $x^2$', mathOptions)).toContain('class="katex"')
+  })
+
   it('renders inline math', () => {
-    const html = renderMarkdown('Euler wrote $e^{i\\pi} + 1 = 0$.')
+    const html = renderMarkdown('Euler wrote $e^{i\\pi} + 1 = 0$.', mathOptions)
 
     expect(html).toContain('class="katex"')
     expect(html).toContain('e^{i\\pi} + 1 = 0')
   })
 
   it('renders display math', () => {
-    const html = renderMarkdown('$$\n\\int_0^1 x^2 \\, dx = \\frac{1}{3}\n$$')
+    const html = renderMarkdown('$$\n\\int_0^1 x^2 \\, dx = \\frac{1}{3}\n$$', mathOptions)
 
     expect(html).toContain('class="katex-display"')
     expect(html).toContain('\\int_0^1 x^2 \\, dx = \\frac{1}{3}')
   })
 
   it('renders backslash-delimited inline and display math', () => {
-    const inline = renderMarkdown('Euler wrote \\(e^{i\\pi} + 1 = 0\\).')
-    const display = renderMarkdown('Result: \\[\\sum_{n=1}^{\\infty} \\frac{1}{n^2}\\]')
+    const inline = renderMarkdown('Euler wrote \\(e^{i\\pi} + 1 = 0\\).', mathOptions)
+    const display = renderMarkdown('Result: \\[\\sum_{n=1}^{\\infty} \\frac{1}{n^2}\\]', mathOptions)
 
     expect(inline).toContain('class="katex"')
     expect(inline).not.toContain('class="katex-display"')

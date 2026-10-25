@@ -2,6 +2,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { mount, unmount, flushSync } from 'svelte'
 import SettingsModal from './SettingsModal.svelte'
+import { loadFeature } from './features.svelte'
 
 const localStorageMock = (() => {
   let store: Record<string, string> = {}
@@ -20,6 +21,21 @@ describe('SettingsModal', () => {
   beforeEach(() => {
     localStorage.clear()
     document.body.innerHTML = ''
+  })
+
+  it('opens preloaded tabs synchronously without a loading state and defaults LaTeX off', async () => {
+    await Promise.all([loadFeature('general'), loadFeature('features')])
+    const component = mount(SettingsModal, { target: document.body, props: { open: true } })
+    try {
+      flushSync()
+      expect(document.querySelector('.developer-group')).toBeTruthy()
+      document.getElementById('settings-tab-features')!.click()
+      flushSync()
+      const latex = document.querySelector<HTMLInputElement>('[aria-label="Render LaTeX math"]')
+      expect(latex).toBeTruthy()
+      expect(latex!.checked).toBe(false)
+      expect(document.querySelector('.ui-modal-scroller [role="status"]')).toBeNull()
+    } finally { await unmount(component) }
   })
 
   it('renders when open and calls onClose from the close button', async () => {

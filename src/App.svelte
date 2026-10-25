@@ -4,6 +4,7 @@
   import { loadAll, getChatListItems, createChat, setSelected, deleteChat, renameChat, duplicateChat, toChatListItem, unlockAllChats } from './lib/chatsStore'
   import { loadSettings } from './lib/settingsStore'
   import { settingsStore, generationRegistry } from './lib/stores/appState.svelte'
+  import { feature, loadFeature, backgroundFeatures, preloadFeatures } from './lib/features.svelte'
   import { initTheme } from './lib/themeStore'
   import { getAllCharacters, putCharacter, deleteCharacter } from './lib/tavern/charactersStore'
   import { probeStorage } from './lib/storage'
@@ -155,7 +156,7 @@
     }
   }
 
-  import { onMount } from 'svelte'
+  import { onMount, untrack } from 'svelte'
   import { migrateChatsToIndexedDB } from './lib/utils/storageMigration'
 
   async function startStorage() {
@@ -185,6 +186,13 @@
       storageState = 'unavailable'
     }
   }
+
+  $effect(() => {
+    if (storageState !== 'ready') return
+    const tavern = mode === 'tavern' || characters.length > 0 || tavernChats.length > 0
+    const keys = backgroundFeatures(settingsStore.current, tavern)
+    return untrack(() => preloadFeatures(keys))
+  })
 
   function loadModePref(): 'chat' | 'tavern' {
     try {
@@ -381,7 +389,7 @@
   }
 
   async function onImportCharacterFiles(files: FileList | File[]) {
-    const { parseCharacterFile } = await import('./lib/tavern/characterCard')
+    const { parseCharacterFile } = await loadFeature('characterCard')
     const list = Array.from(files || [])
     const errors: string[] = []
     for (const file of list) {
@@ -397,7 +405,7 @@
   }
 
   async function onNewCharacter() {
-    const { makeBlankCharacter } = await import('./lib/tavern/characterCard')
+    const { makeBlankCharacter } = await loadFeature('characterCard')
     characterEditorTarget = makeBlankCharacter()
     characterEditorRequested = true
     characterEditorOpen = true
@@ -440,7 +448,7 @@
   async function onNewTavernChat(characterId: string) {
     const character = characters.find(c => c.id === characterId)
     if (!character) return
-    const { createCharacterChat } = await import('./lib/tavern/tavernChat')
+    const { createCharacterChat } = await loadFeature('tavernChat')
     const created = await createCharacterChat(character, settingsStore.current)
     if (selectedId) previousSelectedId = selectedId
     selectedId = created.id
@@ -504,7 +512,7 @@
       onSwitchMode={switchMode}
     />
   {:else}
-    {#await import('./lib/components/tavern/TavernSidebar.svelte')}
+    {#await feature('tavernSidebar')}
       <p class="feature-load-notice" role="status">Loading…</p>
     {:then { default: TavernSidebar }}
       <TavernSidebar
@@ -558,7 +566,7 @@
   </div>
   <div class="app-fade"></div>
   {#if settingsRequested}
-    {#await import('./lib/SettingsModal.svelte')}
+    {#await feature('settings')}
       <p class="feature-load-notice" role="status">Loading…</p>
     {:then { default: SettingsModal }}
       <SettingsModal
@@ -571,7 +579,7 @@
     {/await}
   {/if}
   {#if tavernSettingsRequested}
-    {#await import('./lib/components/tavern/TavernSettingsModal.svelte')}
+    {#await feature('tavernSettings')}
       <p class="feature-load-notice" role="status">Loading…</p>
     {:then { default: TavernSettingsModal }}
       <TavernSettingsModal
@@ -592,7 +600,7 @@
     {/await}
   {/if}
   {#if characterEditorRequested}
-    {#await import('./lib/components/tavern/CharacterEditorModal.svelte')}
+    {#await feature('characterEditor')}
       <p class="feature-load-notice" role="status">Loading…</p>
     {:then { default: CharacterEditorModal }}
       <CharacterEditorModal

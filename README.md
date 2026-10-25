@@ -45,7 +45,11 @@ Use `bun run test` rather than `bun test`: the suite uses Vitest and its happy-d
 
 `bun run build` writes the hosted app to `dist/index.html` and `dist/assets/`.
 Optional settings tabs, Tavern tools, archive import/export, and rich message rendering
-load when needed. Model lists use their saved cache; use **Settings → Connections →
+load when needed and preload one at a time during browser idle periods after the UI
+paints. Preloading pauses in hidden tabs and respects Data Saver. Tavern editors
+preload when Tavern is in use; LaTeX is off by default and its separate math bundle
+loads only when enabled. Already preloaded features open without a loading message.
+Model lists use their saved cache; use **Settings → Connections →
 Refresh models** to fetch a list. You can also enter a model ID manually.
 
 **Settings → General → Download offline HTML** downloads `advui-offline.html`, a

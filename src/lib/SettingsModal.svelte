@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { feature } from './features.svelte'
   import { untrack } from 'svelte'
   import { IconClose } from './icons'
   import { SettingsDraft } from './components/settings/settingsDraft.svelte'
@@ -109,7 +110,7 @@
         <div class="ui-modal-scroller" style:display={activeTab === section.id ? undefined : 'none'}
           inert={activeTab !== section.id} use:rememberScroll={{ active: !!props.open && activeTab === section.id }}>
           {#if section.id === 'general'}
-            {#await import('./components/settings/GeneralTab.svelte')}
+            {#await feature('general')}
               <p role="status">Loading…</p>
             {:then { default: GeneralTab }}
             <GeneralTab draft={draft} />
@@ -117,7 +118,7 @@
               <p role="alert">Could not load settings: {error instanceof Error ? error.message : String(error)}. Reload to retry.</p>
             {/await}
           {:else if section.id === 'connection'}
-            {#await import('./components/settings/ConnectionsTab.svelte')}
+            {#await feature('connections')}
               <p role="status">Loading…</p>
             {:then { default: ConnectionsTab }}
             <ConnectionsTab draft={draft} />
@@ -125,7 +126,7 @@
               <p role="alert">Could not load settings: {error instanceof Error ? error.message : String(error)}. Reload to retry.</p>
             {/await}
           {:else if section.id === 'presets'}
-            {#await import('./components/settings/PresetsTab.svelte')}
+            {#await feature('presets')}
               <p role="status">Loading…</p>
             {:then { default: PresetsTab }}
             <PresetsTab draft={draft} active={!!props.open && activeTab === 'presets'} />
@@ -133,7 +134,7 @@
               <p role="alert">Could not load settings: {error instanceof Error ? error.message : String(error)}. Reload to retry.</p>
             {/await}
           {:else if section.id === 'features'}
-            {#await import('./components/settings/FeaturesTab.svelte')}
+            {#await feature('features')}
               <p role="status">Loading…</p>
             {:then { default: FeaturesTab }}
             <FeaturesTab draft={draft} />

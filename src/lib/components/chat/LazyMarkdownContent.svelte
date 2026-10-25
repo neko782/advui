@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { feature } from '../../features.svelte'
   let props: {
     content?: string
     allowInlineHtml?: boolean
@@ -12,7 +13,7 @@
 </script>
 
 {#if formatted}
-  {#await import('./MarkdownContent.svelte')}
+  {#await feature('markdown')}
     <span style="white-space: pre-wrap">{props.content ?? ''}</span>
   {:then { default: MarkdownContent }}
     <MarkdownContent {...props} />
