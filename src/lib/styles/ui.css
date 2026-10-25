@@ -299,6 +299,8 @@
 /* ------------------------------------------------------------------ */
 
 .ui-switch {
+  /* Keep the focusable checkbox inside its row and the scrolling form. */
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: 10px;
@@ -308,6 +310,9 @@
 }
 .ui-switch > input[type="checkbox"] {
   position: absolute;
+  top: 0;
+  left: 0;
+  margin: 0;
   opacity: 0;
   width: 1px;
   height: 1px;
