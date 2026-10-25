@@ -4,7 +4,8 @@ import * as chatsStore from '../../chatsStore.js'
 import * as settingsStore from '../../settingsStore.js'
 import { DEFAULT_MODEL } from '../../utils/presetHelpers.js'
 
-vi.mock('../../chatsStore.js', () => ({
+vi.mock('../../chatsStore.js', async (importOriginal) => ({
+  ...await importOriginal(),
   getChat: vi.fn(),
   getCachedChat: vi.fn(() => undefined),
 }))
@@ -78,6 +79,28 @@ describe('loadChat', () => {
     expect(result.rootId).toBe(1)
     expect(result.chatSettings.model).toBe('gpt-4')
     expect(result.chatSettings.streaming).toBe(false)
+  })
+
+  it.each([
+    ['typing', '', /interrupted/i],
+    ['partial answer', 'partial answer', undefined],
+  ])('recovers an interrupted reply on open: %s', async (content, expectedContent, error) => {
+    const stored = {
+      id: 'interrupted', title: 'Interrupted', updatedAt: 123, locked: true,
+      rootId: 1, settings: {},
+      nodes: [{ id: 1, locked: true, active: 0, variants: [{
+        id: 1, role: 'assistant', content, typing: true, locked: true, next: null,
+      }] }],
+    }
+    chatsStore.getChat.mockResolvedValue(stored)
+    const loaded = await loadChat('interrupted')
+    expect(loaded.nodes[0].locked).toBeUndefined()
+    expect(loaded.nodes[0].variants[0]).toMatchObject({ content: expectedContent, typing: false })
+    expect(loaded.nodes[0].variants[0].locked).toBeUndefined()
+    if (error) expect(loaded.nodes[0].variants[0].error).toMatch(error)
+    else expect(loaded.nodes[0].variants[0].error).toBeUndefined()
+    expect(stored.nodes[0].variants[0]).toMatchObject({ content, typing: true, locked: true })
+    expect(stored.updatedAt).toBe(123)
   })
 
   it('should compute next ids from loaded nodes', async () => {

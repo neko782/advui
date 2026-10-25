@@ -92,7 +92,7 @@ function sanitizeNodeLockState(node: ChatNode | null | undefined): ChatNode | nu
   return mutated ? next : node;
 }
 
-function sanitizeChatLockState(chat: Chat | null | undefined): Chat | null | undefined {
+export function sanitizeChatLockState(chat: Chat | null | undefined): Chat | null | undefined {
   if (!chat || typeof chat !== 'object') return chat;
   let mutated = false;
   let next: Chat = chat;

@@ -1,5 +1,5 @@
 // Chat loading and initialization
-import { getChat as loadChatById, getCachedChat } from '../../chatsStore.js';
+import { getChat as loadChatById, getCachedChat, sanitizeChatLockState } from '../../chatsStore.js';
 import { loadSettings } from '../../settingsStore.js';
 import {
   makeSystemPrologue,
@@ -56,7 +56,10 @@ export async function loadChat(chatId: string | null): Promise<LoadedChat> {
   // whose first write is not visible yet, and would otherwise hide edits
   // saved since. Storage failures propagate: substituting an empty chat
   // here would let the next save overwrite the real one.
-  const loaded = (await loadChatById(chatId)) || getCachedChat(chatId) || null;
+  // Recover interrupted generations only for the chat being opened. Scanning
+  // and rewriting the entire history at startup delays the sidebar and changes
+  // the recency order of chats the user has not opened.
+  const loaded = sanitizeChatLockState((await loadChatById(chatId)) || getCachedChat(chatId) || null);
 
   try {
     if (loaded) {

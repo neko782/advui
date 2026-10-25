@@ -6,8 +6,9 @@ import { validateImageReferences } from './chat/services/imageCleanup.js';
 import type { Chat, ChatListItem, StorageChange, StorageListener } from './types/index.js';
 
 const DB_NAME = 'advui_chats';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const STORE_NAME = 'chats';
+const LIST_STORE_NAME = 'chatListItems';
 const INDEX_UPDATED_AT = 'idx_updatedAt';
 
 let dbInstance: IDBDatabase | null = null;
@@ -141,6 +142,22 @@ function openDB(): Promise<IDBDatabase> {
         // Create index on updatedAt for efficient sorting
         store.createIndex(INDEX_UPDATED_AT, 'updatedAt', { unique: false });
       }
+
+      // Backfill once during the version upgrade. Later list reads never need
+      // to deserialize message histories. The upgrade transaction commits the
+      // new store and its contents together, so a failed migration is retryable.
+      if (!db.objectStoreNames.contains(LIST_STORE_NAME)) {
+        const listStore = db.createObjectStore(LIST_STORE_NAME, { keyPath: 'id' });
+        const request = (event.target as IDBOpenDBRequest).transaction!
+          .objectStore(STORE_NAME).openCursor();
+        request.onsuccess = () => {
+          const cursor = request.result;
+          if (!cursor) return;
+          const item = toChatListItem(cursor.value as Chat);
+          if (item) listStore.put(item);
+          cursor.continue();
+        };
+      }
     };
   });
 
@@ -216,63 +233,17 @@ function readAll(): Promise<Chat[]> {
 function readAllListItems(): Promise<ChatListItem[]> {
   return asyncOperation('readAllListItems', async () => {
     const db = await openDB();
-    const transaction = db.transaction([STORE_NAME], 'readonly');
-    const store = transaction.objectStore(STORE_NAME);
-    let index: IDBIndex | null = null;
-    try {
-      index = store.index(INDEX_UPDATED_AT);
-    } catch {
-      index = null;
-    }
+    const transaction = db.transaction([LIST_STORE_NAME], 'readonly');
+    const store = transaction.objectStore(LIST_STORE_NAME);
 
     return new Promise((resolve, reject) => {
-      const fullScan = () => {
-        const fallbackRequest = store.getAll();
-        fallbackRequest.onsuccess = () => {
-          const chats = (fallbackRequest.result || []) as Chat[];
-          const items = chats
-            .map((chat) => toChatListItem(chat))
-            .filter((chat): chat is ChatListItem => !!chat)
-            .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
-          resolve(items);
-        };
-        fallbackRequest.onerror = () => reject(fallbackRequest.error);
-      };
-
-      if (!index) {
-        fullScan();
-        return;
-      }
-
-      // Records with a missing/invalid updatedAt are silently absent from the
-      // index; track the store count so we can detect that and do a full scan.
-      let totalCount = -1;
-      const countRequest = store.count();
-      countRequest.onsuccess = () => {
-        totalCount = countRequest.result;
-      };
-
-      const items: ChatListItem[] = [];
-      let seen = 0;
-      const request = index.openCursor(null, 'prev');
-
-      request.onsuccess = () => {
-        const cursor = request.result;
-        if (!cursor) {
-          if (totalCount >= 0 && seen < totalCount) {
-            // Index omitted some records; fall back to scanning the store
-            fullScan();
-            return;
-          }
-          resolve(items);
-          return;
-        }
-        seen += 1;
-        const item = toChatListItem(cursor.value as Chat);
-        if (item) items.push(item);
-        cursor.continue();
-      };
-
+      // Bulk-read only small summaries; one cursor callback per full chat made
+      // large histories slow even though callers discarded the message data.
+      const request = store.getAll();
+      transaction.oncomplete = () => resolve((request.result as ChatListItem[])
+        .sort((a, b) => b.updatedAt - a.updatedAt));
+      transaction.onabort = () => reject(transaction.error || new Error('IndexedDB transaction aborted'));
+      transaction.onerror = () => reject(transaction.error || new Error('IndexedDB transaction failed'));
       request.onerror = () => reject(request.error);
     });
   });
@@ -324,7 +295,7 @@ function writeOneInternal(chat: Chat): Promise<Chat> {
     assertValidChat(candidate);
 
     const db = await openDB();
-    const transaction = db.transaction([STORE_NAME], 'readwrite');
+    const transaction = db.transaction([STORE_NAME, LIST_STORE_NAME], 'readwrite');
     const store = transaction.objectStore(STORE_NAME);
 
     return new Promise((resolve, reject) => {
@@ -360,6 +331,8 @@ function writeOneInternal(chat: Chat): Promise<Chat> {
 
         // Write the chat
         const writeRequest = store.put(toPersist);
+        // Keep the list entry consistent with its chat, including on rollback.
+        transaction.objectStore(LIST_STORE_NAME).put(toChatListItem(toPersist)!);
 
         transaction.oncomplete = () => {
           const snapshot = cloneChat(toPersist)!;
@@ -392,7 +365,7 @@ function deleteOne(id: string, expectedVersion?: number): Promise<Chat | null> {
     if (!id) return null;
 
     const db = await openDB();
-    const transaction = db.transaction([STORE_NAME], 'readwrite');
+    const transaction = db.transaction([STORE_NAME, LIST_STORE_NAME], 'readwrite');
     const store = transaction.objectStore(STORE_NAME);
 
     return new Promise((resolve, reject) => {
@@ -417,6 +390,7 @@ function deleteOne(id: string, expectedVersion?: number): Promise<Chat | null> {
 
         // Delete the chat
         const deleteRequest = store.delete(id);
+        transaction.objectStore(LIST_STORE_NAME).delete(id);
 
         transaction.oncomplete = () => {
           // Emit change event

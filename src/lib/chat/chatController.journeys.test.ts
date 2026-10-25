@@ -16,7 +16,7 @@ import * as idb from '../storage.indexeddb.js'
 import { ConflictError } from '../storage.errors.js'
 import { updateChatAtomic } from '../storage.js'
 import { ChatController } from './chatController.svelte.js'
-import { createChat, getChat, unlockAllChats } from '../chatsStore.js'
+import { createChat, getChat } from '../chatsStore.js'
 import { saveSettings, loadSettings } from '../settingsStore.js'
 import type { Chat, ChatNode, GenerationResponse } from '../types/index.js'
 
@@ -304,7 +304,6 @@ describe('journey: reloading after an interrupted generation', () => {
     })
     // Simulate the tab being killed: no dispose, no further writes.
 
-    await unlockAllChats() // app startup
     const reopened = await track(openChat(chat.chatId))
     expect(reopened.locked).toBe(false)
     expect(reopened.nodes.some(n => n.variants.some(v => v.typing))).toBe(false)

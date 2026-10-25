@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import 'fake-indexeddb/auto'
+import { IDBObjectStore } from 'fake-indexeddb'
 import { describe, it, expect, beforeEach } from 'vitest'
 import { mount, unmount, flushSync } from 'svelte'
 import App from './App.svelte'
@@ -27,6 +28,34 @@ describe('App settings modal integration', () => {
   beforeEach(() => {
     localStorage.clear()
     document.body.innerHTML = ''
+  })
+
+  it('loads the list without scanning or opening every chat history', async () => {
+    for (const item of await getChatListItems()) await deleteChat(item.id)
+    const unopened = await createChat({ title: 'Unopened conversation' })
+    const selected = await createChat({ title: 'Selected conversation' })
+    const all = vi.spyOn(IDBObjectStore.prototype, 'getAll')
+    const cursor = vi.spyOn(IDBObjectStore.prototype, 'openCursor')
+    const get = vi.spyOn(IDBObjectStore.prototype, 'get')
+    const component = mount(App, { target: document.body })
+    try {
+      await vi.waitFor(() => {
+        flushSync()
+        expect(document.querySelectorAll('.chat-row')).toHaveLength(2)
+        expect(document.querySelector('.bubble')).toBeTruthy()
+      })
+      expect(all.mock.contexts.filter(store => (store as IDBObjectStore).name === 'chats')).toHaveLength(0)
+      expect(cursor.mock.contexts.filter(store => (store as IDBObjectStore).name === 'chats')).toHaveLength(0)
+      expect(all.mock.contexts.filter(store => (store as IDBObjectStore).name === 'chatListItems')).toHaveLength(1)
+      const readIds = get.mock.calls.filter((_, i) => (get.mock.contexts[i] as IDBObjectStore)?.name === 'chats').map(args => args[0])
+      expect(readIds).toContain(selected.id)
+      expect(readIds).not.toContain(unopened.id)
+    } finally {
+      await unmount(component)
+      all.mockRestore()
+      cursor.mockRestore()
+      get.mockRestore()
+    }
   })
 
   it('does not fetch model lists on startup or when opening Connections with empty caches', async () => {

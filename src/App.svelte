@@ -1,7 +1,7 @@
 <script lang="ts">
   import Chat from './lib/Chat.svelte'
   import Sidebar from './lib/components/Sidebar.svelte'
-  import { loadAll, getChatListItems, createChat, setSelected, deleteChat, renameChat, duplicateChat, toChatListItem, unlockAllChats } from './lib/chatsStore'
+  import { loadAll, getChatListItems, createChat, setSelected, deleteChat, renameChat, duplicateChat, toChatListItem } from './lib/chatsStore'
   import { loadSettings } from './lib/settingsStore'
   import { settingsStore, generationRegistry } from './lib/stores/appState.svelte'
   import { feature, loadFeature, backgroundFeatures, preloadFeatures } from './lib/features.svelte'
@@ -147,15 +147,6 @@
     }
   }
 
-
-  async function ensureOneChat() {
-    const all = await getChatListItems()
-    if (!all.length) {
-      const c = await createChat()
-      selectedId = c.id
-    }
-  }
-
   import { onMount, untrack } from 'svelte'
   import { migrateChatsToIndexedDB } from './lib/utils/storageMigration'
 
@@ -177,9 +168,12 @@
         console.error('Failed to migrate chats:', err)
       }
 
-      await unlockAllChats()
-      await ensureOneChat()
       await loadChatList()
+      if (!chats.length) {
+        const created = await createChat()
+        upsertChat(created.chat)
+        selectedId = created.id
+      }
       storageState = 'ready'
     } catch (err) {
       storageError = errorText(err)
