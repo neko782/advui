@@ -1,0 +1,6 @@
+/version.json
+  Access-Control-Allow-Origin: *
+  Cache-Control: no-cache
+/advui-offline.html
+  Access-Control-Allow-Origin: *
+  Cache-Control: no-cache

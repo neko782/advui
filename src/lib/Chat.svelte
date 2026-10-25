@@ -4,7 +4,7 @@
   // component only owns view state (popovers, dialogs, model list, scroll).
   import { onDestroy, untrack } from 'svelte'
   import { settingsStore, generationRegistry } from './stores/appState.svelte'
-  import { ensureModels, loadModelsCache } from './modelsStore'
+  import { loadModelsCache } from './modelsStore'
   import { copyText as copyToClipboard } from './utils/clipboard'
   import MessageList from './components/chat/MessageList.svelte'
   import Composer from './components/chat/Composer.svelte'
@@ -88,12 +88,6 @@
     const connectionId = modelConnectionId
     const cachedIds = loadModelsCache(connectionId)?.ids || []
     modelIds = cachedIds
-    if (cachedIds.length) return
-    ensureModels({ connectionId: connectionId ?? undefined }).then((fresh) => {
-      if (chat.chatSettings?.connectionId === connectionId && Array.isArray(fresh?.ids)) {
-        modelIds = fresh.ids
-      }
-    }).catch(() => {})
   })
 
   $effect(() => {

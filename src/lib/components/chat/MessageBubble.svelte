@@ -9,7 +9,7 @@
     attachmentMimeLabel
   } from '../../attachments/mime'
   import type { Message } from '../../types'
-  import MarkdownContent from './MarkdownContent.svelte'
+  import MarkdownContent from './LazyMarkdownContent.svelte'
 
   interface Props {
     message: Message

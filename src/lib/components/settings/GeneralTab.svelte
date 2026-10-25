@@ -5,6 +5,8 @@
   import { estimateExportAllDataSize, exportAllData, importAllData, importChat } from '../../utils/exportImport'
   import type { ThemeState } from '../../types'
   import type { SettingsDraft } from './settingsDraft.svelte'
+  import OfflineAppSettings from './OfflineAppSettings.svelte'
+  import './settingsActions.css'
 
   interface Props {
     draft: SettingsDraft
@@ -228,10 +230,10 @@
             </section>
             <section class="ui-group">
               <div class="ui-group-title">Data</div>
-              <div class="data-actions">
+              <div class="settings-actions">
                 <button
                   type="button"
-                  class="data-action-btn"
+                  class="settings-action-btn"
                   onclick={handleImportChat}
                   disabled={importExportWorking}
                   title="Import a chat from JSON file"
@@ -242,7 +244,7 @@
                 </button>
                 <button
                   type="button"
-                  class="data-action-btn"
+                  class="settings-action-btn"
                   onclick={handleExportAllData}
                   disabled={importExportWorking}
                   title={exportIncludesMedia ? 'Export all chats, settings, and media as an archive' : 'Export all chats and settings as an archive'}
@@ -253,7 +255,7 @@
                 </button>
                 <button
                   type="button"
-                  class="data-action-btn"
+                  class="settings-action-btn"
                   onclick={handleImportAllData}
                   disabled={importExportWorking}
                   title="Import all data from an archive"
@@ -280,6 +282,7 @@
                 <p class="ui-hint">Import chats, settings, and images. Export all data skips media unless enabled. {exportSizeEstimateText}</p>
               {/if}
             </section>
+            <OfflineAppSettings />
             <section class="ui-group legal-group">
               <div class="ui-group-title">Open-source notice</div>
               <p class="ui-hint">This program is licensed under the GNU Affero General Public License, version 3 or any later version.</p>
@@ -328,40 +331,5 @@
   .legal-link:hover, .legal-link:focus-visible {
     color: color-mix(in srgb, var(--accent) 80%, var(--text) 20%);
   }
-  .data-actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--s2);
-  }
-  .data-action-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 10px;
-    padding: 12px var(--s4);
-    border: 1px solid var(--border);
-    border-radius: var(--r-md);
-    background: var(--bg);
-    color: var(--text);
-    font: inherit;
-    font-weight: 500;
-    cursor: pointer;
-    transition: background-color var(--dur) var(--ease), border-color var(--dur) var(--ease), transform 100ms var(--ease);
-  }
-  .data-action-btn:hover:not(:disabled) {
-    background: var(--hover-bg);
-    border-color: color-mix(in srgb, var(--border) 55%, var(--accent) 45%);
-  }
-  .data-action-btn:active:not(:disabled) {
-    transform: scale(0.97);
-  }
-  .data-action-btn:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-  @media (max-width: 640px) {
-    .data-actions { flex-direction: column;
-    }
-    .data-action-btn { width: 100%; justify-content: center;
-    }
-  }
+
 </style>

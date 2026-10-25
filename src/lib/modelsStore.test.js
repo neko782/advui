@@ -1,7 +1,7 @@
 import { beforeEach, expect, it, vi } from 'vitest';
 vi.mock('./openaiClient.js', () => ({ listModels: vi.fn(async () => ['available-model']) }));
 import { listModels } from './openaiClient';
-import { ensureModels, refreshModels } from './modelsStore';
+import { ensureModels, refreshModels, setModelsCache } from './modelsStore';
 import { saveSettings } from './settingsStore';
 const storageValues = new Map();
 const localStorageMock = {
@@ -15,8 +15,17 @@ beforeEach(() => {
   localStorageMock.clear(); vi.clearAllMocks();
   saveSettings({ connections: [{ id: 'conn', name: 'Connection', apiKey: 'saved-key', apiBaseUrl: 'https://example.test/v1', apiMode: 'chat_completions' }], selectedConnectionId: 'conn' });
 });
-it('fetches models from saved credentials for a connectionId object', async () => {
-  expect((await ensureModels({ connectionId: 'conn' })).ids).toEqual(['available-model']);
+it('uses an empty cache without fetching models, even with saved credentials', async () => {
+  expect((await ensureModels({ connectionId: 'conn' })).ids).toEqual([]);
+  expect(listModels).not.toHaveBeenCalled();
+});
+it('uses cached models without a network request', async () => {
+  setModelsCache('conn', ['cached-model']);
+  expect((await ensureModels({ connectionId: 'conn' })).ids).toEqual(['cached-model']);
+  expect(listModels).not.toHaveBeenCalled();
+});
+it('fetches models from saved credentials only on refresh', async () => {
+  expect((await refreshModels({ connectionId: 'conn' })).ids).toEqual(['available-model']);
   expect(listModels).toHaveBeenCalledWith({ connectionId: 'conn', apiKey: 'saved-key', apiBaseUrl: 'https://example.test/v1', apiMode: 'chat_completions' });
   await ensureModels({ connectionId: 'conn' });
   expect(listModels).toHaveBeenCalledTimes(1);

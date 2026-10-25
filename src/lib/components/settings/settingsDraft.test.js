@@ -22,6 +22,7 @@ it('reloads settings on opening and preserves Tavern changes when saving another
   saveSettings({ ...loadSettings(), tavernPerChatPresets: true, tavernAvatarShape: 'card' });
   component.show(); flushSync();
   document.getElementById('settings-tab-features').click(); flushSync();
+  await vi.waitFor(() => { flushSync(); expect(document.querySelector('input[aria-label="Fancy effects"]')).toBeTruthy(); });
   document.querySelector('input[aria-label="Fancy effects"]').click(); flushSync();
   await vi.runAllTimersAsync();
   expect(loadSettings()).toMatchObject({ tavernPerChatPresets: true, tavernAvatarShape: 'card', fancyEffects: true });

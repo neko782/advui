@@ -7,6 +7,8 @@ interface ImportMetaEnv {
 }
 
 declare const __GIT_HASH__: string;
+declare const __APP_VERSION__: string;
+declare const __OFFLINE_BUILD__: boolean;
 
 declare module 'tar-js' {
   export default class Tar {

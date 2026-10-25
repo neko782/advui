@@ -4,6 +4,7 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { mount, unmount, flushSync } from 'svelte'
 import App from './App.svelte'
 import { createChat, getChat, getChatListItems, deleteChat } from './lib/chatsStore'
+import { saveSettings } from './lib/settingsStore'
 
 const localStorageMock = (() => {
   let store: Record<string, string> = {}
@@ -28,6 +29,28 @@ describe('App settings modal integration', () => {
     document.body.innerHTML = ''
   })
 
+  it('does not fetch model lists on startup or when opening Connections with empty caches', async () => {
+    saveSettings({ connections: ['first', 'second'].map(id => ({
+      id, name: id, apiKey: 'test-key', apiBaseUrl: 'https://example.test/v1', apiMode: 'chat_completions' as const,
+    })), selectedConnectionId: 'first' })
+    const fetch = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{"data":[]}'))
+    const component = mount(App, { target: document.body })
+    try {
+      await vi.waitFor(() => { flushSync(); expect(document.querySelector('.bubble')).toBeTruthy() })
+      expect(fetch).not.toHaveBeenCalled()
+      ;(document.querySelector('[aria-label="Settings"]') as HTMLButtonElement).click()
+      await vi.waitFor(() => { flushSync(); expect(document.getElementById('settings-tab-connection')).toBeTruthy() })
+      document.getElementById('settings-tab-connection')!.click()
+      await vi.waitFor(() => { flushSync(); expect(document.querySelector('[aria-label="Refresh models"]')).toBeTruthy() })
+      expect(fetch).not.toHaveBeenCalled()
+      ;(document.querySelector('[aria-label="Refresh models"]') as HTMLButtonElement).click()
+      await vi.waitFor(() => expect(fetch).toHaveBeenCalledOnce())
+    } finally {
+      await unmount(component)
+      fetch.mockRestore()
+    }
+  })
+
   it('opens settings from the sidebar and closes it again', async () => {
     const component = mount(App, { target: document.body })
     flushSync()
@@ -40,7 +63,10 @@ describe('App settings modal integration', () => {
     expect(settingsBtn, 'sidebar settings button').toBeTruthy()
     settingsBtn.click()
     flushSync()
-    expect(document.querySelector('.ui-modal'), 'modal should open').toBeTruthy()
+    await vi.waitFor(() => {
+      flushSync()
+      expect(document.querySelector('.ui-modal'), 'modal should open').toBeTruthy()
+    })
 
     // Close via the X button
     const closeBtn = document.querySelector('.ui-modal-head .ui-icon-btn') as HTMLButtonElement
@@ -129,6 +155,7 @@ it('clears a normal chat when switching to an empty Tavern and restores it on re
     flushSync()
     expect(document.querySelector('.chat-wrapper.active')).toBeNull()
     expect(document.querySelector('.empty-mode')?.textContent).toContain('Select or create a character')
+    await vi.waitFor(() => { flushSync(); expect([...document.querySelectorAll('button[role="tab"]')].some(button => button.textContent === 'Chat')).toBe(true) })
     const chat = [...document.querySelectorAll<HTMLButtonElement>('button[role="tab"]')].find(button => button.textContent === 'Chat')!
     chat.click()
     flushSync()

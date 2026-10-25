@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onDestroy } from 'svelte'
+  import 'katex/dist/katex.min.css'
   import { copyText } from '../../utils/clipboard'
   import { buildMarkdownBlocks, type MarkdownCodeBlock } from '../../utils/markdown'
 

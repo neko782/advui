@@ -223,7 +223,7 @@
                       </button>
                     </div>
                   </label>
-                  <p class="ui-hint">Your key is stored locally in this browser.</p>
+                  <p class="ui-hint">Your key is stored locally in this browser. Model lists use the saved cache; press Refresh models to fetch the latest list. You can also enter a model ID manually.</p>
                   <label class="ui-field">
                     <span>API base URL</span>
                     <input

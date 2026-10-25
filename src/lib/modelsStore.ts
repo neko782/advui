@@ -1,4 +1,4 @@
-// Local cache for OpenAI models + helpers to fetch once and refresh on demand
+// Local model cache. Network requests only happen on explicit refresh.
 import { listModels } from './openaiClient.js';
 import { loadSettings, findConnection } from './settingsStore.js';
 import { safeRead, safeWrite } from './utils/localStorageHelper.js';
@@ -128,16 +128,7 @@ function resolveConnection(input: ConnectionInput | string | null | undefined): 
 
 export async function ensureModels(connectionInput?: ConnectionInput | string | null): Promise<ModelsCacheEntry> {
   const connection = resolveConnection(connectionInput);
-  const cached = loadModelsCache(connection.id);
-  if (cached.ids.length > 0) return cached;
-  if (!connection.apiKey) return cached;
-  const ids = await listModels({
-    connectionId: connection.id,
-    apiKey: connection.apiKey,
-    apiBaseUrl: connection.apiBaseUrl,
-    apiMode: connection.apiMode,
-  });
-  return saveEntry(connection.id, ids);
+  return loadModelsCache(connection.id);
 }
 
 export async function refreshModels(connectionInput?: ConnectionInput | string | null): Promise<ModelsCacheEntry> {

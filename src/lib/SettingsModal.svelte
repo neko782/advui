@@ -1,10 +1,6 @@
 <script lang="ts">
   import { untrack } from 'svelte'
   import { IconClose } from './icons'
-  import GeneralTab from './components/settings/GeneralTab.svelte'
-  import ConnectionsTab from './components/settings/ConnectionsTab.svelte'
-  import PresetsTab from './components/settings/PresetsTab.svelte'
-  import FeaturesTab from './components/settings/FeaturesTab.svelte'
   import { SettingsDraft } from './components/settings/settingsDraft.svelte'
   import FieldEditor from './components/FieldEditor.svelte'
   import { rememberScroll } from './utils/rememberScroll'
@@ -113,13 +109,37 @@
         <div class="ui-modal-scroller" style:display={activeTab === section.id ? undefined : 'none'}
           inert={activeTab !== section.id} use:rememberScroll={{ active: !!props.open && activeTab === section.id }}>
           {#if section.id === 'general'}
+            {#await import('./components/settings/GeneralTab.svelte')}
+              <p role="status">Loading…</p>
+            {:then { default: GeneralTab }}
             <GeneralTab draft={draft} />
+            {:catch error}
+              <p role="alert">Could not load settings: {error instanceof Error ? error.message : String(error)}. Reload to retry.</p>
+            {/await}
           {:else if section.id === 'connection'}
+            {#await import('./components/settings/ConnectionsTab.svelte')}
+              <p role="status">Loading…</p>
+            {:then { default: ConnectionsTab }}
             <ConnectionsTab draft={draft} />
+            {:catch error}
+              <p role="alert">Could not load settings: {error instanceof Error ? error.message : String(error)}. Reload to retry.</p>
+            {/await}
           {:else if section.id === 'presets'}
+            {#await import('./components/settings/PresetsTab.svelte')}
+              <p role="status">Loading…</p>
+            {:then { default: PresetsTab }}
             <PresetsTab draft={draft} active={!!props.open && activeTab === 'presets'} />
+            {:catch error}
+              <p role="alert">Could not load settings: {error instanceof Error ? error.message : String(error)}. Reload to retry.</p>
+            {/await}
           {:else if section.id === 'features'}
+            {#await import('./components/settings/FeaturesTab.svelte')}
+              <p role="status">Loading…</p>
+            {:then { default: FeaturesTab }}
             <FeaturesTab draft={draft} />
+            {:catch error}
+              <p role="alert">Could not load settings: {error instanceof Error ? error.message : String(error)}. Reload to retry.</p>
+            {/await}
           {/if}
         </div>
         {/if}

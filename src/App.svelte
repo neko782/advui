@@ -1,18 +1,11 @@
 <script lang="ts">
   import Chat from './lib/Chat.svelte'
   import Sidebar from './lib/components/Sidebar.svelte'
-  import TavernSidebar from './lib/components/tavern/TavernSidebar.svelte'
-  import CharacterEditorModal from './lib/components/tavern/CharacterEditorModal.svelte'
-  import TavernSettingsModal from './lib/components/tavern/TavernSettingsModal.svelte'
-  import SettingsModal from './lib/SettingsModal.svelte'
   import { loadAll, getChatListItems, createChat, setSelected, deleteChat, renameChat, duplicateChat, toChatListItem, unlockAllChats } from './lib/chatsStore'
   import { loadSettings } from './lib/settingsStore'
   import { settingsStore, generationRegistry } from './lib/stores/appState.svelte'
-  import { ensureModels } from './lib/modelsStore'
   import { initTheme } from './lib/themeStore'
   import { getAllCharacters, putCharacter, deleteCharacter } from './lib/tavern/charactersStore'
-  import { parseCharacterFile, makeBlankCharacter } from './lib/tavern/characterCard'
-  import { createCharacterChat } from './lib/tavern/tavernChat'
   import { probeStorage } from './lib/storage'
   import type { Chat as ChatType, ChatListItem, Preset } from './lib/types'
   import type { Character, PromptPreset, Persona } from './lib/types/tavern'
@@ -28,6 +21,7 @@
   let selectedId = $state<string | null>(null)
   let sidebarOpen = $state(true)
   let showSettings = $state(false)
+  let settingsRequested = $state(false)
   let presets = $derived<Preset[]>(Array.isArray(settingsStore.current?.presets) ? settingsStore.current.presets : [])
 
   // Tavern state
@@ -36,7 +30,9 @@
   let characters = $state<Character[]>([])
   let selectedCharacterId = $state<string | null>(null)
   let showTavernSettings = $state(false)
+  let tavernSettingsRequested = $state(false)
   let characterEditorOpen = $state(false)
+  let characterEditorRequested = $state(false)
   let characterEditorTarget = $state<Character | null>(null)
 
   const normalChats = $derived(chats.filter(c => !c.characterId))
@@ -190,17 +186,6 @@
     }
   }
 
-  async function ensureStartupModels() {
-    try {
-      const settings = loadSettings()
-      const connections = Array.isArray(settings?.connections) ? settings.connections : []
-      for (const connection of connections) {
-        if (connection?.apiKey && connection?.id) {
-          try { await ensureModels({ connectionId: connection.id }) } catch {}
-        }
-      }
-    } catch {}
-  }
   function loadModePref(): 'chat' | 'tavern' {
     try {
       return localStorage.getItem(MODE_KEY) === 'tavern' ? 'tavern' : 'chat'
@@ -213,7 +198,6 @@
 
   onMount(() => {
     initTheme()
-    ensureStartupModels().catch(() => {})
     // Defer initial population to avoid mutating state during mount flush
     setTimeout(async () => {
       sidebarOpen = loadSidebarPref()
@@ -317,7 +301,7 @@
     saveSidebarPref(next)
   }
 
-  function onOpenSettings() { showSettings = true }
+  function onOpenSettings() { settingsRequested = true; showSettings = true }
 
   async function onDeleteChat(id: string) {
     if (!id) return
@@ -381,6 +365,7 @@
       }
     }
     if (next === 'tavern') {
+      refreshCharacters().catch(() => {})
       const item = tavernChats.find(c => c.id === selectedId)
       selectedCharacterId = item?.characterId || null
     }
@@ -396,6 +381,7 @@
   }
 
   async function onImportCharacterFiles(files: FileList | File[]) {
+    const { parseCharacterFile } = await import('./lib/tavern/characterCard')
     const list = Array.from(files || [])
     const errors: string[] = []
     for (const file of list) {
@@ -410,13 +396,16 @@
     if (errors.length) alert(`Some cards could not be imported:\n${errors.join('\n')}`)
   }
 
-  function onNewCharacter() {
+  async function onNewCharacter() {
+    const { makeBlankCharacter } = await import('./lib/tavern/characterCard')
     characterEditorTarget = makeBlankCharacter()
+    characterEditorRequested = true
     characterEditorOpen = true
   }
 
   function onEditCharacter(character: Character) {
     characterEditorTarget = character
+    characterEditorRequested = true
     characterEditorOpen = true
   }
 
@@ -451,6 +440,7 @@
   async function onNewTavernChat(characterId: string) {
     const character = characters.find(c => c.id === characterId)
     if (!character) return
+    const { createCharacterChat } = await import('./lib/tavern/tavernChat')
     const created = await createCharacterChat(character, settingsStore.current)
     if (selectedId) previousSelectedId = selectedId
     selectedId = created.id
@@ -514,28 +504,34 @@
       onSwitchMode={switchMode}
     />
   {:else}
-    <TavernSidebar
-      open={sidebarOpen}
-      characters={characters}
-      chats={tavernChats}
-      selectedCharacterId={selectedCharacterId}
-      selectedId={selectedId}
-      generatingMap={generationRegistry.map}
-      onSelectCharacter={onSelectCharacter}
-      onImportCharacterFiles={onImportCharacterFiles}
-      onNewCharacter={onNewCharacter}
-      onEditCharacter={onEditCharacter}
-      onDeleteCharacter={onDeleteCharacter}
-      onNewChat={onNewTavernChat}
-      onSelect={onSelectChat}
-      onDeleteChat={onDeleteChat}
-      onDuplicateChat={onDuplicateChat}
-      onRenameChat={onRenameChat}
-      onOpenTavernSettings={() => (showTavernSettings = true)}
-      onToggle={toggleSidebar}
-      onOpenSettings={onOpenSettings}
-      onSwitchMode={switchMode}
-    />
+    {#await import('./lib/components/tavern/TavernSidebar.svelte')}
+      <p class="feature-load-notice" role="status">Loading…</p>
+    {:then { default: TavernSidebar }}
+      <TavernSidebar
+          open={sidebarOpen}
+          characters={characters}
+          chats={tavernChats}
+          selectedCharacterId={selectedCharacterId}
+          selectedId={selectedId}
+          generatingMap={generationRegistry.map}
+          onSelectCharacter={onSelectCharacter}
+          onImportCharacterFiles={onImportCharacterFiles}
+          onNewCharacter={onNewCharacter}
+          onEditCharacter={onEditCharacter}
+          onDeleteCharacter={onDeleteCharacter}
+          onNewChat={onNewTavernChat}
+          onSelect={onSelectChat}
+          onDeleteChat={onDeleteChat}
+          onDuplicateChat={onDuplicateChat}
+          onRenameChat={onRenameChat}
+          onOpenTavernSettings={() => { tavernSettingsRequested = true; showTavernSettings = true }}
+          onToggle={toggleSidebar}
+          onOpenSettings={onOpenSettings}
+          onSwitchMode={switchMode}
+        />
+    {:catch error}
+      <p class="feature-load-notice" role="alert">Could not load this feature: {error instanceof Error ? error.message : String(error)}. Reload to retry.</p>
+    {/await}
   {/if}
   <div class="chat-pane">
     {#if !selectedId && storageState === 'ready'}
@@ -561,40 +557,76 @@
     {/each}
   </div>
   <div class="app-fade"></div>
-  <SettingsModal
-    open={showSettings}
-    onClose={() => (showSettings = false)}
-    onSaved={() => settingsStore.reload()}
-  />
-  <TavernSettingsModal
-    open={showTavernSettings}
-    connectionPresets={presets}
-    tavernSelectedPresetId={settingsStore.current?.tavernSelectedPresetId}
-    tavernPerChatPresets={settingsStore.current?.tavernPerChatPresets}
-    promptPresets={settingsStore.current?.promptPresets}
-    selectedPromptPresetId={settingsStore.current?.selectedPromptPresetId}
-    personas={settingsStore.current?.personas}
-    selectedPersonaId={settingsStore.current?.selectedPersonaId}
-    avatarShape={settingsStore.current?.tavernAvatarShape}
-    onSave={onTavernSettingsSave}
-    onClose={() => (showTavernSettings = false)}
-  />
-  <CharacterEditorModal
-    open={characterEditorOpen}
-    character={characterEditorTarget}
-    canDelete={!!characterEditorTarget && characters.some(character => character.id === characterEditorTarget?.id)}
-    onSave={onCharacterSave}
-    onDelete={async (id) => {
-      characterEditorOpen = false
-      characterEditorTarget = null
-      await onDeleteCharacter(id)
-    }}
-    onCancel={() => { characterEditorOpen = false; characterEditorTarget = null }}
-  />
+  {#if settingsRequested}
+    {#await import('./lib/SettingsModal.svelte')}
+      <p class="feature-load-notice" role="status">Loading…</p>
+    {:then { default: SettingsModal }}
+      <SettingsModal
+        open={showSettings}
+        onClose={() => (showSettings = false)}
+        onSaved={() => settingsStore.reload()}
+      />
+    {:catch error}
+      <p class="feature-load-notice" role="alert">Could not load this feature: {error instanceof Error ? error.message : String(error)}. Reload to retry.</p>
+    {/await}
+  {/if}
+  {#if tavernSettingsRequested}
+    {#await import('./lib/components/tavern/TavernSettingsModal.svelte')}
+      <p class="feature-load-notice" role="status">Loading…</p>
+    {:then { default: TavernSettingsModal }}
+      <TavernSettingsModal
+        open={showTavernSettings}
+        connectionPresets={presets}
+        tavernSelectedPresetId={settingsStore.current?.tavernSelectedPresetId}
+        tavernPerChatPresets={settingsStore.current?.tavernPerChatPresets}
+        promptPresets={settingsStore.current?.promptPresets}
+        selectedPromptPresetId={settingsStore.current?.selectedPromptPresetId}
+        personas={settingsStore.current?.personas}
+        selectedPersonaId={settingsStore.current?.selectedPersonaId}
+        avatarShape={settingsStore.current?.tavernAvatarShape}
+        onSave={onTavernSettingsSave}
+        onClose={() => (showTavernSettings = false)}
+      />
+    {:catch error}
+      <p class="feature-load-notice" role="alert">Could not load this feature: {error instanceof Error ? error.message : String(error)}. Reload to retry.</p>
+    {/await}
+  {/if}
+  {#if characterEditorRequested}
+    {#await import('./lib/components/tavern/CharacterEditorModal.svelte')}
+      <p class="feature-load-notice" role="status">Loading…</p>
+    {:then { default: CharacterEditorModal }}
+      <CharacterEditorModal
+        open={characterEditorOpen}
+        character={characterEditorTarget}
+        canDelete={!!characterEditorTarget && characters.some(character => character.id === characterEditorTarget?.id)}
+        onSave={onCharacterSave}
+        onDelete={async (id) => {
+          characterEditorOpen = false
+          characterEditorTarget = null
+          await onDeleteCharacter(id)
+        }}
+        onCancel={() => { characterEditorOpen = false; characterEditorTarget = null }}
+      />
+    {:catch error}
+      <p class="feature-load-notice" role="alert">Could not load this feature: {error instanceof Error ? error.message : String(error)}. Reload to retry.</p>
+    {/await}
+  {/if}
 </div>
 {/if}
 
 <style>
+  .feature-load-notice {
+    position: fixed;
+    top: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 1002;
+    max-width: calc(100vw - 32px);
+    padding: 12px 16px;
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    background: var(--panel);
+  }
   :global(#app) { height: 100dvh; height: var(--app-height, 100dvh); }
   .app-shell {
     position: relative;

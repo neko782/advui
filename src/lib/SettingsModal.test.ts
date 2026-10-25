@@ -74,6 +74,8 @@ describe('SettingsModal', () => {
     ;(document.getElementById('settings-tab-general') as HTMLButtonElement).click()
     flushSync()
 
+    await vi.waitFor(() => { flushSync(); expect(document.querySelector('.developer-group input[type="checkbox"]')).toBeTruthy() })
+
     // Edit a setting (debug switch) to trigger the debounced persist
     const debugSwitch = document.querySelector('.developer-group input[type="checkbox"]') as HTMLInputElement
     expect(debugSwitch).toBeTruthy()
@@ -104,6 +106,9 @@ describe('SettingsModal', () => {
       tab.click()
       flushSync()
       expect(tab.getAttribute('aria-selected')).toBe('true')
+      await vi.dynamicImportSettled()
+      flushSync()
+      expect(document.querySelector('.ui-modal-scroller:not([style*="display: none"]) .ui-group')).toBeTruthy()
     }
     await unmount(component)
   })

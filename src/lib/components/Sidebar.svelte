@@ -3,7 +3,6 @@
   import { IconMenu, IconEditSquare, IconClose, IconCheck, IconEdit, IconDelete, IconSettings, IconSearch, IconDescription, IconMoreVert, IconDownload, IconContentCopy } from '../icons'
   import ConfirmModal from './ConfirmModal.svelte'
   import EditModal from './EditModal.svelte'
-  import { exportChat } from '../utils/exportImport'
   import { getChat } from '../chatsStore'
   import type { Chat, ChatListItem, Preset } from '../types'
 
@@ -153,6 +152,7 @@
     event?.stopPropagation()
     closeChatMenu()
     try {
+      const { exportChat } = await import('../utils/exportImport')
       await exportChat(chatId)
     } catch (err) {
       console.error('Failed to export chat:', err)

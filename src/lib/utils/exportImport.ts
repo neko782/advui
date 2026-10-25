@@ -15,8 +15,7 @@ import { getChatListItems, getChat, createChat } from '../chatsStore.js';
 import { loadSettings, saveSettings } from '../settingsStore.js';
 import { getAllImages, getImage, storeImage } from '../imageStore.js';
 import { getAllCharacters, getCharacter, putCharacter } from '../tavern/charactersStore.js';
-import Tar from 'tar-js';
-import untar from 'js-untar';
+import type Tar from 'tar-js';
 
 interface FileSystemWriteStream {
   write(chunk: Uint8Array): Promise<void>;
@@ -136,6 +135,7 @@ export async function exportAllData(options: ExportAllDataOptions = {}): Promise
       return;
     }
 
+    const { default: Tar } = await import('tar-js');
     const tar = new Tar();
     await appendExportArchiveToTar(tar, includeMedia);
 
@@ -942,6 +942,7 @@ interface UntarFile {
 }
 
 async function loadTarArchive(buffer: ArrayBuffer): Promise<TarArchive> {
+  const { default: untar } = await import('js-untar');
   const files = await untar(buffer) as UntarFile[];
   const entryMap = new Map<string, Uint8Array>();
 

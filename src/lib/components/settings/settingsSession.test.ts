@@ -1,4 +1,4 @@
-import { afterEach, expect, it } from 'vitest'
+import { afterEach, expect, it, vi } from 'vitest'
 import { mount, unmount, flushSync } from 'svelte'
 import Harness from './__fixtures__/SettingsSessionHarness.svelte'
 import { loadSettings } from '../../settingsStore'
@@ -19,6 +19,7 @@ it('retains normal settings tabs, expanded groups, fields and scroll through tab
   component = mount(Harness, { target: document.body })
   component.show(); flushSync()
   click('#settings-tab-presets')
+  await vi.waitFor(() => { flushSync(); expect(document.querySelectorAll('.preset-group-header').length).toBeGreaterThan(1) })
   const groups = document.querySelectorAll<HTMLButtonElement>('.preset-group-header')
   groups[1]!.click(); flushSync()
   const editor = document.querySelector<HTMLTextAreaElement>('[aria-label="System prompt"]')!
