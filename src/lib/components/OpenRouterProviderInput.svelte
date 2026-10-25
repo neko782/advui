@@ -72,7 +72,7 @@
 
 <style>
   label { display: grid; gap: 6px; }
-  .provider-toggle { display: grid; place-items: center; width: 40px; height: 44px; padding: 0; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--muted); cursor: pointer; }
+  .provider-toggle { display: grid; place-items: center; width: 36px; height: 36px; padding: 0; flex-shrink: 0; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--muted); cursor: pointer; }
   .provider-toggle:hover, .provider-toggle.selected { color: var(--accent); border-color: var(--accent); }
   .provider-content { display: grid; gap: 10px; padding: 14px; overflow-y: auto; }
   span { font-size: .9rem; color: var(--muted); font-weight: 500; }

@@ -499,7 +499,7 @@
 {/if}
 
 <style>
-  .icon-btn { border: 1px solid var(--border); border-radius: 10px; background: var(--bg); min-width: 44px; height: 44px; display: grid; place-items: center; line-height: 1; color: var(--text); transition: background-color .15s ease, border-color .15s ease, color .15s ease, transform .1s ease; }
+  .icon-btn { border: 1px solid var(--border); border-radius: 10px; background: var(--bg); width: 44px; height: 44px; padding: 0; flex-shrink: 0; display: grid; place-items: center; line-height: 1; color: var(--text); transition: background-color .15s ease, border-color .15s ease, color .15s ease, transform .1s ease; }
   .icon-btn:hover:not(:disabled) { background: var(--panel); border-color: var(--accent); color: var(--accent); }
   .icon-btn:active:not(:disabled) { transform: scale(0.95); }
   .icon-btn:disabled { opacity: .5; cursor: not-allowed; }
@@ -524,7 +524,7 @@
   .chat-settings-group::before { content: ''; position: absolute; left: 0; bottom: 100%; width: 220px; height: 12px; }
   .model-input-wrapper, .connection-input-wrapper { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; align-items: center; }
   .preset-toggle-wrapper { position: relative; }
-  .preset-toggle-btn { width: 36px; height: 36px; display: grid; place-items: center; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); cursor: pointer; transition: background-color .15s ease, border-color .15s ease, color .15s ease, transform .1s ease; flex-shrink: 0; }
+  .preset-toggle-btn { width: 36px; height: 36px; padding: 0; display: grid; place-items: center; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); cursor: pointer; transition: background-color .15s ease, border-color .15s ease, color .15s ease, transform .1s ease; flex-shrink: 0; }
   .preset-toggle-btn:hover:not(:disabled) { background: var(--panel); border-color: var(--accent); color: var(--accent); }
   .preset-toggle-btn:active:not(:disabled) { transform: scale(0.92); }
   .preset-toggle-btn:disabled { opacity: .5; cursor: not-allowed; }
@@ -538,7 +538,7 @@
   .preset-menu-model { font-size: .85rem; color: var(--muted); }
   /* Tool row with settings button */
   .tool-header-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-  .tool-settings-btn { width: 28px; height: 28px; display: grid; place-items: center; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--muted); cursor: pointer; transition: background-color .15s ease, border-color .15s ease, color .15s ease; flex-shrink: 0; }
+  .tool-settings-btn { width: 36px; height: 36px; padding: 0; display: grid; place-items: center; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--muted); cursor: pointer; transition: background-color .15s ease, border-color .15s ease, color .15s ease; flex-shrink: 0; }
   .tool-settings-btn:hover { background: var(--panel); border-color: var(--accent); color: var(--text); }
   .tool-settings-btn:disabled { opacity: .6; cursor: not-allowed; }
   /* Per-tool floating popup */
