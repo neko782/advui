@@ -74,7 +74,15 @@ export function validateChatObject(chat: unknown): ChatValidationResult {
   }
 
   if (Array.isArray(chatObj.nodes)) {
-    (chatObj.nodes as unknown[]).forEach((node, index) => sanitizeNode(node, errors, index));
+    const variantIds = new Set<number>();
+    (chatObj.nodes as unknown[]).forEach((node, index) => {
+      const normalized = sanitizeNode(node, errors, index);
+      for (const variant of normalized?.variants || []) {
+        const id = Number(variant.id);
+        if (variantIds.has(id)) errors.push(`Duplicate message id: ${id}.`);
+        variantIds.add(id);
+      }
+    });
   }
 
   return { valid: errors.length === 0, errors };

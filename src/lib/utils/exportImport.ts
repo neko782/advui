@@ -320,7 +320,7 @@ async function appendExportArchiveToTar(tar: Tar, includeMedia: boolean): Promis
         tar.append('images/manifest.json', encodeText(JSON.stringify({ version: 1, images: imagesManifest }, null, 2)));
       }
     } catch (err) {
-      console.warn('Failed to export images:', err);
+      throw new Error(`Could not export media: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 }
@@ -434,7 +434,7 @@ async function appendExportArchiveToStream(writer: FileSystemWriteStream, includ
         await writeTarTextEntry(writer, 'images/manifest.json', JSON.stringify({ version: 1, images: imagesManifest }, null, 2));
       }
     } catch (err) {
-      console.warn('Failed to export images:', err);
+      throw new Error(`Could not export media: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 

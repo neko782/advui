@@ -328,6 +328,8 @@ function writeOneInternal(chat: Chat): Promise<Chat> {
     const store = transaction.objectStore(STORE_NAME);
 
     return new Promise((resolve, reject) => {
+      transaction.onabort = () => reject(transaction.error || new Error('IndexedDB transaction aborted'));
+      transaction.onerror = () => reject(transaction.error || new Error('IndexedDB transaction failed'));
       // First, read existing chat to get current version
       const readRequest = store.get(candidate.id);
 
@@ -359,7 +361,7 @@ function writeOneInternal(chat: Chat): Promise<Chat> {
         // Write the chat
         const writeRequest = store.put(toPersist);
 
-        writeRequest.onsuccess = () => {
+        transaction.oncomplete = () => {
           const snapshot = cloneChat(toPersist)!;
 
           // Emit change event
@@ -394,6 +396,8 @@ function deleteOne(id: string, expectedVersion?: number): Promise<Chat | null> {
     const store = transaction.objectStore(STORE_NAME);
 
     return new Promise((resolve, reject) => {
+      transaction.onabort = () => reject(transaction.error || new Error('IndexedDB transaction aborted'));
+      transaction.onerror = () => reject(transaction.error || new Error('IndexedDB transaction failed'));
       // First, read existing chat to check version
       const readRequest = store.get(id);
 
@@ -414,7 +418,7 @@ function deleteOne(id: string, expectedVersion?: number): Promise<Chat | null> {
         // Delete the chat
         const deleteRequest = store.delete(id);
 
-        deleteRequest.onsuccess = () => {
+        transaction.oncomplete = () => {
           // Emit change event
           emitChange({
             type: 'delete',

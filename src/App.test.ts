@@ -117,3 +117,21 @@ describe('App settings modal integration', () => {
     }
   })
 })
+
+it('clears a normal chat when switching to an empty Tavern and restores it on return', async () => {
+  for (const chat of await getChatListItems()) await deleteChat(chat.id)
+  await createChat({ title: 'Normal conversation' })
+  const component = mount(App, { target: document.body })
+  try {
+    await vi.waitFor(() => { flushSync(); expect(document.querySelector('.chat-wrapper.active')).toBeTruthy() })
+    const tavern = [...document.querySelectorAll<HTMLButtonElement>('button[role="tab"]')].find(button => button.textContent === 'Tavern')!
+    tavern.click()
+    flushSync()
+    expect(document.querySelector('.chat-wrapper.active')).toBeNull()
+    expect(document.querySelector('.empty-mode')?.textContent).toContain('Select or create a character')
+    const chat = [...document.querySelectorAll<HTMLButtonElement>('button[role="tab"]')].find(button => button.textContent === 'Chat')!
+    chat.click()
+    flushSync()
+    expect(document.querySelector('.chat-wrapper.active')).toBeTruthy()
+  } finally { await unmount(component) }
+})

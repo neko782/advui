@@ -23,3 +23,14 @@ it.each([
   await geminiAdapter.respond({ ...ctx, apiBaseUrl }, false);
   expect(fetcher.mock.calls[1][0]).toBe(`${expected}/models/test:generateContent?key=dummy`);
 });
+
+it('rejects premature EOF while delivering partial text to the caller', async () => {
+  const onTextDelta = vi.fn();
+  vi.stubGlobal('fetch', async () => new Response('data: {"type":"response.output_text.delta","delta":"Partial reply"}\n\n'));
+  await expect(responsesAdapter.respond({ ...ctx, callbacks: { onTextDelta } }, true)).rejects.toThrow('interrupted');
+  expect(onTextDelta.mock.calls[0][0]).toBe('Partial reply');
+});
+it('accepts a stream with a terminal completion event', async () => {
+  vi.stubGlobal('fetch', async () => new Response('data: {"type":"response.output_text.delta","delta":"Complete"}\n\ndata: {"type":"response.completed","response":{"output":[]}}\n\n'));
+  expect((await responsesAdapter.respond(ctx, true)).text).toBe('Complete');
+});

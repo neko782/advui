@@ -60,7 +60,7 @@ export async function getAllCharacters(): Promise<Character[]> {
     return list.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
   } catch (err) {
     console.error('Failed to load characters:', err);
-    return [];
+    throw err;
   }
 }
 
@@ -85,10 +85,13 @@ export async function putCharacter(character: Character): Promise<Character> {
   // cannot serialize reactive proxy objects (DataCloneError).
   const plain: Character = { ...deepClone(character), updatedAt: Date.now() };
   const db = await openDB();
-  const store = db.transaction([STORE_NAME], 'readwrite').objectStore(STORE_NAME);
+  const transaction = db.transaction([STORE_NAME], 'readwrite');
+  const store = transaction.objectStore(STORE_NAME);
   await new Promise<void>((resolve, reject) => {
     const request = store.put(plain);
-    request.onsuccess = () => resolve();
+    transaction.oncomplete = () => resolve();
+    transaction.onabort = () => reject(transaction.error || new Error('IndexedDB transaction aborted'));
+    transaction.onerror = () => reject(transaction.error || new Error('IndexedDB transaction failed'));
     request.onerror = () => reject(request.error);
   });
   return plain;
@@ -97,10 +100,13 @@ export async function putCharacter(character: Character): Promise<Character> {
 export async function deleteCharacter(id: string): Promise<void> {
   if (!id) return;
   const db = await openDB();
-  const store = db.transaction([STORE_NAME], 'readwrite').objectStore(STORE_NAME);
+  const transaction = db.transaction([STORE_NAME], 'readwrite');
+  const store = transaction.objectStore(STORE_NAME);
   await new Promise<void>((resolve, reject) => {
     const request = store.delete(id);
-    request.onsuccess = () => resolve();
+    transaction.oncomplete = () => resolve();
+    transaction.onabort = () => reject(transaction.error || new Error('IndexedDB transaction aborted'));
+    transaction.onerror = () => reject(transaction.error || new Error('IndexedDB transaction failed'));
     request.onerror = () => reject(request.error);
   });
 }

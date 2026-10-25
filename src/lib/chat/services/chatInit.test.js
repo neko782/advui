@@ -3,7 +3,21 @@ import {
   recomputeNextIds,
   ensureUniqueIds,
   detectIdCollisions,
+  ensureUniqueVariantIds,
 } from './chatInit.js'
+
+it('repairs legacy duplicate message IDs without changing content, links or selection', () => {
+  const nodes = [
+    { id: 1, active: 1, variants: [{ id: 1, content: 'first', next: 2 }, { id: 1, content: 'alternate', next: null }] },
+    { id: 2, active: 0, variants: [{ id: 2, content: 'second', next: null }] },
+  ]
+  const repaired = ensureUniqueVariantIds(nodes)
+  expect(repaired.flatMap(node => node.variants.map(variant => variant.id))).toEqual([1, 3, 2])
+  expect(repaired[0].active).toBe(1)
+  expect(repaired[0].variants[0].next).toBe(2)
+  expect(repaired[0].variants[1].content).toBe('alternate')
+  expect(nodes[0].variants[1].id).toBe(1)
+})
 
 describe('detectIdCollisions', () => {
   it('should return no collisions for empty nodes', () => {

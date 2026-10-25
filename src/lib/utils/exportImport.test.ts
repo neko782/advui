@@ -12,12 +12,12 @@ vi.mock('../chatsStore.js', () => ({
   }),
 }));
 vi.mock('../imageStore.js', () => ({
-  getAllImages: async () => [...stores.images.values()],
+  getAllImages: vi.fn(async () => [...stores.images.values()]),
   getImage: async (id: string) => stores.images.get(id) || null,
   storeImage: async (id: string, data: string, mimeType: string, name: string) => stores.images.set(id, { id, data, mimeType, name }),
 }));
 vi.mock('../tavern/charactersStore.js', () => ({
-  getAllCharacters: async () => [...stores.characters.values()],
+  getAllCharacters: vi.fn(async () => [...stores.characters.values()]),
   getCharacter: async (id: string) => stores.characters.get(id),
   putCharacter: async (character: { id: string }) => stores.characters.set(character.id, character),
 }));
@@ -103,4 +103,22 @@ it.each([false, true])('restores Tavern characters and associations from a TAR b
   expect(stores.chats.get('restored').characterId).toBe(character.id);
   expect(stores.characters.get(character.id)).toEqual(character);
   expect(stores.images.get('generated').data).toBe('BAUG');
+});
+
+it.each([false, true])('rejects incomplete media backups (streaming=%s)', async (streaming) => {
+  const { getAllImages } = await import('../imageStore');
+  vi.mocked(getAllImages).mockRejectedValueOnce(new Error('media unavailable'));
+  const abort = vi.fn();
+  const close = vi.fn();
+  if (streaming) (window as any).showSaveFilePicker = async () => ({ createWritable: async () => ({ write: async () => {}, close, abort }) });
+  await expect(exportAllData({ includeMedia: true })).rejects.toThrow('media unavailable');
+  if (streaming) {
+    expect(abort).toHaveBeenCalledOnce();
+    expect(close).not.toHaveBeenCalled();
+  }
+});
+it('rejects a backup when characters cannot be read', async () => {
+  const { getAllCharacters } = await import('../tavern/charactersStore');
+  vi.mocked(getAllCharacters).mockRejectedValueOnce(new Error('characters unavailable'));
+  await expect(exportAllData()).rejects.toThrow('characters unavailable');
 });

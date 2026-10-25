@@ -86,6 +86,27 @@ export interface IdCollisionResult {
 /**
  * Detects ID collisions in nodes and variants
  */
+/** Repair legacy duplicate message IDs without changing node links or content. */
+export function ensureUniqueVariantIds(nodes: ChatNode[]): ChatNode[] {
+  const used = new Set(nodes.flatMap(node => (node.variants || []).map(variant => variant.id)));
+  const seen = new Set<number>();
+  let nextId = 1;
+  return nodes.map(node => ({
+    ...node,
+    variants: (node.variants || []).map(variant => {
+      if (!seen.has(variant.id)) {
+        seen.add(variant.id);
+        return variant;
+      }
+      while (used.has(nextId)) nextId++;
+      const id = nextId++;
+      used.add(id);
+      seen.add(id);
+      return { ...variant, id };
+    }),
+  }));
+}
+
 export function detectIdCollisions(nodes: ChatNode[] | null): IdCollisionResult {
   const nodeIdCounts = new Map<number, number>();
   const variantIdCounts = new Map<number, number>();

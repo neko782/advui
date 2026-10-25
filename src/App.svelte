@@ -374,6 +374,11 @@
     if (!pool.some(c => c.id === selectedId)) {
       const first = pool[0]?.id || null
       if (first) onSelectChat(first)
+      else {
+        if (selectedId) previousSelectedId = selectedId
+        selectedId = null
+        setSelected(null)
+      }
     }
     if (next === 'tavern') {
       const item = tavernChats.find(c => c.id === selectedId)
@@ -533,6 +538,17 @@
     />
   {/if}
   <div class="chat-pane">
+    {#if !selectedId && storageState === 'ready'}
+      <div class="empty-mode" role="status">
+        {#if mode === 'tavern'}
+          <p>Select or create a character to start a conversation.</p>
+          <button type="button" class="ui-btn" onclick={onNewCharacter}>New character</button>
+        {:else}
+          <p>No chats yet.</p>
+          <button type="button" class="ui-btn" onclick={() => onNewChat()}>New chat</button>
+        {/if}
+      </div>
+    {/if}
     {#each (chats || []).filter(c => mountedChatIds.has(c.id)) as c (c.id)}
       <div class="chat-wrapper {selectedId === c.id ? 'active' : 'hidden'}">
         <Chat
@@ -591,6 +607,7 @@
     height: 100%;
     overflow: hidden;
   }
+  .empty-mode { height: 100%; display: grid; place-content: center; justify-items: center; gap: 12px; }
   .chat-wrapper {
     position: absolute;
     inset: 0;

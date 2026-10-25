@@ -793,6 +793,7 @@ async function respondStreaming(ctx: ProviderRequestContext): Promise<Generation
 
   const processLine = createSseJsonLineProcessor(processEvent, onEvent);
   await readSseLines(response, processLine, () => completed);
+  if (!completed) throw new Error('The reply stream was interrupted before it finished. Regenerate to try again.');
 
   const finalCombined = buildCombinedSummary();
   if (!summaryDelivered && finalCombined) {

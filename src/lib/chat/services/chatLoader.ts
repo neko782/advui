@@ -9,6 +9,7 @@ import {
   recomputeNextIds,
   ensureUniqueIds,
   detectIdCollisions,
+  ensureUniqueVariantIds,
   DEFAULT_SYSTEM_PROMPT
 } from './chatInit.js';
 import { resolveTavernPresetId } from '../../tavern/tavernPreset.js';
@@ -120,6 +121,7 @@ export async function loadChat(chatId: string | null): Promise<LoadedChat> {
             duplicateNodeIds: collisions.duplicateNodeIds,
             duplicateVariantIds: collisions.duplicateVariantIds,
           });
+          if (collisions.duplicateVariantIds.length) nextNodes = ensureUniqueVariantIds(nextNodes);
         }
         
         // Compute next IDs with collision prevention

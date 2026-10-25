@@ -672,7 +672,9 @@ describe('OpenRouter provider routing', () => {
     const fetchMock = vi.fn().mockImplementation(async () => new Response(JSON.stringify({ choices: [], output: [] })))
     vi.stubGlobal('fetch', fetchMock)
     for (const stream of [false, true]) {
-      if (stream) fetchMock.mockResolvedValueOnce(makeSseResponse(['data: [DONE]\n\n']))
+      if (stream) fetchMock.mockResolvedValueOnce(makeSseResponse([mode === 'responses'
+        ? 'data: {"type":"response.completed","response":{"output":[]}}\n\n'
+        : 'data: [DONE]\n\n']))
       await respond({ connectionId, model: 'test-model', prompt: 'hi', openRouterProvider: ' anthropic ', stream })
       expect(JSON.parse(fetchMock.mock.lastCall![1].body).provider)
         .toEqual({ only: ['anthropic'], allow_fallbacks: false })

@@ -72,7 +72,9 @@ export async function storeImage(
 
     await new Promise<void>((resolve, reject) => {
       const request = store.put(image);
-      request.onsuccess = () => resolve();
+      transaction.oncomplete = () => resolve();
+      transaction.onabort = () => reject(transaction.error || new Error('IndexedDB transaction aborted'));
+      transaction.onerror = () => reject(transaction.error || new Error('IndexedDB transaction failed'));
       request.onerror = () => reject(request.error);
     });
 
@@ -108,7 +110,9 @@ export async function deleteImage(id: string): Promise<void> {
 
     await new Promise<void>((resolve, reject) => {
       const request = store.delete(id);
-      request.onsuccess = () => resolve();
+      transaction.oncomplete = () => resolve();
+      transaction.onabort = () => reject(transaction.error || new Error('IndexedDB transaction aborted'));
+      transaction.onerror = () => reject(transaction.error || new Error('IndexedDB transaction failed'));
       request.onerror = () => reject(request.error);
     });
   } catch (err) {
@@ -133,7 +137,7 @@ export async function getAllImages(): Promise<StoredImage[]> {
     return await getAllImagesInternal();
   } catch (err) {
     console.error('Failed to get all images:', err);
-    return [];
+    throw err;
   }
 }
 
