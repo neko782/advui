@@ -49,6 +49,7 @@ export interface PresetFields {
   thinkingBudgetTokens: number | null;
   connectionId: string | null;
   openRouterProvider?: string;
+  openRouterZdr?: boolean;
   systemPrompt: string;
   // Web Search settings (Responses API only)
   webSearchEnabled?: boolean;
@@ -149,6 +150,7 @@ export interface DefaultChatSettings {
   thinkingBudgetTokens: number | null;
   connectionId: string | null;
   openRouterProvider?: string;
+  openRouterZdr?: boolean;
 }
 
 export interface Settings {

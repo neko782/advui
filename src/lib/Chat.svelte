@@ -231,6 +231,7 @@
     chatReasoningSummary={chatSettings.reasoningSummary}
     chatTextVerbosity={chatSettings.textVerbosity}
     chatOpenRouterProvider={chatSettings.openRouterProvider}
+    chatOpenRouterZdr={chatSettings.openRouterZdr}
     chatThinkingEnabled={chatSettings.thinkingEnabled}
     chatThinkingBudgetTokens={chatSettings.thinkingBudgetTokens}
     chatWebSearchEnabled={chatSettings.webSearchEnabled}
@@ -263,6 +264,7 @@
     onChangeReasoningSummary={(val) => chat.updateChatSettings({ reasoningSummary: normalizeReasoningSummary(val) })}
     onChangeTextVerbosity={(val) => chat.updateChatSettings({ textVerbosity: normalizeVerbosity(val) })}
     onChangeOpenRouterProvider={(val) => chat.setOpenRouterProvider(val)}
+    onChangeOpenRouterZdr={(val) => chat.setOpenRouterZdr(val)}
     onChangeThinkingEnabled={(val) => chat.updateChatSettings({ thinkingEnabled: !!val })}
     onChangeThinkingBudgetTokens={(val) => chat.updateChatSettings({ thinkingBudgetTokens: toIntOrNull(val) })}
     onChangeWebSearchEnabled={(val) => chat.updateChatSettings({ webSearchEnabled: !!val })}

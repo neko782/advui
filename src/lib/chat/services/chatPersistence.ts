@@ -315,6 +315,7 @@ export function computePersistSig(nodes: ChatNode[], chatSettings: ChatSettings,
         thinkingBudgetTokens: chatSettings?.thinkingBudgetTokens ?? null,
         connectionId: chatSettings?.connectionId || '',
         openRouterProvider: chatSettings?.openRouterProvider || '',
+        openRouterZdr: chatSettings?.openRouterZdr === true,
         // Web Search settings
         webSearchEnabled: !!chatSettings?.webSearchEnabled,
         webSearchDomains: chatSettings?.webSearchDomains || '',

@@ -17,6 +17,8 @@
     textVerbosity?: TextVerbosity
     openRouterProvider?: string
     onInputOpenRouterProvider?: (val: string) => void
+    openRouterZdr?: boolean
+    onInputOpenRouterZdr?: (val: boolean) => void
     thinkingEnabled?: boolean
     thinkingBudgetTokens?: number | null
     webSearchEnabled?: boolean
@@ -350,7 +352,8 @@
           </select>
         {#if supportsOpenRouter}
             <OpenRouterProviderInput value={props.openRouterProvider} disabled={props.disabled}
-              active={!!props.open} onInput={props.onInputOpenRouterProvider} />
+              active={!!props.open} onInput={props.onInputOpenRouterProvider}
+              zdr={props.openRouterZdr} onZdr={props.onInputOpenRouterZdr} />
         {/if}
           </div>
         </div>

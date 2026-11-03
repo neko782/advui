@@ -7,6 +7,7 @@
 import { toIntOrNull, toClampedNumber } from '../../utils/numbers.js';
 import { normalizeMcpServerList } from '../../utils/mcp.js';
 import {
+  buildOpenRouterProvider,
   createAbort,
   createSseJsonLineProcessor,
   ensureOkResponse,
@@ -69,9 +70,8 @@ function buildResponsesRequest(ctx: ProviderRequestContext): Record<string, unkn
     request.tools = tools;
   }
 
-  if (ctx.params.openRouterProvider) {
-    request.provider = { only: [ctx.params.openRouterProvider], allow_fallbacks: false };
-  }
+  const provider = buildOpenRouterProvider(ctx.params);
+  if (provider) request.provider = provider;
   return request;
 }
 

@@ -693,4 +693,23 @@ describe('OpenRouter provider routing', () => {
     await respond({ connectionId, model: 'test-model', prompt: 'hi', openRouterProvider: provider })
     expect(JSON.parse(fetchMock.mock.lastCall![1].body)).not.toHaveProperty('provider')
   })
+
+  it.each(['responses', 'chat_completions'] as const)('sends zdr for %s when enabled', async (mode) => {
+    configureConnection(mode, true)
+    const fetchMock = vi.fn().mockImplementation(async () => new Response(JSON.stringify({ choices: [], output: [] })))
+    vi.stubGlobal('fetch', fetchMock)
+    await respond({ connectionId, model: 'test-model', prompt: 'hi', openRouterZdr: true })
+    expect(JSON.parse(fetchMock.mock.lastCall![1].body).provider).toEqual({ zdr: true })
+    await respond({ connectionId, model: 'test-model', prompt: 'hi', openRouterProvider: 'anthropic', openRouterZdr: true })
+    expect(JSON.parse(fetchMock.mock.lastCall![1].body).provider)
+      .toEqual({ only: ['anthropic'], allow_fallbacks: false, zdr: true })
+  })
+
+  it('omits zdr when OpenRouter is disabled', async () => {
+    configureConnection('chat_completions', false)
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ choices: [] })))
+    vi.stubGlobal('fetch', fetchMock)
+    await respond({ connectionId, model: 'test-model', prompt: 'hi', openRouterZdr: true })
+    expect(JSON.parse(fetchMock.mock.lastCall![1].body)).not.toHaveProperty('provider')
+  })
 })

@@ -216,6 +216,7 @@ export interface RespondOptions {
   textVerbosity?: TextVerbosity;
   reasoningSummary?: ReasoningSummary;
   openRouterProvider?: string;
+  openRouterZdr?: boolean;
   thinkingEnabled?: boolean;
   thinkingBudgetTokens?: number | null;
   onReasoningSummaryDelta?: (fullSummary: string, delta: string, event?: unknown) => void;

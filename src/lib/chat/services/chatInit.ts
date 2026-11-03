@@ -54,6 +54,7 @@ export function presetSignature(state: Partial<Settings> | null): string {
     p?.thinkingBudgetTokens ?? '',
     p?.connectionId || '',
     p?.openRouterProvider || '',
+    p?.openRouterZdr ? '1' : '0',
     p?.systemPrompt || '',
   ].join('|')).join(';');
 }

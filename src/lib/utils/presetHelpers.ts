@@ -32,6 +32,7 @@ export const DEFAULT_PRESET_FIELDS: PresetFields = {
   thinkingBudgetTokens: null,
   connectionId: null,
   openRouterProvider: '',
+  openRouterZdr: false,
   systemPrompt: DEFAULT_SYSTEM_PROMPT,
   // Web Search defaults
   webSearchEnabled: false,
@@ -167,6 +168,7 @@ export function normalizePreset(
     textVerbosity,
     reasoningSummary,
     openRouterProvider: typeof base.openRouterProvider === 'string' ? base.openRouterProvider.trim() : '',
+    openRouterZdr: base.openRouterZdr === true,
     thinkingEnabled,
     thinkingBudgetTokens,
     connectionId,
@@ -279,6 +281,7 @@ export function deriveDefaultPreset(
     textVerbosity: (defaultChat?.textVerbosity as string) || DEFAULT_PRESET_FIELDS.textVerbosity,
     reasoningSummary: (defaultChat?.reasoningSummary as string) || DEFAULT_PRESET_FIELDS.reasoningSummary,
     openRouterProvider: typeof defaultChat?.openRouterProvider === 'string' ? defaultChat.openRouterProvider : '',
+    openRouterZdr: defaultChat?.openRouterZdr === true,
     thinkingEnabled: !!defaultChat?.thinkingEnabled,
     thinkingBudgetTokens: (defaultChat?.thinkingBudgetTokens as number | null) ?? null,
     connectionId: (defaultChat?.connectionId as string)
@@ -371,6 +374,7 @@ export function buildChatSettings(preset: Preset, settings: Partial<Settings> | 
     textVerbosity: preset.textVerbosity,
     reasoningSummary: preset.reasoningSummary,
     openRouterProvider: preset.openRouterProvider || '',
+    openRouterZdr: preset.openRouterZdr === true,
     thinkingEnabled: !!preset.thinkingEnabled,
     thinkingBudgetTokens: parseThinkingBudgetTokens(preset.thinkingBudgetTokens),
     connectionId: computeConnectionId({ preset, settings }),
@@ -414,6 +418,7 @@ export function loadChatSettings(
 
   return {
     openRouterProvider: typeof s.openRouterProvider === 'string' ? s.openRouterProvider : preset.openRouterProvider || '',
+    openRouterZdr: typeof s.openRouterZdr === 'boolean' ? s.openRouterZdr : preset.openRouterZdr === true,
     model: s.model || preset.model || DEFAULT_MODEL,
     streaming: typeof s.streaming === 'boolean' ? s.streaming : preset.streaming,
     presetId: (typeof loaded?.presetId === 'string') ? loaded.presetId : (preset.id ?? undefined),
@@ -476,6 +481,7 @@ export function applyPresetToChatSettings(current: ChatSettings, preset: Partial
     thinkingEnabled: typeof preset.thinkingEnabled === 'boolean' ? preset.thinkingEnabled : current.thinkingEnabled,
     thinkingBudgetTokens: preset.thinkingBudgetTokens !== undefined ? preset.thinkingBudgetTokens : current.thinkingBudgetTokens,
     openRouterProvider: applyProvider ? preset.openRouterProvider || '' : current.openRouterProvider,
+    openRouterZdr: applyProvider ? preset.openRouterZdr === true : current.openRouterZdr,
     connectionId: preset.connectionId || current.connectionId,
     presetId: preset.id || current.presetId,
     // Web Search settings

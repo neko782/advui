@@ -1,11 +1,13 @@
 <script lang="ts">
   import FloatingPopover from './FloatingPopover.svelte'
   import { IconTune } from '../icons'
-  let { value = '', disabled = false, active = true, onInput }: {
+  let { value = '', zdr = false, disabled = false, active = true, onInput, onZdr }: {
     value?: string
+    zdr?: boolean
     disabled?: boolean
     active?: boolean
     onInput?: (value: string) => void
+    onZdr?: (value: boolean) => void
   } = $props()
   const uid = $props.id()
   let expanded = $state(false)
@@ -52,10 +54,10 @@
 <div bind:this={root}>
   <button type="button" class="provider-toggle" bind:this={button} {disabled}
     aria-label="OpenRouter provider" title="OpenRouter provider" aria-expanded={expanded}
-    class:selected={!!value} onclick={() => { expanded = !expanded }}><IconTune style="font-size: 18px;" /></button>
+    class:selected={!!value || zdr} onclick={() => { expanded = !expanded }}><IconTune style="font-size: 18px;" /></button>
   <FloatingPopover open={expanded && active} anchor={button} maxWidth={320} maxHeight={260} className="provider-popup">
   <div class="provider-content">
-<label>
+<label class="provider-field">
   <span>OpenRouter provider</span>
   <input type="text" placeholder="Automatic" list={`${uid}-providers`} {value} {disabled}
     oninput={(event) => { if (!disabled) onInput?.(event.currentTarget.value) }} />
@@ -66,17 +68,26 @@
   {/each}
 </datalist>
 <p>Choose a provider or enter its slug. Leave blank for automatic routing.</p>
+{#if onZdr}
+  <label class="ui-switch">
+    <input type="checkbox" checked={zdr} {disabled}
+      onchange={(event) => { if (!disabled) onZdr?.(event.currentTarget.checked) }} />
+    <span class="ui-switch-ui" aria-hidden="true"></span>
+    <span class="ui-switch-label">Zero data retention (ZDR)</span>
+  </label>
+  <p>Only route to endpoints that don't retain prompts.</p>
+{/if}
   </div>
   </FloatingPopover>
 </div>
 
 <style>
-  label { display: grid; gap: 6px; }
+  .provider-field { display: grid; gap: 6px; }
   .provider-toggle { display: grid; place-items: center; width: 36px; height: 36px; padding: 0; flex-shrink: 0; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--muted); cursor: pointer; }
   .provider-toggle:hover, .provider-toggle.selected { color: var(--accent); border-color: var(--accent); }
   .provider-content { display: grid; gap: 10px; padding: 14px; overflow-y: auto; }
-  span { font-size: .9rem; color: var(--muted); font-weight: 500; }
-  input { width: 100%; border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; background: var(--bg); color: var(--text); font: inherit; box-sizing: border-box; }
-  input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 15%, transparent); }
+  .provider-field span { font-size: .9rem; color: var(--muted); font-weight: 500; }
+  .provider-field input { width: 100%; border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; background: var(--bg); color: var(--text); font: inherit; box-sizing: border-box; }
+  .provider-field input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 15%, transparent); }
   p { margin: 0; font-size: .75rem; color: var(--muted); }
 </style>

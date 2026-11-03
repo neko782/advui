@@ -5,6 +5,7 @@
 import { toIntOrNull, toClampedNumber } from '../../utils/numbers.js';
 import { ensureDataUrl } from '../../attachments/mime.js';
 import {
+  buildOpenRouterProvider,
   collectContentText,
   createAbort,
   createSseJsonLineProcessor,
@@ -96,9 +97,8 @@ function buildChatRequest(ctx: ProviderRequestContext): Record<string, unknown> 
     chatRequest.thinking = thinkingConfig;
     chatRequest.extra_body = { ...(chatRequest.extra_body as object || {}), thinking: thinkingConfig };
   }
-  if (ctx.params.openRouterProvider) {
-    chatRequest.provider = { only: [ctx.params.openRouterProvider], allow_fallbacks: false };
-  }
+  const provider = buildOpenRouterProvider(ctx.params);
+  if (provider) chatRequest.provider = provider;
   return chatRequest;
 }
 

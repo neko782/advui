@@ -243,6 +243,7 @@ export class ChatController {
       textVerbosity: preset.textVerbosity,
       reasoningSummary: preset.reasoningSummary,
       openRouterProvider: preset.openRouterProvider || '',
+      openRouterZdr: preset.openRouterZdr === true,
       thinkingEnabled: preset.thinkingEnabled,
       thinkingBudgetTokens: preset.thinkingBudgetTokens,
       connectionId: presetConn ?? settingsConn,
@@ -900,6 +901,11 @@ export class ChatController {
   /** Changes the OpenRouter provider; always a per-chat override. */
   setOpenRouterProvider(value: string): void {
     this.chatSettings = { ...this.chatSettings, openRouterProvider: value };
+  }
+
+  /** Toggles OpenRouter zero data retention; always a per-chat override. */
+  setOpenRouterZdr(value: boolean): void {
+    this.chatSettings = { ...this.chatSettings, openRouterZdr: value };
   }
 
   selectPreset(preset: Preset | null | undefined, applyProvider: boolean = true): void {

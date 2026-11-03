@@ -476,7 +476,8 @@
                     </select>
                   {#if presetConnection?.openRouterEnabled && presetConnection.apiMode !== 'gemini'}
                       <OpenRouterProviderInput value={activePreset.openRouterProvider} active={props.active ?? true}
-                        onInput={(value) => updateActivePreset({ openRouterProvider: value })} />
+                        onInput={(value) => updateActivePreset({ openRouterProvider: value })}
+                        zdr={activePreset.openRouterZdr} onZdr={(value) => updateActivePreset({ openRouterZdr: value })} />
                   {/if}
                     </div>
                   </div>

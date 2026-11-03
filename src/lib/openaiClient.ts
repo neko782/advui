@@ -115,6 +115,8 @@ export async function respond(options: RespondOptions): Promise<GenerationRespon
       reasoningSummary: options.reasoningSummary,
       openRouterProvider: resolvedConnection.openRouterEnabled && resolvedConnection.apiMode !== 'gemini'
         ? options.openRouterProvider?.trim() || undefined : undefined,
+      openRouterZdr: resolvedConnection.openRouterEnabled && resolvedConnection.apiMode !== 'gemini'
+        && options.openRouterZdr === true,
       thinkingEnabled: options.thinkingEnabled,
       thinkingBudgetTokens: options.thinkingBudgetTokens,
     },

@@ -134,6 +134,7 @@ export type ProviderInput = string | Array<{ role: string; content: string | Con
 
 export interface ProviderParams {
   openRouterProvider?: string;
+  openRouterZdr?: boolean;
   maxOutputTokens?: number | null;
   topP?: number | null;
   temperature?: number | null;
@@ -142,6 +143,17 @@ export interface ProviderParams {
   reasoningSummary?: ReasoningSummary;
   thinkingEnabled?: boolean;
   thinkingBudgetTokens?: number | null;
+}
+
+/** OpenRouter `provider` routing object, or null when nothing is set. */
+export function buildOpenRouterProvider(params: ProviderParams): Record<string, unknown> | null {
+  const provider: Record<string, unknown> = {};
+  if (params.openRouterProvider) {
+    provider.only = [params.openRouterProvider];
+    provider.allow_fallbacks = false;
+  }
+  if (params.openRouterZdr) provider.zdr = true;
+  return Object.keys(provider).length > 0 ? provider : null;
 }
 
 export interface ProviderTools {

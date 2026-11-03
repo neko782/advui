@@ -273,6 +273,7 @@ export class SettingsDraft {
       textVerbosity: base?.textVerbosity || 'medium',
       reasoningSummary: base?.reasoningSummary || 'auto',
       openRouterProvider: base?.openRouterProvider || '',
+      openRouterZdr: base?.openRouterZdr === true,
       thinkingEnabled: !!base?.thinkingEnabled,
       thinkingBudgetTokens: base?.thinkingBudgetTokens ?? null,
       connectionId: base?.connectionId || this.local?.selectedConnectionId || this.activeConnectionId || (this.local?.connections?.[0]?.id || ''),
