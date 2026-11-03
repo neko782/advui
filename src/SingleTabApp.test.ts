@@ -34,7 +34,8 @@ it('keeps extra tabs out of storage and allows a fresh startup after the owner c
   vi.stubGlobal('navigator', { locks });
   const first = openTab();
   await vi.waitFor(() => { flushSync(); expect(first.target.querySelector('.chat-pane')).toBeTruthy(); });
-  expect(probeStorage).toHaveBeenCalledTimes(1);
+  // The app starts storage after a deferred tick, so wait for the probe itself.
+  await vi.waitFor(() => expect(probeStorage).toHaveBeenCalledTimes(1));
 
   const second = openTab();
   await vi.waitFor(() => { flushSync(); expect(second.target.textContent).toContain('already open'); });
@@ -49,7 +50,7 @@ it('keeps extra tabs out of storage and allows a fresh startup after the owner c
   await vi.waitFor(async () => expect((await locks.query()).held).toHaveLength(0));
   second.target.querySelector('button')!.click();
   await vi.waitFor(() => { flushSync(); expect(second.target.querySelector('.chat-pane')).toBeTruthy(); });
-  expect(probeStorage).toHaveBeenCalledTimes(2);
+  await vi.waitFor(() => expect(probeStorage).toHaveBeenCalledTimes(2));
 });
 
 it('shows an error without mounting the app when locking is unavailable', async () => {
