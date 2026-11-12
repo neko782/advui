@@ -361,7 +361,8 @@
   .settings-tab:active { transform: scale(0.97); }
   .settings-tab.active { background: var(--panel); color: var(--accent); box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
   .chat-settings-menu { min-width: 0; width: var(--settings-width); box-sizing: border-box; padding: 0; }
-  input[type="number"], select { width: 100%; height: 38px; border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; background: var(--bg); color: var(--text); font: inherit; font-size: .9rem; box-sizing: border-box; transition: border-color .15s ease, box-shadow .15s ease; }
+  input[type="number"], select { width: 100%; height: 38px; border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; background-color: var(--bg); color: var(--text); font: inherit; font-size: .9rem; box-sizing: border-box; transition: border-color .15s ease, box-shadow .15s ease; }
+  select { padding-right: 34px; }
   input:disabled, select:disabled { opacity: .5; cursor: not-allowed; }
   input[type="number"]:hover, select:hover { border-color: color-mix(in srgb, var(--border) 70%, var(--accent)); }
   input[type="number"]:focus, select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 15%, transparent); }

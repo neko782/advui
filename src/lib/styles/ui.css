@@ -290,6 +290,22 @@
 .ui-textarea:disabled { opacity: 0.6; cursor: not-allowed; }
 .ui-textarea { min-height: 88px; resize: vertical; line-height: 1.5; }
 
+/* Selects draw their own chevron so it sits inset from the edge rather
+   than wherever the platform puts the native arrow. Components that style
+   a select must set background-color (not the shorthand) and keep the
+   right padding. */
+select:not([multiple]) {
+  appearance: none;
+  -webkit-appearance: none;
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--muted) 50%),
+    linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+  background-position: calc(100% - 17px) 50%, calc(100% - 12px) 50%;
+  background-size: 5px 5px;
+  background-repeat: no-repeat;
+}
+.ui-select { background-color: var(--bg); padding-right: 34px; }
+
 /* Inputs sharing a flex row with buttons grow instead of wrapping */
 .ui-row > .ui-input,
 .ui-row > .ui-select { width: auto; flex: 1 1 140px; }

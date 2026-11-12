@@ -765,10 +765,10 @@
   .sort-select {
     flex: 1 1 auto;
     min-width: 0;
-    padding: 6px 8px;
+    padding: 6px 30px 6px 8px;
     border: 1px solid var(--border);
     border-radius: 8px;
-    background: var(--panel);
+    background-color: var(--panel);
     color: var(--text);
     font: inherit;
     font-size: 0.78rem;
