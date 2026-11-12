@@ -13,6 +13,7 @@ import {
   extractOutputText,
   nativeData,
   normalizeReasoningText,
+  plainTurns,
   readSseLines,
   sortModels,
   throwIfErrorBody,
@@ -87,8 +88,11 @@ function nativeTurn(ctx: ProviderRequestContext, text: string, fields: Reasoning
     : undefined;
 }
 
-/** A stored reply: its reasoning fields, plus the tool-calling turns that led to it. */
-type StoredReply = ReasoningFields & { toolTurns?: ChatMessage[] };
+/**
+ * A stored reply: its reasoning fields, plus the tool-calling (and steering)
+ * turns that led to it and the text of the final turn.
+ */
+type StoredReply = ReasoningFields & { toolTurns?: ChatMessage[]; finalText?: string };
 
 /**
  * The browser tool turns of a stored reply, when every call in them is to a
@@ -121,6 +125,14 @@ function buildChatMessages(ctx: ProviderRequestContext): ChatMessage[] {
       if (reasoning && reasoning[field] != null) fields[field] = reasoning[field];
     }
     const before = replayToolTurns(reasoning, functions);
+    if (!before.length && message.steers?.length) {
+      // Steered replies split into plain-text turns; their content is always text.
+      return plainTurns(message).map(turn => ({ role: turn.role, content: turn.content as string }));
+    }
+    // The earlier turns carry their own text; the final turn carries the rest.
+    if (before.length && typeof reasoning?.finalText === 'string' && typeof msg.content === 'string') {
+      return [...before, { role: msg.role, content: reasoning.finalText, ...fields }];
+    }
     // If content is an array (from Responses format), convert to Chat Completions format
     if (Array.isArray(msg.content)) {
       const contentArray: ChatContentPart[] = [];
@@ -505,13 +517,22 @@ function respond(ctx: ProviderRequestContext, stream: boolean): Promise<Generati
         : [];
       return { reply: round.reply, calls: toLoopCalls(round.calls), turn } satisfies ToolRound<ChatMessage>;
     },
-    answer: answers => answers.map(({ call, output }) => ({ role: 'tool', tool_call_id: call.id, content: output })),
+    answer: (answers, steers) => [
+      ...answers.map(({ call, output }) => ({ role: 'tool', tool_call_id: call.id, content: output })),
+      ...steers.map(content => ({ role: 'user', content })),
+    ],
+    steer: texts => texts.map(content => ({ role: 'user', content })),
+    partial: text => (text ? [{ role: 'assistant', content: text }] : []),
     native: (rounds, final, text) => ({
       api: 'chat_completions',
       endpoint: ctx.baseURL,
       model: ctx.model,
       text,
-      data: { ...((final.reply.native?.data as ReasoningFields | undefined) ?? {}), toolTurns: rounds } satisfies StoredReply,
+      data: {
+        ...((final.reply.native?.data as ReasoningFields | undefined) ?? {}),
+        toolTurns: rounds,
+        finalText: final.reply.text,
+      } satisfies StoredReply,
     }),
   });
 }

@@ -37,6 +37,8 @@ import type {
   BrowserToolName,
   ActivityStep,
   NativeTurn,
+  SteerChannel,
+  SteerNote,
 } from '../types/index.js';
 
 // ============================================================================
@@ -159,6 +161,8 @@ export interface ProviderMessage {
   content: string | ContentPart[];
   /** An assistant reply as the provider returned it (see nativeData). */
   native?: NativeTurn;
+  /** Messages the user steered the reply with (see plainTurns). */
+  steers?: SteerNote[];
 }
 
 export type ProviderInput = string | ProviderMessage[];
@@ -223,6 +227,8 @@ export interface ProviderRequestContext {
   callbacks: ProviderCallbacks;
   /** Registers an abort function with the caller. */
   provideAbort: (fn: () => void) => void;
+  /** Messages the user sends while the reply is being written (see steering.ts). */
+  steering?: SteerChannel;
 }
 
 export interface ProviderAdapter {
@@ -242,12 +248,14 @@ export function buildProviderInput(messages: HistoryMessage[] | undefined, promp
   const allowed = new Set(['system', 'user', 'assistant']);
   return messages
     .filter(m => m && (typeof m.content === 'string' || (m.images && Array.isArray(m.images))) && allowed.has(m.role))
-    .map(({ role, content, images, native }): ProviderMessage => {
+    .map(({ role, content, images, native, steers }): ProviderMessage => {
+      const steered = role === 'assistant' && Array.isArray(steers) && steers.length ? { steers } : {};
       // A reply edited after it was generated no longer matches what the
       // provider returned, so it goes back as the edited text.
       if (role === 'assistant' && native && typeof native === 'object' && native.text === content) {
-        return { role, content, native };
+        return { role, content, native, ...steered };
       }
+      if (steered.steers) return { role, content, ...steered };
       // If there are images, convert content to array format
       if (images && Array.isArray(images) && images.length > 0) {
         const contentArray: ContentPart[] = [];
@@ -340,6 +348,29 @@ export function accountTag(apiKey: string): string {
   h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
   h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
   return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36);
+}
+
+/**
+ * A message as plain turns, for when its native form cannot go back. A reply
+ * the user steered is split where each message reached the model, so the
+ * model still sees what it was told and when.
+ */
+export function plainTurns(message: ProviderMessage): ProviderMessage[] {
+  const { native: _native, steers, ...plain } = message;
+  if (plain.role !== 'assistant' || typeof plain.content !== 'string' || !steers?.length) return [plain];
+  const text = plain.content;
+  const turns: ProviderMessage[] = [];
+  let from = 0;
+  for (const steer of [...steers].sort((a, b) => a.at - b.at)) {
+    const at = Math.min(Math.max(Math.floor(steer.at) || 0, from), text.length);
+    const before = text.slice(from, at).trim();
+    if (before) turns.push({ role: 'assistant', content: before });
+    turns.push({ role: 'user', content: steer.text });
+    from = at;
+  }
+  const rest = text.slice(from).trim();
+  if (rest) turns.push({ role: 'assistant', content: rest });
+  return turns;
 }
 
 export function hasNativeInput(input: ProviderInput): boolean {

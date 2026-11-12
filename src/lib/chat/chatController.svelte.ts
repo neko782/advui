@@ -39,6 +39,7 @@ import {
   logGenerationEvent,
 } from './actions/generationActions.js';
 import { settleActivity } from '../api/activity.js';
+import { SteerQueue } from '../api/steering.js';
 import { deepClone } from '../utils/immutable.js';
 import { NO_API_KEY_NOTICE_TEXT } from '../constants/index.js';
 import { buildVisible } from '../branching.js';
@@ -182,6 +183,8 @@ export class ChatController {
   private loadedChatId: string | null = null;
   private loadToken = 0;
   private destroyed = false;
+  /** Steering messages for the run that is generating. */
+  private steerQueue: SteerQueue | null = null;
   private appliedTavernPresetSig = '';
 
   constructor(options: ChatControllerOptions) {
@@ -679,11 +682,23 @@ export class ChatController {
    * the end of the conversation.
    */
   async send(role: string = 'user'): Promise<void> {
-    if (this.locked || this.sending) return;
+    return this.sendMessage(role);
+  }
 
-    const rawInput = typeof this.input === 'string' ? this.input : '';
+  /**
+   * Sends `followUp` (steering messages that arrived after a reply finished)
+   * or else the composer content. A follow-up leaves the composer alone.
+   */
+  private async sendMessage(role: string, followUp?: string): Promise<void> {
+    const fromComposer = followUp == null;
+    if (this.locked || this.sending) {
+      if (!fromComposer) this.restoreToComposer([followUp]);
+      return;
+    }
+
+    const rawInput = fromComposer ? (typeof this.input === 'string' ? this.input : '') : followUp;
     const trimmedInput = rawInput.trim();
-    const imageRefs = this.images.buildAttachedImageRefs();
+    const imageRefs = fromComposer ? this.images.buildAttachedImageRefs() : [];
     const hasContent = trimmedInput.length > 0 || imageRefs.length > 0;
 
     if (role !== 'user' && !hasContent) {
@@ -724,10 +739,15 @@ export class ChatController {
       }
       return next;
     }, { requireVisibleVariantIds: () => (typingVariantId != null ? [typingVariantId] : []) });
-    if (!ok) return;
+    if (!ok) {
+      if (!fromComposer) this.restoreToComposer([trimmedInput]);
+      return;
+    }
 
-    this.input = '';
-    this.images.clearAttached();
+    if (fromComposer) {
+      this.input = '';
+      this.images.clearAttached();
+    }
     queueMicrotask(() => this.options.scrollToBottom?.());
 
     if (!apiKey || typingVariantId == null) {
@@ -788,6 +808,27 @@ export class ChatController {
   // Generation
   // ========================================================================
 
+  /**
+   * Steers the reply being written with the composer text: it reaches the
+   * model with the next tool results, or interrupts the request running now
+   * (see api/steering.ts). Attachments stay in the composer.
+   */
+  steer(): boolean {
+    const queue = this.steerQueue;
+    if (!queue || !this.sending) return false;
+    const text = typeof this.input === 'string' ? this.input : '';
+    if (!queue.push(text)) return false;
+    this.input = '';
+    return true;
+  }
+
+  /** Puts steering messages that never reached the model back in the composer. */
+  private restoreToComposer(texts: string[]): void {
+    const current = typeof this.input === 'string' ? this.input : '';
+    const joined = [...texts, current].filter(text => text.trim()).join('\n\n');
+    if (joined !== current) this.input = joined;
+  }
+
   /** Stops the current generation, keeping whatever text has streamed. */
   stop(): void {
     if (!this.stopRun()) return;
@@ -797,6 +838,9 @@ export class ChatController {
   private stopRun(): boolean {
     const run = this.lifecycle.stop();
     if (!run) return false;
+    const queue = this.steerQueue;
+    this.steerQueue = null;
+    if (queue) this.restoreToComposer(queue.take().map(steer => steer.text));
     this.updateVariant(run.typingVariantId, (prev) => ({
       ...prev,
       typing: false,
@@ -834,6 +878,9 @@ export class ChatController {
    */
   private async runGeneration(run: GenerationRun, connectionId: string | null, logContext: Record<string, unknown>): Promise<void> {
     const typingVariantId = run.typingVariantId;
+    const steering = new SteerQueue();
+    this.steerQueue = steering;
+    let finished = false;
     try {
       const requestNodes = await this.images.prepareRequestNodes(deepClone(this.nodes), this.rootId, typingVariantId);
       if (!run.isCurrent()) return;
@@ -861,6 +908,7 @@ export class ChatController {
         onActivity: (steps) => {
           if (run.isCurrent()) this.updateVariant(typingVariantId, (prev) => ({ ...prev, activity: steps }));
         },
+        steering,
       });
       logGenerationEvent(this.debug, 'API request completed', { typingVariantId, ...logContext });
 
@@ -869,15 +917,26 @@ export class ChatController {
         // Re-check after the await: Stop may have been pressed while storing images.
         if (run.isCurrent()) {
           this.nodes = handleGenerationSuccess(this.nodes, typingVariantId, storedReply);
+          finished = true;
         }
       }
     } catch (err) {
       logGenerationEvent(this.debug, 'Generation error', { error: errorMessage(err), typingVariantId, ...logContext });
       if (run.isCurrent()) this.nodes = handleGenerationError(this.nodes, typingVariantId, err);
     } finally {
+      // Steering messages the reply did not take: after a finished reply they
+      // are the next turn; after a failure they go back to the composer.
+      let followUp: string[] = [];
+      if (this.steerQueue === steering) {
+        this.steerQueue = null;
+        const left = steering.take().map(steer => steer.text);
+        if (finished) followUp = left;
+        else this.restoreToComposer(left);
+      }
       this.lifecycle.settle(run);
       if (!this.destroyed) {
         try { await this.persistNow(); } catch { /* the persister reports save errors itself */ }
+        if (followUp.length) await this.sendMessage('user', followUp.join('\n\n'));
       }
     }
   }

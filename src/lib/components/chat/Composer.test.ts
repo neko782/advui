@@ -195,3 +195,31 @@ describe('Firefox Android image paste editor', () => {
     expect(onFilesSelected).not.toHaveBeenCalled()
   })
 })
+
+describe('composer steering', () => {
+  function setupSending(input: string) {
+    const onSteer = vi.fn()
+    const onSend = vi.fn()
+    component = mount(Composer, { target: document.body, props: { sending: true, locked: true, input, onSteer, onSend } })
+    flushSync()
+    return { onSteer, onSend, textarea: document.querySelector('textarea')! }
+  }
+  const enter = (el: HTMLElement) => el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }))
+
+  it('steers with Enter while a reply is written, next to the stop button', () => {
+    const { onSteer, onSend, textarea } = setupSending('focus on dogs')
+    expect(textarea.placeholder).toBe('Steer the reply…')
+    expect(document.querySelector('[aria-label="Steer response"]')).not.toBeNull()
+    expect(document.querySelector('[aria-label="Stop response"]')).not.toBeNull()
+    enter(textarea)
+    expect(onSteer).toHaveBeenCalledTimes(1)
+    expect(onSend).not.toHaveBeenCalled()
+  })
+
+  it('offers no steer for an empty composer', () => {
+    const { onSteer, textarea } = setupSending('   ')
+    expect(document.querySelector('[aria-label="Steer response"]')).toBeNull()
+    enter(textarea)
+    expect(onSteer).not.toHaveBeenCalled()
+  })
+})

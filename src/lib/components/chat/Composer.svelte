@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { IconAdd, IconClose, IconStop, IconSend, IconEditSquare } from '../../icons'
+  import { IconAdd, IconClose, IconStop, IconSend, IconEditSquare, IconAltRoute } from '../../icons'
   import { autoGrow, placeCaretAtEnd } from '../../utils/dom'
   import { readEditableText } from '../../utils/editableText'
   import {
@@ -86,6 +86,8 @@
     showAddWithoutSend?: boolean
     onAdd?: (role: MessageRole) => void
     onStop?: () => void
+    /** Sends the composer text into the reply being written. */
+    onSteer?: () => void
     onSend?: (role: MessageRole) => void
     onFilesSelected?: (files: File[]) => void
     onRemoveImage?: (id: string) => void
@@ -173,9 +175,13 @@
   const getAttachmentTypeLabel = attachmentTypeLabel
   const getAttachmentDisplayName = attachmentDisplayName
 
+  // While a reply is being written, sending steers it instead.
+  const canSteer = $derived(!!props.sending && !!props.onSteer)
+  const hasSteerText = $derived(!!(props.input || '').trim())
+
   function onKey(e: KeyboardEvent) {
     if (e.isComposing || isMobileViewport) return
-    if (props.locked) return
+    if (props.locked && !canSteer) return
     if (e.key !== 'Enter') return
 
     const keybinds = props.keybinds || { sendMessage: 'Enter', newLine: 'Shift+Enter' }
@@ -194,7 +200,11 @@
     // Perform the action
     if (action === 'send') {
       e.preventDefault()
-      props.onSend?.('user')
+      if (canSteer) {
+        if (hasSteerText) props.onSteer?.()
+      } else {
+        props.onSend?.('user')
+      }
     } else if (action === 'newline') {
       // Let default behavior happen (insert newline)
     } else {
@@ -447,7 +457,7 @@
           role="textbox"
           aria-label="Type a message"
           aria-multiline="true"
-          data-placeholder="Type a message…"
+          data-placeholder={props.sending && props.onSteer ? 'Steer the reply…' : 'Type a message…'}
           tabindex="0"
           oninput={handleEditorInput}
           onkeydown={onKey}
@@ -461,7 +471,7 @@
         <textarea
           class="composer-input"
           rows="1"
-          placeholder="Type a message…"
+          placeholder={props.sending && props.onSteer ? 'Steer the reply…' : 'Type a message…'}
           value={props.input}
           oninput={(e) => { props.onInput?.(e.currentTarget.value); queueMicrotask(() => autoGrow(inputEl ?? null)) }}
           onkeydown={onKey}
@@ -477,6 +487,13 @@
     <!-- Send area -->
     <div class="send-area" class:hide-on-mobile-focus={hideAuxControls && props.showAddWithoutSend}>
       {#if props.sending}
+        {#if canSteer && hasSteerText}
+          <div class="send-group" title="Steer: send this into the reply being written">
+            <button class="float-btn" onclick={() => props.onSteer?.()} aria-label="Steer response">
+              <IconAltRoute style="font-size: 22px;" />
+            </button>
+          </div>
+        {/if}
         <div class="send-group" title="Stop response">
           <button class="float-btn stop-btn" onclick={() => props.onStop?.()} aria-label="Stop response" disabled={!props.onStop}>
             <IconStop style="font-size: 22px;" />

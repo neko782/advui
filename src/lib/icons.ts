@@ -1,6 +1,7 @@
 // Material Symbols Rounded icons
 export { default as IconAdd } from '~icons/material-symbols/add-rounded'
 export { default as IconAddComment } from '~icons/material-symbols/add-comment-rounded'
+export { default as IconAltRoute } from '~icons/material-symbols/alt-route-rounded'
 export { default as IconArrowDownward } from '~icons/material-symbols/arrow-downward-rounded'
 export { default as IconArrowUpward } from '~icons/material-symbols/arrow-upward-rounded'
 export { default as IconAutorenew } from '~icons/material-symbols/autorenew-rounded'

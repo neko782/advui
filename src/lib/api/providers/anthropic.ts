@@ -17,6 +17,7 @@ import {
   ensureOkResponse,
   labelMcpServers,
   nativeData,
+  plainTurns,
   readSseLines,
   throwIfErrorBody,
   type ContentPart,
@@ -219,12 +220,17 @@ export function convertToAnthropicFormat(
         && (message.content as Json[]).some(block => block.type === 'thinking' || block.type === 'redacted_thinking'))) {
         replayedThinking = true;
       }
-    } else if (typeof msg.content === 'string') {
-      // Empty text blocks are rejected.
-      if (msg.content.trim()) messages.push({ role, content: msg.content });
     } else {
-      const blocks = toContentBlocks(msg.content);
-      if (blocks.length) messages.push({ role, content: blocks });
+      for (const turn of plainTurns(msg)) {
+        const turnRole = turn.role === 'assistant' ? 'assistant' : 'user';
+        if (typeof turn.content === 'string') {
+          // Empty text blocks are rejected.
+          if (turn.content.trim()) messages.push({ role: turnRole, content: turn.content });
+        } else {
+          const blocks = toContentBlocks(turn.content);
+          if (blocks.length) messages.push({ role: turnRole, content: blocks });
+        }
+      }
     }
   }
   // A conversation has to open with the user (character greetings do not).
@@ -688,15 +694,28 @@ async function respondRound(ctx: ProviderRequestContext, stream: boolean, extra:
 function respond(ctx: ProviderRequestContext, stream: boolean): Promise<GenerationResponse> {
   return runToolLoop<Json>(ctx, {
     send: (roundCtx, extra) => respondRound(roundCtx, stream, extra),
-    answer: answers => [{
+    // Text has to come after every tool_result in the turn.
+    answer: (answers, steers) => [{
       role: 'user',
-      content: answers.map(({ call, output, isError }) => ({
-        type: 'tool_result',
-        tool_use_id: call.id,
-        content: output,
-        ...(isError ? { is_error: true } : {}),
-      })),
+      content: [
+        ...answers.map(({ call, output, isError }) => ({
+          type: 'tool_result',
+          tool_use_id: call.id,
+          content: output,
+          ...(isError ? { is_error: true } : {}),
+        })),
+        ...steers.map(text => ({ type: 'text', text })),
+      ],
     }],
+    steer: texts => (texts.length ? [{ role: 'user', content: texts.map(text => ({ type: 'text', text })) }] : []),
+    partial: text => (text ? [{ role: 'assistant', content: [{ type: 'text', text }] }] : []),
+    // A server tool call still waiting for its result has to be answered by
+    // tool results alone; text there ends the turn early (or is refused).
+    acceptsSteer: round => {
+      const blocks = round.turn.flatMap(message => (Array.isArray(message.content) ? message.content as Json[] : []));
+      const answered = new Set(blocks.filter(block => str(block.type).endsWith('_tool_result')).map(block => str(block.tool_use_id)));
+      return !blocks.some(block => TOOL_USE_TYPES.has(str(block.type)) && !answered.has(str(block.id)));
+    },
     native: (rounds, final, text) => ({
       api: 'anthropic',
       endpoint: anthropicBaseUrl(ctx.apiBaseUrl),

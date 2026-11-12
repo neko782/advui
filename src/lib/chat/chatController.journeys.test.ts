@@ -240,6 +240,56 @@ describe('journey: switching chats while an answer streams', () => {
   })
 })
 
+describe('journey: steering a reply while it is written', () => {
+  it('hands the message to the request, and sends what it did not take as the next turn', async () => {
+    const chat = await track(openChat(await newChat()))
+    expect(chat.steer()).toBe(false) // nothing to steer yet
+
+    const first = queueReply()
+    chat.setInput('Tell me about cats')
+    const sending = chat.send()
+    await first.started
+    first.delta('Cats are')
+
+    chat.setInput('also dogs')
+    expect(chat.steer()).toBe(true)
+    expect(chat.input).toBe('')
+    const steering = respondMock.mock.calls[0]![0].steering!
+    expect(steering.pending().map(steer => steer.text)).toEqual(['also dogs'])
+
+    // The fake request finishes without taking it: it becomes the next turn.
+    const second = queueReply()
+    first.finish('Cats are great.')
+    await second.started
+    second.finish('Dogs too.')
+    await sending
+
+    expect(transcript(chat)).toEqual([
+      'user: Tell me about cats',
+      'assistant: Cats are great.',
+      'user: also dogs',
+      'assistant: Dogs too.',
+    ])
+  })
+
+  it('puts a message that never reached the model back in the composer on Stop', async () => {
+    const chat = await track(openChat(await newChat()))
+    const reply = queueReply()
+    chat.setInput('q')
+    const sending = chat.send()
+    await reply.started
+
+    chat.setInput('change of plan')
+    chat.steer()
+    chat.setInput('draft')
+    chat.stop()
+    await sending
+
+    expect(chat.input).toBe('change of plan\n\ndraft')
+    expect(transcript(chat)).toEqual(['user: q', 'assistant: '])
+  })
+})
+
 describe('journey: editing a branch and regenerating its continuation', () => {
   it('creates a new branch while keeping the original conversation reachable', async () => {
     const chat = await track(openChat(await newChat()))

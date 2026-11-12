@@ -158,6 +158,7 @@ export async function respond(options: RespondOptions): Promise<GenerationRespon
       onImageGenerated: options.onImageGenerated,
     },
     provideAbort,
+    steering: options.steering,
   };
 
   const adapter = ADAPTERS[resolvedConnection.apiMode] || responsesAdapter;

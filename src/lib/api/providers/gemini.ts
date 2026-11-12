@@ -10,6 +10,7 @@ import {
   createSseJsonLineProcessor,
   ensureOkResponse,
   nativeData,
+  plainTurns,
   readSseLines,
   type ContentPart,
   type ProviderAdapter,
@@ -73,8 +74,38 @@ function replayContents(native: unknown, functions: ReadonlySet<string>): Gemini
   if (!Array.isArray(contents) || !contents.length) return [];
   const list = contents as GeminiContent[];
   if (calledFunctions(list).every(name => functions.has(name))) return list;
+  // A steered reply goes back as plain text, with its steering messages.
+  if (list.some(content => content?.role === 'user' && content.parts?.some(part => typeof (part as { text?: unknown })?.text === 'string'))) return [];
   const last = list[list.length - 1];
   return last?.role === 'model' ? [last] : [];
+}
+
+/** A plain message's content as Gemini parts. Gemini rejects empty text parts. */
+function geminiParts(msg: ProviderMessage): GeminiPart[] {
+  const parts: GeminiPart[] = [];
+  if (typeof msg.content === 'string') {
+    if (msg.content) parts.push({ text: msg.content });
+  } else if (Array.isArray(msg.content)) {
+    for (const part of msg.content as ContentPart[]) {
+      if (part.type === 'input_text') {
+        if (part.text) parts.push({ text: part.text });
+      } else if (part.type === 'input_image') {
+        const inline = inlineDataFromDataUrl((part as { image_url: string }).image_url);
+        if (inline) parts.push(inline);
+      } else if (part.type === 'input_video') {
+        const inline = inlineDataFromDataUrl((part as { video_url: string }).video_url);
+        if (inline) parts.push(inline);
+      } else if (part.type === 'input_audio') {
+        const inline = inlineDataFromDataUrl((part as { audio_url: string }).audio_url);
+        if (inline) parts.push(inline);
+      } else if (part.type === 'input_file') {
+        // Handle file attachments (PDFs, etc.)
+        const inline = inlineDataFromDataUrl((part as { file_data: string }).file_data);
+        if (inline) parts.push(inline);
+      }
+    }
+  }
+  return parts;
 }
 
 // Convert messages to Gemini format
@@ -113,7 +144,6 @@ export function convertToGeminiFormat(
 
     // Map roles: user -> user, assistant -> model
     const geminiRole: 'user' | 'model' = msg.role === 'assistant' ? 'model' : 'user';
-    const parts: GeminiPart[] = [];
 
     // Earlier replies go back with every part as it was returned, thought
     // signatures in place. Models that cannot read them drop them.
@@ -123,32 +153,9 @@ export function convertToGeminiFormat(
       continue;
     }
 
-    // Gemini rejects empty text parts, so blank messages are left out.
-    if (typeof msg.content === 'string') {
-      if (msg.content) parts.push({ text: msg.content });
-    } else if (Array.isArray(msg.content)) {
-      for (const part of msg.content as ContentPart[]) {
-        if (part.type === 'input_text') {
-          if (part.text) parts.push({ text: part.text });
-        } else if (part.type === 'input_image') {
-          const inline = inlineDataFromDataUrl((part as { image_url: string }).image_url);
-          if (inline) parts.push(inline);
-        } else if (part.type === 'input_video') {
-          const inline = inlineDataFromDataUrl((part as { video_url: string }).video_url);
-          if (inline) parts.push(inline);
-        } else if (part.type === 'input_audio') {
-          const inline = inlineDataFromDataUrl((part as { audio_url: string }).audio_url);
-          if (inline) parts.push(inline);
-        } else if (part.type === 'input_file') {
-          // Handle file attachments (PDFs, etc.)
-          const inline = inlineDataFromDataUrl((part as { file_data: string }).file_data);
-          if (inline) parts.push(inline);
-        }
-      }
-    }
-
-    if (parts.length > 0) {
-      contents.push({ role: geminiRole, parts });
+    for (const turn of plainTurns(msg)) {
+      const parts = geminiParts(turn);
+      if (parts.length > 0) contents.push({ role: turn.role === 'assistant' ? 'model' : 'user', parts });
     }
   }
 
@@ -503,14 +510,20 @@ function respond(ctx: ProviderRequestContext, stream: boolean): Promise<Generati
       const turn: GeminiContent[] = round.parts.length ? [{ role: 'model', parts: round.parts }] : [];
       return { reply: round.reply, calls: round.calls, turn } satisfies ToolRound<GeminiContent>;
     },
-    answer: answers => [{
+    // Steering text follows the function responses in the same user turn.
+    answer: (answers, steers) => [{
       role: 'user',
-      parts: answers.map(({ call, output, isError }) => {
-        const functionResponse: Json = { name: call.name, response: isError ? { error: output } : { result: output } };
-        if (!call.id.startsWith(GENERATED_CALL_ID)) functionResponse.id = call.id;
-        return { functionResponse };
-      }),
+      parts: [
+        ...answers.map(({ call, output, isError }) => {
+          const functionResponse: Json = { name: call.name, response: isError ? { error: output } : { result: output } };
+          if (!call.id.startsWith(GENERATED_CALL_ID)) functionResponse.id = call.id;
+          return { functionResponse };
+        }),
+        ...steers.map(text => ({ text })),
+      ],
     }],
+    steer: texts => (texts.length ? [{ role: 'user', parts: texts.map(text => ({ text })) }] : []),
+    partial: text => (text ? [{ role: 'model', parts: [{ text }] }] : []),
     native: (rounds, final, text) => ({
       api: 'gemini',
       endpoint: geminiBaseUrlFor(ctx),

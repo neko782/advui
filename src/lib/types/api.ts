@@ -174,6 +174,7 @@ export type ActivityKind =
   | 'mcp_list'  // MCP tool discovery
   | 'time'      // browser tool: reading the clock
   | 'chats'     // browser tool: searching the user's other chats
+  | 'steer'     // a message the user sent while the reply was being written
   | 'tool';     // anything else
 
 export type ActivityStatus = 'running' | 'done' | 'failed';
@@ -193,6 +194,11 @@ export interface ActivityStep {
   /** Tool result. */
   output?: string;
   error?: string;
+  /**
+   * Steer: where in the reply text the message reached the model. A steer
+   * still `running` is queued and has not reached it yet.
+   */
+  at?: number;
 }
 
 // ============================================================================
@@ -224,11 +230,20 @@ export interface NativeTurn {
   data: unknown;
 }
 
+/** A message the user sent into a reply while it was being written. */
+export interface SteerNote {
+  /** Position in the reply text where it reached the model. */
+  at: number;
+  text: string;
+}
+
 export interface HistoryMessage {
   role: MessageRole;
   content: string;
   images?: ImageData[];
   native?: NativeTurn;
+  /** Assistant replies: steering messages, for replies sent back as plain text. */
+  steers?: SteerNote[];
 }
 
 export interface GenerationResponse {
@@ -278,4 +293,24 @@ export interface RespondOptions {
   webFetch?: boolean;
   /** Browser tools offered to the model; empty or missing offers none. */
   browserTools?: BrowserToolName[];
+  /** Messages the user sends while the reply is being written. */
+  steering?: SteerChannel;
+}
+
+export interface QueuedSteer {
+  id: string;
+  text: string;
+}
+
+/**
+ * Where steering messages wait until the reply can take them: at the next
+ * tool result, or at once, interrupting the request that is running.
+ */
+export interface SteerChannel {
+  /** Removes and returns every queued message, oldest first. */
+  take(): QueuedSteer[];
+  /** Messages queued and not yet taken. */
+  pending(): QueuedSteer[];
+  /** Calls `fn` for each message queued from now on; returns an unsubscribe function. */
+  subscribe(fn: (steer: QueuedSteer) => void): () => void;
 }

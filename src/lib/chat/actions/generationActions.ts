@@ -5,6 +5,7 @@ import { isAbortError } from '../../utils/errors.js';
 import { normalizeMcpServerList } from '../../utils/mcp.js';
 import { activeBrowserTools } from '../../utils/browserTools.js';
 import { settleActivity } from '../../api/activity.js';
+import { steerNotes } from '../../api/steering.js';
 import { updateVariantById } from './variantActions.js';
 import { findNodeByMessageId } from '../../utils/treeUtils.js';
 import type {
@@ -24,6 +25,7 @@ import type {
   ShellOptions,
   ImageGenerationOptions,
   ActivityStep,
+  SteerChannel,
 } from '../../types/index.js';
 
 /**
@@ -403,6 +405,8 @@ export interface GenerateResponseOptions {
   onAbort?: (abortFn: () => void) => void;
   onTextDelta?: (fullText: string) => void;
   onActivity?: (steps: ActivityStep[]) => void;
+  /** Messages the user steers the reply with while it is written. */
+  steering?: SteerChannel;
 }
 
 export async function generateResponse(options: GenerateResponseOptions): Promise<GenerationResponse> {
@@ -417,7 +421,8 @@ export async function generateResponse(options: GenerateResponseOptions): Promis
     historySuffix,
     onAbort,
     onTextDelta,
-    onActivity
+    onActivity,
+    steering,
   } = options;
 
   const buildVisible = () => _buildVisible(nodes, rootId);
@@ -429,13 +434,15 @@ export async function generateResponse(options: GenerateResponseOptions): Promis
   let history: HistoryMessage[] = historyPath
     .map(vm => vm.m)
     .filter(m => !m.typing)
-    .map(({ role, content, images, native }) => {
+    .map(({ role, content, images, native, activity }) => {
       const msg: HistoryMessage = { role, content };
       const normalized = normalizeImages(images);
       if (normalized.length > 0) {
         msg.images = normalized as ImageData[];
       }
       if (role === 'assistant' && native) msg.native = native;
+      const steers = role === 'assistant' ? steerNotes(activity) : [];
+      if (steers.length) msg.steers = steers;
       return msg;
     });
 
@@ -529,6 +536,7 @@ export async function generateResponse(options: GenerateResponseOptions): Promis
     mcpServers,
     webFetch: !!chatSettings.webFetchEnabled,
     browserTools: activeBrowserTools(chatSettings.browserToolsEnabled, chatSettings.browserTools),
+    steering,
   };
 
   if (streaming && typingVariantId != null) {

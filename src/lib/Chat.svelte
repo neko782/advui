@@ -282,6 +282,7 @@
     onInput={(val) => chat.setInput(val)}
     onAdd={(role) => chat.addToChat(role)}
     onStop={() => chat.stop()}
+    onSteer={() => chat.steer()}
     onSend={(role) => chat.send(role)}
     onFilesSelected={(files) => chat.images.handleFilesSelected(files)}
     onRemoveImage={(id) => chat.images.removeAttachedImage(id)}

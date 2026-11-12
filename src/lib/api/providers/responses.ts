@@ -19,6 +19,7 @@ import {
   extractOutputText,
   labelMcpServers,
   nativeData,
+  plainTurns,
   readSseLines,
   sortModels,
   throwIfErrorBody,
@@ -75,7 +76,7 @@ export function buildResponsesInput(
     if (items.length) {
       input.push(...items);
     } else {
-      input.push({ role: message.role, content: message.content });
+      for (const turn of plainTurns(message)) input.push({ role: turn.role, content: turn.content });
     }
   }
   input.push(...extra);
@@ -911,13 +912,23 @@ export function functionCalls(output: unknown): ToolRound<Item>['calls'] {
     .map(item => ({ id: str(item.call_id), name: str(item.name), arguments: item.arguments }));
 }
 
+function steerItems(texts: string[]): Item[] {
+  return texts.map(text => ({ type: 'message', role: 'user', content: text }));
+}
+
 function respond(ctx: ProviderRequestContext, stream: boolean): Promise<GenerationResponse> {
   return runToolLoop<Item>(ctx, {
     async send(roundCtx, extra) {
       const { reply, output } = await respondRound(roundCtx, stream, extra);
       return { reply, calls: functionCalls(output), turn: replayItems(output) ?? [] };
     },
-    answer: answers => answers.map(({ call, output }) => ({ type: 'function_call_output', call_id: call.id, output })),
+    // Steering messages follow the outputs, as OpenAI's own steering sends them.
+    answer: (answers, steers) => [
+      ...answers.map(({ call, output }) => ({ type: 'function_call_output', call_id: call.id, output })),
+      ...steerItems(steers),
+    ],
+    steer: steerItems,
+    partial: text => (text ? [{ type: 'message', role: 'assistant', content: text }] : []),
     native: (rounds, final, text) => ({
       api: 'responses',
       endpoint: ctx.baseURL,

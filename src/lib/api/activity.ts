@@ -119,10 +119,14 @@ export class ActivityLog {
   }
 }
 
-/** Finishes any step left running, e.g. when a reply is stopped or fails. */
+/**
+ * Finishes any step left running, e.g. when a reply is stopped or fails. A
+ * steering message still queued never reached the model, so it is dropped.
+ */
 export function settleActivity(steps: ActivityStep[] | undefined): ActivityStep[] | undefined {
   if (!Array.isArray(steps) || !steps.length) return undefined;
   const settled = steps
+    .filter(step => !(step.kind === 'steer' && step.status === 'running'))
     .map(step => (step.status === 'running' ? { ...step, status: 'done' as ActivityStatus } : step))
     .filter(step => !(step.kind === 'thinking' && !step.text?.trim()));
   return settled.length ? settled : undefined;
@@ -159,7 +163,7 @@ export function thinkingTitle(text: string | undefined, running: boolean): strin
   return oneLine((running ? lines[lines.length - 1] : lines[0]) || '');
 }
 
-const TOOL_VERBS: Record<Exclude<ActivityKind, 'thinking' | 'tool'>, { running: string; done: string; bare: string; join: string }> = {
+const TOOL_VERBS: Record<Exclude<ActivityKind, 'thinking' | 'tool' | 'steer'>, { running: string; done: string; bare: string; join: string }> = {
   search: { running: 'Searching the web', done: 'Searched the web', bare: '', join: ' for ' },
   fetch: { running: 'Reading', done: 'Read', bare: ' a page', join: ' ' },
   code: { running: 'Running', done: 'Ran', bare: ' code', join: ' ' },
@@ -175,6 +179,7 @@ const TOOL_VERBS: Record<Exclude<ActivityKind, 'thinking' | 'tool'>, { running: 
 export function activityTitle(step: ActivityStep, live = true): string {
   const running = live && step.status === 'running';
   if (step.kind === 'thinking') return thinkingTitle(step.text, running);
+  if (step.kind === 'steer') return `${running ? 'Steering' : 'You steered'}: “${oneLine(step.text || '')}”`;
 
   const subject = step.subject ? oneLine(step.subject) : '';
   let title: string;
@@ -194,6 +199,8 @@ export function activityTitle(step: ActivityStep, live = true): string {
 /** Whether a step has anything to show when opened. */
 export function activityHasDetail(step: ActivityStep): boolean {
   if (step.kind === 'thinking') return !!step.text?.trim();
+  // A steering message opens when its title cannot show all of it.
+  if (step.kind === 'steer') return !!step.text && (step.text.includes('\n') || step.text.trim().length > MAX_TITLE_CHARS - 20);
   return !!(step.input?.trim() || step.output?.trim() || step.error?.trim());
 }
 

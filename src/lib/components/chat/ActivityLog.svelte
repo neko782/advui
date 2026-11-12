@@ -7,7 +7,7 @@
   import MarkdownContent from './LazyMarkdownContent.svelte'
   import {
     IconLightbulb, IconTravelExplore, IconLanguage, IconCodeBlocks, IconTerminal,
-    IconImagesmode, IconExtension, IconBuild, IconExpandMore, IconSchedule, IconForum,
+    IconImagesmode, IconExtension, IconBuild, IconExpandMore, IconSchedule, IconForum, IconAltRoute,
   } from '../../icons'
 
   interface Props {
@@ -29,6 +29,7 @@
     mcp_list: IconExtension,
     time: IconSchedule,
     chats: IconForum,
+    steer: IconAltRoute,
     tool: IconBuild,
   }
 
@@ -59,11 +60,13 @@
   function headerSummary(): string {
     if (!latest) return ''
     if (live) return activityTitle(latest, true)
-    const tools = steps.filter(step => step.kind !== 'thinking').length
-    const thoughts = steps.length - tools
+    const thoughts = steps.filter(step => step.kind === 'thinking').length
+    const steers = steps.filter(step => step.kind === 'steer').length
+    const tools = steps.length - thoughts - steers
     const parts: string[] = []
     if (thoughts) parts.push(thoughts === 1 ? 'Thought' : `Thought ${thoughts} times`)
     if (tools) parts.push(`used ${tools === 1 ? '1 tool' : `${tools} tools`}`)
+    if (steers) parts.push(steers === 1 ? 'steered once' : `steered ${steers} times`)
     const text = parts.join(', ')
     return text.charAt(0).toUpperCase() + text.slice(1)
   }
@@ -103,7 +106,9 @@
             </button>
             {#if expandable && stepOpen}
               <div class="detail">
-                {#if step.kind === 'thinking'}
+                {#if step.kind === 'steer'}
+                  <p class="steer-text">{step.text}</p>
+                {:else if step.kind === 'thinking'}
                   <div class="thinking">
                     <MarkdownContent content={step.text} {allowInlineHtml} {renderLatex} streaming={stepRunning} />
                   </div>
@@ -155,6 +160,7 @@
   .thinking :global(p) { margin: 0.35em 0; }
   .thinking :global(p:first-child) { margin-top: 0; }
   .thinking :global(p:last-child) { margin-bottom: 0; }
+  .steer-text { margin: 0; color: var(--text); white-space: pre-wrap; overflow-wrap: anywhere; }
   .part-label { font-size: 0.72rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
   pre { margin: 0; padding: 8px; border-radius: 8px; background: var(--bg); border: 1px solid var(--border); font-size: 0.78rem; line-height: 1.4; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 260px; overflow-y: auto; }
   pre.error { color: var(--danger); }
