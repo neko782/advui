@@ -38,3 +38,4 @@ export { default as IconTerminal } from '~icons/material-symbols/terminal-rounde
 export { default as IconImagesmode } from '~icons/material-symbols/imagesmode-rounded'
 export { default as IconExtension } from '~icons/material-symbols/extension-rounded'
 
+export { default as IconExpandMore } from '~icons/material-symbols/expand-more-rounded'

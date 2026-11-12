@@ -163,7 +163,8 @@ export interface Settings {
   debug: boolean;
   apiMode: ApiMode;
   keybinds: Keybinds;
-  showThinkingSettings: boolean;
+  /** Offer deprecated controls: temperature, top P, Anthropic thinking, retired reasoning levels. */
+  showLegacyParams: boolean;
   fancyEffects: boolean;
   allowInlineHtml: boolean;
   renderLatex: boolean;

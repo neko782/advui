@@ -7,7 +7,7 @@
 export type MessageRole = 'system' | 'user' | 'assistant' | 'tool';
 
 // Reasoning options
-export type ReasoningEffort = 'default' | 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
+export type ReasoningEffort = 'default' | 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 export type TextVerbosity = 'none' | 'low' | 'medium' | 'high';
 export type ReasoningSummary = 'none' | 'auto' | 'concise' | 'detailed';
 

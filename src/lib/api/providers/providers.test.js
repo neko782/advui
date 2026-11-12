@@ -85,3 +85,13 @@ it('keeps Gemini text that stopped at the token limit and skips blank messages',
   expect((await geminiAdapter.respond({ ...ctx, input }, false)).text).toBe('Partial');
   expect(JSON.parse(fetcher.mock.calls[0][1].body).contents.map(c => c.parts[0].text)).toEqual(['hi', 'again']);
 });
+it.each([
+  ['low', { thinkingLevel: 'low' }],
+  ['default', undefined],
+  ['xhigh', undefined], // not a Gemini level
+])('sends reasoning effort %s to Gemini as a thinking level only when Gemini accepts it', async (reasoningEffort, thinkingConfig) => {
+  const fetcher = vi.fn(async () => new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: 'ok' }] } }] })));
+  vi.stubGlobal('fetch', fetcher);
+  await geminiAdapter.respond({ ...ctx, params: { reasoningEffort } }, false);
+  expect(JSON.parse(fetcher.mock.calls[0][1].body).generationConfig?.thinkingConfig).toEqual(thinkingConfig);
+});

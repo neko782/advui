@@ -15,13 +15,11 @@ async function frame() { await new Promise(requestAnimationFrame); flushSync() }
 function click(selector: string) { (document.querySelector(selector) as HTMLButtonElement).click(); flushSync() }
 function scroll(node: HTMLElement, top: number) { node.scrollTop = top; node.dispatchEvent(new Event('scroll')) }
 
-it('retains normal settings tabs, expanded groups, fields and scroll through tab changes and reopening', async () => {
+it('retains normal settings tabs, fields and scroll through tab changes and reopening', async () => {
   component = mount(Harness, { target: document.body })
   component.show(); flushSync()
   click('#settings-tab-presets')
-  await vi.waitFor(() => { flushSync(); expect(document.querySelectorAll('.preset-group-header').length).toBeGreaterThan(1) })
-  const groups = document.querySelectorAll<HTMLButtonElement>('.preset-group-header')
-  groups[1]!.click(); flushSync()
+  await vi.waitFor(() => { flushSync(); expect(document.querySelector('[aria-label="System prompt"]')).toBeTruthy() })
   const editor = document.querySelector<HTMLTextAreaElement>('[aria-label="System prompt"]')!
   editor.style.height = '270px'
   const scroller = editor.closest<HTMLElement>('.ui-modal-scroller')!
@@ -38,7 +36,6 @@ it('retains normal settings tabs, expanded groups, fields and scroll through tab
   component.show(); flushSync()
   await frame()
   expect(document.querySelector('#settings-tab-presets')?.getAttribute('aria-selected')).toBe('true')
-  expect(groups[1]!.querySelector('.expanded')).toBeTruthy()
   expect(document.querySelector('[aria-label="System prompt"]')).toBe(editor)
   expect(editor.style.height).toBe('270px')
   expect(scroller.scrollTop).toBe(180)

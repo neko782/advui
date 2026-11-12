@@ -1,4 +1,5 @@
 <script lang="ts">
+  import SettingToggle from '../SettingToggle.svelte'
   import { onMount } from 'svelte'
   import { IconAdd, IconVisibility, IconVisibilityOff, IconAutorenew, IconDelete, IconDragHandle } from '../../icons'
   import { DEFAULT_API_BASE_URL } from './settingsDraft.svelte'
@@ -255,13 +256,14 @@
                     </select>
                   </label>
                   {#if activeConnection.apiMode !== 'gemini'}
-                    <label class="ui-switch">
-                      <input type="checkbox" checked={!!activeConnection.openRouterEnabled}
-                        onchange={(event) => updateActiveConnection({ openRouterEnabled: event.currentTarget.checked })} />
-                      <span class="ui-switch-ui" aria-hidden="true"></span>
-                      <span class="ui-switch-label">OpenRouter provider selection</span>
-                    </label>
-                    <p class="ui-hint">Enable for OpenRouter connections to choose a provider per chat.</p>
+                    <div class="ui-setting-list">
+                      <SettingToggle
+                        label="OpenRouter provider selection"
+                        hint="For OpenRouter connections: choose a provider per chat and preset."
+                        checked={!!activeConnection.openRouterEnabled}
+                        onChange={(on) => updateActiveConnection({ openRouterEnabled: on })}
+                      />
+                    </div>
                   {/if}
                   {#if activeRefreshMsg}
                     <p class="ui-status-msg" aria-live="polite">{activeRefreshMsg}</p>

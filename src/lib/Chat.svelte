@@ -227,13 +227,14 @@
     chatMaxOutputTokens={chatSettings.maxOutputTokens}
     chatTopP={chatSettings.topP}
     chatTemperature={chatSettings.temperature}
+    chatThinkingEnabled={chatSettings.thinkingEnabled}
+    chatThinkingBudgetTokens={chatSettings.thinkingBudgetTokens}
+    showLegacyParams={!!settings?.showLegacyParams}
     chatReasoningEffort={chatSettings.reasoningEffort}
     chatReasoningSummary={chatSettings.reasoningSummary}
     chatTextVerbosity={chatSettings.textVerbosity}
     chatOpenRouterProvider={chatSettings.openRouterProvider}
     chatOpenRouterZdr={chatSettings.openRouterZdr}
-    chatThinkingEnabled={chatSettings.thinkingEnabled}
-    chatThinkingBudgetTokens={chatSettings.thinkingBudgetTokens}
     chatWebSearchEnabled={chatSettings.webSearchEnabled}
     chatCodeInterpreterEnabled={chatSettings.codeInterpreterEnabled}
     chatCodeInterpreterNetworkEnabled={chatSettings.codeInterpreterNetworkEnabled}
@@ -250,7 +251,6 @@
     chatConnectionId={chatSettings.connectionId}
     attachedImages={chat.images.attachedImages}
     keybinds={settings?.keybinds}
-    showThinkingControls={!!settings?.showThinkingSettings}
     presets={chat.characterId ? settings?.presets : (settings?.presets || []).filter(p => !p?.tavernOnly)}
     onToggleChatSettings={() => (chatSettingsOpen = !chatSettingsOpen)}
     onCloseChatSettings={() => (chatSettingsOpen = false)}
@@ -260,13 +260,13 @@
     onChangeMaxOutputTokens={(val) => chat.updateChatSettings({ maxOutputTokens: toIntOrNull(val) })}
     onChangeTopP={(val) => chat.updateChatSettings({ topP: toClampedNumber(val, 0, 1) })}
     onChangeTemperature={(val) => chat.updateChatSettings({ temperature: toClampedNumber(val, 0, 2) })}
+    onChangeThinkingEnabled={(val) => chat.updateChatSettings({ thinkingEnabled: !!val })}
+    onChangeThinkingBudgetTokens={(val) => chat.updateChatSettings({ thinkingBudgetTokens: toIntOrNull(val) })}
     onChangeReasoningEffort={(val) => chat.updateChatSettings({ reasoningEffort: normalizeReasoning(val) })}
     onChangeReasoningSummary={(val) => chat.updateChatSettings({ reasoningSummary: normalizeReasoningSummary(val) })}
     onChangeTextVerbosity={(val) => chat.updateChatSettings({ textVerbosity: normalizeVerbosity(val) })}
     onChangeOpenRouterProvider={(val) => chat.setOpenRouterProvider(val)}
     onChangeOpenRouterZdr={(val) => chat.setOpenRouterZdr(val)}
-    onChangeThinkingEnabled={(val) => chat.updateChatSettings({ thinkingEnabled: !!val })}
-    onChangeThinkingBudgetTokens={(val) => chat.updateChatSettings({ thinkingBudgetTokens: toIntOrNull(val) })}
     onChangeWebSearchEnabled={(val) => chat.updateChatSettings({ webSearchEnabled: !!val })}
     onChangeCodeInterpreterEnabled={(val) => chat.updateChatSettings({ codeInterpreterEnabled: !!val })}
     onChangeCodeInterpreterNetworkEnabled={(val) => chat.updateChatSettings({ codeInterpreterNetworkEnabled: !!val })}

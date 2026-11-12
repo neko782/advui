@@ -17,7 +17,7 @@ import { isPlainObject } from './objects.js';
 import { normalizeMcpServerList } from './mcp.js';
 
 export const DEFAULT_SYSTEM_PROMPT = 'You are a helpful assistant.';
-export const DEFAULT_MODEL = 'gpt-5.5';
+export const DEFAULT_MODEL = 'openai/gpt-6.1-sol';
 
 export const DEFAULT_PRESET_FIELDS: PresetFields = {
   model: DEFAULT_MODEL,

@@ -2,6 +2,8 @@
 // Gemini provider adapter (generateContent / streamGenerateContent)
 // ============================================================================
 
+import { isReasoningLevelSupported } from '../../utils/reasoningLevels.js';
+import { DEFAULT_API_BASE_URL } from '../../constants/index.js';
 import { toIntOrNull, toClampedNumber } from '../../utils/numbers.js';
 import {
   createAbort,
@@ -33,6 +35,7 @@ interface GeminiRequest {
     temperature?: number;
     topP?: number;
     maxOutputTokens?: number;
+    thinkingConfig?: { thinkingLevel: string };
   };
 }
 
@@ -182,6 +185,10 @@ function buildGeminiRequest(ctx: ProviderRequestContext): GeminiRequest {
   if (topPVal != null) generationConfig.topP = topPVal;
   const tokens = toIntOrNull(ctx.params.maxOutputTokens, { belowMin: 'unset' });
   if (tokens != null) generationConfig.maxOutputTokens = tokens;
+  const { reasoningEffort } = ctx.params;
+  if (isReasoningLevelSupported('gemini', reasoningEffort)) {
+    generationConfig.thinkingConfig = { thinkingLevel: reasoningEffort };
+  }
   if (Object.keys(generationConfig).length > 0) {
     geminiRequest.generationConfig = generationConfig;
   }
@@ -191,8 +198,9 @@ function buildGeminiRequest(ctx: ProviderRequestContext): GeminiRequest {
 
 function normalizeGeminiBaseUrl(baseURL?: string): string {
   const configured = baseURL?.trim().replace(/\/+$/, '');
-  // Connections historically stored the OpenAI default for every API mode.
-  if (!configured || configured === 'https://api.openai.com/v1') return DEFAULT_GEMINI_BASE_URL;
+  // Connections store the app's default URL for every API mode; neither the
+  // current default nor the historical OpenAI one is a Gemini endpoint.
+  if (!configured || configured === DEFAULT_API_BASE_URL || configured === 'https://api.openai.com/v1') return DEFAULT_GEMINI_BASE_URL;
   return configured;
 }
 

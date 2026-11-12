@@ -1,4 +1,5 @@
 <script lang="ts">
+  import SettingToggle from '../SettingToggle.svelte'
   import { onMount } from 'svelte'
   import { IconDownload, IconUpload } from '../../icons'
   import { getThemeState, setThemeMode, subscribeTheme } from '../../themeStore'
@@ -299,17 +300,15 @@
             </section>
             <section class="ui-group developer-group">
               <div class="ui-group-title">Developer</div>
-              <label class="ui-switch">
-                <input
-                  type="checkbox"
-                  bind:checked={local.debug}
-                  onchange={() => persistSettings()}
-                  aria-label="Debug Mode"
+              <div class="ui-setting-list">
+                <SettingToggle
+                  label="Debug mode"
+                  ariaLabel="Debug Mode"
+                  hint="Useless and dangerous tools used for debugging. You don't need these."
+                  checked={!!local.debug}
+                  onChange={(on) => { local.debug = on; persistSettings() }}
                 />
-                <span class="ui-switch-ui" aria-hidden="true"></span>
-                <span class="ui-switch-label">Debug mode</span>
-              </label>
-              <p class="ui-hint">Useless and dangerous tools used for debugging. You don't need these.</p>
+              </div>
             </section>
 
 <style>

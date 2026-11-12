@@ -8,6 +8,7 @@ import { listModelsWithKey } from '../../openaiClient.js';
 import { DEFAULT_MODEL, DEFAULT_SYSTEM_PROMPT } from '../../utils/presetHelpers.js';
 import { normalizeReasoning, normalizeVerbosity, normalizeReasoningSummary } from '../../utils/validation.js';
 import { DEFAULT_MESSAGE_ACTIONS, DEFAULT_EDITOR_ACTIONS, DEFAULT_TOOL_SETTINGS } from '../../constants/defaults.js';
+import { DEFAULT_API_BASE_URL } from '../../constants/index.js';
 import type {
   AppSettings,
   Preset,
@@ -18,42 +19,16 @@ import type {
   DefaultToolSettings,
 } from '../../types/index.js';
 
-export const REASONING_OPTIONS = ['default', 'none', 'minimal', 'low', 'medium', 'high', 'xhigh'];
+export const REASONING_OPTIONS = ['default', 'none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
 export const TEXT_VERBOSITY_OPTIONS = ['none', 'low', 'medium', 'high'];
 export const REASONING_SUMMARY_OPTIONS = ['none', 'auto', 'concise', 'detailed'];
-export const DEFAULT_API_BASE_URL = 'https://api.openai.com/v1';
+export { DEFAULT_API_BASE_URL };
 
 // --- Input parsing helpers (used by the presets tab) -------------------------
-
-export function parseMaxTokens(value: unknown): number | null {
-  if (value === '' || value == null) return null;
-  const num = Number(value);
-  if (!Number.isFinite(num)) return null;
-  const rounded = Math.max(1, Math.floor(num));
-  return Number.isFinite(rounded) ? rounded : null;
-}
-
-export function parseTopP(value: unknown): number | null {
-  if (value === '' || value == null) return null;
-  const num = Number(value);
-  if (!Number.isFinite(num)) return null;
-  return Math.min(1, Math.max(0, num));
-}
-
-export function parseTemperature(value: unknown): number | null {
-  if (value === '' || value == null) return null;
-  const num = Number(value);
-  if (!Number.isFinite(num)) return null;
-  return Math.min(2, Math.max(0, num));
-}
 
 export const parseReasoning = normalizeReasoning;
 export const parseVerbosity = normalizeVerbosity;
 export const parseReasoningSummary = normalizeReasoningSummary;
-
-export function parseThinkingBudget(value: unknown): number | null {
-  return parseMaxTokens(value);
-}
 
 function genPresetId(): string {
   return `preset_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
@@ -507,21 +482,29 @@ export class SettingsDraft {
 
   // --- Message actions / editor actions / default tools -----------------------
 
-  toggleMessageAction(id: string): void {
-    const actions = cloneMessageActions(this.local?.messageActions);
-    const idx = actions.findIndex(a => a.id === id);
-    if (idx < 0) return;
-    actions[idx]!.enabled = !actions[idx]!.enabled;
-    this.local.messageActions = actions;
-    this.persist();
+  /** Whether a message button is shown on messages of the given role. */
+  messageActionShownOn(action: MessageActionButton, role: MessageActionRole): boolean {
+    if (!action.enabled) return false;
+    const defaults = DEFAULT_MESSAGE_ACTIONS.find(a => a.id === action.id)?.roles;
+    return action.roles?.[role] ?? defaults?.[role] ?? true;
   }
 
+  /**
+   * Flip one role chip of a message button. The button is enabled exactly
+   * when it is shown on at least one role, so there is no separate on/off.
+   */
   toggleMessageActionRole(id: string, role: MessageActionRole): void {
     const actions = cloneMessageActions(this.local?.messageActions);
-    const idx = actions.findIndex(a => a.id === id);
-    if (idx < 0) return;
-    const defaults = DEFAULT_MESSAGE_ACTIONS.find(a => a.id === id)?.roles || { user: true, assistant: true, system: true };
-    actions[idx]!.roles = { ...defaults, ...actions[idx]!.roles, [role]: !(actions[idx]!.roles?.[role] ?? defaults[role]) };
+    const action = actions.find(a => a.id === id);
+    if (!action) return;
+    const roles = {
+      user: this.messageActionShownOn(action, 'user'),
+      assistant: this.messageActionShownOn(action, 'assistant'),
+      system: this.messageActionShownOn(action, 'system'),
+    };
+    roles[role] = !roles[role];
+    action.enabled = roles.user || roles.assistant || roles.system;
+    action.roles = roles;
     this.local.messageActions = actions;
     this.persist();
   }

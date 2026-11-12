@@ -36,3 +36,15 @@ it.each(['responses', 'gemini', 'chat_completions'])('applies tool defaults to n
   expect(draft.activePreset).toMatchObject({ webSearchEnabled: apiMode === 'responses', codeInterpreterEnabled: false, shellEnabled: apiMode === 'responses', imageGenerationEnabled: false, mcpEnabled: apiMode === 'responses' });
   draft.reset();
 });
+it('shows a message button on exactly the selected roles and hides it when none are left', () => {
+  const draft = new SettingsDraft();
+  const action = id => draft.messageActions.find(a => a.id === id);
+  // Fork is off by default: picking a role turns it on for that role only.
+  draft.toggleMessageActionRole('fork', 'assistant');
+  expect(action('fork')).toMatchObject({ enabled: true, roles: { user: false, assistant: true, system: false } });
+  draft.toggleMessageActionRole('fork', 'assistant');
+  expect(action('fork').enabled).toBe(false);
+  draft.toggleMessageActionRole('copy', 'system');
+  expect(action('copy')).toMatchObject({ enabled: true, roles: { user: true, assistant: true, system: false } });
+  draft.reset();
+});

@@ -24,13 +24,14 @@
     chatMaxOutputTokens?: number | null
     chatTopP?: number | null
     chatTemperature?: number | null
+    chatThinkingEnabled?: boolean
+    chatThinkingBudgetTokens?: number | null
+    showLegacyParams?: boolean
     chatReasoningEffort?: ReasoningEffort
     chatReasoningSummary?: ReasoningSummary
     chatTextVerbosity?: TextVerbosity
     chatOpenRouterProvider?: string
     chatOpenRouterZdr?: boolean
-    chatThinkingEnabled?: boolean
-    chatThinkingBudgetTokens?: number | null
     chatWebSearchEnabled?: boolean
     chatCodeInterpreterEnabled?: boolean
     chatCodeInterpreterNetworkEnabled?: boolean
@@ -47,7 +48,6 @@
     chatConnectionId?: string | null
     attachedImages?: Image[]
     keybinds?: Keybinds
-    showThinkingControls?: boolean
     presets?: Preset[]
     onToggleChatSettings?: () => void
     onCloseChatSettings?: () => void
@@ -57,13 +57,13 @@
     onChangeMaxOutputTokens?: (val: string) => void
     onChangeTopP?: (val: string) => void
     onChangeTemperature?: (val: string) => void
+    onChangeThinkingEnabled?: (val: boolean) => void
+    onChangeThinkingBudgetTokens?: (val: string) => void
     onChangeReasoningEffort?: (val: string) => void
     onChangeReasoningSummary?: (val: string) => void
     onChangeTextVerbosity?: (val: string) => void
     onChangeOpenRouterProvider?: (val: string) => void
     onChangeOpenRouterZdr?: (val: boolean) => void
-    onChangeThinkingEnabled?: (val: boolean) => void
-    onChangeThinkingBudgetTokens?: (val: string) => void
     onChangeWebSearchEnabled?: (val: boolean) => void
     onChangeCodeInterpreterEnabled?: (val: boolean) => void
     onChangeCodeInterpreterNetworkEnabled?: (val: boolean) => void
@@ -329,6 +329,9 @@
         maxOutputTokens={props.chatMaxOutputTokens}
         topP={props.chatTopP}
         temperature={props.chatTemperature}
+        thinkingEnabled={props.chatThinkingEnabled}
+        thinkingBudgetTokens={props.chatThinkingBudgetTokens}
+        showLegacyParams={props.showLegacyParams}
         reasoningEffort={props.chatReasoningEffort}
         reasoningSummary={props.chatReasoningSummary}
         textVerbosity={props.chatTextVerbosity}
@@ -336,8 +339,6 @@
         onInputOpenRouterProvider={props.onChangeOpenRouterProvider}
         openRouterZdr={props.chatOpenRouterZdr}
         onInputOpenRouterZdr={props.onChangeOpenRouterZdr}
-        thinkingEnabled={props.chatThinkingEnabled}
-        thinkingBudgetTokens={props.chatThinkingBudgetTokens}
         webSearchEnabled={props.chatWebSearchEnabled}
         codeInterpreterEnabled={props.chatCodeInterpreterEnabled}
         codeInterpreterNetworkEnabled={props.chatCodeInterpreterNetworkEnabled}
@@ -352,7 +353,6 @@
         modelIds={props.modelIds}
         connections={props.connections}
         connectionId={props.chatConnectionId}
-        showThinkingControls={props.showThinkingControls}
         presets={props.presets}
         onToggle={props.onToggleChatSettings}
         onClose={props.onCloseChatSettings}
@@ -362,11 +362,11 @@
         onInputMaxOutputTokens={props.onChangeMaxOutputTokens}
         onInputTopP={props.onChangeTopP}
         onInputTemperature={props.onChangeTemperature}
+        onInputThinkingEnabled={props.onChangeThinkingEnabled}
+        onInputThinkingBudgetTokens={props.onChangeThinkingBudgetTokens}
         onInputReasoningEffort={props.onChangeReasoningEffort}
         onInputReasoningSummary={props.onChangeReasoningSummary}
         onInputTextVerbosity={props.onChangeTextVerbosity}
-        onInputThinkingEnabled={props.onChangeThinkingEnabled}
-        onInputThinkingBudgetTokens={props.onChangeThinkingBudgetTokens}
         onInputWebSearchEnabled={props.onChangeWebSearchEnabled}
         onInputCodeInterpreterEnabled={props.onChangeCodeInterpreterEnabled}
         onInputCodeInterpreterNetworkEnabled={props.onChangeCodeInterpreterNetworkEnabled}

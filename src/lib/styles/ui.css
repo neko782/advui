@@ -561,3 +561,99 @@ input:disabled + .ui-switch-ui { opacity: 0.5; }
   color: var(--danger);
   background: color-mix(in srgb, var(--danger) 12%, transparent);
 }
+
+/* ------------------------------------------------------------------ */
+/* Setting rows — name + description on the left, one switch on the    */
+/* right. Rows share a single bordered list instead of floating free.  */
+/* ------------------------------------------------------------------ */
+
+.ui-setting-list {
+  display: grid;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--bg);
+  overflow: hidden;
+}
+.ui-setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s4);
+  min-width: 0;
+  padding: 12px var(--s4);
+  cursor: pointer;
+  user-select: none;
+  transition: background-color var(--dur) var(--ease);
+}
+.ui-setting-row + .ui-setting-row { border-top: 1px solid var(--border); }
+.ui-setting-row:hover { background: var(--hover-bg); }
+.ui-setting-text { display: grid; gap: 2px; min-width: 0; }
+.ui-setting-name { font-size: 0.95rem; font-weight: 500; color: var(--text); }
+.ui-setting-desc { font-size: 0.8rem; line-height: 1.4; color: var(--muted); overflow-wrap: anywhere; }
+
+/* ------------------------------------------------------------------ */
+/* Toggle chips — a set of related on/off choices reads as one control */
+/* ------------------------------------------------------------------ */
+
+.ui-chip-group { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
+.ui-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 0 var(--s3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--bg);
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+  transition:
+    background-color var(--dur) var(--ease),
+    border-color var(--dur) var(--ease),
+    color var(--dur) var(--ease),
+    transform 100ms var(--ease);
+}
+.ui-chip:hover:not(:disabled) {
+  color: var(--text);
+  border-color: color-mix(in srgb, var(--border) 55%, var(--accent) 45%);
+}
+.ui-chip:active:not(:disabled) { transform: scale(0.97); }
+.ui-chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.ui-chip:disabled { opacity: 0.5; cursor: not-allowed; }
+.ui-chip[aria-pressed="true"],
+.ui-chip.on {
+  background: color-mix(in srgb, var(--accent) 12%, var(--bg));
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+  color: var(--accent);
+}
+.ui-chip-sm { min-height: 28px; padding: 0 10px; font-size: 0.8rem; }
+
+/* ------------------------------------------------------------------ */
+/* Small layout helpers                                                */
+/* ------------------------------------------------------------------ */
+
+.ui-grid-2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--s3);
+  min-width: 0;
+}
+/* Segmented control sitting on a surface the same color as its track */
+.ui-segmented-bordered { box-shadow: inset 0 0 0 1px var(--border); }
+/* A switch occupying a form cell, aligned with neighbouring inputs */
+.ui-switch-cell { min-height: 38px; }
+.ui-subhead {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  padding-top: var(--s3);
+  border-top: 1px solid var(--border);
+}

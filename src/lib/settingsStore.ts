@@ -20,6 +20,7 @@ import type {
   EditorActionId,
 } from './types/index.js';
 import { DEFAULT_MESSAGE_ACTIONS, DEFAULT_EDITOR_ACTIONS, DEFAULT_TOOL_SETTINGS } from './constants/defaults.js';
+import { DEFAULT_API_BASE_URL } from './constants/index.js';
 import { ensurePromptPresetList, ensurePersonaList, makeDefaultPromptPreset } from './tavern/promptPresets.js';
 
 export const SETTINGS_KEY = 'openai.settings.v1';
@@ -30,7 +31,6 @@ function genConnectionId(): string {
 
 const API_MODE_VALUES: ReadonlySet<string> = new Set(['responses', 'chat_completions', 'gemini']);
 
-const DEFAULT_API_BASE_URL = 'https://api.openai.com/v1';
 
 interface MakeDefaultConnectionOptions {
   apiKey?: string;
@@ -243,7 +243,7 @@ function attachCompatFields(out: Partial<Settings> & Record<string, unknown>): S
   out.apiMode = activeApiMode;
   out.apiKey = typeof activeConnection?.apiKey === 'string' ? activeConnection.apiKey : '';
   out.apiBaseUrl = normalizeApiBaseUrl(activeConnection?.apiBaseUrl);
-  out.showThinkingSettings = !!out.showThinkingSettings;
+  out.showLegacyParams = !!out.showLegacyParams;
   out.fancyEffects = !!out.fancyEffects;
   out.allowInlineHtml = !!out.allowInlineHtml;
   out.renderLatex = out.renderLatex === true;
@@ -330,7 +330,7 @@ export function loadSettings(): Settings {
     debug: false,
     apiMode: 'responses' as ApiMode,
     keybinds: { ...DEFAULT_KEYBINDS },
-    showThinkingSettings: false,
+    showLegacyParams: false,
     fancyEffects: false,
     allowInlineHtml: false,
     renderLatex: false,
@@ -370,7 +370,7 @@ export function loadSettings(): Settings {
     const apiKey = typeof parsed?.apiKey === 'string' ? parsed.apiKey : '';
     const apiBaseUrl = normalizeApiBaseUrl(parsed?.apiBaseUrl);
     const keybinds = normalizeKeybinds(parsed?.keybinds);
-    const showThinkingSettings = !!parsed?.showThinkingSettings;
+    const showLegacyParams = !!parsed?.showLegacyParams;
     const fancyEffects = !!parsed?.fancyEffects;
     const allowInlineHtml = !!parsed?.allowInlineHtml;
     const renderLatex = parsed?.renderLatex === true;
@@ -391,7 +391,7 @@ export function loadSettings(): Settings {
       debug,
       apiMode: mode,
       keybinds,
-      showThinkingSettings,
+      showLegacyParams,
       fancyEffects,
       allowInlineHtml,
       renderLatex,
@@ -450,7 +450,7 @@ export function saveSettings(next: Partial<Settings>): Settings {
     || makeDefaultConnection({ apiMode: fallbackApiMode });
   const activeApiMode: ApiMode = API_MODE_VALUES.has(activeConnection?.apiMode) ? activeConnection.apiMode : 'responses';
   const keybinds = normalizeKeybinds(next?.keybinds);
-  const showThinkingSettings = !!next?.showThinkingSettings;
+  const showLegacyParams = !!next?.showLegacyParams;
   const fancyEffects = !!next?.fancyEffects;
   const allowInlineHtml = !!next?.allowInlineHtml;
   const renderLatex = next?.renderLatex === true;
@@ -471,7 +471,7 @@ export function saveSettings(next: Partial<Settings>): Settings {
     debug: !!next?.debug,
     apiMode: activeApiMode,
     keybinds,
-    showThinkingSettings,
+    showLegacyParams,
     fancyEffects,
     allowInlineHtml,
     renderLatex,

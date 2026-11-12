@@ -2,6 +2,7 @@
 // Providers live in ./api/providers/ and share plumbing from ./api/core.
 // Uses native fetch for minimal bundle size.
 
+import { DEFAULT_API_BASE_URL } from './constants/index.js';
 import { loadSettings } from './settingsStore.js';
 import { DEFAULT_MODEL } from './utils/presetHelpers.js';
 import {
@@ -51,7 +52,7 @@ export async function getClient(options: {
   if (!clientOptions) return null;
   return {
     apiKey: clientOptions.apiKey,
-    baseURL: clientOptions.baseURL || 'https://api.openai.com/v1',
+    baseURL: clientOptions.baseURL || DEFAULT_API_BASE_URL,
   };
 }
 
@@ -158,7 +159,7 @@ export async function listModels(options: {
     const clientOptions = buildClientOptions(options as { apiKey: string; apiBaseUrl?: string });
     if (!clientOptions) throw new Error('Missing API key.');
     apiKey = clientOptions.apiKey;
-    baseURL = clientOptions.baseURL || 'https://api.openai.com/v1';
+    baseURL = clientOptions.baseURL || DEFAULT_API_BASE_URL;
     apiMode = options.apiMode || 'responses';
   } else {
     const settings = loadSettings();
@@ -168,7 +169,7 @@ export async function listModels(options: {
     });
     if (!connection.apiKey) throw new Error('Missing API key. Set it in Settings.');
     apiKey = connection.apiKey;
-    baseURL = normalizeBaseUrl(connection.apiBaseUrl) || 'https://api.openai.com/v1';
+    baseURL = normalizeBaseUrl(connection.apiBaseUrl) || DEFAULT_API_BASE_URL;
     apiMode = connection.apiMode;
   }
 
