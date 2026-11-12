@@ -6,10 +6,22 @@ export function normalizeMcpServerList(value: unknown): McpServerConfig[] {
   for (const entry of value) {
     if (!entry || typeof entry !== 'object') continue;
     const item = entry as Record<string, unknown>;
-    const label = typeof item.label === 'string' ? item.label.trim() : '';
-    const url = typeof item.url === 'string' ? item.url.trim() : '';
+    const text = (field: string) => (typeof item[field] === 'string' ? (item[field] as string).trim() : '');
+    const label = text('label');
+    const url = text('url');
     if (!label && !url) continue;
-    normalized.push({ label, url });
+    const server: McpServerConfig = { label, url };
+    const authorization = text('authorization');
+    if (authorization) server.authorization = authorization;
+    const allowedTools = text('allowedTools');
+    if (allowedTools) server.allowedTools = allowedTools;
+    normalized.push(server);
   }
   return normalized;
+}
+
+/** Tool names from a comma- or whitespace-separated allowlist. */
+export function parseMcpAllowedTools(value: unknown): string[] {
+  if (typeof value !== 'string') return [];
+  return [...new Set(value.split(/[\s,]+/).filter(Boolean))];
 }

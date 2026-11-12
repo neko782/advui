@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { respond } from './openaiClient.js'
-import { saveSettings } from './settingsStore.js'
+import { saveSettings, loadSettings } from './settingsStore.js'
 
 const encoder = new TextEncoder()
 const connectionId = 'test-connection'
@@ -465,6 +465,66 @@ describe('respond stream errors', () => {
         require_approval: 'never',
       },
     ])
+  })
+
+  it('sends MCP access tokens and tool allowlists, and keeps server labels unique', async () => {
+    configureConnection('responses')
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ output_text: 'ok' }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await respond({
+      model: 'gpt-5.4',
+      prompt: 'hi',
+      connectionId,
+      mcpServers: [
+        { label: '', url: 'https://example.com/mcp', authorization: 'secret-token', allowedTools: 'search, fetch search' },
+        { label: '', url: 'https://example.com/other' },
+      ],
+    })
+
+    const [, init] = fetchMock.mock.calls[0]!
+    const body = JSON.parse(init.body as string)
+    expect(body.tools).toEqual([
+      {
+        type: 'mcp',
+        server_label: 'example-com',
+        server_url: 'https://example.com/mcp',
+        require_approval: 'never',
+        authorization: 'secret-token',
+        allowed_tools: ['search', 'fetch'],
+      },
+      {
+        type: 'mcp',
+        server_label: 'example-com-2',
+        server_url: 'https://example.com/other',
+        require_approval: 'never',
+      },
+    ])
+  })
+
+  it('never sends tools that are switched off in Settings', async () => {
+    configureConnection('responses')
+    saveSettings({ ...loadSettings(), disabledTools: { mcp: true, webSearch: true } })
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ output_text: 'ok' }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await respond({
+      model: 'gpt-5.4',
+      prompt: 'hi',
+      connectionId,
+      webSearch: { enabled: true },
+      shell: { enabled: true },
+      mcpServers: [{ label: 'deepwiki', url: 'https://example.com/mcp' }],
+    })
+
+    const body = JSON.parse(fetchMock.mock.calls[0]![1].body as string)
+    expect(body.tools.map((tool: { type: string }) => tool.type)).toEqual(['shell'])
   })
 
   it('builds Responses API request bodies with attachments and sampling params', async () => {

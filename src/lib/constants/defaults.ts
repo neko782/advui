@@ -2,7 +2,7 @@
 import type {
   EditorActionButton,
   MessageActionButton,
-  DefaultToolSettings,
+  ToolId,
 } from '../types/settings.js';
 
 export const DEFAULT_EDITOR_ACTIONS: EditorActionButton[] = [
@@ -21,10 +21,4 @@ export const DEFAULT_MESSAGE_ACTIONS: MessageActionButton[] = [
   { id: 'moveUp', label: 'Move up', enabled: true, roles: { user: true, assistant: true, system: true } },
 ];
 
-export const DEFAULT_TOOL_SETTINGS: DefaultToolSettings = {
-  webSearch: true,
-  codeInterpreter: true,
-  shell: true,
-  imageGeneration: true,
-  mcp: false,
-};
+export const TOOL_IDS: readonly ToolId[] = ['webSearch', 'codeInterpreter', 'shell', 'imageGeneration', 'mcp'];

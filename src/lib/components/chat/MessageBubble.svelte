@@ -10,6 +10,7 @@
   } from '../../attachments/mime'
   import type { Message } from '../../types'
   import MarkdownContent from './LazyMarkdownContent.svelte'
+  import McpCalls from './McpCalls.svelte'
 
   interface Props {
     message: Message
@@ -241,6 +242,7 @@ const resolvedGeneratedImages = $derived.by(() => {
       {/if}
     </div>
   {/if}
+  <McpCalls items={props.message.mcpItems} />
   {#if props.message.typing}
     <div class={`bubble ${props.message.role}`} data-typing={true}>
       {#if props.message.content && props.message.content !== 'typing'}

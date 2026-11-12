@@ -15,11 +15,11 @@ import type {
   MessageActionRole,
   MessageActionRoles,
   EditorActionButton,
-  DefaultToolSettings,
+  DisabledTools,
   MessageActionId,
   EditorActionId,
 } from './types/index.js';
-import { DEFAULT_MESSAGE_ACTIONS, DEFAULT_EDITOR_ACTIONS, DEFAULT_TOOL_SETTINGS } from './constants/defaults.js';
+import { DEFAULT_MESSAGE_ACTIONS, DEFAULT_EDITOR_ACTIONS, TOOL_IDS } from './constants/defaults.js';
 import { DEFAULT_API_BASE_URL } from './constants/index.js';
 import { ensurePromptPresetList, ensurePersonaList, makeDefaultPromptPreset } from './tavern/promptPresets.js';
 
@@ -177,16 +177,12 @@ function normalizeEditorActions(raw: unknown): EditorActionButton[] {
   return result;
 }
 
-function normalizeDefaultTools(raw: unknown): DefaultToolSettings {
-  if (!raw || typeof raw !== 'object') return { ...DEFAULT_TOOL_SETTINGS };
+function normalizeDisabledTools(raw: unknown): DisabledTools {
+  const out: DisabledTools = {};
+  if (!raw || typeof raw !== 'object') return out;
   const obj = raw as Record<string, unknown>;
-  return {
-    webSearch: typeof obj.webSearch === 'boolean' ? obj.webSearch : DEFAULT_TOOL_SETTINGS.webSearch,
-    codeInterpreter: typeof obj.codeInterpreter === 'boolean' ? obj.codeInterpreter : DEFAULT_TOOL_SETTINGS.codeInterpreter,
-    shell: typeof obj.shell === 'boolean' ? obj.shell : DEFAULT_TOOL_SETTINGS.shell,
-    imageGeneration: typeof obj.imageGeneration === 'boolean' ? obj.imageGeneration : DEFAULT_TOOL_SETTINGS.imageGeneration,
-    mcp: typeof obj.mcp === 'boolean' ? obj.mcp : DEFAULT_TOOL_SETTINGS.mcp,
-  };
+  for (const id of TOOL_IDS) if (obj[id] === true) out[id] = true;
+  return out;
 }
 
 function attachCompatFields(out: Partial<Settings> & Record<string, unknown>): Settings {
@@ -249,7 +245,8 @@ function attachCompatFields(out: Partial<Settings> & Record<string, unknown>): S
   out.renderLatex = out.renderLatex === true;
   out.messageActions = normalizeMessageActions(out.messageActions);
   out.editorActions = normalizeEditorActions(out.editorActions);
-  out.defaultTools = normalizeDefaultTools(out.defaultTools);
+  delete out.defaultTools;
+  out.disabledTools = normalizeDisabledTools(out.disabledTools);
   out.disableRoleSwitching = !!out.disableRoleSwitching;
   out.disableSendRolePopup = !!out.disableSendRolePopup;
   out.showAddWithoutSend = !!out.showAddWithoutSend;
@@ -376,7 +373,7 @@ export function loadSettings(): Settings {
     const renderLatex = parsed?.renderLatex === true;
     const messageActions = normalizeMessageActions(parsed?.messageActions);
     const editorActions = normalizeEditorActions(parsed?.editorActions);
-    const defaultTools = normalizeDefaultTools(parsed?.defaultTools);
+    const disabledTools = normalizeDisabledTools(parsed?.disabledTools);
     const disableRoleSwitching = !!parsed?.disableRoleSwitching;
     const disableSendRolePopup = !!parsed?.disableSendRolePopup;
     const showAddWithoutSend = !!parsed?.showAddWithoutSend;
@@ -397,7 +394,7 @@ export function loadSettings(): Settings {
       renderLatex,
       messageActions,
       editorActions,
-      defaultTools,
+      disabledTools,
       disableRoleSwitching,
       disableSendRolePopup,
       showAddWithoutSend,
@@ -456,7 +453,7 @@ export function saveSettings(next: Partial<Settings>): Settings {
   const renderLatex = next?.renderLatex === true;
   const messageActions = normalizeMessageActions(next?.messageActions);
   const editorActions = normalizeEditorActions(next?.editorActions);
-  const defaultTools = normalizeDefaultTools(next?.defaultTools);
+  const disabledTools = normalizeDisabledTools(next?.disabledTools);
   const disableRoleSwitching = !!next?.disableRoleSwitching;
   const disableSendRolePopup = !!next?.disableSendRolePopup;
   const showAddWithoutSend = !!next?.showAddWithoutSend;
@@ -477,7 +474,7 @@ export function saveSettings(next: Partial<Settings>): Settings {
     renderLatex,
     messageActions,
     editorActions,
-    defaultTools,
+    disabledTools,
     disableRoleSwitching,
     disableSendRolePopup,
     showAddWithoutSend,

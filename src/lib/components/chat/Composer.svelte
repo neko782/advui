@@ -12,7 +12,7 @@
   } from '../../attachments/mime'
   import ChatSettingsPopover from './ChatSettingsPopover.svelte'
   import { onMount } from 'svelte'
-  import type { Image, Preset, ConnectionOption, Keybinds, ReasoningEffort, TextVerbosity, ReasoningSummary, MessageRole, McpServerConfig } from '../../types'
+  import type { Image, Preset, ConnectionOption, Keybinds, ReasoningEffort, TextVerbosity, ReasoningSummary, MessageRole, McpServerConfig, DisabledTools } from '../../types'
 
   interface Props {
     input?: string
@@ -27,6 +27,7 @@
     chatThinkingEnabled?: boolean
     chatThinkingBudgetTokens?: number | null
     showLegacyParams?: boolean
+    disabledTools?: DisabledTools
     chatReasoningEffort?: ReasoningEffort
     chatReasoningSummary?: ReasoningSummary
     chatTextVerbosity?: TextVerbosity
@@ -332,6 +333,7 @@
         thinkingEnabled={props.chatThinkingEnabled}
         thinkingBudgetTokens={props.chatThinkingBudgetTokens}
         showLegacyParams={props.showLegacyParams}
+        disabledTools={props.disabledTools}
         reasoningEffort={props.chatReasoningEffort}
         reasoningSummary={props.chatReasoningSummary}
         textVerbosity={props.chatTextVerbosity}

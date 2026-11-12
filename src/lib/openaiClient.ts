@@ -69,6 +69,7 @@ export async function respond(options: RespondOptions): Promise<GenerationRespon
   } = options;
 
   const settings = loadSettings();
+  const off = settings.disabledTools ?? {};
   const preset = pickActivePreset(settings);
   const useModel = optModel || preset?.model || DEFAULT_MODEL;
   const preferredConnectionId = typeof connectionId === 'string' && connectionId.trim()
@@ -122,12 +123,13 @@ export async function respond(options: RespondOptions): Promise<GenerationRespon
       thinkingEnabled: options.thinkingEnabled,
       thinkingBudgetTokens: options.thinkingBudgetTokens,
     },
+    // Tools switched off in Settings are never sent, whatever the chat has saved.
     tools: {
-      webSearch: options.webSearch,
-      codeInterpreter: options.codeInterpreter,
-      shell: options.shell,
-      imageGeneration: options.imageGeneration,
-      mcpServers: options.mcpServers,
+      webSearch: off.webSearch ? undefined : options.webSearch,
+      codeInterpreter: off.codeInterpreter ? undefined : options.codeInterpreter,
+      shell: off.shell ? undefined : options.shell,
+      imageGeneration: off.imageGeneration ? undefined : options.imageGeneration,
+      mcpServers: off.mcp ? [] : options.mcpServers,
     },
     callbacks: {
       onEvent: options.onEvent,

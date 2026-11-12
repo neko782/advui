@@ -1,5 +1,6 @@
 <script lang="ts" module>
-  import type { PresetFields } from '../types'
+  import type { PresetFields, DisabledTools } from '../types'
+  import { IconTravelExplore, IconCodeBlocks, IconTerminal, IconImagesmode, IconExtension } from '../icons'
 
   /** The tool-related slice shared by presets and per-chat settings. */
   export type ToolsValue = Partial<Pick<PresetFields,
@@ -9,6 +10,15 @@
     | 'imageGenerationEnabled' | 'imageGenerationModel'
     | 'mcpEnabled' | 'mcpServers'
   >>
+
+  /** Built-in tools, in display order. */
+  export const TOOLS = [
+    { id: 'webSearch', key: 'webSearchEnabled', label: 'Web search', short: 'Search', desc: 'Search the web for up-to-date information', icon: IconTravelExplore, options: false },
+    { id: 'codeInterpreter', key: 'codeInterpreterEnabled', label: 'Code interpreter', short: 'Code', desc: 'Run Python code in a sandboxed environment', icon: IconCodeBlocks, options: true },
+    { id: 'shell', key: 'shellEnabled', label: 'Shell', short: 'Shell', desc: 'Execute shell commands on the server', icon: IconTerminal, options: true },
+    { id: 'imageGeneration', key: 'imageGenerationEnabled', label: 'Image generation', short: 'Images', desc: 'Generate images from text descriptions', icon: IconImagesmode, options: true },
+    { id: 'mcp', key: 'mcpEnabled', label: 'MCP', short: 'MCP', desc: 'Remote tool servers via Model Context Protocol', icon: IconExtension, options: true },
+  ] as const
 </script>
 
 <script lang="ts">
@@ -17,7 +27,7 @@
   // editor and the new-preset defaults so tools look and behave the same
   // everywhere.
   import FloatingPopover from './FloatingPopover.svelte'
-  import { IconTravelExplore, IconCodeBlocks, IconTerminal, IconImagesmode, IconExtension, IconExpandMore, IconClose } from '../icons'
+  import { IconExpandMore, IconClose } from '../icons'
 
   interface Props {
     value: ToolsValue
@@ -27,17 +37,12 @@
     configurable?: boolean
     /** Short chip labels for narrow surfaces. */
     compact?: boolean
+    /** Tools switched off app-wide; they are not offered at all. */
+    hidden?: DisabledTools
   }
 
-  let { value, onChange, disabled = false, configurable = true, compact = false }: Props = $props()
+  let { value, onChange, disabled = false, configurable = true, compact = false, hidden = {} }: Props = $props()
 
-  const TOOLS = [
-    { id: 'webSearch', key: 'webSearchEnabled', label: 'Web search', short: 'Search', desc: 'Search the web for up-to-date information', icon: IconTravelExplore, options: false },
-    { id: 'codeInterpreter', key: 'codeInterpreterEnabled', label: 'Code interpreter', short: 'Code', desc: 'Run Python code in a sandboxed environment', icon: IconCodeBlocks, options: true },
-    { id: 'shell', key: 'shellEnabled', label: 'Shell', short: 'Shell', desc: 'Execute shell commands on the server', icon: IconTerminal, options: true },
-    { id: 'imageGeneration', key: 'imageGenerationEnabled', label: 'Image generation', short: 'Images', desc: 'Generate images from text descriptions', icon: IconImagesmode, options: true },
-    { id: 'mcp', key: 'mcpEnabled', label: 'MCP', short: 'MCP', desc: 'Remote tool servers via Model Context Protocol', icon: IconExtension, options: true },
-  ] as const
   type Tool = typeof TOOLS[number]
   type NetTool = 'codeInterpreter' | 'shell'
   type NetMode = 'off' | 'any' | 'list'
@@ -49,6 +54,7 @@
   ]
 
   let openTool = $state<Tool['id'] | null>(null)
+  const visibleTools = $derived(TOOLS.filter(tool => !hidden[tool.id]))
   let root: HTMLDivElement
   const anchors = $state<Partial<Record<Tool['id'], HTMLElement>>>({})
   // "Allowlist" with nothing typed yet is stored the same as "Any domain",
@@ -57,7 +63,7 @@
 
   // Options only exist for a tool that is on; if it gets switched off from
   // elsewhere (e.g. a preset change) the panel goes with it.
-  const shownTool = $derived(TOOLS.find(tool => tool.id === openTool && configurable && !!value[tool.key]) ?? null)
+  const shownTool = $derived(visibleTools.find(tool => tool.id === openTool && configurable && !!value[tool.key]) ?? null)
 
   // The options popup closes on an outside press or Escape, without also
   // closing whatever panel the picker sits in.
@@ -105,14 +111,20 @@
     else patch({ [`${tool}NetworkEnabled`]: true })
   }
 
-  function mcpServers() {
-    return (value.mcpServers || []).map(server => ({ label: server?.label || '', url: server?.url || '' }))
+  type McpServer = NonNullable<ToolsValue['mcpServers']>[number]
+
+  function mcpServers(): McpServer[] {
+    return (value.mcpServers || []).map(server => ({ ...server, label: server?.label || '', url: server?.url || '' }))
+  }
+
+  function updateMcpServer(index: number, change: Partial<McpServer>) {
+    patch({ mcpServers: mcpServers().map((server, i) => (i === index ? { ...server, ...change } : server)) })
   }
 </script>
 
 <div class="tools" class:compact bind:this={root}>
   <div class="ui-chip-group" role="group" aria-label="Tools">
-    {#each TOOLS as tool (tool.id)}
+    {#each visibleTools as tool (tool.id)}
       {@const on = !!value[tool.key]}
       {@const hasOptions = configurable && tool.options && on}
       <span class="tool" class:split={hasOptions} bind:this={anchors[tool.id]}>
@@ -132,7 +144,7 @@
     {/each}
   </div>
 
-  <FloatingPopover open={!!shownTool} anchor={shownTool ? anchors[shownTool.id] : undefined} maxWidth={300} maxHeight={360}>
+  <FloatingPopover open={!!shownTool} anchor={shownTool ? anchors[shownTool.id] : undefined} maxWidth={320} maxHeight={400}>
   {#if shownTool}
     <div class="tool-options" role="group" aria-label={`${shownTool.label} options`}>
       {#if shownTool.id === 'codeInterpreter' || shownTool.id === 'shell'}
@@ -160,15 +172,29 @@
       {:else if shownTool.id === 'mcp'}
         <div class="option-label">MCP servers</div>
         {#each value.mcpServers || [] as server, index (index)}
-          <div class="server-row">
-            <input class="ui-input" type="text" placeholder="https://example.com/mcp" value={server?.url || ''} {disabled}
-              oninput={(event) => patch({ mcpServers: mcpServers().map((entry, i) => (i === index ? { ...entry, url: event.currentTarget.value } : entry)) })}
-              aria-label={`MCP server URL ${index + 1}`} />
-            <button type="button" class="ui-icon-btn ui-icon-btn-sm danger" {disabled}
-              onclick={() => patch({ mcpServers: mcpServers().filter((_, i) => i !== index) })}
-              aria-label={`Remove MCP server ${index + 1}`} title="Remove server">
-              <IconClose style="font-size: 16px;" />
-            </button>
+          <div class="server">
+            <div class="server-row">
+              <input class="ui-input" type="text" placeholder="https://example.com/mcp" value={server?.url || ''} {disabled}
+                oninput={(event) => updateMcpServer(index, { url: event.currentTarget.value })}
+                aria-label={`MCP server URL ${index + 1}`} />
+              <button type="button" class="ui-icon-btn ui-icon-btn-sm danger" {disabled}
+                onclick={() => patch({ mcpServers: mcpServers().filter((_, i) => i !== index) })}
+                aria-label={`Remove MCP server ${index + 1}`} title="Remove server">
+                <IconClose style="font-size: 16px;" />
+              </button>
+            </div>
+            <div class="server-details">
+              <input class="ui-input" type="text" placeholder="Name (optional)" value={server?.label || ''} {disabled}
+                oninput={(event) => updateMcpServer(index, { label: event.currentTarget.value })}
+                aria-label={`MCP server name ${index + 1}`} />
+              <input class="ui-input" type="password" placeholder="Access token" value={server?.authorization || ''} {disabled}
+                autocomplete="off" data-1p-ignore data-lpignore="true"
+                oninput={(event) => updateMcpServer(index, { authorization: event.currentTarget.value || undefined })}
+                aria-label={`MCP server access token ${index + 1}`} />
+              <input class="ui-input allowed" type="text" placeholder="Allowed tools — empty for all" value={server?.allowedTools || ''} {disabled}
+                oninput={(event) => updateMcpServer(index, { allowedTools: event.currentTarget.value || undefined })}
+                aria-label={`MCP server allowed tools ${index + 1}`} />
+            </div>
           </div>
         {:else}
           <div class="option-hint">No servers yet — MCP needs at least one.</div>
@@ -202,6 +228,11 @@
   .option-hint { font-size: 0.75rem; color: var(--muted); }
   .ui-segmented { width: 100%; }
   .ui-segment { flex: 1; padding: 6px 8px; font-size: 0.85rem; }
+  .server { display: grid; gap: var(--s1); }
+  .server + .server { padding-top: var(--s2); border-top: 1px solid var(--border); }
+  .server-details { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s1); }
+  .server-details .ui-input { padding: 6px var(--s2); font-size: 0.8rem; }
+  .server-details .allowed { grid-column: 1 / -1; }
   .server-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--s1); align-items: center; }
   .add-server { justify-self: start; }
 </style>

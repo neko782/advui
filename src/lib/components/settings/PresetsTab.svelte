@@ -1,7 +1,7 @@
 <script lang="ts">
   import OpenRouterProviderInput from '../OpenRouterProviderInput.svelte'
   import ModelInput from '../ModelInput.svelte'
-  import ToolsPicker, { type ToolsValue } from '../ToolsPicker.svelte'
+  import ToolsPicker, { TOOLS } from '../ToolsPicker.svelte'
   import { onMount } from 'svelte'
   import { IconAdd, IconDelete, IconDragHandle } from '../../icons'
   import { DEFAULT_SYSTEM_PROMPT } from '../../utils/presetHelpers'
@@ -61,26 +61,7 @@
     }
   }
 
-  // Tools that new presets start with: the same picker, on/off only.
-  const DEFAULT_TOOL_KEYS = {
-    webSearchEnabled: 'webSearch',
-    codeInterpreterEnabled: 'codeInterpreter',
-    shellEnabled: 'shell',
-    imageGenerationEnabled: 'imageGeneration',
-    mcpEnabled: 'mcp',
-  } as const
-  const defaultToolsValue = $derived<ToolsValue>({
-    webSearchEnabled: draft.defaultTools.webSearch,
-    codeInterpreterEnabled: draft.defaultTools.codeInterpreter,
-    shellEnabled: draft.defaultTools.shell,
-    imageGenerationEnabled: draft.defaultTools.imageGeneration,
-    mcpEnabled: draft.defaultTools.mcp,
-  })
-  function patchDefaultTools(patch: ToolsValue) {
-    for (const key of Object.keys(DEFAULT_TOOL_KEYS) as (keyof typeof DEFAULT_TOOL_KEYS)[]) {
-      if (key in patch) draft.updateDefaultTool(DEFAULT_TOOL_KEYS[key], !!patch[key])
-    }
-  }
+  const anyToolAvailable = $derived(TOOLS.some(tool => !draft.disabledTools[tool.id]))
 
   onMount(() => {
     // Model suggestions come from the shared cache; hydrate it lazily
@@ -300,11 +281,13 @@
                     ></textarea>
                   </label>
 
-                  <div class="ui-subhead">Tools</div>
-                  {#if activePresetSupportsResponsesApiFeatures}
-                    <ToolsPicker value={activePreset} onChange={updateActivePreset} />
-                  {:else}
-                    <p class="ui-hint">Tools are available on Responses API connections.</p>
+                  {#if anyToolAvailable}
+                    <div class="ui-subhead">Tools</div>
+                    {#if activePresetSupportsResponsesApiFeatures}
+                      <ToolsPicker value={activePreset} onChange={updateActivePreset} hidden={draft.disabledTools} />
+                    {:else}
+                      <p class="ui-hint">Tools are available on Responses API connections.</p>
+                    {/if}
                   {/if}
 
                   <div class="ui-subhead">Generation</div>
@@ -425,12 +408,6 @@
                   </div>
                 </div>
               {/if}
-            </section>
-
-            <section class="ui-group">
-              <div class="ui-group-title">New preset tools</div>
-              <p class="ui-hint">Tools a newly added preset starts with. Only applies to Responses API connections.</p>
-              <ToolsPicker configurable={false} value={defaultToolsValue} onChange={patchDefaultTools} />
             </section>
 
 <style>

@@ -230,6 +230,7 @@
     chatThinkingEnabled={chatSettings.thinkingEnabled}
     chatThinkingBudgetTokens={chatSettings.thinkingBudgetTokens}
     showLegacyParams={!!settings?.showLegacyParams}
+    disabledTools={settings?.disabledTools}
     chatReasoningEffort={chatSettings.reasoningEffort}
     chatReasoningSummary={chatSettings.reasoningSummary}
     chatTextVerbosity={chatSettings.textVerbosity}

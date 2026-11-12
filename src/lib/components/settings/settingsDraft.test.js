@@ -28,10 +28,11 @@ it('reloads settings on opening and preserves Tavern changes when saving another
   expect(loadSettings()).toMatchObject({ tavernPerChatPresets: true, tavernAvatarShape: 'card', fancyEffects: true });
   await unmount(component);
 });
-it.each(['responses', 'gemini', 'chat_completions'])('applies tool defaults to new presets only for Responses (%s)', apiMode => {
+it.each(['responses', 'gemini', 'chat_completions'])('copies tools into new presets only for Responses (%s)', apiMode => {
   saveSettings({ connections: [{ id: 'conn', name: 'Test', apiKey: '', apiBaseUrl: '', apiMode }], selectedConnectionId: 'conn' });
   const draft = new SettingsDraft();
-  draft.local.defaultTools = { webSearch: true, codeInterpreter: false, shell: true, imageGeneration: false, mcp: true };
+  draft.selectPreset(draft.presets[0].id);
+  draft.updateActivePreset({ connectionId: 'conn', webSearchEnabled: true, codeInterpreterEnabled: false, shellEnabled: true, imageGenerationEnabled: false, mcpEnabled: true });
   draft.addPreset();
   expect(draft.activePreset).toMatchObject({ webSearchEnabled: apiMode === 'responses', codeInterpreterEnabled: false, shellEnabled: apiMode === 'responses', imageGenerationEnabled: false, mcpEnabled: apiMode === 'responses' });
   draft.reset();
@@ -46,5 +47,13 @@ it('shows a message button on exactly the selected roles and hides it when none 
   expect(action('fork').enabled).toBe(false);
   draft.toggleMessageActionRole('copy', 'system');
   expect(action('copy')).toMatchObject({ enabled: true, roles: { user: true, assistant: true, system: false } });
+  draft.reset();
+});
+it('switches a tool off app-wide and back on', () => {
+  const draft = new SettingsDraft();
+  draft.setToolDisabled('shell', true);
+  expect(draft.disabledTools).toEqual({ shell: true });
+  draft.setToolDisabled('shell', false);
+  expect(draft.disabledTools).toEqual({});
   draft.reset();
 });

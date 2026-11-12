@@ -7,8 +7,9 @@ import { setModelsCache, loadAllModelCaches } from '../../modelsStore.js';
 import { listModelsWithKey } from '../../openaiClient.js';
 import { DEFAULT_MODEL, DEFAULT_SYSTEM_PROMPT } from '../../utils/presetHelpers.js';
 import { normalizeReasoning, normalizeVerbosity, normalizeReasoningSummary } from '../../utils/validation.js';
-import { DEFAULT_MESSAGE_ACTIONS, DEFAULT_EDITOR_ACTIONS, DEFAULT_TOOL_SETTINGS } from '../../constants/defaults.js';
+import { DEFAULT_MESSAGE_ACTIONS, DEFAULT_EDITOR_ACTIONS } from '../../constants/defaults.js';
 import { DEFAULT_API_BASE_URL } from '../../constants/index.js';
+import { normalizeMcpServerList } from '../../utils/mcp.js';
 import type {
   AppSettings,
   Preset,
@@ -16,7 +17,7 @@ import type {
   MessageActionButton,
   MessageActionRole,
   EditorActionButton,
-  DefaultToolSettings,
+  ToolId,
 } from '../../types/index.js';
 
 export const REASONING_OPTIONS = ['default', 'none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
@@ -118,8 +119,8 @@ export class SettingsDraft {
     return Array.isArray(this.local?.editorActions) ? this.local.editorActions : DEFAULT_EDITOR_ACTIONS.map(a => ({ ...a }));
   }
 
-  get defaultTools(): DefaultToolSettings {
-    return this.local?.defaultTools ?? { ...DEFAULT_TOOL_SETTINGS };
+  get disabledTools(): Partial<Record<ToolId, boolean>> {
+    return this.local?.disabledTools ?? {};
   }
 
   // --- Persistence -----------------------------------------------------------
@@ -252,23 +253,23 @@ export class SettingsDraft {
       thinkingEnabled: !!base?.thinkingEnabled,
       thinkingBudgetTokens: base?.thinkingBudgetTokens ?? null,
       connectionId: base?.connectionId || this.local?.selectedConnectionId || this.activeConnectionId || (this.local?.connections?.[0]?.id || ''),
-      webSearchEnabled: this.local.defaultTools?.webSearch ?? DEFAULT_TOOL_SETTINGS.webSearch,
+      webSearchEnabled: !!base?.webSearchEnabled,
       webSearchDomains: base?.webSearchDomains,
       webSearchCountry: base?.webSearchCountry,
       webSearchCity: base?.webSearchCity,
       webSearchRegion: base?.webSearchRegion,
       webSearchTimezone: base?.webSearchTimezone,
       webSearchCacheOnly: !!base?.webSearchCacheOnly,
-      codeInterpreterEnabled: this.local.defaultTools?.codeInterpreter ?? DEFAULT_TOOL_SETTINGS.codeInterpreter,
+      codeInterpreterEnabled: !!base?.codeInterpreterEnabled,
       codeInterpreterNetworkEnabled: !!base?.codeInterpreterNetworkEnabled,
       codeInterpreterAllowedDomains: base?.codeInterpreterAllowedDomains,
-      shellEnabled: this.local.defaultTools?.shell ?? DEFAULT_TOOL_SETTINGS.shell,
+      shellEnabled: !!base?.shellEnabled,
       shellNetworkEnabled: !!base?.shellNetworkEnabled,
       shellAllowedDomains: base?.shellAllowedDomains,
-      imageGenerationEnabled: this.local.defaultTools?.imageGeneration ?? DEFAULT_TOOL_SETTINGS.imageGeneration,
+      imageGenerationEnabled: !!base?.imageGenerationEnabled,
       imageGenerationModel: base?.imageGenerationModel,
-      mcpEnabled: this.local.defaultTools?.mcp ?? DEFAULT_TOOL_SETTINGS.mcp,
-      mcpServers: Array.isArray(base?.mcpServers) ? base.mcpServers.map(server => ({ label: server?.label || '', url: server?.url || '' })) : [],
+      mcpEnabled: !!base?.mcpEnabled,
+      mcpServers: normalizeMcpServerList(base?.mcpServers),
       systemPrompt: typeof base?.systemPrompt === 'string' ? base.systemPrompt : DEFAULT_SYSTEM_PROMPT,
     };
     const connection = this.connections.find(c => c.id === preset.connectionId);
@@ -542,10 +543,11 @@ export class SettingsDraft {
     this.persist();
   }
 
-  updateDefaultTool(key: keyof DefaultToolSettings, value: boolean): void {
-    const tools = this.local?.defaultTools ? { ...this.local.defaultTools } : { ...DEFAULT_TOOL_SETTINGS };
-    tools[key] = value;
-    this.local.defaultTools = tools;
+  setToolDisabled(id: ToolId, disabled: boolean): void {
+    const next = { ...this.disabledTools };
+    if (disabled) next[id] = true;
+    else delete next[id];
+    this.local.disabledTools = next;
     this.persist();
   }
 }

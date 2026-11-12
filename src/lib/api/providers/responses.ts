@@ -5,7 +5,7 @@
 // ============================================================================
 
 import { toIntOrNull, toClampedNumber } from '../../utils/numbers.js';
-import { normalizeMcpServerList } from '../../utils/mcp.js';
+import { normalizeMcpServerList, parseMcpAllowedTools } from '../../utils/mcp.js';
 import {
   buildOpenRouterProvider,
   createAbort,
@@ -155,13 +155,23 @@ function buildTools(ctx: ProviderRequestContext): Record<string, unknown>[] {
   // MCP tools
   const normalizedMcpServers = normalizeMcpServerList(mcpServers)
     .filter((server) => server.url);
+  const usedLabels = new Set<string>();
   for (const server of normalizedMcpServers) {
-    tools.push({
+    // Output items are tied to their server by label, so labels must differ.
+    const baseLabel = server.label ? sanitizeMcpLabel(server.label) : mcpLabelFromUrl(server.url);
+    let label = baseLabel;
+    for (let n = 2; usedLabels.has(label); n++) label = `${baseLabel}-${n}`;
+    usedLabels.add(label);
+    const tool: Record<string, unknown> = {
       type: 'mcp',
-      server_label: server.label ? sanitizeMcpLabel(server.label) : mcpLabelFromUrl(server.url),
+      server_label: label,
       server_url: server.url,
       require_approval: 'never',
-    });
+    };
+    if (server.authorization) tool.authorization = server.authorization;
+    const allowedTools = parseMcpAllowedTools(server.allowedTools);
+    if (allowedTools.length) tool.allowed_tools = allowedTools;
+    tools.push(tool);
   }
 
   return tools;
@@ -302,6 +312,14 @@ export function extractGeneratedImages(res: unknown): GeneratedImage[] | undefin
   return images;
 }
 
+function mcpErrorText(error: unknown): string | null {
+  if (typeof error === 'string') return error || null;
+  if (!error || typeof error !== 'object') return null;
+  const message = (error as Record<string, unknown>).message;
+  if (typeof message === 'string' && message) return message;
+  try { return JSON.stringify(error); } catch { return 'MCP call failed'; }
+}
+
 export function extractMcpItems(res: unknown): McpResponseItem[] | undefined {
   const items: McpResponseItem[] = [];
   const seen = new Set<string>();
@@ -327,7 +345,7 @@ export function extractMcpItems(res: unknown): McpResponseItem[] | undefined {
           name: typeof entry.name === 'string' ? entry.name : '',
           arguments: typeof entry.arguments === 'string' ? entry.arguments : null,
           output: typeof entry.output === 'string' ? entry.output : null,
-          error: typeof entry.error === 'string' ? entry.error : null,
+          error: mcpErrorText(entry.error),
           status: typeof entry.status === 'string'
             ? entry.status as 'in_progress' | 'completed' | 'incomplete' | 'calling' | 'failed'
             : undefined,

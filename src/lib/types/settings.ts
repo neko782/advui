@@ -117,16 +117,13 @@ export interface EditorActionButton {
 }
 
 // ============================================================================
-// Default Tool Settings (Responses API)
+// Built-in tools (Responses API)
 // ============================================================================
 
-export interface DefaultToolSettings {
-  webSearch: boolean;
-  codeInterpreter: boolean;
-  shell: boolean;
-  imageGeneration: boolean;
-  mcp: boolean;
-}
+export type ToolId = 'webSearch' | 'codeInterpreter' | 'shell' | 'imageGeneration' | 'mcp';
+
+/** Tools switched off app-wide: hidden from every picker and never sent. */
+export type DisabledTools = Partial<Record<ToolId, boolean>>;
 
 // ============================================================================
 // App Settings
@@ -172,7 +169,7 @@ export interface Settings {
   model: string;
   messageActions?: MessageActionButton[];
   editorActions?: EditorActionButton[];
-  defaultTools?: DefaultToolSettings;
+  disabledTools?: DisabledTools;
   disableRoleSwitching?: boolean;
   disableSendRolePopup?: boolean;
   showAddWithoutSend?: boolean;

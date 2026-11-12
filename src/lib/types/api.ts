@@ -144,6 +144,10 @@ export interface GeneratedImage {
 export interface McpServerConfig {
   label: string;
   url: string;
+  /** OAuth / bearer access token the API forwards to the server. */
+  authorization?: string;
+  /** Comma-separated tool names to import; empty imports every tool. */
+  allowedTools?: string;
 }
 
 export interface McpListedTool {

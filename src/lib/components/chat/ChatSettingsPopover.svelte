@@ -1,10 +1,10 @@
 <script lang="ts">
   import OpenRouterProviderInput from '../OpenRouterProviderInput.svelte'
   import ModelInput from '../ModelInput.svelte'
-  import ToolsPicker, { type ToolsValue } from '../ToolsPicker.svelte'
+  import ToolsPicker, { TOOLS, type ToolsValue } from '../ToolsPicker.svelte'
   import { reasoningLevelOptions } from '../../utils/reasoningLevels'
   import { IconTune, IconLayers } from '../../icons'
-  import type { Preset, ReasoningEffort, TextVerbosity, ReasoningSummary, ConnectionOption, McpServerConfig } from '../../types'
+  import type { Preset, ReasoningEffort, TextVerbosity, ReasoningSummary, ConnectionOption, McpServerConfig, DisabledTools } from '../../types'
 
   interface Props {
     open?: boolean
@@ -18,6 +18,8 @@
     thinkingBudgetTokens?: number | null
     /** Offer deprecated controls (sampling, Anthropic thinking, retired reasoning levels). */
     showLegacyParams?: boolean
+    /** Tools switched off app-wide. */
+    disabledTools?: DisabledTools
     reasoningEffort?: ReasoningEffort
     reasoningSummary?: ReasoningSummary
     textVerbosity?: TextVerbosity
@@ -93,6 +95,8 @@
     legacy: props.showLegacyParams,
     selected: props.reasoningEffort,
   }))
+
+  const anyToolAvailable = $derived(TOOLS.some(tool => !props.disabledTools?.[tool.id]))
 
   const toolsValue = $derived<ToolsValue>({
     webSearchEnabled: props.webSearchEnabled,
@@ -221,10 +225,10 @@
     style={`--settings-left: ${menuBounds.left}px; --settings-width: ${menuBounds.width}px; --settings-height: ${menuBounds.height}px`}>
     <div class="settings-scroll">
       {#if activeTab === 'general'}
-        {#if supportsResponsesApiFeatures}
+        {#if supportsResponsesApiFeatures && anyToolAvailable}
           <div class="menu-section">
             <div class="menu-label">Tools</div>
-            <ToolsPicker compact value={toolsValue} onChange={patchTools} disabled={props.disabled} />
+            <ToolsPicker compact value={toolsValue} onChange={patchTools} disabled={props.disabled} hidden={props.disabledTools} />
           </div>
         {/if}
         <div class="menu-section">

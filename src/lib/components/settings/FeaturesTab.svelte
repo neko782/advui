@@ -1,6 +1,7 @@
 <script lang="ts">
   import { IconDragHandle } from '../../icons'
   import SettingToggle from '../SettingToggle.svelte'
+  import { TOOLS } from '../ToolsPicker.svelte'
   import type { MessageActionRole } from '../../types'
   import type { SettingsDraft } from './settingsDraft.svelte'
 
@@ -155,6 +156,21 @@
                   checked={local.showInsertButtons !== false}
                   onChange={(on) => update(s => { s.showInsertButtons = on })}
                 />
+              </div>
+            </section>
+
+            <section class="ui-group">
+              <div class="ui-group-title">Tools</div>
+              <p class="ui-hint">A tool that is off here is hidden from every chat and preset and never sent, whatever they have saved. Tools only apply to Responses API connections.</p>
+              <div class="ui-setting-list">
+                {#each TOOLS as tool (tool.id)}
+                  <SettingToggle
+                    label={tool.label}
+                    hint={tool.desc}
+                    checked={!draft.disabledTools[tool.id]}
+                    onChange={(on) => draft.setToolDisabled(tool.id, !on)}
+                  />
+                {/each}
               </div>
             </section>
 
