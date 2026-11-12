@@ -3,7 +3,7 @@ import { anthropicAdapter, buildAnthropicRequest } from './providers/anthropic'
 import { responsesAdapter, buildResponsesRequest } from './providers/responses'
 import { chatCompletionsAdapter, buildChatRequest } from './providers/chatCompletions'
 import { geminiAdapter, buildGeminiRequest } from './providers/gemini'
-import { SteerQueue, steerNotes } from './steering'
+import { SteerQueue, steerNotes, steeredParts } from './steering'
 import { settleActivity, activityTitle } from './activity'
 import { buildProviderInput, plainTurns, type ProviderRequestContext } from './core'
 import type { ActivityStep, BrowserToolName, HistoryMessage } from '../types/index.js'
@@ -271,5 +271,34 @@ describe('SteerQueue', () => {
     expect(seen).toEqual(['one'])
     expect(queue.take().map(steer => steer.text)).toEqual(['one', 'two'])
     expect(queue.take()).toEqual([])
+  })
+})
+
+describe('steeredParts', () => {
+  it('is null for a reply that was not steered', () => {
+    expect(steeredParts('hi', undefined)).toBeNull()
+    expect(steeredParts('hi', [{ id: 't', kind: 'thinking', status: 'done', text: 'x' }])).toBeNull()
+  })
+
+  it('splits the reply at each delivered message and puts queued ones last', () => {
+    const parts = steeredParts('First part. Second part.', [
+      { id: 'steer-2', kind: 'steer', status: 'done', text: 'two', at: 12 },
+      { id: 'steer-1', kind: 'steer', status: 'done', text: 'one', at: 0 },
+      { id: 'steer-3', kind: 'steer', status: 'running', text: 'queued' },
+    ])
+    expect(parts).toEqual([
+      { kind: 'steer', key: 'steer-1', text: 'one', pending: false },
+      { kind: 'text', key: 'text-0', text: 'First part.' },
+      { kind: 'steer', key: 'steer-2', text: 'two', pending: false },
+      { kind: 'text', key: 'text-12', text: 'Second part.' },
+      { kind: 'steer', key: 'steer-3', text: 'queued', pending: true },
+    ])
+  })
+
+  it('keeps a message delivered past the end of edited text', () => {
+    expect(steeredParts('short', [{ id: 's', kind: 'steer', status: 'done', text: 'late', at: 99 }])).toEqual([
+      { kind: 'text', key: 'text-0', text: 'short' },
+      { kind: 'steer', key: 's', text: 'late', pending: false },
+    ])
   })
 })

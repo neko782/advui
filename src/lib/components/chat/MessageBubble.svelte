@@ -11,6 +11,8 @@
   import type { Message } from '../../types'
   import MarkdownContent from './LazyMarkdownContent.svelte'
   import ActivityLog from './ActivityLog.svelte'
+  import { activityOf } from '../../api/activity'
+  import { steeredParts } from '../../api/steering'
 
   interface Props {
     message: Message
@@ -83,6 +85,15 @@ const resolvedGeneratedImages = $derived.by(() => {
   if (!images.length) return []
   return images.map((image) => resolveGeneratedImage(image as AttachmentLike, props.imageCache)).filter((a): a is AttachmentLike => !!a)
 })
+
+  // A steered reply shows each steering message as a user bubble where it
+  // reached the model; ones still queued follow the text written so far.
+  const steered = $derived.by(() => {
+    if (props.message?.role !== 'assistant') return null
+    const raw = typeof props.message.content === 'string' ? props.message.content : ''
+    const content = props.message.typing && raw === 'typing' ? '' : raw
+    return steeredParts(content, activityOf(props.message))
+  })
 
   // When entering edit mode, seed text and move caret
   // Only sync when we start editing this specific message, not on every keystroke
@@ -161,7 +172,29 @@ const resolvedGeneratedImages = $derived.by(() => {
   {#if props.message.role === 'assistant'}
     <ActivityLog message={props.message} allowInlineHtml={props.allowInlineHtml} renderLatex={props.renderLatex} />
   {/if}
-  {#if props.message.typing}
+  {#if steered}
+    {#each steered as part, i (part.key)}
+      {#if part.kind === 'steer'}
+        <div class="steer" class:pending={part.pending}>
+          <div class="bubble user">
+            <MarkdownContent content={part.text} allowInlineHtml={props.allowInlineHtml} renderLatex={props.renderLatex} />
+          </div>
+        </div>
+      {:else}
+        <div class="bubble assistant" data-typing={props.message.typing || undefined}>
+          <MarkdownContent
+            content={part.text}
+            allowInlineHtml={props.allowInlineHtml}
+            renderLatex={props.renderLatex}
+            streaming={!!props.message.typing && i === steered.length - 1}
+          />
+        </div>
+      {/if}
+    {/each}
+    {#if props.message.typing && steered[steered.length - 1]?.kind !== 'text'}
+      <div class="bubble assistant" data-typing={true}><span class="dots"><i></i><i></i><i></i></span></div>
+    {/if}
+  {:else if props.message.typing}
     <div class={`bubble ${props.message.role}`} data-typing={true}>
       {#if props.message.content && props.message.content !== 'typing'}
         <MarkdownContent
@@ -486,6 +519,11 @@ const resolvedGeneratedImages = $derived.by(() => {
     box-shadow: none;
   }
   .bubble.user { background: var(--user); color: var(--text); justify-self: end; }
+  /* A steering message lines up with the user's own messages: the row is
+     their container (MessageItem), and the reply's stack starts at its left. */
+  .steer { justify-self: start; display: flex; justify-content: flex-end; width: 100cqw; margin: 6px 0; }
+  .steer > .bubble { max-width: min(720px, 92cqw); }
+  .steer.pending { opacity: 0.6; }
   .bubble.system { justify-self: center; background: transparent; color: var(--muted); border: 1px dashed var(--border); }
   .dots { display: inline-flex; gap: 6px; align-items: center; }
   .dots i { width: 6px; height: 6px; display: inline-block; background: currentColor; opacity: 0.5; border-radius: 999px; animation: pop 1.2s infinite ease-in-out; will-change: transform, opacity; }

@@ -60,3 +60,40 @@ export function steerNotes(steps: Array<{ kind?: string; status?: string; text?:
     .filter(step => step?.kind === 'steer' && step.status === 'done' && typeof step.text === 'string' && step.text.trim())
     .map(step => ({ at: typeof step.at === 'number' && step.at >= 0 ? step.at : 0, text: step.text as string }));
 }
+
+export type ReplyPart =
+  | { kind: 'text'; key: string; text: string }
+  | { kind: 'steer'; key: string; text: string; pending: boolean };
+
+/**
+ * A reply's text split at each steering message, for showing those messages
+ * as user bubbles where they reached the model. Messages still queued come
+ * last. Returns null when the reply was not steered.
+ */
+export function steeredParts(
+  content: string,
+  steps: Array<{ id?: string; kind?: string; status?: string; text?: string; at?: number }> | undefined,
+): ReplyPart[] | null {
+  if (!Array.isArray(steps)) return null;
+  const steers = steps.filter(step => step?.kind === 'steer' && typeof step.text === 'string' && step.text.trim());
+  if (!steers.length) return null;
+  const delivered = steers
+    .filter(step => step.status === 'done')
+    .map((step, i) => ({ step, i, at: typeof step.at === 'number' && step.at >= 0 ? step.at : 0 }))
+    .sort((a, b) => a.at - b.at || a.i - b.i);
+  const parts: ReplyPart[] = [];
+  let from = 0;
+  for (const { step, i, at } of delivered) {
+    const cut = Math.min(Math.max(Math.floor(at), from), content.length);
+    const before = content.slice(from, cut).trim();
+    if (before) parts.push({ kind: 'text', key: `text-${from}`, text: before });
+    parts.push({ kind: 'steer', key: step.id || `steer-${i}`, text: step.text as string, pending: false });
+    from = cut;
+  }
+  const rest = content.slice(from).trim();
+  if (rest) parts.push({ kind: 'text', key: `text-${from}`, text: rest });
+  steers.forEach((step, i) => {
+    if (step.status === 'running') parts.push({ kind: 'steer', key: step.id || `queued-${i}`, text: step.text as string, pending: true });
+  });
+  return parts;
+}

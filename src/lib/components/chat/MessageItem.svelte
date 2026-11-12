@@ -141,7 +141,8 @@
 </div>
 
 <style>
-  .row { display: flex; max-width: var(--page-max); margin-inline: auto; width: 100%; padding-inline: 0; contain: layout style; }
+  /* A container so steering bubbles in a reply can line up with user rows. */
+  .row { display: flex; max-width: var(--page-max); margin-inline: auto; width: 100%; padding-inline: 0; contain: layout style; container-type: inline-size; }
   .row.user { justify-content: flex-end; }
   .row.assistant { justify-content: flex-start; }
   .row.system { justify-content: center; }
