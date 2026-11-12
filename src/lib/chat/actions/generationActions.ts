@@ -3,6 +3,7 @@ import { respond } from '../../openaiClient.js';
 import { buildVisible as _buildVisible } from '../../branching.js';
 import { isAbortError } from '../../utils/errors.js';
 import { normalizeMcpServerList } from '../../utils/mcp.js';
+import { settleActivity } from '../../api/activity.js';
 import { updateVariantById } from './variantActions.js';
 import { findNodeByMessageId } from '../../utils/treeUtils.js';
 import type {
@@ -21,6 +22,7 @@ import type {
   CodeInterpreterOptions,
   ShellOptions,
   ImageGenerationOptions,
+  ActivityStep,
 } from '../../types/index.js';
 
 /**
@@ -355,8 +357,6 @@ export function prepareTypingNode(
     typing: true,
     error: undefined,
     next: null,
-    reasoningSummary: '',
-    reasoningSummaryLoading: true,
   };
   const typingVariantId = typingVariant.id;
   const typingNode: ChatNode = { id: nextNodeId, variants: [typingVariant], active: 0 };
@@ -401,8 +401,7 @@ export interface GenerateResponseOptions {
   historySuffix?: HistoryMessage[];
   onAbort?: (abortFn: () => void) => void;
   onTextDelta?: (fullText: string) => void;
-  onReasoningSummaryDelta?: (fullSummary: string) => void;
-  onReasoningSummaryDone?: (fullSummary: string) => void;
+  onActivity?: (steps: ActivityStep[]) => void;
 }
 
 export async function generateResponse(options: GenerateResponseOptions): Promise<GenerationResponse> {
@@ -417,8 +416,7 @@ export async function generateResponse(options: GenerateResponseOptions): Promis
     historySuffix,
     onAbort,
     onTextDelta,
-    onReasoningSummaryDelta,
-    onReasoningSummaryDone
+    onActivity
   } = options;
 
   const buildVisible = () => _buildVisible(nodes, rootId);
@@ -535,14 +533,12 @@ export async function generateResponse(options: GenerateResponseOptions): Promis
       stream: true,
       onAbort,
       onTextDelta,
-      onReasoningSummaryDelta,
-      onReasoningSummaryDone,
+      onActivity,
     });
   } else {
     return await respond({
       ...responseOptions,
       onAbort,
-      onReasoningSummaryDone,
     });
   }
 }
@@ -550,35 +546,26 @@ export async function generateResponse(options: GenerateResponseOptions): Promis
 export function handleGenerationSuccess(
   nodes: ChatNode[],
   typingVariantId: number | null,
-  reply: GenerationResponse | string | null,
-  summaryBuffer: string
+  reply: GenerationResponse | string | null
 ): ChatNode[] {
   if (typingVariantId == null) return nodes;
 
   const replyText = (reply && typeof reply === 'object') ? (reply.text ?? '') : (typeof reply === 'string' ? reply : '');
-  const replySummary = (() => {
-    if (reply && typeof reply === 'object') {
-      if (typeof reply.reasoningSummary === 'string' && reply.reasoningSummary) return reply.reasoningSummary;
-      return summaryBuffer;
-    }
-    return summaryBuffer;
-  })();
+  // The reply carries the final steps; without them (a provider that
+  // reported none) whatever streamed in is kept, with nothing left running.
+  const replyActivity = (reply && typeof reply === 'object' && Array.isArray(reply.activity))
+    ? reply.activity
+    : null;
   const replyImages = (reply && typeof reply === 'object' && Array.isArray(reply.generatedImages))
     ? reply.generatedImages
     : undefined;
-  const replyMcpItems = (reply && typeof reply === 'object' && Array.isArray(reply.mcpItems))
-    ? reply.mcpItems
-    : undefined;
-
   return updateVariantById(nodes, typingVariantId, (prev) => ({
     ...prev,
     content: replyText,
     typing: false,
     error: undefined,
-    reasoningSummary: replySummary || '',
-    reasoningSummaryLoading: false,
+    activity: settleActivity(replyActivity?.length ? replyActivity : prev.activity),
     generatedImages: replyImages,
-    mcpItems: replyMcpItems,
   }));
 }
 
@@ -595,7 +582,7 @@ export function handleGenerationError(
       ...prev,
       typing: false,
       error: undefined,
-      reasoningSummaryLoading: false,
+      activity: settleActivity(prev.activity),
       content: (prev.content === 'typing' ? '' : prev.content),
     }));
   } else {
@@ -604,7 +591,7 @@ export function handleGenerationError(
       ...prev,
       typing: false,
       error: msg,
-      reasoningSummaryLoading: false,
+      activity: settleActivity(prev.activity),
       content: (prev.content === 'typing' ? '' : prev.content),
     }));
   }
@@ -629,8 +616,6 @@ export function prepareRefreshAssistant(
     typing: true,
     error: undefined,
     next: null,
-    reasoningSummary: '',
-    reasoningSummaryLoading: true,
   };
 
   const updatedNodes = nodes.map(n => (
@@ -673,8 +658,6 @@ export function prepareRefreshAfterUser(
     typing: true,
     error: undefined,
     next: oldChildId,
-    reasoningSummary: '',
-    reasoningSummaryLoading: true,
   };
 
   const typingNode: ChatNode = { id: nextNodeId, variants: [typingMsg], active: 0 };

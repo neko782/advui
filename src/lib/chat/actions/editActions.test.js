@@ -279,7 +279,7 @@ describe('prepareBranchAndSend', () => {
     expect(result.nextNodeId).toBe(3) // 2 for typing node
   })
 
-  it('should initialize typing node with reasoning summary fields', () => {
+  it('should start the typing node without activity', () => {
     const nodes = [
       { id: 1, active: 0, variants: [{ id: 1, role: 'user', content: 'hello', next: null }] }
     ]
@@ -288,8 +288,8 @@ describe('prepareBranchAndSend', () => {
     const result = prepareBranchAndSend(nodes, rootId, 1, 'goodbye', 10, 2)
 
     const typingVariant = result.nodes[1].variants[0]
-    expect(typingVariant.reasoningSummary).toBe('')
-    expect(typingVariant.reasoningSummaryLoading).toBe(true)
+    expect(typingVariant.typing).toBe(true)
+    expect(typingVariant.activity).toBeUndefined()
   })
 
   it('should branch even when editing middle message', () => {

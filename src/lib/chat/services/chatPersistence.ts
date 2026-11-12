@@ -237,24 +237,14 @@ function hashGeneratedImages(images: unknown): number {
   return hash >>> 0;
 }
 
-function hashMcpItems(items: unknown): number {
-  const list = Array.isArray(items) ? items : [];
+function hashActivity(steps: unknown): number {
+  const list = Array.isArray(steps) ? steps : [];
   let hash = 5381;
   for (const entry of list) {
     if (!entry || typeof entry !== 'object') continue;
     const obj = entry as Record<string, unknown>;
-    hash = mixHash(hash, hashMaybeString(obj.type));
-    hash = mixHash(hash, hashMaybeString(obj.id));
-    hash = mixHash(hash, hashMaybeString(obj.serverLabel));
-    hash = mixHash(hash, hashMaybeString(obj.name));
-    hash = mixHash(hash, hashMaybeString(obj.arguments));
-    hash = mixHash(hash, hashMaybeString(obj.output));
-    hash = mixHash(hash, hashMaybeString(obj.error));
-    hash = mixHash(hash, hashMaybeString(obj.status));
-    if (Array.isArray(obj.tools)) {
-      for (const tool of obj.tools as Array<Record<string, unknown>>) {
-        hash = mixHash(hash, hashString(`${typeof tool?.name === 'string' ? tool.name : ''}|${typeof tool?.description === 'string' ? tool.description : ''}`));
-      }
+    for (const key of ['id', 'kind', 'status', 'text', 'subject', 'server', 'input', 'output', 'error']) {
+      hash = mixHash(hash, hashMaybeString(obj[key]));
     }
   }
   return hash >>> 0;
@@ -270,11 +260,9 @@ function hashVariant(variant: unknown): number {
   hash = mixHash(hash, v.next == null ? 0 : (Number(v.next) || 0));
   hash = mixHash(hash, v.typing === true ? 1 : 0);
   hash = mixHash(hash, hashMaybeString(v.error));
-  hash = mixHash(hash, hashMaybeString(v.reasoningSummary));
-  hash = mixHash(hash, v.reasoningSummaryLoading === true ? 1 : 0);
+  hash = mixHash(hash, hashActivity(v.activity));
   hash = mixHash(hash, hashImages(v.images));
   hash = mixHash(hash, hashGeneratedImages(v.generatedImages));
-  hash = mixHash(hash, hashMcpItems(v.mcpItems));
   return hash >>> 0;
 }
 

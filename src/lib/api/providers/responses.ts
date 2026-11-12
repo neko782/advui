@@ -1,22 +1,20 @@
 // ============================================================================
 // Responses API provider adapter (OpenAI /responses)
-// Handles streaming events, reasoning summaries interleaved with tool
-// activity, web search, code interpreter, shell, image generation and MCP.
+// Handles streaming events, web search, code interpreter, shell, image
+// generation and MCP; reasoning and tool calls are reported as activity steps.
 // ============================================================================
 
 import { toIntOrNull, toClampedNumber } from '../../utils/numbers.js';
-import { normalizeMcpServerList, parseMcpAllowedTools } from '../../utils/mcp.js';
+import { parseMcpAllowedTools } from '../../utils/mcp.js';
+import { ActivityLog, prettyJson } from '../activity.js';
 import {
   buildOpenRouterProvider,
   createAbort,
   createSseJsonLineProcessor,
   ensureOkResponse,
   extractOutputText,
-  formatMcpLabel,
-  mcpLabelFromUrl,
-  normalizeReasoningText,
+  labelMcpServers,
   readSseLines,
-  sanitizeMcpLabel,
   sortModels,
   throwIfErrorBody,
   type ProviderAdapter,
@@ -27,7 +25,7 @@ import type {
   WebSearchCitation,
   WebSearchSource,
   GeneratedImage,
-  McpResponseItem,
+  ActivityStep,
 } from '../../types/index.js';
 
 // ============================================================================
@@ -153,15 +151,7 @@ function buildTools(ctx: ProviderRequestContext): Record<string, unknown>[] {
   }
 
   // MCP tools
-  const normalizedMcpServers = normalizeMcpServerList(mcpServers)
-    .filter((server) => server.url);
-  const usedLabels = new Set<string>();
-  for (const server of normalizedMcpServers) {
-    // Output items are tied to their server by label, so labels must differ.
-    const baseLabel = server.label ? sanitizeMcpLabel(server.label) : mcpLabelFromUrl(server.url);
-    let label = baseLabel;
-    for (let n = 2; usedLabels.has(label); n++) label = `${baseLabel}-${n}`;
-    usedLabels.add(label);
+  for (const { server, label } of labelMcpServers(mcpServers)) {
     const tool: Record<string, unknown> = {
       type: 'mcp',
       server_label: label,
@@ -312,146 +302,162 @@ export function extractGeneratedImages(res: unknown): GeneratedImage[] | undefin
   return images;
 }
 
-function mcpErrorText(error: unknown): string | null {
-  if (typeof error === 'string') return error || null;
-  if (!error || typeof error !== 'object') return null;
-  const message = (error as Record<string, unknown>).message;
+// ============================================================================
+// Output items -> activity steps
+// ============================================================================
+
+type Item = Record<string, unknown>;
+
+function str(value: unknown): string {
+  return typeof value === 'string' ? value : '';
+}
+
+function errorText(error: unknown): string {
+  if (typeof error === 'string') return error;
+  if (!error || typeof error !== 'object') return '';
+  const message = (error as Item).message;
   if (typeof message === 'string' && message) return message;
-  try { return JSON.stringify(error); } catch { return 'MCP call failed'; }
+  try { return JSON.stringify(error); } catch { return 'The call failed.'; }
 }
 
-export function extractMcpItems(res: unknown): McpResponseItem[] | undefined {
-  const items: McpResponseItem[] = [];
-  const seen = new Set<string>();
+const TOOL_ITEM_KINDS: Record<string, ActivityStep['kind']> = {
+  web_search_call: 'search',
+  code_interpreter_call: 'code',
+  shell_call: 'shell',
+  mcp_call: 'mcp',
+  mcp_list_tools: 'mcp_list',
+};
 
-  const push = (item: McpResponseItem): void => {
-    const key = `${item.type}:${item.id}`;
-    if (seen.has(key)) return;
-    seen.add(key);
-    items.push(item);
-  };
+function toolItemKind(type: unknown): ActivityStep['kind'] | null {
+  if (typeof type !== 'string') return null;
+  if (isImageGenerationItemType(type)) return 'image';
+  return TOOL_ITEM_KINDS[type] ?? null;
+}
 
-  const processOutput = (output: unknown): void => {
-    if (!Array.isArray(output)) return;
-    for (const entry of output as Array<Record<string, unknown>>) {
-      const type = typeof entry?.type === 'string' ? entry.type : '';
-      if (type === 'mcp_call') {
-        const id = typeof entry.id === 'string' ? entry.id : '';
-        if (!id) continue;
-        push({
-          id,
-          type: 'mcp_call',
-          serverLabel: typeof entry.server_label === 'string' ? entry.server_label : '',
-          name: typeof entry.name === 'string' ? entry.name : '',
-          arguments: typeof entry.arguments === 'string' ? entry.arguments : null,
-          output: typeof entry.output === 'string' ? entry.output : null,
-          error: mcpErrorText(entry.error),
-          status: typeof entry.status === 'string'
-            ? entry.status as 'in_progress' | 'completed' | 'incomplete' | 'calling' | 'failed'
-            : undefined,
-          approvalRequestId: typeof entry.approval_request_id === 'string' ? entry.approval_request_id : null,
-        });
-        continue;
-      }
+function itemStatus(item: Item, error: string): ActivityStep['status'] {
+  const status = str(item.status);
+  if (error || status === 'failed' || status === 'incomplete') return 'failed';
+  return status === 'completed' ? 'done' : 'running';
+}
 
-      if (type === 'mcp_list_tools') {
-        const id = typeof entry.id === 'string' ? entry.id : '';
-        if (!id) continue;
-        const tools = Array.isArray(entry.tools)
-          ? entry.tools
-              .filter((tool): tool is Record<string, unknown> => !!tool && typeof tool === 'object')
-              .map((tool) => ({
-                name: typeof tool.name === 'string' ? tool.name : '',
-                description: typeof tool.description === 'string' ? tool.description : null,
-                annotations: tool.annotations,
-                inputSchema: tool.input_schema,
-              }))
-              .filter((tool) => tool.name)
-          : [];
-        push({
-          id,
-          type: 'mcp_list_tools',
-          serverLabel: typeof entry.server_label === 'string' ? entry.server_label : '',
-          tools,
-          error: typeof entry.error === 'string' ? entry.error : null,
-        });
-        continue;
-      }
+/** The activity step for a tool output item, or null for other items. */
+export function stepFromOutputItem(item: Item): Omit<ActivityStep, 'id'> | null {
+  const kind = toolItemKind(item?.type);
+  if (!kind) return null;
 
-      if (type === 'mcp_approval_request') {
-        const id = typeof entry.id === 'string' ? entry.id : '';
-        if (!id) continue;
-        push({
-          id,
-          type: 'mcp_approval_request',
-          serverLabel: typeof entry.server_label === 'string' ? entry.server_label : '',
-          name: typeof entry.name === 'string' ? entry.name : '',
-          arguments: typeof entry.arguments === 'string' ? entry.arguments : null,
-        });
-      }
+  if (kind === 'search') {
+    const action = item.action && typeof item.action === 'object' ? item.action as Item : {};
+    const status = itemStatus(item, '');
+    // The same item type also covers opening a page and searching inside it.
+    if (action.type === 'open_page' || action.type === 'find_in_page') {
+      return { kind: 'fetch', status, subject: str(action.url) || undefined, input: str(action.pattern) || undefined };
     }
+    const queries = Array.isArray(action.queries) ? action.queries.filter((q): q is string => typeof q === 'string') : [];
+    const sources = Array.isArray(action.sources)
+      ? (action.sources as Item[]).map(src => str(src?.url)).filter(Boolean)
+      : [];
+    return {
+      kind,
+      status,
+      subject: str(action.query) || queries[0] || undefined,
+      input: queries.length > 1 ? queries.join('\n') : undefined,
+      output: sources.join('\n') || undefined,
+    };
+  }
+
+  if (kind === 'code') {
+    const outputs = Array.isArray(item.outputs) ? item.outputs as Item[] : [];
+    const logs = outputs.map(out => str(out?.logs) || str(out?.url)).filter(Boolean).join('\n');
+    return { kind, status: itemStatus(item, ''), input: str(item.code) || undefined, output: logs || undefined };
+  }
+
+  if (kind === 'shell') {
+    const action = item.action && typeof item.action === 'object' ? item.action as Item : {};
+    const commands = Array.isArray(action.commands) ? action.commands.filter((c): c is string => typeof c === 'string') : [];
+    return { kind, status: itemStatus(item, ''), subject: commands[0] || undefined, input: commands.join('\n') || undefined };
+  }
+
+  if (kind === 'image') {
+    return { kind, status: itemStatus(item, ''), input: revisedPromptFromItem(item) };
+  }
+
+  const server = str(item.server_label) || undefined;
+  const error = errorText(item.error);
+  if (kind === 'mcp_list') {
+    const tools = Array.isArray(item.tools) ? (item.tools as Item[]).map(tool => str(tool?.name)).filter(Boolean) : [];
+    return {
+      kind,
+      status: itemStatus(item, error),
+      server,
+      subject: tools.length ? `${tools.length} ${tools.length === 1 ? 'tool' : 'tools'}` : undefined,
+      output: tools.join('\n') || undefined,
+      error: error || undefined,
+    };
+  }
+  return {
+    kind,
+    status: itemStatus(item, error),
+    server,
+    subject: str(item.name) || undefined,
+    input: prettyJson(str(item.arguments)) || undefined,
+    output: prettyJson(str(item.output)) || undefined,
+    error: error || undefined,
   };
-
-  const resObj = res as Record<string, unknown>;
-  try {
-    processOutput(resObj?.output);
-  } catch { /* ignore */ }
-  try {
-    processOutput((resObj?.response as Record<string, unknown>)?.output);
-  } catch { /* ignore */ }
-
-  return items.length > 0 ? items : undefined;
 }
 
-function buildToolLineFromItem(item: Record<string, unknown>): string {
-  const type = typeof item?.type === 'string' ? item.type : '';
-  if (type === 'web_search_call') {
-    const action = item.action as Record<string, unknown> | undefined;
-    const query = typeof action?.query === 'string' ? action.query : '';
-    const sources = Array.isArray(action?.sources) ? action.sources as unknown[] : [];
-    const status = typeof item.status === 'string' ? item.status : 'completed';
-    let line = `**Web search** ${query ? `"${query}"` : ''} \u2014 *${status}*`;
-    if (sources.length) line += ` (${sources.length} sources)`;
-    return line;
-  } else if (type === 'code_interpreter_call') {
-    return `**Code interpreter** \u2014 *${typeof item.status === 'string' ? item.status : 'completed'}*`;
-  } else if (type === 'shell_call') {
-    return `**Shell** \u2014 *${typeof item.status === 'string' ? item.status : 'completed'}*`;
-  } else if (isImageGenerationItemType(type)) {
-    return `**Image generation** \u2014 *${typeof item.status === 'string' ? item.status : 'completed'}*`;
-  } else if (type === 'mcp_list_tools') {
-    const sl = formatMcpLabel(typeof item.server_label === 'string' ? item.server_label : '');
-    const tools = Array.isArray(item.tools) ? item.tools : [];
-    return `**${sl}** discovered ${tools.length} tools \u2014 *completed*`;
-  } else if (type === 'mcp_call') {
-    const sl = formatMcpLabel(typeof item.server_label === 'string' ? item.server_label : '');
-    const name = typeof item.name === 'string' ? item.name : '';
-    const status = typeof item.status === 'string' ? item.status : 'completed';
-    const error = typeof item.error === 'string' ? item.error : '';
-    let line = `**${sl}** ${name ? `\`${name}\`` : ''} \u2014 *${status}*`;
-    if (error) line += ` (${error})`;
-    return line;
-  }
-  return '';
+/** Output of a shell call arrives as its own item, tied back by call id. */
+function shellOutputText(item: Item): string {
+  const chunks = Array.isArray(item.output) ? item.output as Item[] : [];
+  return chunks
+    .flatMap(chunk => [str(chunk?.stdout), str(chunk?.stderr)])
+    .filter(text => text.trim())
+    .join('\n');
 }
 
-export function buildInterleavedFromOutput(output: unknown[]): string {
-  if (!Array.isArray(output) || !output.length) return '';
-  const parts: string[] = [];
-  for (const item of output as Array<Record<string, unknown>>) {
-    const type = typeof item?.type === 'string' ? item.type : '';
-    if (type === 'reasoning') {
-      const summaries = Array.isArray(item.summary) ? item.summary : [];
-      for (const part of summaries as Array<Record<string, unknown>>) {
-        if (part && typeof part.text === 'string' && part.text) parts.push(part.text);
-      }
-    } else {
-      const line = buildToolLineFromItem(item);
-      if (line) parts.push(line);
+/**
+ * Writes a finished response's output into the log: one thinking step per
+ * reasoning summary part, one step per tool call, in output order.
+ */
+export function logOutputItems(log: ActivityLog, output: unknown): void {
+  if (!Array.isArray(output)) return;
+  const shellStepByCallId = new Map<string, string>();
+  (output as Item[]).forEach((item, index) => {
+    if (!item || typeof item !== 'object') return;
+    const id = str(item.id) || `item-${index}`;
+    if (item.type === 'reasoning') {
+      const parts = [
+        ...(Array.isArray(item.summary) ? item.summary as Item[] : []),
+        ...(Array.isArray(item.content) ? item.content as Item[] : []),
+      ];
+      parts.forEach((part, partIndex) => {
+        const text = str(part?.text);
+        if (text) log.set(`${id}:${partIndex}`, { kind: 'thinking', status: 'done', text }, index + (partIndex + 1) / 1000);
+      });
+      return;
     }
-  }
-  if (!parts.length) return '';
-  return normalizeReasoningText(parts.join('\n\n'));
+    if (item.type === 'shell_call_output') {
+      const stepId = shellStepByCallId.get(str(item.call_id));
+      const text = shellOutputText(item);
+      if (stepId && text) log.set(stepId, { output: text });
+      return;
+    }
+    const step = stepFromOutputItem(item);
+    if (!step) return;
+    // Anything still marked in progress in a finished response is done.
+    log.set(id, { ...step, status: step.status === 'running' ? 'done' : step.status }, index);
+    if (item.type === 'shell_call' && str(item.call_id)) shellStepByCallId.set(str(item.call_id), id);
+  });
+}
+
+/** Activity steps of a complete (non-streamed) response. */
+export function extractActivity(res: unknown): ActivityStep[] {
+  const resObj = res as Item;
+  const output = Array.isArray(resObj?.output)
+    ? resObj.output
+    : (resObj?.response as Item | undefined)?.output;
+  const log = new ActivityLog();
+  logOutputItems(log, output);
+  return log.settle();
 }
 
 /**
@@ -480,14 +486,7 @@ function incompleteResponseError(response: unknown): Error | null {
 // ============================================================================
 
 async function respondStreaming(ctx: ProviderRequestContext): Promise<GenerationResponse> {
-  const {
-    onEvent,
-    onTextDelta,
-    onReasoningSummaryDelta,
-    onReasoningSummaryDone,
-    onWebSearchResult,
-    onImageGenerated,
-  } = ctx.callbacks;
+  const { onEvent, onTextDelta, onActivity, onWebSearchResult, onImageGenerated } = ctx.callbacks;
 
   const abortController = createAbort(ctx.provideAbort);
 
@@ -503,48 +502,9 @@ async function respondStreaming(ctx: ProviderRequestContext): Promise<Generation
   await ensureOkResponse(response, 'API error');
 
   let full = '';
-  type ResponseReasoningSummaryPart = {
-    key: string;
-    itemId: string;
-    outputIndex: number | null;
-    summaryIndex: number;
-    order: number;
-    text: string;
-  };
-  const summaryByKey = new Map<string, ResponseReasoningSummaryPart>();
-  let nextSummaryOrder = 0;
-  let summaryDelivered = false;
-  const getResponseReasoningSummaryPart = (event: Record<string, unknown>) => {
-    const summaryIndex = Number.isFinite(Number(event?.summary_index)) ? Number(event.summary_index) : 0;
-    const outputIndex = Number.isFinite(Number(event?.output_index)) ? Number(event.output_index) : null;
-    const eventItemId = typeof event?.item_id === 'string' && event.item_id.trim()
-      ? event.item_id.trim()
-      : '';
-    const itemObj = event?.item && typeof event.item === 'object'
-      ? event.item as Record<string, unknown>
-      : null;
-    const itemId = eventItemId || (typeof itemObj?.id === 'string' && itemObj.id.trim() ? itemObj.id.trim() : '');
-    const key = `${outputIndex != null ? `output:${outputIndex}` : 'output:?'}:${itemId || 'item:?'}:summary:${summaryIndex}`;
-    return { key, itemId, outputIndex, summaryIndex };
-  };
-  const upsertResponseReasoningSummary = (
-    event: Record<string, unknown>,
-    text: string,
-    mode: 'append' | 'replace'
-  ): void => {
-    const part = getResponseReasoningSummaryPart(event);
-    const existing = summaryByKey.get(part.key);
-    const nextText = mode === 'append'
-      ? `${existing?.text || ''}${text}`
-      : (text || existing?.text || '');
-    summaryByKey.set(part.key, {
-      ...part,
-      order: existing?.order ?? nextSummaryOrder++,
-      text: nextText,
-    });
-  };
   let completed = false;
   let incompleteError: Error | null = null;
+  const log = new ActivityLog(onActivity);
   // Web search tracking
   const webSearchCitations: WebSearchCitation[] = [];
   const webSearchSources: WebSearchSource[] = [];
@@ -563,118 +523,57 @@ async function respondStreaming(ctx: ProviderRequestContext): Promise<Generation
       revisedPrompt: source.revisedPrompt,
     });
   };
-  let completedResponseOutput: unknown[] | null = null;
 
-  // Tool activity tracking - interleaved with reasoning by outputIndex
-  interface ToolActivityEntry {
-    key: string;
-    outputIndex: number | null;
-    order: number;
-    text: string;
-  }
-  const toolActivityByKey = new Map<string, ToolActivityEntry>();
-  let nextToolOrder = 0;
-  const buildCombinedSummary = (): string => {
-    const allParts: { outputIndex: number | null; order: number; text: string }[] = [];
-    for (const part of summaryByKey.values()) {
-      allParts.push({ outputIndex: part.outputIndex, order: part.order, text: part.text });
-    }
-    for (const entry of toolActivityByKey.values()) {
-      allParts.push({ outputIndex: entry.outputIndex, order: entry.order, text: entry.text });
-    }
-    allParts.sort((a, b) => {
-      const aOut = a.outputIndex ?? Number.MAX_SAFE_INTEGER;
-      const bOut = b.outputIndex ?? Number.MAX_SAFE_INTEGER;
-      if (aOut !== bOut) return aOut - bOut;
-      return a.order - b.order;
-    });
-    const texts = allParts.map(p => p.text).filter(Boolean);
-    if (!texts.length) return '';
-    return normalizeReasoningText(texts.join('\n\n'));
+  const outputIndexOf = (event: Item): number | undefined =>
+    (Number.isFinite(Number(event?.output_index)) && event.output_index != null ? Number(event.output_index) : undefined);
+
+  // Reasoning arrives as summary parts (and, from some providers, raw
+  // reasoning text); each part is its own thinking step.
+  const reasoningStepId = (event: Item, partKey: 'summary_index' | 'content_index'): string => {
+    const part = Number.isFinite(Number(event?.[partKey])) ? Number(event[partKey]) : 0;
+    return `${str(event.item_id) || `reasoning-${outputIndexOf(event) ?? 0}`}:${partKey === 'summary_index' ? '' : 'c'}${part}`;
   };
-  // Stable synthetic keys for id-less tool events so lifecycle events
-  // (in_progress -> completed) for the same tool call map to one entry.
-  const syntheticToolKeys = new Map<string, string>();
-  const upsertToolActivity = (event: Record<string, unknown>, text: string) => {
-    const outputIndex = Number.isFinite(Number(event?.output_index)) ? Number(event.output_index) : null;
-    let id = (typeof event?.item_id === 'string' && event.item_id) ? event.item_id
-      : (typeof event?.id === 'string' && event.id) ? event.id
-      : '';
-    if (!id) {
-      const rawType = typeof event?.type === 'string' ? event.type : 'tool';
-      const identity = rawType
-        .replace(/^response\./, '')
-        .replace(/\.(in_progress|searching|completed|failed|interpreting|executing|generating)$/, '');
-      if (outputIndex != null) {
-        id = `tool_${identity}_${outputIndex}`;
-      } else {
-        let key = syntheticToolKeys.get(identity);
-        if (!key) {
-          key = `tool_${identity}_${syntheticToolKeys.size}`;
-          syntheticToolKeys.set(identity, key);
-        }
-        id = key;
-      }
-    }
-    const existing = toolActivityByKey.get(id);
-    toolActivityByKey.set(id, { key: id, outputIndex: existing?.outputIndex ?? outputIndex, order: existing?.order ?? nextToolOrder++, text });
+  const reasoningOrder = (event: Item, partKey: 'summary_index' | 'content_index'): number | undefined => {
+    const index = outputIndexOf(event);
+    return index == null ? undefined : index + (Number(event?.[partKey] ?? 0) + 1) / 1000;
   };
-  const emitToolActivityDelta = (event: Record<string, unknown>) => {
-    const combined = buildCombinedSummary();
-    if (combined) {
-      try { onReasoningSummaryDelta?.(combined, '', event); } catch { /* ignore */ }
-    }
-  };
-  // Cache item details from output_item.added (streaming events often lack them)
-  const itemCache = new Map<string, { serverLabel: string; name: string }>();
-  const getItemDetails = (event: Record<string, unknown>): { serverLabel: string; name: string } => {
-    const itemId = (typeof event?.item_id === 'string' && event.item_id) ? event.item_id : '';
-    const item = event?.item as Record<string, unknown> | undefined;
-    // Try item first, then event, then cache
-    const sl = typeof item?.server_label === 'string' ? item.server_label
-      : typeof event?.server_label === 'string' ? event.server_label
-      : itemCache.get(itemId)?.serverLabel || '';
-    const name = typeof item?.name === 'string' ? item.name
-      : typeof event?.name === 'string' ? event.name
-      : itemCache.get(itemId)?.name || '';
-    return { serverLabel: sl, name };
+
+  // Tool lifecycle events ("response.<tool>.<phase>") from providers that
+  // do not send the output item itself until the end.
+  const TOOL_EVENT = /^response\.(web_search_call|code_interpreter_call|shell_call|image_generation_call|mcp_call|mcp_list_tools)\.([a-z_]+)$/;
+  const toolStepId = (event: Item, family: string): string =>
+    str(event.item_id) || str(event.id) || `${family}-${outputIndexOf(event) ?? 0}`;
+
+  const upsertToolItem = (item: Item | undefined, event: Item): void => {
+    if (!item) return;
+    const step = stepFromOutputItem(item);
+    const id = str(item.id);
+    if (!step || !id) return;
+    log.set(id, step, outputIndexOf(event));
   };
 
   const processEvent = (event: Record<string, unknown>) => {
     const t = (event?.type || event?.event || '') as string;
+    const item = event?.item && typeof event.item === 'object' ? event.item as Item : undefined;
+    const toolEvent = TOOL_EVENT.exec(t);
+
     if (t === 'response.output_text.delta') {
       const delta = event?.delta || '';
       if (typeof delta === 'string' && delta) {
         full += delta;
         try { onTextDelta?.(full, delta, event); } catch { /* ignore */ }
       }
-    } else if (t === 'response.reasoning_summary_text.delta') {
-      const delta = event?.delta || '';
-      if (typeof delta === 'string' && delta) {
-        upsertResponseReasoningSummary(event, delta, 'append');
-        const combined = buildCombinedSummary();
-        try { onReasoningSummaryDelta?.(combined, delta, event); } catch { /* ignore */ }
-      }
-    } else if (t === 'response.reasoning_summary_text.done') {
-      const text = typeof event?.text === 'string' ? event.text : '';
-      if (text) upsertResponseReasoningSummary(event, text, 'replace');
-      const combined = buildCombinedSummary();
-      try {
-        onReasoningSummaryDone?.(combined, event);
-        summaryDelivered = true;
-      } catch { /* ignore */ }
-    // ---- Cache item details when output items are added ----
+    } else if (t === 'response.reasoning_summary_text.delta' || t === 'response.reasoning_text.delta') {
+      const partKey = t === 'response.reasoning_text.delta' ? 'content_index' : 'summary_index';
+      log.append(reasoningStepId(event, partKey), 'text', str(event.delta), { kind: 'thinking', status: 'running' }, reasoningOrder(event, partKey));
+    } else if (t === 'response.reasoning_summary_text.done' || t === 'response.reasoning_text.done') {
+      const partKey = t === 'response.reasoning_text.done' ? 'content_index' : 'summary_index';
+      const text = str(event.text);
+      log.set(reasoningStepId(event, partKey), { kind: 'thinking', status: 'done', ...(text ? { text } : {}) }, reasoningOrder(event, partKey));
     } else if (t === 'response.output_item.added') {
-      const item = event?.item as Record<string, unknown> | undefined;
-      const itemId = typeof item?.id === 'string' ? item.id : '';
-      if (itemId && item) {
-        const sl = typeof item.server_label === 'string' ? item.server_label : '';
-        const nm = typeof item.name === 'string' ? item.name : '';
-        if (sl || nm) itemCache.set(itemId, { serverLabel: sl, name: nm });
-      }
-    // ---- Completed output items (image results arrive here when streaming) ----
+      upsertToolItem(item, event);
     } else if (t === 'response.output_item.done') {
-      const item = event?.item as Record<string, unknown> | undefined;
+      upsertToolItem(item, event);
       if (isImageGenerationItemType(item?.type)) {
         collectGeneratedImage({
           result: imageResultFromItem(item),
@@ -682,96 +581,46 @@ async function respondStreaming(ctx: ProviderRequestContext): Promise<Generation
           revisedPrompt: revisedPromptFromItem(item),
         });
       }
-    // ---- Web search streaming events ----
-    } else if (t === 'response.web_search_call.in_progress') {
-      upsertToolActivity(event, `**Web search** \u2014 *starting*`);
-      emitToolActivityDelta(event);
-    } else if (t === 'response.web_search_call.searching') {
-      const item = event?.item as Record<string, unknown> | undefined;
-      const action = (item?.action || event?.action) as Record<string, unknown> | undefined;
-      const query = typeof action?.query === 'string' ? action.query : '';
-      upsertToolActivity(event, `**Web search** ${query ? `"${query}"` : ''} \u2014 *searching*`);
-      emitToolActivityDelta(event);
-    } else if (t === 'response.web_search_call.completed' || t === 'web_search_call') {
-      upsertToolActivity(event, `**Web search** \u2014 *completed*`);
-      emitToolActivityDelta(event);
-      const item = event?.item as Record<string, unknown> | undefined;
-      const action = (item?.action || event?.action) as Record<string, unknown> | undefined;
-      if (action?.sources && Array.isArray(action.sources)) {
-        for (const src of action.sources as Array<Record<string, unknown>>) {
-          if (src?.url && typeof src.url === 'string') {
-            webSearchSources.push({ url: src.url, title: typeof src.title === 'string' ? src.title : undefined, type: typeof src.type === 'string' ? src.type : undefined });
+    } else if (t === 'response.code_interpreter_call_code.delta' || t === 'response.mcp_call_arguments.delta') {
+      const id = str(event.item_id);
+      if (id) log.append(id, 'input', str(event.delta), { kind: t.includes('mcp') ? 'mcp' : 'code', status: 'running' }, outputIndexOf(event));
+    } else if (t === 'response.code_interpreter_call_code.done' || t === 'response.mcp_call_arguments.done') {
+      const id = str(event.item_id);
+      const input = t.includes('mcp') ? prettyJson(str(event.arguments)) : str(event.code);
+      if (id && input) log.set(id, { kind: t.includes('mcp') ? 'mcp' : 'code', input }, outputIndexOf(event));
+    } else if (toolEvent || t === 'web_search_call' || t === 'image_generation_call') {
+      const family = toolEvent?.[1] ?? t;
+      const phase = toolEvent?.[2] ?? 'completed';
+      const id = toolStepId(event, family);
+      const kind = toolItemKind(family) ?? 'tool';
+      const fromItem = item ? stepFromOutputItem(item) : null;
+      const error = phase === 'failed' ? errorText(item?.error ?? event.error) : '';
+      const status = phase === 'failed' ? 'failed' : phase === 'completed' ? 'done' : 'running';
+      // A failure reported earlier is not overwritten by a later "completed".
+      const keepFailed = log.get(id)?.status === 'failed';
+      log.set(id, {
+        ...(log.has(id) ? {} : { kind }),
+        ...(fromItem ?? {}),
+        status: keepFailed ? 'failed' : status,
+        ...(error ? { error } : {}),
+      }, outputIndexOf(event));
+
+      if (family === 'web_search_call' && phase === 'completed') {
+        const action = (item?.action || event?.action) as Record<string, unknown> | undefined;
+        if (action?.sources && Array.isArray(action.sources)) {
+          for (const src of action.sources as Array<Record<string, unknown>>) {
+            if (src?.url && typeof src.url === 'string') {
+              webSearchSources.push({ url: src.url, title: typeof src.title === 'string' ? src.title : undefined, type: typeof src.type === 'string' ? src.type : undefined });
+            }
           }
         }
+      } else if (family === 'image_generation_call' && phase === 'completed') {
+        collectGeneratedImage({
+          result: imageResultFromItem(item) ?? imageResultFromItem(event),
+          id: (item?.id || event?.id || event?.item_id) as string | undefined,
+          revisedPrompt: revisedPromptFromItem(item) ?? revisedPromptFromItem(event),
+        });
       }
-    // ---- Code interpreter streaming events ----
-    } else if (t === 'response.code_interpreter_call.in_progress') {
-      upsertToolActivity(event, `**Code interpreter** \u2014 *starting*`);
-      emitToolActivityDelta(event);
-    } else if (t === 'response.code_interpreter_call.interpreting') {
-      upsertToolActivity(event, `**Code interpreter** \u2014 *running*`);
-      emitToolActivityDelta(event);
-    } else if (t === 'response.code_interpreter_call.completed') {
-      upsertToolActivity(event, `**Code interpreter** \u2014 *completed*`);
-      emitToolActivityDelta(event);
-    // ---- Shell streaming events ----
-    } else if (t === 'response.shell_call.in_progress') {
-      upsertToolActivity(event, `**Shell** \u2014 *starting*`);
-      emitToolActivityDelta(event);
-    } else if (t === 'response.shell_call.executing') {
-      upsertToolActivity(event, `**Shell** \u2014 *executing*`);
-      emitToolActivityDelta(event);
-    } else if (t === 'response.shell_call.completed') {
-      upsertToolActivity(event, `**Shell** \u2014 *completed*`);
-      emitToolActivityDelta(event);
-    // ---- Image generation streaming events ----
-    } else if (t === 'response.image_generation_call.in_progress') {
-      upsertToolActivity(event, `**Image generation** \u2014 *starting*`);
-      emitToolActivityDelta(event);
-    } else if (t === 'response.image_generation_call.generating') {
-      upsertToolActivity(event, `**Image generation** \u2014 *generating*`);
-      emitToolActivityDelta(event);
-    } else if (t === 'response.image_generation_call.completed' || t === 'image_generation_call') {
-      upsertToolActivity(event, `**Image generation** \u2014 *completed*`);
-      emitToolActivityDelta(event);
-      const item = event?.item as Record<string, unknown> | undefined;
-      collectGeneratedImage({
-        result: imageResultFromItem(item) ?? imageResultFromItem(event),
-        id: (item?.id || event?.id || event?.item_id) as string | undefined,
-        revisedPrompt: revisedPromptFromItem(item) ?? revisedPromptFromItem(event),
-      });
-    // ---- MCP streaming events ----
-    } else if (t === 'response.mcp_list_tools.in_progress') {
-      const d = getItemDetails(event);
-      upsertToolActivity(event, `**${formatMcpLabel(d.serverLabel)}** \u2014 *discovering tools*`);
-      emitToolActivityDelta(event);
-    } else if (t === 'response.mcp_list_tools.completed') {
-      const d = getItemDetails(event);
-      const item = event?.item as Record<string, unknown> | undefined;
-      const toolsArr = item?.tools ?? event?.tools;
-      const hasCount = Array.isArray(toolsArr) && toolsArr.length > 0;
-      upsertToolActivity(event, `**${formatMcpLabel(d.serverLabel)}** ${hasCount ? `discovered ${toolsArr.length} tools` : 'tools discovered'} \u2014 *completed*`);
-      emitToolActivityDelta(event);
-    } else if (t === 'response.mcp_call.in_progress') {
-      const d = getItemDetails(event);
-      upsertToolActivity(event, `**${formatMcpLabel(d.serverLabel)}** ${d.name ? `\`${d.name}\`` : ''} \u2014 *calling*`);
-      emitToolActivityDelta(event);
-    } else if (t === 'response.mcp_call_arguments.delta') {
-      // no-op for args streaming
-    } else if (t === 'response.mcp_call_arguments.done') {
-      const d = getItemDetails(event);
-      upsertToolActivity(event, `**${formatMcpLabel(d.serverLabel)}** ${d.name ? `\`${d.name}\`` : ''} \u2014 *executing*`);
-      emitToolActivityDelta(event);
-    } else if (t === 'response.mcp_call.completed') {
-      const d = getItemDetails(event);
-      upsertToolActivity(event, `**${formatMcpLabel(d.serverLabel)}** ${d.name ? `\`${d.name}\`` : ''} \u2014 *completed*`);
-      emitToolActivityDelta(event);
-    } else if (t === 'response.mcp_call.failed') {
-      const d = getItemDetails(event);
-      const item = event?.item as Record<string, unknown> | undefined;
-      const error = typeof (item?.error ?? event?.error) === 'string' ? (item?.error ?? event?.error) as string : '';
-      upsertToolActivity(event, `**${formatMcpLabel(d.serverLabel)}** ${d.name ? `\`${d.name}\`` : ''} \u2014 *failed*${error ? ` (${error})` : ''}`);
-      emitToolActivityDelta(event);
     // ---- Response completion ----
     } else if (t === 'response.completed' || t === 'response.incomplete' || t === 'response.text.done' || t === 'response.done') {
       completed = true;
@@ -779,33 +628,30 @@ async function respondStreaming(ctx: ProviderRequestContext): Promise<Generation
       // Extract citations and sources from completed response
       const response = event?.response as Record<string, unknown> | undefined;
       const output = response?.output as Array<Record<string, unknown>> | undefined;
-      completedResponseOutput = Array.isArray(output) ? output : null;
       if (Array.isArray(output)) {
-        for (const item of output) {
-          collectCitationsFromMessageItem(item, webSearchCitations);
-          collectSourcesFromWebSearchItem(item, webSearchSources);
+        for (const outItem of output) {
+          collectCitationsFromMessageItem(outItem, webSearchCitations);
+          collectSourcesFromWebSearchItem(outItem, webSearchSources);
           // Extract generated images from image_generation_call
-          if (isImageGenerationItemType(item?.type)) {
+          if (isImageGenerationItemType(outItem?.type)) {
             collectGeneratedImage({
-              result: imageResultFromItem(item),
-              id: typeof item.id === 'string' ? item.id : undefined,
-              revisedPrompt: revisedPromptFromItem(item),
+              result: imageResultFromItem(outItem),
+              id: typeof outItem.id === 'string' ? outItem.id : undefined,
+              revisedPrompt: revisedPromptFromItem(outItem),
             });
           }
         }
-        // Update tool activity with final details from completed output
-        for (let idx = 0; idx < output.length; idx++) {
-          const outItem = output[idx];
-          if (!outItem) continue;
-          const outType = typeof outItem.type === 'string' ? outItem.type : '';
-          const outId = typeof outItem.id === 'string' ? outItem.id : '';
-          if (!outId) continue;
-          if (!['mcp_list_tools', 'mcp_call', 'web_search_call', 'code_interpreter_call', 'shell_call'].includes(outType) && !isImageGenerationItemType(outType)) continue;
-          const text = buildToolLineFromItem(outItem);
-          if (!text) continue;
-          const existing = toolActivityByKey.get(outId);
-          toolActivityByKey.set(outId, { key: outId, outputIndex: idx, order: existing?.order ?? nextToolOrder++, text });
+        // The finished output is the authoritative record of the tool calls:
+        // steps pieced together from lifecycle events give way to it.
+        if (output.some(outItem => toolItemKind(outItem?.type))) {
+          for (const id of log.ids()) {
+            if (log.get(id)?.kind !== 'thinking') log.remove(id);
+          }
         }
+        // Streamed reasoning is kept as it arrived; the output only fills in
+        // what was not streamed.
+        const streamedThinking = log.ids().some(id => log.get(id)?.kind === 'thinking');
+        logOutputItems(log, streamedThinking ? output.filter(outItem => outItem?.type !== 'reasoning') : output);
       }
       // Deliver web search result if we have citations or sources
       if ((webSearchCitations.length > 0 || webSearchSources.length > 0) && !webSearchResultDelivered) {
@@ -821,15 +667,6 @@ async function respondStreaming(ctx: ProviderRequestContext): Promise<Generation
           imageGenerationDelivered = true;
         } catch { /* ignore */ }
       }
-      if (!summaryDelivered) {
-        const combined = buildCombinedSummary();
-        if (combined) {
-          try {
-            onReasoningSummaryDone?.(combined, event);
-            summaryDelivered = true;
-          } catch { /* ignore */ }
-        }
-      }
     }
   };
 
@@ -838,13 +675,6 @@ async function respondStreaming(ctx: ProviderRequestContext): Promise<Generation
   if (!completed) throw new Error('The reply stream was interrupted before it finished. Regenerate to try again.');
   if (incompleteError && !full) throw incompleteError;
 
-  const finalCombined = buildCombinedSummary();
-  if (!summaryDelivered && finalCombined) {
-    try {
-      onReasoningSummaryDone?.(finalCombined, null);
-      summaryDelivered = true;
-    } catch { /* ignore */ }
-  }
   // Final delivery of web search results if not already done
   if ((webSearchCitations.length > 0 || webSearchSources.length > 0) && !webSearchResultDelivered) {
     try {
@@ -857,15 +687,13 @@ async function respondStreaming(ctx: ProviderRequestContext): Promise<Generation
       onImageGenerated?.(generatedImages);
     } catch { /* ignore */ }
   }
-  const mcpItems = extractMcpItems({ output: completedResponseOutput || [] });
   return {
     text: full,
-    reasoningSummary: buildCombinedSummary(),
+    activity: log.settle(),
     webSearchResult: (webSearchCitations.length > 0 || webSearchSources.length > 0)
       ? { citations: webSearchCitations, sources: webSearchSources }
       : undefined,
     generatedImages: generatedImages.length > 0 ? generatedImages : undefined,
-    mcpItems,
   };
 }
 
@@ -874,7 +702,7 @@ async function respondStreaming(ctx: ProviderRequestContext): Promise<Generation
 // ============================================================================
 
 async function respondOnce(ctx: ProviderRequestContext): Promise<GenerationResponse> {
-  const { onReasoningSummaryDone, onWebSearchResult, onImageGenerated } = ctx.callbacks;
+  const { onWebSearchResult, onImageGenerated } = ctx.callbacks;
   const abortController = createAbort(ctx.provideAbort);
 
   const response = await fetch(`${ctx.baseURL}/responses`, {
@@ -897,22 +725,13 @@ async function respondOnce(ctx: ProviderRequestContext): Promise<GenerationRespo
   }
   const webSearchResult = extractWebSearchResult(res);
   const generatedImages = extractGeneratedImages(res);
-  const mcpItems = extractMcpItems(res);
-  const resObj = res as Record<string, unknown>;
-  const outputArr = Array.isArray(resObj?.output) ? resObj.output as unknown[]
-    : Array.isArray((resObj?.response as Record<string, unknown>)?.output)
-      ? (resObj.response as Record<string, unknown>).output as unknown[] : [];
-  const summary = buildInterleavedFromOutput(outputArr);
-  if (summary) {
-    try { onReasoningSummaryDone?.(summary, null); } catch { /* ignore */ }
-  }
   if (webSearchResult && (webSearchResult.citations.length > 0 || webSearchResult.sources.length > 0)) {
     try { onWebSearchResult?.(webSearchResult); } catch { /* ignore */ }
   }
   if (generatedImages && generatedImages.length > 0) {
     try { onImageGenerated?.(generatedImages); } catch { /* ignore */ }
   }
-  return { text, reasoningSummary: summary, webSearchResult, generatedImages, mcpItems };
+  return { text, activity: extractActivity(res), webSearchResult, generatedImages };
 }
 
 async function listModels({ apiKey, baseURL }: { apiKey: string; baseURL: string }): Promise<string[]> {

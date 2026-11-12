@@ -17,6 +17,8 @@ import {
 import { responsesAdapter } from './api/providers/responses.js';
 import { chatCompletionsAdapter } from './api/providers/chatCompletions.js';
 import { geminiAdapter } from './api/providers/gemini.js';
+import { anthropicAdapter } from './api/providers/anthropic.js';
+import { isOpenAiCompatible } from './utils/apiModes.js';
 import type {
   Settings,
   Connection,
@@ -29,6 +31,7 @@ const ADAPTERS: Record<ApiMode, ProviderAdapter> = {
   responses: responsesAdapter,
   chat_completions: chatCompletionsAdapter,
   gemini: geminiAdapter,
+  anthropic: anthropicAdapter,
 };
 
 interface FetchClientConfig {
@@ -116,9 +119,9 @@ export async function respond(options: RespondOptions): Promise<GenerationRespon
       reasoningEffort: options.reasoningEffort,
       textVerbosity: options.textVerbosity,
       reasoningSummary: options.reasoningSummary,
-      openRouterProvider: resolvedConnection.openRouterEnabled && resolvedConnection.apiMode !== 'gemini'
+      openRouterProvider: resolvedConnection.openRouterEnabled && isOpenAiCompatible(resolvedConnection.apiMode)
         ? options.openRouterProvider?.trim() || undefined : undefined,
-      openRouterZdr: resolvedConnection.openRouterEnabled && resolvedConnection.apiMode !== 'gemini'
+      openRouterZdr: resolvedConnection.openRouterEnabled && isOpenAiCompatible(resolvedConnection.apiMode)
         && options.openRouterZdr === true,
       thinkingEnabled: options.thinkingEnabled,
       thinkingBudgetTokens: options.thinkingBudgetTokens,
@@ -134,8 +137,7 @@ export async function respond(options: RespondOptions): Promise<GenerationRespon
     callbacks: {
       onEvent: options.onEvent,
       onTextDelta: options.onTextDelta,
-      onReasoningSummaryDelta: options.onReasoningSummaryDelta,
-      onReasoningSummaryDone: options.onReasoningSummaryDone,
+      onActivity: options.onActivity,
       onWebSearchResult: options.onWebSearchResult,
       onImageGenerated: options.onImageGenerated,
     },

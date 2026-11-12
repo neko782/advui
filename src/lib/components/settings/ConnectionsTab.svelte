@@ -1,5 +1,6 @@
 <script lang="ts">
   import SettingToggle from '../SettingToggle.svelte'
+  import { isOpenAiCompatible } from '../../utils/apiModes'
   import { onMount } from 'svelte'
   import { IconAdd, IconVisibility, IconVisibilityOff, IconAutorenew, IconDelete, IconDragHandle } from '../../icons'
   import { DEFAULT_API_BASE_URL } from './settingsDraft.svelte'
@@ -253,9 +254,10 @@
                       <option value="responses">Responses API</option>
                       <option value="chat_completions">Chat Completions API</option>
                       <option value="gemini">Gemini API</option>
+                      <option value="anthropic">Anthropic API</option>
                     </select>
                   </label>
-                  {#if activeConnection.apiMode !== 'gemini'}
+                  {#if isOpenAiCompatible(activeConnection.apiMode)}
                     <div class="ui-setting-list">
                       <SettingToggle
                         label="OpenRouter provider selection"

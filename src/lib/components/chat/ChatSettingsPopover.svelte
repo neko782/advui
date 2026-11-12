@@ -3,8 +3,9 @@
   import ModelInput from '../ModelInput.svelte'
   import ToolsPicker, { TOOLS, type ToolsValue } from '../ToolsPicker.svelte'
   import { reasoningLevelOptions } from '../../utils/reasoningLevels'
+  import { isOpenAiCompatible, unsupportedTools } from '../../utils/apiModes'
   import { IconTune, IconLayers } from '../../icons'
-  import type { Preset, ReasoningEffort, TextVerbosity, ReasoningSummary, ConnectionOption, McpServerConfig, DisabledTools } from '../../types'
+  import type { Preset, ReasoningEffort, TextVerbosity, ReasoningSummary, ConnectionOption, McpServerConfig, DisabledTools, ToolId } from '../../types'
 
   interface Props {
     open?: boolean
@@ -78,25 +79,18 @@
   let presetButtonEl = $state<HTMLButtonElement | null>(null)
   let presetMenuPosition = $state({ bottom: 0, left: 0 })
 
-  const supportsResponsesApiFeatures = $derived((() => {
-    const conns = props.connections || []
-    const currentConn = conns.find(c => c.id === props.connectionId) || conns[0]
-    return currentConn?.apiMode === 'responses'
-  })())
-
-  const supportsOpenRouter = $derived((() => {
-    const conns = props.connections || []
-    const conn = conns.find(c => c.id === props.connectionId) || conns[0]
-    return conn?.openRouterEnabled === true && conn.apiMode !== 'gemini'
-  })())
-
   const currentConnection = $derived((props.connections || []).find(c => c.id === props.connectionId) || (props.connections || [])[0])
+  const supportsOpenRouter = $derived(currentConnection?.openRouterEnabled === true && isOpenAiCompatible(currentConnection.apiMode))
+  // Tools the app has switched off, plus the ones this connection's API lacks.
+  const hiddenTools = $derived<DisabledTools>({ ...unsupportedTools(currentConnection?.apiMode), ...props.disabledTools })
+  // Only the Responses API takes per-tool container options.
+  const plainTools = $derived<ToolId[]>(currentConnection?.apiMode === 'responses' ? [] : ['codeInterpreter'])
   const reasoningLevels = $derived(reasoningLevelOptions(currentConnection?.apiMode, {
     legacy: props.showLegacyParams,
     selected: props.reasoningEffort,
   }))
 
-  const anyToolAvailable = $derived(TOOLS.some(tool => !props.disabledTools?.[tool.id]))
+  const anyToolAvailable = $derived(TOOLS.some(tool => !hiddenTools[tool.id]))
 
   const toolsValue = $derived<ToolsValue>({
     webSearchEnabled: props.webSearchEnabled,
@@ -225,10 +219,10 @@
     style={`--settings-left: ${menuBounds.left}px; --settings-width: ${menuBounds.width}px; --settings-height: ${menuBounds.height}px`}>
     <div class="settings-scroll">
       {#if activeTab === 'general'}
-        {#if supportsResponsesApiFeatures && anyToolAvailable}
+        {#if anyToolAvailable}
           <div class="menu-section">
             <div class="menu-label">Tools</div>
-            <ToolsPicker compact value={toolsValue} onChange={patchTools} disabled={props.disabled} hidden={props.disabledTools} />
+            <ToolsPicker compact value={toolsValue} onChange={patchTools} disabled={props.disabled} hidden={hiddenTools} plain={plainTools} />
           </div>
         {/if}
         <div class="menu-section">

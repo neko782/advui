@@ -12,7 +12,7 @@ export type TextVerbosity = 'none' | 'low' | 'medium' | 'high';
 export type ReasoningSummary = 'none' | 'auto' | 'concise' | 'detailed';
 
 // API modes
-export type ApiMode = 'responses' | 'chat_completions' | 'gemini';
+export type ApiMode = 'responses' | 'chat_completions' | 'gemini' | 'anthropic';
 
 // ============================================================================
 // Image / Attachment Payload Types
@@ -138,7 +138,7 @@ export interface GeneratedImage {
 }
 
 // ============================================================================
-// MCP Types (Responses API)
+// MCP Types
 // ============================================================================
 
 export interface McpServerConfig {
@@ -150,42 +150,41 @@ export interface McpServerConfig {
   allowedTools?: string;
 }
 
-export interface McpListedTool {
-  name: string;
-  description?: string | null;
-  annotations?: unknown | null;
-  inputSchema?: unknown;
-}
+// ============================================================================
+// Activity Types
+// What the model did besides writing the reply: thinking and tool calls, as
+// one ordered list of steps. Every provider reports into this shape.
+// ============================================================================
 
-export interface McpCallItem {
+export type ActivityKind =
+  | 'thinking'
+  | 'search'    // web search
+  | 'fetch'     // opening / reading a page
+  | 'code'      // code execution
+  | 'shell'
+  | 'image'     // image generation
+  | 'mcp'       // MCP tool call
+  | 'mcp_list'  // MCP tool discovery
+  | 'tool';     // anything else
+
+export type ActivityStatus = 'running' | 'done' | 'failed';
+
+export interface ActivityStep {
   id: string;
-  type: 'mcp_call';
-  serverLabel: string;
-  name: string;
-  arguments?: string | null;
-  output?: string | null;
-  error?: string | null;
-  status?: 'in_progress' | 'completed' | 'incomplete' | 'calling' | 'failed';
-  approvalRequestId?: string | null;
+  kind: ActivityKind;
+  status: ActivityStatus;
+  /** Thinking: the reasoning text (markdown). */
+  text?: string;
+  /** What a tool acted on: the query, URL, command or tool name. */
+  subject?: string;
+  /** MCP server the call went to. */
+  server?: string;
+  /** Tool input: arguments, code, commands. */
+  input?: string;
+  /** Tool result. */
+  output?: string;
+  error?: string;
 }
-
-export interface McpListToolsItem {
-  id: string;
-  type: 'mcp_list_tools';
-  serverLabel: string;
-  tools: McpListedTool[];
-  error?: string | null;
-}
-
-export interface McpApprovalRequestItem {
-  id: string;
-  type: 'mcp_approval_request';
-  serverLabel: string;
-  name: string;
-  arguments?: string | null;
-}
-
-export type McpResponseItem = McpCallItem | McpListToolsItem | McpApprovalRequestItem;
 
 // ============================================================================
 // Request / Response Types
@@ -199,10 +198,10 @@ export interface HistoryMessage {
 
 export interface GenerationResponse {
   text: string;
-  reasoningSummary?: string;
+  /** Thinking and tool steps, in the order they happened. */
+  activity?: ActivityStep[];
   webSearchResult?: WebSearchResult;
   generatedImages?: GeneratedImage[];
-  mcpItems?: McpResponseItem[];
 }
 
 export interface RespondOptions {
@@ -223,8 +222,8 @@ export interface RespondOptions {
   openRouterZdr?: boolean;
   thinkingEnabled?: boolean;
   thinkingBudgetTokens?: number | null;
-  onReasoningSummaryDelta?: (fullSummary: string, delta: string, event?: unknown) => void;
-  onReasoningSummaryDone?: (fullSummary: string, event?: unknown) => void;
+  /** Called with the full step list whenever a step is added or changes. */
+  onActivity?: (steps: ActivityStep[]) => void;
   onAbort?: (abortFn: () => void) => void;
   // Web Search options (Responses API only)
   webSearch?: WebSearchOptions;
@@ -236,6 +235,6 @@ export interface RespondOptions {
   // Image Generation options (Responses API only)
   imageGeneration?: ImageGenerationOptions;
   onImageGenerated?: (images: GeneratedImage[]) => void;
-  // MCP server tools (Responses API only)
+  // MCP server tools
   mcpServers?: McpServerConfig[];
 }

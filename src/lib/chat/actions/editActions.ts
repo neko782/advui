@@ -113,8 +113,6 @@ export function prepareBranchAndSend(
     typing: true,
     error: undefined,
     next: null,
-    reasoningSummary: '',
-    reasoningSummaryLoading: true,
   };
 
   const typingNodeId = nextNodeId;

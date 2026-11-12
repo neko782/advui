@@ -2,6 +2,7 @@
   import OpenRouterProviderInput from '../OpenRouterProviderInput.svelte'
   import ModelInput from '../ModelInput.svelte'
   import ToolsPicker, { TOOLS } from '../ToolsPicker.svelte'
+  import { isOpenAiCompatible } from '../../utils/apiModes'
   import { onMount } from 'svelte'
   import { IconAdd, IconDelete, IconDragHandle } from '../../icons'
   import { DEFAULT_SYSTEM_PROMPT } from '../../utils/presetHelpers'
@@ -256,7 +257,7 @@
                             <option value={connection.id}>{connection?.name || connection?.id || 'Connection'}</option>
                           {/each}
                         </select>
-                        {#if presetConnection?.openRouterEnabled && presetConnection.apiMode !== 'gemini'}
+                        {#if presetConnection?.openRouterEnabled && isOpenAiCompatible(presetConnection.apiMode)}
                           <OpenRouterProviderInput value={activePreset.openRouterProvider} active={props.active ?? true}
                             onInput={(value) => updateActivePreset({ openRouterProvider: value })}
                             zdr={activePreset.openRouterZdr} onZdr={(value) => updateActivePreset({ openRouterZdr: value })} />

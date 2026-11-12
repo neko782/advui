@@ -1,5 +1,5 @@
 <script lang="ts" module>
-  import type { PresetFields, DisabledTools } from '../types'
+  import type { PresetFields, DisabledTools, ToolId } from '../types'
   import { IconTravelExplore, IconCodeBlocks, IconTerminal, IconImagesmode, IconExtension } from '../icons'
 
   /** The tool-related slice shared by presets and per-chat settings. */
@@ -39,9 +39,11 @@
     compact?: boolean
     /** Tools switched off app-wide; they are not offered at all. */
     hidden?: DisabledTools
+    /** Tools offered as a plain on/off switch, without their options. */
+    plain?: readonly ToolId[]
   }
 
-  let { value, onChange, disabled = false, configurable = true, compact = false, hidden = {} }: Props = $props()
+  let { value, onChange, disabled = false, configurable = true, compact = false, hidden = {}, plain = [] }: Props = $props()
 
   type Tool = typeof TOOLS[number]
   type NetTool = 'codeInterpreter' | 'shell'
@@ -126,7 +128,7 @@
   <div class="ui-chip-group" role="group" aria-label="Tools">
     {#each visibleTools as tool (tool.id)}
       {@const on = !!value[tool.key]}
-      {@const hasOptions = configurable && tool.options && on}
+      {@const hasOptions = configurable && tool.options && on && !plain.includes(tool.id)}
       <span class="tool" class:split={hasOptions} bind:this={anchors[tool.id]}>
         <button type="button" class="ui-chip" aria-pressed={on} aria-label={tool.label} title={tool.desc}
           {disabled} onclick={() => toggle(tool)}>

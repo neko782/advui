@@ -12,6 +12,8 @@ const LEVELS: Record<ApiMode, { current: readonly Level[]; deprecated: readonly 
   chat_completions: { current: ['none', 'low', 'medium', 'high', 'xhigh', 'max'], deprecated: ['minimal'] },
   // Gemini's thinkingLevel
   gemini: { current: ['minimal', 'low', 'medium', 'high'], deprecated: [] },
+  // Claude's output_config.effort; 'none' turns thinking off where the model allows it
+  anthropic: { current: ['none', 'low', 'medium', 'high', 'xhigh', 'max'], deprecated: [] },
 };
 
 export interface ReasoningLevelOption {

@@ -15,9 +15,11 @@ import {
   type ProviderInput,
   type ProviderRequestContext,
 } from '../core.js';
-import type { GenerationResponse } from '../../types/index.js';
+import { ActivityLog } from '../activity.js';
+import type { ActivityStep, GenerationResponse } from '../../types/index.js';
 
 export const DEFAULT_GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta';
+const THOUGHT_STEP_ID = 'thoughts';
 
 type GeminiPart =
   | { text: string; thought?: boolean }
@@ -209,7 +211,7 @@ function geminiBaseUrlFor(ctx: ProviderRequestContext): string {
 }
 
 async function respondStreaming(ctx: ProviderRequestContext): Promise<GenerationResponse> {
-  const { onEvent, onTextDelta, onReasoningSummaryDelta, onReasoningSummaryDone } = ctx.callbacks;
+  const { onEvent, onTextDelta, onActivity } = ctx.callbacks;
   const abortController = createAbort(ctx.provideAbort);
   const endpoint = `${geminiBaseUrlFor(ctx)}/models/${ctx.model}:streamGenerateContent?alt=sse&key=${ctx.apiKey}`;
 
@@ -224,17 +226,16 @@ async function respondStreaming(ctx: ProviderRequestContext): Promise<Generation
   await ensureOkResponse(response, 'Gemini API error');
 
   let full = '';
-  let summary = '';
+  // Thought summaries stream as one run of text, read as a single thinking step.
+  const log = new ActivityLog(onActivity);
   let stopMessage: string | null = null;
 
   const processLine = createSseJsonLineProcessor((chunk) => {
     stopMessage = describeGeminiStop(chunk) ?? stopMessage;
     const { text: delta, reasoningSummary: reasoningDelta } = extractGeminiParts(chunk);
-    if (reasoningDelta) {
-      summary += reasoningDelta;
-      try { onReasoningSummaryDelta?.(summary, reasoningDelta, chunk); } catch { /* ignore */ }
-    }
+    if (reasoningDelta) log.append(THOUGHT_STEP_ID, 'text', reasoningDelta, { kind: 'thinking', status: 'running' });
     if (delta) {
+      log.settle();
       full += delta;
       try { onTextDelta?.(full, delta, chunk); } catch { /* ignore */ }
     }
@@ -244,12 +245,10 @@ async function respondStreaming(ctx: ProviderRequestContext): Promise<Generation
   // Partial text is still a usable reply; only an empty one is an error.
   if (!full && stopMessage) throw new Error(stopMessage);
 
-  try { onReasoningSummaryDone?.(summary || '', null); } catch { /* ignore */ }
-  return { text: full, reasoningSummary: summary };
+  return { text: full, activity: log.settle() };
 }
 
 async function respondOnce(ctx: ProviderRequestContext): Promise<GenerationResponse> {
-  const { onReasoningSummaryDone } = ctx.callbacks;
   const abortController = createAbort(ctx.provideAbort);
   const endpoint = `${geminiBaseUrlFor(ctx)}/models/${ctx.model}:generateContent?key=${ctx.apiKey}`;
 
@@ -269,8 +268,10 @@ async function respondOnce(ctx: ProviderRequestContext): Promise<GenerationRespo
     const stopMessage = describeGeminiStop(res);
     if (stopMessage) throw new Error(stopMessage);
   }
-  try { onReasoningSummaryDone?.(summary || '', res); } catch { /* ignore */ }
-  return { text, reasoningSummary: summary };
+  const activity: ActivityStep[] = summary
+    ? [{ id: THOUGHT_STEP_ID, kind: 'thinking', status: 'done', text: summary }]
+    : [];
+  return { text, activity };
 }
 
 async function listModels({ apiKey, baseURL }: { apiKey: string; baseURL: string }): Promise<string[]> {

@@ -2,7 +2,7 @@
 import { listModels } from './openaiClient.js';
 import { loadSettings, findConnection } from './settingsStore.js';
 import { safeRead, safeWrite } from './utils/localStorageHelper.js';
-import type { ModelsCacheEntry, ModelsStore } from './types/index.js';
+import type { ApiMode, ModelsCacheEntry, ModelsStore } from './types/index.js';
 
 const MODELS_KEY = 'openai.models.v2';
 const DEFAULT_CACHE_ENTRY: ModelsCacheEntry = { ids: [], fetchedAt: 0 };
@@ -88,10 +88,10 @@ interface ConnectionInput {
   connectionId?: string;
   apiKey?: string;
   apiBaseUrl?: string;
-  apiMode?: 'responses' | 'chat_completions' | 'gemini';
+  apiMode?: ApiMode;
 }
 
-function resolveConnection(input: ConnectionInput | string | null | undefined): { id: string; apiKey: string; apiBaseUrl?: string; apiMode?: 'responses' | 'chat_completions' | 'gemini' } {
+function resolveConnection(input: ConnectionInput | string | null | undefined): { id: string; apiKey: string; apiBaseUrl?: string; apiMode?: ApiMode } {
   if (!input) {
     const settings = loadSettings();
     const active = findConnection(settings, settings?.selectedConnectionId);

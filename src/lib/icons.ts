@@ -39,3 +39,6 @@ export { default as IconImagesmode } from '~icons/material-symbols/imagesmode-ro
 export { default as IconExtension } from '~icons/material-symbols/extension-rounded'
 
 export { default as IconExpandMore } from '~icons/material-symbols/expand-more-rounded'
+export { default as IconLightbulb } from '~icons/material-symbols/lightbulb-outline-rounded'
+export { default as IconBuild } from '~icons/material-symbols/build-rounded'
+export { default as IconLanguage } from '~icons/material-symbols/language'

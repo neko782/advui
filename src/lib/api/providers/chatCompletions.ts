@@ -19,7 +19,8 @@ import {
   type ProviderAdapter,
   type ProviderRequestContext,
 } from '../core.js';
-import type { GenerationResponse } from '../../types/index.js';
+import { ActivityLog } from '../activity.js';
+import type { ActivityStep, GenerationResponse } from '../../types/index.js';
 
 type ChatContentPart =
   | { type: 'text'; text: string }
@@ -192,7 +193,7 @@ export function extractChatReasoningSummary(res: unknown): string {
 }
 
 async function respondStreaming(ctx: ProviderRequestContext): Promise<GenerationResponse> {
-  const { onEvent, onTextDelta, onReasoningSummaryDelta, onReasoningSummaryDone } = ctx.callbacks;
+  const { onEvent, onTextDelta, onActivity } = ctx.callbacks;
   const abortController = createAbort(ctx.provideAbort);
 
   const response = await fetch(`${ctx.baseURL}/chat/completions`, {
@@ -207,16 +208,14 @@ async function respondStreaming(ctx: ProviderRequestContext): Promise<Generation
   await ensureOkResponse(response, 'API error');
 
   let full = '';
-  const summaryByIndex = new Map<number, string>();
-  let summaryDelivered = false;
-  const buildSummary = (): string => {
-    const ordered = Array.from(summaryByIndex.entries())
-      .sort((a, b) => a[0] - b[0])
-      .map(([, text]) => (typeof text === 'string' ? text : ''))
-      .filter(Boolean);
-    if (!ordered.length) return '';
-    const combined = ordered.join('\n\n\n');
-    return normalizeReasoningText(combined);
+  // One thinking step per choice, fed by whichever reasoning field the
+  // provider streams (reasoning_content, reasoning, or a top-level field).
+  const log = new ActivityLog(onActivity);
+  const reasoningByIndex = new Map<number, string>();
+  const setReasoning = (idx: number, text: string): void => {
+    if (text === (reasoningByIndex.get(idx) || '')) return;
+    reasoningByIndex.set(idx, text);
+    log.set(`reasoning-${idx}`, { kind: 'thinking', status: 'running', text: normalizeReasoningText(text) }, idx);
   };
 
   const processLine = createSseJsonLineProcessor((chunk) => {
@@ -226,68 +225,36 @@ async function respondStreaming(ctx: ProviderRequestContext): Promise<Generation
       try { onTextDelta?.(full, deltaText, chunk); } catch { /* ignore */ }
     }
 
-    // Check for top-level reasoning field in chunk
+    // Top-level reasoning field carries the reasoning so far
     const topLevelReasoning = collectChatReasoningContent((chunk as Record<string, unknown>)?.reasoning);
-    if (topLevelReasoning) {
-      const prev = summaryByIndex.get(0) || '';
-      const next = topLevelReasoning;
-      if (next !== prev) {
-        summaryByIndex.set(0, next);
-        const summary = buildSummary();
-        try { onReasoningSummaryDelta?.(summary, topLevelReasoning, chunk); } catch { /* ignore */ }
-      }
-    }
+    if (topLevelReasoning) setReasoning(0, topLevelReasoning);
 
     const choices = Array.isArray(chunk?.choices) ? chunk.choices : [];
-    let finishReasonSeen = false;
     for (const choice of choices as Array<{ index?: number; delta?: { reasoning_content?: unknown; reasoning?: unknown }; message?: { reasoning_content?: unknown; reasoning?: unknown }; finish_reason?: string }>) {
       const idx = Number.isFinite(Number(choice?.index)) ? Number(choice.index) : 0;
-      const prev = summaryByIndex.get(idx) || '';
-      let next = prev;
+      let next = reasoningByIndex.get(idx) || '';
       const deltaSummary = collectChatReasoningContent(choice?.delta?.reasoning_content) || collectChatReasoningContent(choice?.delta?.reasoning);
-      if (deltaSummary) {
-        next += deltaSummary;
-      }
+      if (deltaSummary) next += deltaSummary;
       const messageSummary = collectChatReasoningContent(choice?.message?.reasoning_content) || collectChatReasoningContent(choice?.message?.reasoning);
-      if (messageSummary) {
-        next = messageSummary;
-      }
-      if (next !== prev) {
-        summaryByIndex.set(idx, next);
-        const summary = buildSummary();
-        try { onReasoningSummaryDelta?.(summary, deltaSummary || messageSummary || '', choice); } catch { /* ignore */ }
-      }
-      if (!finishReasonSeen && typeof choice?.finish_reason === 'string' && choice.finish_reason) {
-        finishReasonSeen = true;
-      }
-    }
-
-    if (finishReasonSeen && !summaryDelivered) {
-      const summary = buildSummary();
-      try {
-        onReasoningSummaryDone?.(summary || '', chunk);
-        summaryDelivered = true;
-      } catch { /* ignore */ }
+      if (messageSummary) next = messageSummary;
+      setReasoning(idx, next);
+      // Reasoning is over once the answer starts or the choice finishes.
+      if (deltaText || (typeof choice?.finish_reason === 'string' && choice.finish_reason)) log.settle();
     }
   }, onEvent);
 
   await readSseLines(response, processLine);
 
-  const finalSummary = buildSummary();
-  if (!summaryDelivered) {
-    try {
-      onReasoningSummaryDone?.(finalSummary || '', null);
-      summaryDelivered = true;
-    } catch { /* ignore */ }
-  }
-  return {
-    text: full,
-    reasoningSummary: finalSummary,
-  };
+  return { text: full, activity: log.settle() };
+}
+
+/** A complete response's reasoning as a single thinking step. */
+function reasoningActivity(res: unknown): ActivityStep[] {
+  const text = extractChatReasoningSummary(res);
+  return text ? [{ id: 'reasoning-0', kind: 'thinking', status: 'done', text }] : [];
 }
 
 async function respondOnce(ctx: ProviderRequestContext): Promise<GenerationResponse> {
-  const { onReasoningSummaryDone } = ctx.callbacks;
   const abortController = createAbort(ctx.provideAbort);
 
   const response = await fetch(`${ctx.baseURL}/chat/completions`, {
@@ -304,9 +271,7 @@ async function respondOnce(ctx: ProviderRequestContext): Promise<GenerationRespo
   const res = await response.json();
   throwIfErrorBody(res);
   const text = extractOutputText(res);
-  const summary = extractChatReasoningSummary(res);
-  try { onReasoningSummaryDone?.(summary || '', null); } catch { /* ignore */ }
-  return { text, reasoningSummary: summary || '' };
+  return { text, activity: reasoningActivity(res) };
 }
 
 async function listModels({ apiKey, baseURL }: { apiKey: string; baseURL: string }): Promise<string[]> {

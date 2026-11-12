@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { respond } from './openaiClient.js'
 import { saveSettings, loadSettings } from './settingsStore.js'
+import type { ActivityStep, ApiMode } from './types/index.js'
 
 const encoder = new TextEncoder()
 const connectionId = 'test-connection'
@@ -19,7 +20,7 @@ const localStorageMock = (() => {
 
 Object.defineProperty(globalThis, 'localStorage', { value: localStorageMock, writable: true })
 
-function configureConnection(apiMode: 'responses' | 'chat_completions' | 'gemini', openRouterEnabled = false) {
+function configureConnection(apiMode: ApiMode, openRouterEnabled = false) {
   saveSettings({
     connections: [
       {
@@ -201,22 +202,16 @@ describe('respond stream errors', () => {
     expect(response.text).toBe('')
   })
 
-  it('keeps reasoning summary segments from separate output items around web search', async () => {
+  it('reports reasoning and tool calls as ordered activity steps', async () => {
     configureConnection('responses')
-    const reasoningDeltas: string[] = []
-    const reasoningDone: string[] = []
+    const updates: ActivityStep[][] = []
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(makeSseResponse([
-      'event: response.reasoning_summary_text.delta\n',
       'data: {"type":"response.reasoning_summary_text.delta","item_id":"rs_1","output_index":0,"summary_index":0,"delta":"First pass"}\n\n',
-      'event: response.reasoning_summary_text.done\n',
       'data: {"type":"response.reasoning_summary_text.done","item_id":"rs_1","output_index":0,"summary_index":0,"text":"First pass"}\n\n',
-      'event: response.web_search_call.completed\n',
+      'data: {"type":"response.web_search_call.in_progress","item_id":"ws_1","output_index":1}\n\n',
       'data: {"type":"response.web_search_call.completed","item_id":"ws_1","output_index":1,"action":{"type":"search","sources":[{"type":"url","url":"https://example.com"}]}}\n\n',
-      'event: response.reasoning_summary_text.delta\n',
       'data: {"type":"response.reasoning_summary_text.delta","item_id":"rs_2","output_index":2,"summary_index":0,"delta":"Second pass"}\n\n',
-      'event: response.reasoning_summary_text.done\n',
       'data: {"type":"response.reasoning_summary_text.done","item_id":"rs_2","output_index":2,"summary_index":0,"text":"Second pass"}\n\n',
-      'event: response.completed\n',
       'data: {"type":"response.completed","response":{"output":[]}}\n\n',
     ])))
 
@@ -225,22 +220,17 @@ describe('respond stream errors', () => {
       prompt: 'hi',
       connectionId,
       stream: true,
-      onReasoningSummaryDelta: (fullSummary) => reasoningDeltas.push(fullSummary),
-      onReasoningSummaryDone: (fullSummary) => reasoningDone.push(fullSummary),
+      onActivity: (steps) => updates.push(steps),
     })
 
-    // Reasoning deltas now include tool activity interleaved by output_index
-    expect(reasoningDeltas).toEqual([
-      'First pass',
-      'First pass\n\n**Web search** \u2014 *completed*',
-      'First pass\n\n**Web search** \u2014 *completed*\n\nSecond pass',
+    // The step list is reported as it grows; the search shows as running first.
+    expect(updates[0]).toEqual([{ id: 'rs_1:0', kind: 'thinking', status: 'running', text: 'First pass' }])
+    expect(updates.some(steps => steps.some(step => step.kind === 'search' && step.status === 'running'))).toBe(true)
+    expect(response.activity?.map(step => [step.kind, step.status, step.text])).toEqual([
+      ['thinking', 'done', 'First pass'],
+      ['search', 'done', undefined],
+      ['thinking', 'done', 'Second pass'],
     ])
-    expect(reasoningDone).toEqual([
-      'First pass',
-      'First pass\n\n**Web search** \u2014 *completed*\n\nSecond pass',
-    ])
-    // Final response preserves tool activity interleaved with reasoning
-    expect(response.reasoningSummary).toBe('First pass\n\n**Web search** \u2014 *completed*\n\nSecond pass')
   })
 
   it('adds code interpreter to Responses API tools', async () => {
@@ -363,9 +353,8 @@ describe('respond stream errors', () => {
     expect(body.tools).toBeUndefined()
   })
 
-  it('routes Gemini thought parts into reasoning summaries', async () => {
+  it('routes Gemini thought parts into a thinking step', async () => {
     configureConnection('gemini')
-    const reasoningDone: string[] = []
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({
       candidates: [
         {
@@ -384,13 +373,6 @@ describe('respond stream errors', () => {
           index: 0,
         },
       ],
-      usageMetadata: {
-        promptTokenCount: 10,
-        totalTokenCount: 24,
-        thoughtsTokenCount: 14,
-      },
-      modelVersion: 'gemma-4-31b-it',
-      responseId: '773faZb1I-KU-8YPrMTFoQw',
     }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
@@ -400,18 +382,17 @@ describe('respond stream errors', () => {
       model: 'gemma-4-31b-it',
       prompt: 'test',
       connectionId,
-      onReasoningSummaryDone: (fullSummary) => reasoningDone.push(fullSummary),
     })
 
     expect(response.text).toBe('test')
-    expect(response.reasoningSummary).toBe('The user said "test".\nFriendly and lighthearted assistant.\n')
-    expect(reasoningDone).toEqual(['The user said "test".\nFriendly and lighthearted assistant.\n'])
+    expect(response.activity).toEqual([
+      { id: 'thoughts', kind: 'thinking', status: 'done', text: 'The user said "test".\nFriendly and lighthearted assistant.\n' },
+    ])
   })
 
-  it('streams Gemini thought parts as reasoning summary deltas', async () => {
+  it('streams Gemini thought parts into a thinking step that finishes when the answer starts', async () => {
     configureConnection('gemini')
-    const reasoningDeltas: string[] = []
-    const reasoningDone: string[] = []
+    const updates: ActivityStep[][] = []
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(makeSseResponse([
       'data: {"candidates":[{"content":{"parts":[{"text":"The user said \\\"test\\\".\\n","thought":true}]},"index":0}]}' + '\n\n',
       'data: {"candidates":[{"content":{"parts":[{"text":"Friendly and lighthearted assistant.\\n","thought":true}]},"index":0}]}' + '\n\n',
@@ -423,18 +404,17 @@ describe('respond stream errors', () => {
       prompt: 'test',
       connectionId,
       stream: true,
-      onReasoningSummaryDelta: (fullSummary) => reasoningDeltas.push(fullSummary),
-      onReasoningSummaryDone: (fullSummary) => reasoningDone.push(fullSummary),
+      onActivity: (steps) => updates.push(steps),
     })
 
     expect(response.text).toBe('test')
-    expect(response.reasoningSummary).toBe('The user said "test".\nFriendly and lighthearted assistant.\n')
-    expect(reasoningDeltas).toEqual([
-      'The user said "test".\n',
-      'The user said "test".\nFriendly and lighthearted assistant.\n',
+    expect(updates.map(steps => [steps[0]?.status, steps[0]?.text])).toEqual([
+      ['running', 'The user said "test".\n'],
+      ['running', 'The user said "test".\nFriendly and lighthearted assistant.\n'],
+      ['done', 'The user said "test".\nFriendly and lighthearted assistant.\n'],
     ])
-    expect(reasoningDone).toEqual([
-      'The user said "test".\nFriendly and lighthearted assistant.\n',
+    expect(response.activity).toEqual([
+      { id: 'thoughts', kind: 'thinking', status: 'done', text: 'The user said "test".\nFriendly and lighthearted assistant.\n' },
     ])
   })
 
@@ -656,7 +636,7 @@ describe('respond stream errors', () => {
     expect(body.generationConfig).toEqual({ temperature: 0.7, topP: 0.5, maxOutputTokens: 100 })
   })
 
-  it('extracts MCP output items from Responses API responses', async () => {
+  it('reports MCP output items as activity steps', async () => {
     configureConnection('responses')
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({
       output_text: 'done',
@@ -690,32 +670,9 @@ describe('respond stream errors', () => {
       connectionId,
     })
 
-    expect(response.mcpItems).toEqual([
-      {
-        id: 'mcp_list_1',
-        type: 'mcp_list_tools',
-        serverLabel: 'deepwiki',
-        tools: [
-          {
-            name: 'search_docs',
-            description: 'Search docs',
-            annotations: undefined,
-            inputSchema: { type: 'object' },
-          },
-        ],
-        error: null,
-      },
-      {
-        id: 'mcp_call_1',
-        type: 'mcp_call',
-        serverLabel: 'deepwiki',
-        name: 'search_docs',
-        arguments: '{"query":"mcp"}',
-        output: '{"hits":1}',
-        error: null,
-        status: 'completed',
-        approvalRequestId: null,
-      },
+    expect(response.activity).toEqual([
+      { id: 'mcp_list_1', kind: 'mcp_list', status: 'done', server: 'deepwiki', subject: '1 tool', output: 'search_docs' },
+      { id: 'mcp_call_1', kind: 'mcp', status: 'done', server: 'deepwiki', subject: 'search_docs', input: '{\n  "query": "mcp"\n}', output: '{\n  "hits": 1\n}' },
     ])
   })
 })

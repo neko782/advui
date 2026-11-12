@@ -6,6 +6,7 @@
 
 import { loadSettings, findConnection } from '../settingsStore.js';
 import { DEFAULT_MODEL } from '../utils/presetHelpers.js';
+import { normalizeMcpServerList } from '../utils/mcp.js';
 import {
   normalizeMimeType,
   isImageMimeType,
@@ -33,13 +34,14 @@ import type {
   ImageGenerationOptions,
   GeneratedImage,
   McpServerConfig,
+  ActivityStep,
 } from '../types/index.js';
 
 // ============================================================================
 // Connection resolution
 // ============================================================================
 
-const API_MODES: ReadonlySet<ApiMode> = new Set(['responses', 'chat_completions', 'gemini']);
+const API_MODES: ReadonlySet<ApiMode> = new Set(['responses', 'chat_completions', 'gemini', 'anthropic']);
 
 export function normalizeApiMode(mode: unknown): ApiMode {
   return API_MODES.has(mode as ApiMode) ? (mode as ApiMode) : 'responses';
@@ -122,9 +124,21 @@ export function mcpLabelFromUrl(url: string): string {
   }
 }
 
-export function formatMcpLabel(serverLabel: string): string {
-  if (!serverLabel || serverLabel.toLowerCase() === 'mcp') return 'MCP';
-  return serverLabel;
+/**
+ * Servers with a URL, each under a label that is unique within the request
+ * (tool calls are tied back to their server by label).
+ */
+export function labelMcpServers(servers: McpServerConfig[] | undefined): Array<{ server: McpServerConfig; label: string }> {
+  const used = new Set<string>();
+  return normalizeMcpServerList(servers)
+    .filter(server => server.url)
+    .map(server => {
+      const base = server.label ? sanitizeMcpLabel(server.label) : mcpLabelFromUrl(server.url);
+      let label = base;
+      for (let n = 2; used.has(label); n++) label = `${base}-${n}`;
+      used.add(label);
+      return { server, label };
+    });
 }
 
 // ============================================================================
@@ -175,8 +189,8 @@ export interface ProviderTools {
 export interface ProviderCallbacks {
   onEvent?: (event: unknown) => void;
   onTextDelta?: (fullText: string, delta?: string, event?: unknown) => void;
-  onReasoningSummaryDelta?: (fullSummary: string, delta: string, event?: unknown) => void;
-  onReasoningSummaryDone?: (fullSummary: string, event?: unknown) => void;
+  /** Receives the full step list whenever thinking or a tool call changes. */
+  onActivity?: (steps: ActivityStep[]) => void;
   onWebSearchResult?: (result: WebSearchResult) => void;
   onImageGenerated?: (images: GeneratedImage[]) => void;
 }
@@ -186,7 +200,7 @@ export interface ProviderRequestContext {
   apiKey: string;
   /** Normalized base URL (OpenAI-compatible providers). */
   baseURL: string;
-  /** Raw base URL from the connection (Gemini uses its own default). */
+  /** Raw base URL from the connection (Gemini and Anthropic use their own defaults). */
   apiBaseUrl?: string;
   input: ProviderInput;
   params: ProviderParams;

@@ -11,7 +11,7 @@ import type {
   ReasoningSummary,
   ImageReference,
   GeneratedImage,
-  McpResponseItem,
+  ActivityStep,
   McpServerConfig,
   HistoryMessage,
 } from './api.js';
@@ -31,9 +31,8 @@ export interface MessageVariant {
   next: number | null;
   images?: ImageReference[];
   generatedImages?: GeneratedImage[];
-  mcpItems?: McpResponseItem[];
-  reasoningSummary?: string;
-  reasoningSummaryLoading?: boolean;
+  /** Thinking and tool steps behind this reply. */
+  activity?: ActivityStep[];
   locked?: boolean;
 }
 
@@ -189,8 +188,7 @@ export interface GenerationOptions {
   typingVariantId: number | null;
   onAbort?: (abortFn: () => void) => void;
   onTextDelta?: (fullText: string, delta?: string, event?: unknown) => void;
-  onReasoningSummaryDelta?: (fullSummary: string, delta: string, event?: unknown) => void;
-  onReasoningSummaryDone?: (fullSummary: string, event?: unknown) => void;
+  onActivity?: (steps: ActivityStep[]) => void;
 }
 
 export interface PreparedUserMessage {

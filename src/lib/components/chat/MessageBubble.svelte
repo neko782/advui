@@ -10,7 +10,7 @@
   } from '../../attachments/mime'
   import type { Message } from '../../types'
   import MarkdownContent from './LazyMarkdownContent.svelte'
-  import McpCalls from './McpCalls.svelte'
+  import ActivityLog from './ActivityLog.svelte'
 
   interface Props {
     message: Message
@@ -25,11 +25,6 @@
 
   const props: Props = $props()
   let el = $state<HTMLTextAreaElement | null>(null)
-  let reasoningOpen = $state(false)
-  let lastReasoningId = $state<number | null>(null)
-  let autoOpened = $state(false)
-  let reasoningSummaryText = $state('')
-  let showReasoning = $state(false)
   let lastSyncedEditingId = $state<number | null>(null)
   const EDIT_GROW_OPTS = { maxHeight: Number.POSITIVE_INFINITY, minHeight: 32 }
 
@@ -89,26 +84,6 @@ const resolvedGeneratedImages = $derived.by(() => {
   return images.map((image) => resolveGeneratedImage(image as AttachmentLike, props.imageCache)).filter((a): a is AttachmentLike => !!a)
 })
 
-  function extractReasoningSummary(msg: Message | null | undefined) {
-    const raw: unknown = msg?.reasoningSummary
-    if (typeof raw === 'string') return raw
-    if (Array.isArray(raw)) {
-      try {
-        return raw
-          .map((part: unknown) => {
-            if (typeof part === 'string') return part
-            const text = (part as { text?: unknown } | null)?.text
-            if (typeof text === 'string') return text
-            return ''
-          })
-          .filter(Boolean)
-          .join('\n\n\n')
-          .replace(/\n{4,}/g, '\n\n\n')
-      } catch {}
-    }
-    return ''
-  }
-
   // When entering edit mode, seed text and move caret
   // Only sync when we start editing this specific message, not on every keystroke
   $effect(() => {
@@ -144,42 +119,6 @@ const resolvedGeneratedImages = $derived.by(() => {
     void props.editingText
     queueMicrotask(() => autoGrow(el, EDIT_GROW_OPTS))
   })
-
-  $effect(() => {
-    const mid = props.message?.id ?? null
-    if (mid !== lastReasoningId) {
-      reasoningOpen = false
-      autoOpened = false
-      lastReasoningId = mid
-    }
-  })
-
-  $effect(() => {
-    const msg = props.message
-    if (!msg) {
-      reasoningSummaryText = ''
-      showReasoning = false
-      return
-    }
-    const text = extractReasoningSummary(msg)
-    reasoningSummaryText = text
-    const available = (msg.role === 'assistant') && text.trim().length > 0
-    showReasoning = available
-    if (!available) {
-      reasoningOpen = false
-      autoOpened = false
-      return
-    }
-    if (!autoOpened) {
-      reasoningOpen = true
-      autoOpened = true
-    }
-  })
-
-  function toggleReasoning() {
-    reasoningOpen = !reasoningOpen
-    autoOpened = true
-  }
 
   function onPaste(e: ClipboardEvent) {
     try {
@@ -219,30 +158,9 @@ const resolvedGeneratedImages = $derived.by(() => {
     ></textarea>
   </span>
 {:else}
-  {#if showReasoning}
-    <div class={`reasoning ${props.message.role}`}>
-      <button
-        type="button"
-        class="reasoning-toggle"
-        aria-expanded={reasoningOpen}
-        onclick={toggleReasoning}
-      >
-        <span class="reasoning-label">Reasoning</span>
-        <span class={`chevron ${reasoningOpen ? 'open' : ''}`} aria-hidden="true"></span>
-      </button>
-      {#if reasoningOpen}
-        <div class="reasoning-body">
-          <MarkdownContent
-            content={reasoningSummaryText}
-            allowInlineHtml={props.allowInlineHtml}
-            renderLatex={props.renderLatex}
-            streaming={props.message.reasoningSummaryLoading}
-          />
-        </div>
-      {/if}
-    </div>
+  {#if props.message.role === 'assistant'}
+    <ActivityLog message={props.message} allowInlineHtml={props.allowInlineHtml} renderLatex={props.renderLatex} />
   {/if}
-  <McpCalls items={props.message.mcpItems} />
   {#if props.message.typing}
     <div class={`bubble ${props.message.role}`} data-typing={true}>
       {#if props.message.content && props.message.content !== 'typing'}
@@ -574,47 +492,6 @@ const resolvedGeneratedImages = $derived.by(() => {
   .dots i:nth-child(2) { animation-delay: .15s; }
   .dots i:nth-child(3) { animation-delay: .30s; }
   @keyframes pop { 0%, 80%, 100% { transform: translateY(0); opacity: .45 } 40% { transform: translateY(-3px); opacity: .9 } }
-  .reasoning { display: grid; gap: 6px; margin: 10px 0 6px; }
-  .reasoning.assistant { justify-self: stretch; }
-  .reasoning.user { justify-self: stretch; }
-  .reasoning-toggle {
-    display: inline-flex;
-    align-items: center;
-    justify-content: flex-start;
-    gap: 6px;
-    justify-self: start;
-    font-size: 0.85rem;
-    color: var(--muted);
-    background: transparent;
-    border: none;
-    padding: 0;
-    cursor: pointer;
-  }
-  .reasoning-toggle:focus-visible { outline: 1px solid var(--accent); outline-offset: 2px; }
-  .reasoning-label { font-weight: 600; }
-  .chevron { width: 10px; height: 10px; position: relative; }
-  .chevron::before {
-    content: '';
-    border: 4px solid transparent;
-    border-top-color: currentColor;
-    display: block;
-    transform-origin: center;
-    transition: transform .2s ease;
-  }
-  .chevron.open::before { transform: rotate(180deg); }
-  .reasoning-body {
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 10px;
-    font-size: 0.9rem;
-    color: var(--text);
-    background: color-mix(in srgb, var(--panel), #ffffff 4%);
-  }
-  .reasoning-body :global(p) { margin: 0.4em 0; }
-  .reasoning-body :global(p + p) { margin-top: 0.75em; }
-  .reasoning-body :global(p:has(> strong) + p) { margin-top: 0.4em; }
-  .reasoning-body :global(p:first-child) { margin-top: 0; }
-  .reasoning-body :global(p:last-child) { margin-bottom: 0; }
   .message-images {
     display: flex;
     flex-wrap: wrap;

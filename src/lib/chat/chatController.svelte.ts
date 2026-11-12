@@ -38,6 +38,7 @@ import {
   validateTypingVariantVisible,
   logGenerationEvent,
 } from './actions/generationActions.js';
+import { settleActivity } from '../api/activity.js';
 import { deepClone } from '../utils/immutable.js';
 import { NO_API_KEY_NOTICE_TEXT } from '../constants/index.js';
 import { buildVisible } from '../branching.js';
@@ -800,7 +801,7 @@ export class ChatController {
       ...prev,
       typing: false,
       error: undefined,
-      reasoningSummaryLoading: false,
+      activity: settleActivity(prev.activity),
       content: prev.content === 'typing' ? '' : prev.content,
     }));
     return true;
@@ -833,7 +834,6 @@ export class ChatController {
    */
   private async runGeneration(run: GenerationRun, connectionId: string | null, logContext: Record<string, unknown>): Promise<void> {
     const typingVariantId = run.typingVariantId;
-    let summaryBuffer = '';
     try {
       const requestNodes = await this.images.prepareRequestNodes(deepClone(this.nodes), this.rootId, typingVariantId);
       if (!run.isCurrent()) return;
@@ -858,15 +858,8 @@ export class ChatController {
         onTextDelta: (full) => {
           if (run.isCurrent()) this.updateVariant(typingVariantId, (prev) => ({ ...prev, content: full }));
         },
-        onReasoningSummaryDelta: (fullSummary) => {
-          if (!run.isCurrent() || typeof fullSummary !== 'string') return;
-          summaryBuffer = fullSummary;
-          this.updateVariant(typingVariantId, (prev) => ({ ...prev, reasoningSummary: summaryBuffer, reasoningSummaryLoading: true }));
-        },
-        onReasoningSummaryDone: (fullSummary) => {
-          if (!run.isCurrent() || typeof fullSummary !== 'string') return;
-          summaryBuffer = fullSummary;
-          this.updateVariant(typingVariantId, (prev) => ({ ...prev, reasoningSummary: summaryBuffer, reasoningSummaryLoading: false }));
+        onActivity: (steps) => {
+          if (run.isCurrent()) this.updateVariant(typingVariantId, (prev) => ({ ...prev, activity: steps }));
         },
       });
       logGenerationEvent(this.debug, 'API request completed', { typingVariantId, ...logContext });
@@ -875,7 +868,7 @@ export class ChatController {
         const storedReply = await this.images.storeGeneratedImagesInMedia(reply);
         // Re-check after the await: Stop may have been pressed while storing images.
         if (run.isCurrent()) {
-          this.nodes = handleGenerationSuccess(this.nodes, typingVariantId, storedReply, summaryBuffer);
+          this.nodes = handleGenerationSuccess(this.nodes, typingVariantId, storedReply);
         }
       }
     } catch (err) {
