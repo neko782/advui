@@ -605,6 +605,8 @@ input:disabled + .ui-switch-ui { opacity: 0.5; }
 .ui-setting-row + .ui-setting-row { border-top: 1px solid var(--border); }
 .ui-setting-row:hover { background: var(--hover-bg); }
 .ui-setting-text { display: grid; gap: 2px; min-width: 0; }
+/* The switch keeps its size however long the text beside it runs. */
+.ui-setting-row > .ui-switch { flex-shrink: 0; }
 .ui-setting-name { font-size: 0.95rem; font-weight: 500; color: var(--text); }
 .ui-setting-desc { font-size: 0.8rem; line-height: 1.4; color: var(--muted); overflow-wrap: anywhere; }
 

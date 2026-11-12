@@ -25,10 +25,10 @@
   ] as const
 
   /** Browser tools, in display order. */
-  export const BROWSER_TOOLS: readonly { id: BrowserToolName; label: string; desc: string }[] = [
-    { id: 'clock', label: 'Clock', desc: 'Your local date, time and time zone.' },
-    { id: 'javascript', label: 'JavaScript', desc: 'Runs code in a sandbox with no network or storage access.' },
-    { id: 'chatSearch', label: 'Chat search', desc: 'Searches your saved chats. Matching excerpts are sent to the model.' },
+  export const BROWSER_TOOLS: readonly { id: BrowserToolName; label: string }[] = [
+    { id: 'clock', label: 'Clock' },
+    { id: 'javascript', label: 'JavaScript' },
+    { id: 'chatSearch', label: 'Chat search' },
   ]
 </script>
 
@@ -227,7 +227,7 @@
         <div class="option-label">Browser tools</div>
         <div class="ui-setting-list">
           {#each BROWSER_TOOLS as tool (tool.id)}
-            <SettingToggle label={tool.label} hint={tool.desc} {disabled}
+            <SettingToggle label={tool.label} {disabled}
               checked={browserTools.includes(tool.id)}
               onChange={(on) => setBrowserTool(tool.id, on)} />
           {/each}
