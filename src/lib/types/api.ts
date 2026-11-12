@@ -237,6 +237,30 @@ export interface SteerNote {
   text: string;
 }
 
+/**
+ * A reply cut where steering messages reached the model: the text and steps
+ * so far (the whole reply up to now, not only since the last cut).
+ */
+export interface SteerCut {
+  texts: string[];
+  text: string;
+  activity: ActivityStep[];
+}
+
+/**
+ * A steered reply is stored as the messages it became (reply, steering
+ * message, reply, ...). Its last message keeps the whole run, so it can go
+ * back to the provider as one native turn while those messages are unchanged.
+ */
+export interface SteeredRun {
+  /** The whole reply text, which the native turn goes with. */
+  text: string;
+  /** The messages the run became, oldest first, ending with the last reply. */
+  parts: Array<{ role: 'user' | 'assistant'; content: string }>;
+  /** Where each steering message reached the model in `text`. */
+  steers: SteerNote[];
+}
+
 export interface HistoryMessage {
   role: MessageRole;
   content: string;
@@ -276,6 +300,8 @@ export interface RespondOptions {
   thinkingBudgetTokens?: number | null;
   /** Called with the full step list whenever a step is added or changes. */
   onActivity?: (steps: ActivityStep[]) => void;
+  /** Steering messages reached the model; the reply continues as a new message. */
+  onSteered?: (cut: SteerCut) => void;
   onAbort?: (abortFn: () => void) => void;
   // Web Search options (Responses API only)
   webSearch?: WebSearchOptions;

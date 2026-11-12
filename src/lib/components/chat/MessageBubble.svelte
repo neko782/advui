@@ -86,8 +86,9 @@ const resolvedGeneratedImages = $derived.by(() => {
   return images.map((image) => resolveGeneratedImage(image as AttachmentLike, props.imageCache)).filter((a): a is AttachmentLike => !!a)
 })
 
-  // A steered reply shows each steering message as a user bubble where it
-  // reached the model; ones still queued follow the text written so far.
+  // Steering messages still queued show as user bubbles after the text
+  // written so far (delivered ones are messages of their own). Older replies
+  // kept delivered ones in their steps; they show where they reached the model.
   const steered = $derived.by(() => {
     if (props.message?.role !== 'assistant') return null
     const raw = typeof props.message.content === 'string' ? props.message.content : ''

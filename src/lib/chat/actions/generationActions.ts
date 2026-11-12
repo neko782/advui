@@ -26,6 +26,7 @@ import type {
   ImageGenerationOptions,
   ActivityStep,
   SteerChannel,
+  SteerCut,
 } from '../../types/index.js';
 
 /**
@@ -391,6 +392,43 @@ export function prepareTypingNode(
   };
 }
 
+function historyMessage({ role, content, images, native, activity }: MessageVariant): HistoryMessage {
+  const msg: HistoryMessage = { role, content };
+  const normalized = normalizeImages(images);
+  if (normalized.length > 0) {
+    msg.images = normalized as ImageData[];
+  }
+  if (role === 'assistant' && native) msg.native = native;
+  // Replies steered before steering messages became messages of their own.
+  const steers = role === 'assistant' ? steerNotes(activity) : [];
+  if (steers.length) msg.steers = steers;
+  return msg;
+}
+
+/**
+ * The chat as it goes to the model. The messages a steered reply became
+ * (reply, steering message, reply, ...) go back as the one native turn the
+ * provider returned, as long as none of them changed; otherwise each goes
+ * as itself.
+ */
+export function buildHistory(messages: MessageVariant[]): HistoryMessage[] {
+  const entries: Array<HistoryMessage | null> = messages.map(historyMessage);
+  messages.forEach((m, j) => {
+    const run = m.role === 'assistant' && m.native ? m.steered : undefined;
+    const parts = Array.isArray(run?.parts) ? run.parts : [];
+    const start = j - parts.length + 1;
+    if (!run || parts.length < 2 || start < 0 || m.native?.text !== run.text) return;
+    const unchanged = parts.every((part, i) => {
+      const source = messages[start + i]!;
+      return entries[start + i] != null && source.role === part.role && source.content === part.content && !source.images?.length;
+    });
+    if (!unchanged) return;
+    for (let i = start; i < j; i++) entries[i] = null;
+    entries[j] = { role: 'assistant', content: run.text, native: m.native, steers: run.steers };
+  });
+  return entries.filter((entry): entry is HistoryMessage => entry != null);
+}
+
 export interface GenerateResponseOptions {
   nodes: ChatNode[];
   rootId: number | null;
@@ -405,6 +443,8 @@ export interface GenerateResponseOptions {
   onAbort?: (abortFn: () => void) => void;
   onTextDelta?: (fullText: string) => void;
   onActivity?: (steps: ActivityStep[]) => void;
+  /** Steering messages reached the model (see toolLoop.ts). */
+  onSteered?: (cut: SteerCut) => void;
   /** Messages the user steers the reply with while it is written. */
   steering?: SteerChannel;
 }
@@ -422,6 +462,7 @@ export async function generateResponse(options: GenerateResponseOptions): Promis
     onAbort,
     onTextDelta,
     onActivity,
+    onSteered,
     steering,
   } = options;
 
@@ -431,20 +472,7 @@ export async function generateResponse(options: GenerateResponseOptions): Promis
     ? -1
     : visible.findIndex(vm => vm.m.id === typingVariantId);
   const historyPath = targetIndex >= 0 ? visible.slice(0, targetIndex) : visible;
-  let history: HistoryMessage[] = historyPath
-    .map(vm => vm.m)
-    .filter(m => !m.typing)
-    .map(({ role, content, images, native, activity }) => {
-      const msg: HistoryMessage = { role, content };
-      const normalized = normalizeImages(images);
-      if (normalized.length > 0) {
-        msg.images = normalized as ImageData[];
-      }
-      if (role === 'assistant' && native) msg.native = native;
-      const steers = role === 'assistant' ? steerNotes(activity) : [];
-      if (steers.length) msg.steers = steers;
-      return msg;
-    });
+  let history: HistoryMessage[] = buildHistory(historyPath.map(vm => vm.m).filter(m => !m.typing));
 
   // Tavern: wrap the chat history with prompt preset injections
   if ((historyPrefix && historyPrefix.length) || (historySuffix && historySuffix.length)) {
@@ -537,6 +565,7 @@ export async function generateResponse(options: GenerateResponseOptions): Promis
     webFetch: !!chatSettings.webFetchEnabled,
     browserTools: activeBrowserTools(chatSettings.browserToolsEnabled, chatSettings.browserTools),
     steering,
+    onSteered,
   };
 
   if (streaming && typingVariantId != null) {

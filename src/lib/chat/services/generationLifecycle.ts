@@ -30,11 +30,14 @@ export interface GenerationSnapshot {
 export interface GenerationRun {
   readonly sequence: number;
   readonly chatId: string;
+  /** The message being written; a steered reply moves on to a new one. */
   readonly typingVariantId: number;
   /** True while this run owns the chat and may write into it. */
   isCurrent(): boolean;
   /** Registers the transport abort. Runs immediately if already stopped. */
   setAbort(fn: (() => void) | null): void;
+  /** Moves a current run on to write into another message. */
+  retarget(typingVariantId: number): void;
 }
 
 export interface GenerationLifecycle {
@@ -55,6 +58,7 @@ export interface GenerationLifecycleOptions {
 }
 
 interface RunRecord extends GenerationRun {
+  typingVariantId: number;
   abort: (() => void) | null;
   aborted: boolean;
   stopped: boolean;
@@ -109,6 +113,11 @@ export function createGenerationLifecycle(options: GenerationLifecycleOptions = 
       setAbort: (fn) => {
         run.abort = typeof fn === 'function' ? fn : null;
         if (run.stopped) runAbort(run);
+      },
+      retarget: (id) => {
+        if (!run.isCurrent() || run.typingVariantId === id) return;
+        run.typingVariantId = id;
+        transition('generating', run);
       },
     };
     transition('generating', run);

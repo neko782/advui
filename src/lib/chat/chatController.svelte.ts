@@ -45,7 +45,7 @@ import { NO_API_KEY_NOTICE_TEXT } from '../constants/index.js';
 import { buildVisible } from '../branching.js';
 import { findNodeByMessageId } from '../utils/treeUtils.js';
 import { isStorageUnavailable } from '../storage.errors.js';
-import type { Node, Message, Chat, ChatSettings, AppSettings, ImageRef, MessageRole, Preset } from '../types/index.js';
+import type { Node, Message, Chat, ChatSettings, AppSettings, ImageRef, MessageRole, Preset, SteerCut, SteerNote, SteeredRun } from '../types/index.js';
 import type { Character } from '../types/tavern.js';
 
 export type ChatLoadStatus = 'loading' | 'ready' | 'error';
@@ -81,6 +81,16 @@ function normalizeEditableText(raw: unknown): string {
 
 function hasTypingVariant(nodes: Node[]): boolean {
   return Array.isArray(nodes) && nodes.some(n => (n?.variants || []).some(v => v?.typing));
+}
+
+/** Where a steered reply was last cut, and the messages it has become. */
+interface SteeredState {
+  /** Length of the reply text at the last cut. */
+  at: number;
+  /** Number of steps at the last cut. */
+  steps: number;
+  parts: SteeredRun['parts'];
+  steers: SteerNote[];
 }
 
 function errorMessage(err: unknown): string {
@@ -822,6 +832,45 @@ export class ChatController {
     return true;
   }
 
+  /**
+   * Steering messages reached the model: the reply so far ends as it is,
+   * they follow as user messages, and the reply goes on in a new message.
+   * A reply cut before it wrote or did anything becomes the first of them.
+   */
+  private steerCut(run: GenerationRun, cut: SteerCut, steered: SteeredState): void {
+    const content = cut.text.slice(steered.at).trim();
+    const activity = settleActivity(cut.activity.slice(steered.steps));
+    const empty = !content && !activity;
+    const current = run.typingVariantId;
+    let typingVariantId: number | null = null;
+    const ok = this.mutate('steer reply', (draft) => {
+      let next: ChatDraft = {
+        ...draft,
+        nodes: updateVariantById(draft.nodes, current, (prev) => (empty
+          ? { ...prev, role: 'user', content: cut.texts[0] ?? '', typing: false, error: undefined, activity: undefined, native: undefined }
+          : { ...prev, content, typing: false, error: undefined, activity })),
+      };
+      for (const text of empty ? cut.texts.slice(1) : cut.texts) next = appendNode(next, 'user', text, []).draft;
+      const parentNodeId = buildVisible(next.nodes, next.rootId).at(-1)?.nodeId ?? null;
+      const prepared = prepareTypingNode(next.nodes, next.rootId, parentNodeId, next.nextId, next.nextNodeId);
+      typingVariantId = prepared.typingVariantId;
+      return { nodes: prepared.nodes, rootId: prepared.rootId, nextId: prepared.nextId, nextNodeId: prepared.nextNodeId };
+    }, { requireVisibleVariantIds: () => (typingVariantId != null ? [typingVariantId] : []) });
+    // If the graph refused the change, the reply goes on in the same message.
+    if (!ok || typingVariantId == null) return;
+
+    if (!empty) steered.parts.push({ role: 'assistant', content });
+    for (const text of cut.texts) {
+      steered.parts.push({ role: 'user', content: text });
+      steered.steers.push({ at: cut.text.length, text });
+    }
+    steered.at = cut.text.length;
+    steered.steps = cut.activity.length;
+    run.retarget(typingVariantId);
+    void this.persistNow();
+    queueMicrotask(() => this.options.scrollToBottom?.());
+  }
+
   /** Puts steering messages that never reached the model back in the composer. */
   private restoreToComposer(texts: string[]): void {
     const current = typeof this.input === 'string' ? this.input : '';
@@ -877,10 +926,13 @@ export class ChatController {
    * a stopped or superseded run are discarded.
    */
   private async runGeneration(run: GenerationRun, connectionId: string | null, logContext: Record<string, unknown>): Promise<void> {
+    // The message being written: run.typingVariantId, which moves on to a
+    // new message each time the reply is steered (see steerCut).
     const typingVariantId = run.typingVariantId;
     const steering = new SteerQueue();
     this.steerQueue = steering;
     let finished = false;
+    const steered: SteeredState = { at: 0, steps: 0, parts: [], steers: [] };
     try {
       const requestNodes = await this.images.prepareRequestNodes(deepClone(this.nodes), this.rootId, typingVariantId);
       if (!run.isCurrent()) return;
@@ -903,26 +955,47 @@ export class ChatController {
         typingVariantId,
         onAbort: (fn) => run.setAbort(fn),
         onTextDelta: (full) => {
-          if (run.isCurrent()) this.updateVariant(typingVariantId, (prev) => ({ ...prev, content: full }));
+          const content = steered.at ? full.slice(steered.at).trimStart() : full;
+          if (run.isCurrent()) this.updateVariant(run.typingVariantId, (prev) => ({ ...prev, content }));
         },
         onActivity: (steps) => {
-          if (run.isCurrent()) this.updateVariant(typingVariantId, (prev) => ({ ...prev, activity: steps }));
+          const activity = steered.steps ? steps.slice(steered.steps) : steps;
+          if (run.isCurrent()) this.updateVariant(run.typingVariantId, (prev) => ({ ...prev, activity }));
+        },
+        onSteered: (cut) => {
+          if (run.isCurrent()) this.steerCut(run, cut, steered);
         },
         steering,
       });
-      logGenerationEvent(this.debug, 'API request completed', { typingVariantId, ...logContext });
+      logGenerationEvent(this.debug, 'API request completed', { typingVariantId: run.typingVariantId, ...logContext });
 
       if (run.isCurrent()) {
         const storedReply = await this.images.storeGeneratedImagesInMedia(reply);
         // Re-check after the await: Stop may have been pressed while storing images.
         if (run.isCurrent()) {
-          this.nodes = handleGenerationSuccess(this.nodes, typingVariantId, storedReply);
+          if (!steered.parts.length) {
+            this.nodes = handleGenerationSuccess(this.nodes, run.typingVariantId, storedReply);
+          } else {
+            // A steered reply: this message holds what came after the last
+            // steering message, and the whole run for replay (see buildHistory).
+            const text = storedReply.text.slice(steered.at).trim();
+            const activity = Array.isArray(storedReply.activity) ? storedReply.activity.slice(steered.steps) : undefined;
+            this.nodes = handleGenerationSuccess(this.nodes, run.typingVariantId, { ...storedReply, text, activity });
+            if (storedReply.native) {
+              const steeredRun: SteeredRun = {
+                text: storedReply.text,
+                parts: [...steered.parts, { role: 'assistant', content: text }],
+                steers: steered.steers,
+              };
+              this.updateVariant(run.typingVariantId, (prev) => ({ ...prev, steered: steeredRun }));
+            }
+          }
           finished = true;
         }
       }
     } catch (err) {
-      logGenerationEvent(this.debug, 'Generation error', { error: errorMessage(err), typingVariantId, ...logContext });
-      if (run.isCurrent()) this.nodes = handleGenerationError(this.nodes, typingVariantId, err);
+      logGenerationEvent(this.debug, 'Generation error', { error: errorMessage(err), typingVariantId: run.typingVariantId, ...logContext });
+      if (run.isCurrent()) this.nodes = handleGenerationError(this.nodes, run.typingVariantId, err);
     } finally {
       // Steering messages the reply did not take: after a finished reply they
       // are the next turn; after a failure they go back to the composer.

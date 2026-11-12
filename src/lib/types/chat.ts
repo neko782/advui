@@ -16,6 +16,7 @@ import type {
   BrowserToolName,
   HistoryMessage,
   NativeTurn,
+  SteeredRun,
 } from './api.js';
 import type { Connection, Settings } from './settings.js';
 
@@ -37,6 +38,8 @@ export interface MessageVariant {
   activity?: ActivityStep[];
   /** The reply as the provider returned it, sent back on later turns. */
   native?: NativeTurn;
+  /** The last reply of a steered run: the run as one native turn. */
+  steered?: SteeredRun;
   locked?: boolean;
 }
 

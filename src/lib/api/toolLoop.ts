@@ -4,6 +4,8 @@
 // back in a new request; this repeats until the model answers without one.
 // Messages the user steers with join the next tool results, or interrupt
 // the request that is running and continue the reply (see steering.ts).
+// Each time they reach the model, onSteered reports the cut: the app shows
+// them as user messages and the reply goes on in a new message.
 // Each provider supplies one round (a request and what it adds to the
 // conversation); the loop joins the rounds into a single reply.
 // ============================================================================
@@ -87,7 +89,7 @@ export async function runToolLoop<T>(ctx: ProviderRequestContext, provider: Tool
   const steering = ctx.steering;
   if (!allowed.size && !steering) return (await provider.send(ctx, [])).reply;
 
-  const { onTextDelta, onActivity } = ctx.callbacks;
+  const { onTextDelta, onActivity, onSteered } = ctx.callbacks;
   const signal = new AbortController();
   ctx.provideAbort(() => signal.abort());
 
@@ -102,23 +104,28 @@ export async function runToolLoop<T>(ctx: ProviderRequestContext, provider: Tool
     try { onActivity?.([...steps, ...current]); } catch { /* ignore */ }
   };
 
-  // Steering: a queued message shows at once; it reaches the model at the
-  // next tool result, or interrupts the request that is running.
+  // Steering: a queued message shows at once (a running step); it reaches
+  // the model at the next tool result, or interrupts the request that is
+  // running. Once delivered it is a message of its own, not a step.
   const steerSteps = new Map<string, ActivityStep>();
   const queueStep = (steer: QueuedSteer) => {
     const step: ActivityStep = { id: `steer-${steer.id}`, kind: 'steer', status: 'running', text: steer.text };
     steerSteps.set(steer.id, step);
     steps.push(step);
   };
-  /** Marks queued messages as delivered at the current end of the reply text. */
+  /** Delivers queued messages, cutting the reply at the current end of its text. */
   const deliver = (queued: QueuedSteer[]): string[] => {
+    if (!queued.length) return [];
     for (const steer of queued) {
-      let step = steerSteps.get(steer.id);
-      if (!step) { queueStep(steer); step = steerSteps.get(steer.id)!; }
-      Object.assign(step, { status: 'done', at: text.length });
+      const step = steerSteps.get(steer.id);
+      steerSteps.delete(steer.id);
+      const index = step ? steps.indexOf(step) : -1;
+      if (index >= 0) steps.splice(index, 1);
     }
-    if (queued.length) report();
-    return queued.map(steer => steer.text);
+    const texts = queued.map(steer => steer.text);
+    report();
+    try { onSteered?.({ texts, text, activity: [...steps] }); } catch { /* ignore */ }
+    return texts;
   };
   let abortRound: (() => void) | null = null;
   let inFlight = false;

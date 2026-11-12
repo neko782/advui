@@ -6,6 +6,7 @@ import { geminiAdapter, buildGeminiRequest } from './providers/gemini'
 import { SteerQueue, steerNotes, steeredParts } from './steering'
 import { settleActivity, activityTitle } from './activity'
 import { buildProviderInput, plainTurns, type ProviderRequestContext } from './core'
+import type { SteerCut } from '../types/index.js'
 import type { ActivityStep, BrowserToolName, HistoryMessage } from '../types/index.js'
 
 const base = (overrides: Partial<ProviderRequestContext> = {}): ProviderRequestContext => ({
@@ -55,14 +56,23 @@ describe('steering at a tool boundary', () => {
       .mockImplementationOnce(async () => { steering.push('Use 24-hour time'); return json(toolUse) })
       .mockResolvedValueOnce(json({ content: [{ type: 'text', text: 'It is 12:00.' }], stop_reason: 'end_turn' }))
     vi.stubGlobal('fetch', fetcher)
-    const reply = await anthropicAdapter.respond(base({ model: 'claude-opus-5-5', tools: { browserTools: ['clock'] as BrowserToolName[] }, steering }), false)
+    const cuts: SteerCut[] = []
+    const reply = await anthropicAdapter.respond(base({
+      model: 'claude-opus-5-5',
+      tools: { browserTools: ['clock'] as BrowserToolName[] },
+      steering,
+      callbacks: { onSteered: (cut) => cuts.push(cut) },
+    }), false)
 
     const answer = bodyOf(fetcher, 1).messages.at(-1)
     expect(answer.role).toBe('user')
     expect(answer.content.map((block: { type: string }) => block.type)).toEqual(['tool_result', 'text'])
     expect(answer.content[1]).toEqual({ type: 'text', text: 'Use 24-hour time' })
     expect(reply.text).toBe('Let me check.\n\nIt is 12:00.')
-    expect(steerSteps(reply.activity)).toEqual([expect.objectContaining({ status: 'done', text: 'Use 24-hour time', at: 'Let me check.'.length })])
+    // The reply is cut where the message reached the model; it is no longer a step.
+    expect(cuts).toEqual([expect.objectContaining({ texts: ['Use 24-hour time'], text: 'Let me check.' })])
+    expect(cuts[0]!.activity.map(step => step.kind)).toEqual(['time'])
+    expect(steerSteps(reply.activity)).toEqual([])
     // The steered turn is part of the stored reply.
     expect((reply.native?.data as { messages: unknown[] }).messages).toHaveLength(3)
   })
@@ -124,9 +134,11 @@ describe('steering mid-request', () => {
       ))
     vi.stubGlobal('fetch', fetcher)
     const shown: string[] = []
+    const cuts: SteerCut[] = []
     const reply = await responsesAdapter.respond(base({
       steering,
       callbacks: {
+        onSteered: (cut) => cuts.push(cut),
         onTextDelta: (full) => {
           shown.push(full)
           if (full === 'Cats are') steering.push('Talk about dogs instead')
@@ -140,7 +152,7 @@ describe('steering mid-request', () => {
     ])
     expect(reply.text).toBe('Cats are\n\nDogs, then.')
     expect(shown.at(-1)).toBe('Cats are\n\nDogs, then.')
-    expect(steerSteps(reply.activity)).toEqual([expect.objectContaining({ status: 'done', at: 'Cats are'.length })])
+    expect(cuts).toEqual([{ texts: ['Talk about dogs instead'], text: 'Cats are', activity: [] }])
     expect((reply.native?.data as Array<{ type: string }>).map(item => item.type)).toEqual(['message', 'message', 'message'])
   })
 
@@ -160,12 +172,14 @@ describe('steering mid-request', () => {
         { type: 'message_stop' },
       ))
     vi.stubGlobal('fetch', fetcher)
+    let sent = false
     const reply = await anthropicAdapter.respond(base({
       model: 'claude-opus-5-5',
       steering,
       callbacks: {
         onActivity: (steps) => {
-          if (steps.some(step => step.kind === 'thinking' && step.text) && !steering.pending().length && !steerSteps(steps).length) {
+          if (!sent && steps.some(step => step.kind === 'thinking' && step.text)) {
+            sent = true
             steering.push('Dogs instead')
           }
         },

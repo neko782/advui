@@ -15,6 +15,11 @@
 //   message follows as a user turn, and the reply continues from there.
 // - A message that arrives after the reply is finished starts a new turn.
 //
+// Once delivered, a message is an ordinary user message in the chat: the
+// reply so far ends there and goes on in a new message (the controller's
+// steerCut). The last of those messages keeps the whole run, so it replays
+// as one native turn while none of them changed (buildHistory).
+//
 // The tool loop (toolLoop.ts) does the delivery; this is only the queue.
 // ============================================================================
 
@@ -53,7 +58,11 @@ export class SteerQueue implements SteerChannel {
   }
 }
 
-/** The steering notes of a reply's steps: the messages that reached the model. */
+/**
+ * The steering notes of a reply's steps: the messages that reached the
+ * model. Only replies steered before steering messages became messages of
+ * their own have them.
+ */
 export function steerNotes(steps: Array<{ kind?: string; status?: string; text?: string; at?: number }> | undefined) {
   if (!Array.isArray(steps)) return [];
   return steps
@@ -67,8 +76,9 @@ export type ReplyPart =
 
 /**
  * A reply's text split at each steering message, for showing those messages
- * as user bubbles where they reached the model. Messages still queued come
- * last. Returns null when the reply was not steered.
+ * as user bubbles: messages still queued (last), and in replies steered
+ * before steering messages became messages of their own, the ones that
+ * reached the model. Returns null when there are none.
  */
 export function steeredParts(
   content: string,

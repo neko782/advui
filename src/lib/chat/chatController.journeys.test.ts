@@ -272,6 +272,39 @@ describe('journey: steering a reply while it is written', () => {
     ])
   })
 
+  it('turns a delivered message into a user message and goes on in a new reply', async () => {
+    const chat = await track(openChat(await newChat()))
+    const reply = queueReply()
+    chat.setInput('Tell me about cats')
+    const sending = chat.send()
+    await reply.started
+    const options = respondMock.mock.calls[0]![0]
+    reply.delta('Cats are')
+    options.onSteered!({ texts: ['also dogs'], text: 'Cats are', activity: [] })
+    expect(transcript(chat)).toEqual(['user: Tell me about cats', 'assistant: Cats are', 'user: also dogs', 'assistant: typing'])
+
+    reply.delta('Cats are\n\nDogs too.')
+    expect(transcript(chat).at(-1)).toBe('assistant: Dogs too.')
+    reply.finish('Cats are\n\nDogs too.')
+    await sending
+    expect(transcript(chat)).toEqual(['user: Tell me about cats', 'assistant: Cats are', 'user: also dogs', 'assistant: Dogs too.'])
+    await eventually(async () => {
+      expect(storedTranscript(await getChat(chat.chatId))).toEqual(transcript(chat))
+    })
+  })
+
+  it('makes a message delivered before the reply wrote anything the reply\'s place', async () => {
+    const chat = await track(openChat(await newChat()))
+    const reply = queueReply()
+    chat.setInput('q')
+    const sending = chat.send()
+    await reply.started
+    respondMock.mock.calls[0]![0].onSteered!({ texts: ['actually, dogs'], text: '', activity: [] })
+    reply.finish('Dogs.')
+    await sending
+    expect(transcript(chat)).toEqual(['user: q', 'user: actually, dogs', 'assistant: Dogs.'])
+  })
+
   it('puts a message that never reached the model back in the composer on Stop', async () => {
     const chat = await track(openChat(await newChat()))
     const reply = queueReply()

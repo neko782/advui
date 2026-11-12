@@ -38,6 +38,7 @@ import type {
   ActivityStep,
   NativeTurn,
   SteerChannel,
+  SteerCut,
   SteerNote,
 } from '../types/index.js';
 
@@ -208,6 +209,8 @@ export interface ProviderCallbacks {
   onTextDelta?: (fullText: string, delta?: string, event?: unknown) => void;
   /** Receives the full step list whenever thinking or a tool call changes. */
   onActivity?: (steps: ActivityStep[]) => void;
+  /** Steering messages reached the model (see toolLoop.ts). */
+  onSteered?: (cut: SteerCut) => void;
   onWebSearchResult?: (result: WebSearchResult) => void;
   onImageGenerated?: (images: GeneratedImage[]) => void;
 }
