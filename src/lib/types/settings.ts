@@ -9,6 +9,7 @@ import type {
   TextVerbosity,
   ReasoningSummary,
   McpServerConfig,
+  BrowserToolName,
 } from './api.js';
 import type { PromptPreset, Persona } from './tavern.js';
 
@@ -73,6 +74,12 @@ export interface PresetFields {
   // MCP settings (Responses API only)
   mcpEnabled?: boolean;
   mcpServers?: McpServerConfig[];
+  // Web fetch (Anthropic web fetch, Gemini URL context)
+  webFetchEnabled?: boolean;
+  // Browser tools (run in the app, offered to any API)
+  browserToolsEnabled?: boolean;
+  /** Which browser tools are offered; missing means the default set. */
+  browserTools?: BrowserToolName[];
   /** When true, the preset is only offered in tavern mode (hidden from chat mode pickers). */
   tavernOnly?: boolean;
 }
@@ -117,10 +124,10 @@ export interface EditorActionButton {
 }
 
 // ============================================================================
-// Built-in tools (Responses API)
+// Built-in tools
 // ============================================================================
 
-export type ToolId = 'webSearch' | 'codeInterpreter' | 'shell' | 'imageGeneration' | 'mcp';
+export type ToolId = 'webSearch' | 'webFetch' | 'codeInterpreter' | 'shell' | 'imageGeneration' | 'mcp' | 'browser';
 
 /** Tools switched off app-wide: hidden from every picker and never sent. */
 export type DisabledTools = Partial<Record<ToolId, boolean>>;

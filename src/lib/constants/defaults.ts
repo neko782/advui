@@ -4,6 +4,7 @@ import type {
   MessageActionButton,
   ToolId,
 } from '../types/settings.js';
+import type { BrowserToolName } from '../types/api.js';
 
 export const DEFAULT_EDITOR_ACTIONS: EditorActionButton[] = [
   { id: 'editSend', label: 'Send (branch + reply)', enabled: true },
@@ -21,4 +22,13 @@ export const DEFAULT_MESSAGE_ACTIONS: MessageActionButton[] = [
   { id: 'moveUp', label: 'Move up', enabled: true, roles: { user: true, assistant: true, system: true } },
 ];
 
-export const TOOL_IDS: readonly ToolId[] = ['webSearch', 'codeInterpreter', 'shell', 'imageGeneration', 'mcp'];
+export const TOOL_IDS: readonly ToolId[] = ['webSearch', 'webFetch', 'codeInterpreter', 'shell', 'imageGeneration', 'mcp', 'browser'];
+
+/** Browser tools, in display order. */
+export const BROWSER_TOOL_NAMES: readonly BrowserToolName[] = ['clock', 'javascript', 'chatSearch'];
+
+/**
+ * Browser tools offered when a chat or preset has not picked any. Chat
+ * search sends other conversations to the provider, so it is opt-in.
+ */
+export const DEFAULT_BROWSER_TOOLS: readonly BrowserToolName[] = ['clock', 'javascript'];

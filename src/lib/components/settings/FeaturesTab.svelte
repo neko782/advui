@@ -161,7 +161,7 @@
 
             <section class="ui-group">
               <div class="ui-group-title">Tools</div>
-              <p class="ui-hint">A tool that is off here is hidden from every chat and preset and never sent, whatever they have saved. Tools only apply to Responses API connections.</p>
+              <p class="ui-hint">A tool that is off here is hidden from every chat and preset and never sent, whatever they have saved. Each chat only offers the tools its connection's API supports; browser tools work with every API.</p>
               <div class="ui-setting-list">
                 {#each TOOLS as tool (tool.id)}
                   <SettingToggle

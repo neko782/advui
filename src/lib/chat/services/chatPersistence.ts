@@ -326,6 +326,10 @@ export function computePersistSig(nodes: ChatNode[], chatSettings: ChatSettings,
         // MCP settings
         mcpEnabled: !!chatSettings?.mcpEnabled,
         mcpServers: JSON.stringify(Array.isArray(chatSettings?.mcpServers) ? chatSettings.mcpServers : []),
+        // Web fetch and browser tools
+        webFetchEnabled: !!chatSettings?.webFetchEnabled,
+        browserToolsEnabled: !!chatSettings?.browserToolsEnabled,
+        browserTools: Array.isArray(chatSettings?.browserTools) ? chatSettings.browserTools.join(',') : '',
       },
       rootId,
     });

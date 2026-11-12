@@ -12,6 +12,7 @@
   import { ChatController } from './chat/chatController.svelte'
   import { toIntOrNull, toClampedNumber } from './utils/numbers'
   import { normalizeReasoning, normalizeVerbosity, normalizeReasoningSummary } from './utils/validation'
+  import { toolsOffFor } from './utils/apiModes'
   import type { Character } from './types/tavern'
   import type { Chat as StoredChat, MessageRole } from './types'
 
@@ -147,19 +148,11 @@
   function changeConnection(val: unknown) {
     const newConnectionId = (typeof val === 'string' && val.trim()) ? val.trim() : null
     const newConnection = connectionOptions.find(c => c.id === newConnectionId)
-    // Clear responses-API-only features when switching to non-responses API connection
-    if (newConnection?.apiMode !== 'responses') {
-      chat.updateChatSettings({
-        connectionId: newConnectionId,
-        webSearchEnabled: false,
-        codeInterpreterEnabled: false,
-        shellEnabled: false,
-        imageGenerationEnabled: false,
-        mcpEnabled: false,
-      })
-    } else {
-      chat.updateChatSettings({ connectionId: newConnectionId })
-    }
+    // Tools the new connection's API cannot use are turned off.
+    chat.updateChatSettings({
+      connectionId: newConnectionId,
+      ...toolsOffFor(newConnection?.apiMode, newConnection?.openRouterEnabled === true),
+    })
   }
 </script>
 
@@ -247,6 +240,9 @@
     chatImageGenerationModel={chatSettings.imageGenerationModel}
     chatMcpEnabled={chatSettings.mcpEnabled}
     chatMcpServers={chatSettings.mcpServers}
+    chatWebFetchEnabled={chatSettings.webFetchEnabled}
+    chatBrowserToolsEnabled={chatSettings.browserToolsEnabled}
+    chatBrowserTools={chatSettings.browserTools}
     modelIds={modelIds}
     connections={connectionOptions}
     chatConnectionId={chatSettings.connectionId}
@@ -279,6 +275,7 @@
     onChangeImageGenerationModel={(val) => chat.updateChatSettings({ imageGenerationModel: val || undefined })}
     onChangeMcpEnabled={(val) => chat.updateChatSettings({ mcpEnabled: !!val })}
     onChangeMcpServers={(servers) => chat.updateChatSettings({ mcpServers: servers })}
+    onPatchChatTools={(patch) => chat.updateChatSettings(patch)}
     onSelectPreset={(preset) => chat.selectPreset(preset)}
     disableSendRolePopup={settings?.disableSendRolePopup}
     showAddWithoutSend={settings?.showAddWithoutSend}

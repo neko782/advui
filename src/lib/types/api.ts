@@ -138,6 +138,13 @@ export interface GeneratedImage {
 }
 
 // ============================================================================
+// Browser tools
+// Function tools the app runs itself, in the browser, for any API.
+// ============================================================================
+
+export type BrowserToolName = 'clock' | 'javascript' | 'chatSearch';
+
+// ============================================================================
 // MCP Types
 // ============================================================================
 
@@ -165,6 +172,8 @@ export type ActivityKind =
   | 'image'     // image generation
   | 'mcp'       // MCP tool call
   | 'mcp_list'  // MCP tool discovery
+  | 'time'      // browser tool: reading the clock
+  | 'chats'     // browser tool: searching the user's other chats
   | 'tool';     // anything else
 
 export type ActivityStatus = 'running' | 'done' | 'failed';
@@ -265,4 +274,8 @@ export interface RespondOptions {
   onImageGenerated?: (images: GeneratedImage[]) => void;
   // MCP server tools
   mcpServers?: McpServerConfig[];
+  /** Read pages at URLs from the conversation (Anthropic web fetch, Gemini URL context). */
+  webFetch?: boolean;
+  /** Browser tools offered to the model; empty or missing offers none. */
+  browserTools?: BrowserToolName[];
 }

@@ -34,6 +34,7 @@ import type {
   ImageGenerationOptions,
   GeneratedImage,
   McpServerConfig,
+  BrowserToolName,
   ActivityStep,
   NativeTurn,
 } from '../types/index.js';
@@ -192,6 +193,10 @@ export interface ProviderTools {
   shell?: ShellOptions;
   imageGeneration?: ImageGenerationOptions;
   mcpServers?: McpServerConfig[];
+  /** Read pages at URLs from the conversation (Anthropic web fetch, Gemini URL context). */
+  webFetch?: boolean;
+  /** Function tools the app runs itself (see browserTools.ts). */
+  browserTools?: BrowserToolName[];
 }
 
 export interface ProviderCallbacks {
@@ -212,6 +217,8 @@ export interface ProviderRequestContext {
   apiBaseUrl?: string;
   input: ProviderInput;
   params: ProviderParams;
+  /** The connection is OpenRouter (which adds web search to Chat Completions). */
+  openRouter?: boolean;
   tools: ProviderTools;
   callbacks: ProviderCallbacks;
   /** Registers an abort function with the caller. */

@@ -1,6 +1,6 @@
 <script lang="ts" module>
-  import type { PresetFields, DisabledTools, ToolId } from '../types'
-  import { IconTravelExplore, IconCodeBlocks, IconTerminal, IconImagesmode, IconExtension } from '../icons'
+  import type { PresetFields, DisabledTools, ToolId, BrowserToolName } from '../types'
+  import { IconTravelExplore, IconLanguage, IconCodeBlocks, IconTerminal, IconImagesmode, IconExtension, IconWebAsset } from '../icons'
 
   /** The tool-related slice shared by presets and per-chat settings. */
   export type ToolsValue = Partial<Pick<PresetFields,
@@ -9,16 +9,27 @@
     | 'shellEnabled' | 'shellNetworkEnabled' | 'shellAllowedDomains'
     | 'imageGenerationEnabled' | 'imageGenerationModel'
     | 'mcpEnabled' | 'mcpServers'
+    | 'webFetchEnabled'
+    | 'browserToolsEnabled' | 'browserTools'
   >>
 
   /** Built-in tools, in display order. */
   export const TOOLS = [
     { id: 'webSearch', key: 'webSearchEnabled', label: 'Web search', short: 'Search', desc: 'Search the web for up-to-date information', icon: IconTravelExplore, options: false },
+    { id: 'webFetch', key: 'webFetchEnabled', label: 'Web fetch', short: 'Fetch', desc: 'Read the pages at links in the conversation', icon: IconLanguage, options: false },
     { id: 'codeInterpreter', key: 'codeInterpreterEnabled', label: 'Code interpreter', short: 'Code', desc: 'Run Python code in a sandboxed environment', icon: IconCodeBlocks, options: true },
     { id: 'shell', key: 'shellEnabled', label: 'Shell', short: 'Shell', desc: 'Execute shell commands on the server', icon: IconTerminal, options: true },
     { id: 'imageGeneration', key: 'imageGenerationEnabled', label: 'Image generation', short: 'Images', desc: 'Generate images from text descriptions', icon: IconImagesmode, options: true },
     { id: 'mcp', key: 'mcpEnabled', label: 'MCP', short: 'MCP', desc: 'Remote tool servers via Model Context Protocol', icon: IconExtension, options: true },
+    { id: 'browser', key: 'browserToolsEnabled', label: 'Browser tools', short: 'Browser', desc: 'Tools the app runs in your browser: the clock, a JavaScript sandbox and chat search', icon: IconWebAsset, options: true },
   ] as const
+
+  /** Browser tools, in display order. */
+  export const BROWSER_TOOLS: readonly { id: BrowserToolName; label: string; desc: string }[] = [
+    { id: 'clock', label: 'Clock', desc: 'Your local date, time and time zone.' },
+    { id: 'javascript', label: 'JavaScript', desc: 'Runs code in a sandbox with no network or storage access.' },
+    { id: 'chatSearch', label: 'Chat search', desc: 'Searches your saved chats. Matching excerpts are sent to the model.' },
+  ]
 </script>
 
 <script lang="ts">
@@ -27,7 +38,9 @@
   // editor and the new-preset defaults so tools look and behave the same
   // everywhere.
   import FloatingPopover from './FloatingPopover.svelte'
+  import SettingToggle from './SettingToggle.svelte'
   import { IconExpandMore, IconClose } from '../icons'
+  import { activeBrowserTools } from '../utils/browserTools'
 
   interface Props {
     value: ToolsValue
@@ -122,6 +135,13 @@
   function updateMcpServer(index: number, change: Partial<McpServer>) {
     patch({ mcpServers: mcpServers().map((server, i) => (i === index ? { ...server, ...change } : server)) })
   }
+
+  const browserTools = $derived(activeBrowserTools(true, value.browserTools))
+
+  function setBrowserTool(id: BrowserToolName, on: boolean) {
+    const next = BROWSER_TOOLS.map(tool => tool.id).filter(tool => (tool === id ? on : browserTools.includes(tool)))
+    patch({ browserTools: next })
+  }
 </script>
 
 <div class="tools" class:compact bind:this={root}>
@@ -203,6 +223,18 @@
         {/each}
         <button type="button" class="ui-btn ui-btn-outline ui-btn-sm add-server" {disabled}
           onclick={() => patch({ mcpServers: [...mcpServers(), { label: '', url: '' }] })}>Add server</button>
+      {:else if shownTool.id === 'browser'}
+        <div class="option-label">Browser tools</div>
+        <div class="ui-setting-list">
+          {#each BROWSER_TOOLS as tool (tool.id)}
+            <SettingToggle label={tool.label} hint={tool.desc} {disabled}
+              checked={browserTools.includes(tool.id)}
+              onChange={(on) => setBrowserTool(tool.id, on)} />
+          {/each}
+        </div>
+        {#if !browserTools.length}
+          <div class="option-hint">No tools picked — the model is offered none.</div>
+        {/if}
       {/if}
     </div>
   {/if}

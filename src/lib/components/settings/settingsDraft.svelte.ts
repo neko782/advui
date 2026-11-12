@@ -10,6 +10,8 @@ import { normalizeReasoning, normalizeVerbosity, normalizeReasoningSummary } fro
 import { DEFAULT_MESSAGE_ACTIONS, DEFAULT_EDITOR_ACTIONS } from '../../constants/defaults.js';
 import { DEFAULT_API_BASE_URL } from '../../constants/index.js';
 import { normalizeMcpServerList } from '../../utils/mcp.js';
+import { normalizeBrowserTools } from '../../utils/browserTools.js';
+import { toolsOffFor } from '../../utils/apiModes.js';
 import type {
   AppSettings,
   Preset,
@@ -103,12 +105,11 @@ export class SettingsDraft {
     return Array.isArray(entry?.ids) ? entry.ids : [];
   }
 
-  /** Whether the active preset's connection supports Responses API features. */
-  get activePresetSupportsResponsesApiFeatures(): boolean {
+  /** The active preset's connection, when it has one. */
+  get activePresetConnection(): Connection | undefined {
     const connectionId = this.activePreset?.connectionId;
-    if (!connectionId) return false;
-    const connection = this.connections.find(c => c.id === connectionId);
-    return connection?.apiMode === 'responses';
+    if (!connectionId) return undefined;
+    return this.connections.find(c => c.id === connectionId);
   }
 
   get messageActions(): MessageActionButton[] {
@@ -270,16 +271,14 @@ export class SettingsDraft {
       imageGenerationModel: base?.imageGenerationModel,
       mcpEnabled: !!base?.mcpEnabled,
       mcpServers: normalizeMcpServerList(base?.mcpServers),
+      webFetchEnabled: !!base?.webFetchEnabled,
+      browserToolsEnabled: !!base?.browserToolsEnabled,
+      browserTools: normalizeBrowserTools(base?.browserTools),
       systemPrompt: typeof base?.systemPrompt === 'string' ? base.systemPrompt : DEFAULT_SYSTEM_PROMPT,
     };
+    // Tools the preset's connection cannot use start off.
     const connection = this.connections.find(c => c.id === preset.connectionId);
-    if (connection?.apiMode !== 'responses') {
-      preset.webSearchEnabled = false;
-      preset.codeInterpreterEnabled = false;
-      preset.shellEnabled = false;
-      preset.imageGenerationEnabled = false;
-      preset.mcpEnabled = false;
-    }
+    Object.assign(preset, toolsOffFor(connection?.apiMode, connection?.openRouterEnabled === true));
     this.local.presets = [...list, preset];
     this.activePresetId = preset.id!;
     this.local.selectedPresetId = preset.id!;
@@ -293,17 +292,10 @@ export class SettingsDraft {
     const next = [...list];
     const updatedPatch: Partial<Preset> = { ...patch };
 
-    // If connectionId is being changed, check if we need to clear responses-API-only features
+    // Moving to another connection turns off the tools it cannot use.
     if ('connectionId' in patch) {
       const newConnection = this.connections.find(c => c.id === patch.connectionId);
-      if (newConnection?.apiMode !== 'responses') {
-        // Clear responses API features when switching to non-responses API connection
-        updatedPatch.webSearchEnabled = false;
-        updatedPatch.codeInterpreterEnabled = false;
-        updatedPatch.shellEnabled = false;
-        updatedPatch.imageGenerationEnabled = false;
-        updatedPatch.mcpEnabled = false;
-      }
+      Object.assign(updatedPatch, toolsOffFor(newConnection?.apiMode, newConnection?.openRouterEnabled === true));
     }
 
     next[idx] = { ...next[idx], ...updatedPatch } as Preset;
@@ -379,24 +371,11 @@ export class SettingsDraft {
     const updated = { ...current, ...patch };
     next[idx] = updated;
     this.local.connections = next;
-    // If apiMode is being changed away from 'responses', clear responses-API-only features
-    // on all presets that use this connection
-    if ('apiMode' in patch && patch.apiMode !== 'responses') {
-      if (Array.isArray(this.local?.presets)) {
-        this.local.presets = this.local.presets.map(p => {
-          if (p?.connectionId === current.id) {
-            return {
-              ...p,
-              webSearchEnabled: false,
-              codeInterpreterEnabled: false,
-              shellEnabled: false,
-              imageGenerationEnabled: false,
-              mcpEnabled: false,
-            };
-          }
-          return p;
-        });
-      }
+    // A connection that changes API turns off, in the presets using it, the
+    // tools the new API cannot use.
+    if (('apiMode' in patch || 'openRouterEnabled' in patch) && Array.isArray(this.local?.presets)) {
+      const off = toolsOffFor(updated.apiMode, updated.openRouterEnabled === true);
+      this.local.presets = this.local.presets.map(p => (p?.connectionId === current.id ? { ...p, ...off } : p));
     }
     this.persist();
   }

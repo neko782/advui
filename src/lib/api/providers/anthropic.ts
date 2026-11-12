@@ -9,6 +9,8 @@ import { toIntOrNull, toClampedNumber } from '../../utils/numbers.js';
 import { parseMcpAllowedTools } from '../../utils/mcp.js';
 import { isPdfMimeType } from '../../attachments/mime.js';
 import { ActivityLog, prettyJson } from '../activity.js';
+import { browserToolNames, browserToolSpecs } from '../browserTools.js';
+import { runToolLoop, type BrowserToolCall, type ToolRound } from '../toolLoop.js';
 import {
   createAbort,
   createSseJsonLineProcessor,
@@ -27,6 +29,7 @@ export const DEFAULT_ANTHROPIC_BASE_URL = 'https://api.anthropic.com/v1';
 const ANTHROPIC_VERSION = '2023-06-01';
 const MCP_BETA = 'mcp-client-2025-11-20';
 const LEGACY_CODE_EXECUTION_BETA = 'code-execution-2025-08-25';
+const LEGACY_WEB_FETCH_BETA = 'web-fetch-2025-09-10';
 /** Lets a request ask for invalidated thinking blocks to be dropped instead of refused. */
 const THINKING_BINDING_BETA = 'thinking-binding-controls-2026-08-01';
 const DEFAULT_MAX_TOKENS = 32000;
@@ -121,10 +124,12 @@ function toContentBlocks(parts: ContentPart[]): Json[] {
 /** What the request offers, which decides which stored tool blocks can go back. */
 export interface ReplayScope {
   endpoint: string;
-  /** Whether web search or code execution is declared. */
+  /** Whether web search, web fetch or code execution is declared. */
   serverTools: boolean;
   /** Names of the MCP servers declared. */
   mcpServers: ReadonlySet<string>;
+  /** Names of the browser tools declared. */
+  clientTools?: ReadonlySet<string>;
 }
 
 const TOOL_USE_TYPES = new Set(['server_tool_use', 'mcp_tool_use']);
@@ -144,12 +149,46 @@ export function replayBlocks(data: unknown, scope: Omit<ReplayScope, 'endpoint'>
     if (type === 'thinking' && !str(block.signature)) return null;
     if (type === 'redacted_thinking' && !str(block.data)) return null;
     if (type === 'mcp_tool_use' && !scope.mcpServers.has(str(block.server_name))) return null;
+    if (type === 'tool_use' && !scope.clientTools?.has(str(block.name))) return null;
     if ((type === 'server_tool_use' || (type.endsWith('_tool_result') && type !== 'mcp_tool_result')) && !scope.serverTools) return null;
   }
   // A tool call has to be followed by its result.
   const answered = new Set(blocks.filter(b => str(b.type).endsWith('_tool_result')).map(b => str(b.tool_use_id)));
   if (blocks.some(b => TOOL_USE_TYPES.has(str(b.type)) && !answered.has(str(b.id)))) return null;
   return blocks;
+}
+
+/**
+ * A stored reply as the messages it goes back as. A reply that called
+ * browser tools is several messages (each call answered by a user turn of
+ * results); it only goes back whole, ending with the assistant.
+ */
+export function replayMessages(data: unknown, scope: Omit<ReplayScope, 'endpoint'>): Json[] | null {
+  if (Array.isArray(data)) {
+    const blocks = replayBlocks(data, scope);
+    return blocks ? [{ role: 'assistant', content: blocks }] : null;
+  }
+  const messages = data && typeof data === 'object' ? (data as Json).messages : undefined;
+  if (!Array.isArray(messages) || !messages.length) return null;
+  const out: Json[] = [];
+  for (const [index, message] of (messages as Json[]).entries()) {
+    if (message?.role === 'assistant') {
+      const blocks = replayBlocks(message.content, scope);
+      if (!blocks) return null;
+      const calls = blocks.filter(block => block.type === 'tool_use').map(block => str(block.id));
+      if (calls.length) {
+        const next = (messages as Json[])[index + 1];
+        const results = Array.isArray(next?.content) ? (next.content as Json[]).filter(block => block?.type === 'tool_result') : [];
+        if (next?.role !== 'user' || !calls.every(id => results.some(block => str(block.tool_use_id) === id))) return null;
+      }
+      out.push({ role: 'assistant', content: blocks });
+    } else if (message?.role === 'user' && Array.isArray(message.content)) {
+      out.push({ role: 'user', content: message.content });
+    } else {
+      return null;
+    }
+  }
+  return out[out.length - 1]?.role === 'assistant' ? out : null;
 }
 
 export function convertToAnthropicFormat(
@@ -172,11 +211,14 @@ export function convertToAnthropicFormat(
     }
     const role = msg.role === 'assistant' ? 'assistant' : 'user';
     const native = role === 'assistant' && scope
-      ? replayBlocks(nativeData(msg, 'anthropic', scope.endpoint), scope)
+      ? replayMessages(nativeData(msg, 'anthropic', scope.endpoint), scope)
       : null;
     if (native) {
-      messages.push({ role, content: native });
-      if (native.some(block => block.type === 'thinking' || block.type === 'redacted_thinking')) replayedThinking = true;
+      messages.push(...native);
+      if (native.some(message => message.role === 'assistant'
+        && (message.content as Json[]).some(block => block.type === 'thinking' || block.type === 'redacted_thinking'))) {
+        replayedThinking = true;
+      }
     } else if (typeof msg.content === 'string') {
       // Empty text blocks are rejected.
       if (msg.content.trim()) messages.push({ role, content: msg.content });
@@ -191,7 +233,7 @@ export function convertToAnthropicFormat(
 }
 
 function buildTools(ctx: ProviderRequestContext, legacy: boolean): { tools: Json[]; mcpServers: Json[] } {
-  const { webSearch, codeInterpreter, mcpServers } = ctx.tools;
+  const { webSearch, webFetch, codeInterpreter, mcpServers } = ctx.tools;
   const tools: Json[] = [];
   const codeExecution = !!codeInterpreter?.enabled;
 
@@ -211,8 +253,17 @@ function buildTools(ctx: ProviderRequestContext, legacy: boolean): { tools: Json
     tools.push(tool);
   }
 
+  if (webFetch) {
+    // Like web search, the current version filters with its own code execution.
+    tools.push({ type: legacy || codeExecution ? 'web_fetch_20250910' : 'web_fetch_20260209', name: 'web_fetch' });
+  }
+
   if (codeExecution) {
     tools.push({ type: legacy ? 'code_execution_20250825' : 'code_execution_20260521', name: 'code_execution' });
+  }
+
+  for (const spec of browserToolSpecs(ctx.tools.browserTools)) {
+    tools.push({ name: spec.name, description: spec.description, input_schema: spec.parameters });
   }
 
   const servers: Json[] = [];
@@ -238,8 +289,9 @@ export function buildAnthropicRequest(ctx: ProviderRequestContext): { body: Json
   const endpoint = anthropicBaseUrl(ctx.apiBaseUrl);
   const { system, messages, replayedThinking } = convertToAnthropicFormat(ctx.input, {
     endpoint,
-    serverTools: !!(ctx.tools.webSearch?.enabled || ctx.tools.codeInterpreter?.enabled),
+    serverTools: !!(ctx.tools.webSearch?.enabled || ctx.tools.webFetch || ctx.tools.codeInterpreter?.enabled),
     mcpServers: new Set(labelMcpServers(ctx.tools.mcpServers).map(({ label }) => label)),
+    clientTools: browserToolNames(ctx.tools.browserTools),
   });
   const { reasoningEffort, reasoningSummary, thinkingEnabled, thinkingBudgetTokens } = ctx.params;
 
@@ -296,6 +348,7 @@ export function buildAnthropicRequest(ctx: ProviderRequestContext): { body: Json
   }
   if (mcpServers.length) betas.push(MCP_BETA);
   if (legacy && ctx.tools.codeInterpreter?.enabled) betas.push(LEGACY_CODE_EXECUTION_BETA);
+  if (legacy && ctx.tools.webFetch) betas.push(LEGACY_WEB_FETCH_BETA);
   return { body, betas };
 }
 
@@ -456,6 +509,8 @@ class ReplyReader {
     } else if (type === 'server_tool_use' || type === 'mcp_tool_use') {
       const id = str(block.id);
       if (id) this.log.set(id, { status: 'running', ...describeToolUse(block) });
+    } else if (type === 'tool_use') {
+      // A browser tool call: the tool loop reports it once it runs.
     } else if (type.endsWith('_tool_result')) {
       const id = str(block.tool_use_id);
       if (id) this.log.set(id, describeToolResult(block));
@@ -488,13 +543,13 @@ class ReplyReader {
     if (type === 'thinking') {
       const id = this.thinkingId(index);
       if (this.log.has(id)) this.log.set(id, { status: 'done' });
-    } else if (type === 'server_tool_use' || type === 'mcp_tool_use') {
+    } else if (type === 'server_tool_use' || type === 'mcp_tool_use' || type === 'tool_use') {
       const json = this.partialJson.get(index);
       if (json) {
         try { block.input = JSON.parse(json); } catch { /* keep the input the block started with */ }
       }
       const id = str(block.id);
-      if (id) this.log.set(id, describeToolUse(block));
+      if (id && type !== 'tool_use') this.log.set(id, describeToolUse(block));
     }
   }
 
@@ -584,12 +639,12 @@ async function fetchTurn(url: string, headers: Record<string, string>, body: Jso
   };
 }
 
-async function respond(ctx: ProviderRequestContext, stream: boolean): Promise<GenerationResponse> {
+async function respondRound(ctx: ProviderRequestContext, stream: boolean, extra: Json[]): Promise<ToolRound<Json>> {
   const abortController = createAbort(ctx.provideAbort);
   const { body, betas } = buildAnthropicRequest(ctx);
   const url = `${anthropicBaseUrl(ctx.apiBaseUrl)}/messages`;
   const headers = anthropicHeaders(ctx.apiKey, betas);
-  const baseMessages = body.messages as Json[];
+  const baseMessages = [...(body.messages as Json[]), ...extra];
   const reader = new ReplyReader(ctx.callbacks);
 
   // A long run of server-side tool calls ends its turn with "pause_turn";
@@ -598,9 +653,7 @@ async function respond(ctx: ProviderRequestContext, stream: boolean): Promise<Ge
   let native: NativeTurn | undefined;
   let turn: TurnResult;
   for (let attempt = 0; ; attempt++) {
-    const request = paused.length
-      ? { ...body, messages: [...baseMessages, { role: 'assistant', content: paused }] }
-      : body;
+    const request = { ...body, messages: paused.length ? [...baseMessages, { role: 'assistant', content: paused }] : baseMessages };
     reader.beginTurn();
     turn = stream
       ? await streamTurn(url, headers, request, abortController.signal, reader, ctx.callbacks.onEvent)
@@ -609,18 +662,49 @@ async function respond(ctx: ProviderRequestContext, stream: boolean): Promise<Ge
     paused.push(...turn.blocks);
   }
   // The whole reply, every continuation included, is one assistant turn.
-  // A reply still paused mid-tool cannot be followed by a user turn.
-  if (turn.stopReason !== 'pause_turn') {
-    const blocks = [...paused, ...turn.blocks];
-    if (blocks.length) native = { api: 'anthropic', endpoint: url.slice(0, -'/messages'.length), model: ctx.model, text: reader.text, data: blocks };
+  const blocks = [...paused, ...turn.blocks];
+  const calls: BrowserToolCall[] = turn.stopReason === 'tool_use'
+    ? blocks.filter(block => block.type === 'tool_use')
+      .map(block => ({ id: str(block.id), name: str(block.name), arguments: block.input ?? {} }))
+    : [];
+  // A reply still paused mid-tool, or waiting on browser tools, cannot be
+  // followed by a user turn.
+  if (turn.stopReason !== 'pause_turn' && !calls.length && blocks.length) {
+    native = { api: 'anthropic', endpoint: url.slice(0, -'/messages'.length), model: ctx.model, text: reader.text, data: blocks };
   }
 
   // Partial text is still a usable reply; only an empty one is an error.
-  if (!reader.text) {
+  if (!reader.text && !calls.length) {
     const error = stopError(turn.stopReason, turn.stopDetails);
     if (error) throw error;
   }
-  return { text: reader.text, activity: reader.log.settle(), native };
+  return {
+    reply: { text: reader.text, activity: reader.log.settle(), native },
+    calls,
+    turn: blocks.length ? [{ role: 'assistant', content: blocks }] : [],
+  };
+}
+
+function respond(ctx: ProviderRequestContext, stream: boolean): Promise<GenerationResponse> {
+  return runToolLoop<Json>(ctx, {
+    send: (roundCtx, extra) => respondRound(roundCtx, stream, extra),
+    answer: answers => [{
+      role: 'user',
+      content: answers.map(({ call, output, isError }) => ({
+        type: 'tool_result',
+        tool_use_id: call.id,
+        content: output,
+        ...(isError ? { is_error: true } : {}),
+      })),
+    }],
+    native: (rounds, final, text) => ({
+      api: 'anthropic',
+      endpoint: anthropicBaseUrl(ctx.apiBaseUrl),
+      model: ctx.model,
+      text,
+      data: { messages: [...rounds, ...final.turn] },
+    }),
+  });
 }
 
 async function listModels({ apiKey, baseURL }: { apiKey: string; baseURL: string }): Promise<string[]> {

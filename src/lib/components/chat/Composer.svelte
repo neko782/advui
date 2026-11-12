@@ -12,7 +12,7 @@
   } from '../../attachments/mime'
   import ChatSettingsPopover from './ChatSettingsPopover.svelte'
   import { onMount } from 'svelte'
-  import type { Image, Preset, ConnectionOption, Keybinds, ReasoningEffort, TextVerbosity, ReasoningSummary, MessageRole, McpServerConfig, DisabledTools } from '../../types'
+  import type { Image, Preset, ConnectionOption, Keybinds, ReasoningEffort, TextVerbosity, ReasoningSummary, MessageRole, McpServerConfig, DisabledTools, BrowserToolName } from '../../types'
 
   interface Props {
     input?: string
@@ -44,6 +44,9 @@
     chatImageGenerationModel?: string
     chatMcpEnabled?: boolean
     chatMcpServers?: McpServerConfig[]
+    chatWebFetchEnabled?: boolean
+    chatBrowserToolsEnabled?: boolean
+    chatBrowserTools?: BrowserToolName[]
     modelIds?: string[]
     connections?: ConnectionOption[]
     chatConnectionId?: string | null
@@ -76,6 +79,7 @@
     onChangeImageGenerationModel?: (val: string) => void
     onChangeMcpEnabled?: (val: boolean) => void
     onChangeMcpServers?: (servers: McpServerConfig[]) => void
+    onPatchChatTools?: (patch: { webFetchEnabled?: boolean; browserToolsEnabled?: boolean; browserTools?: BrowserToolName[] }) => void
     onSelectPreset?: (preset: Preset) => void
     onInput?: (val: string) => void
     disableSendRolePopup?: boolean
@@ -352,6 +356,9 @@
         imageGenerationModel={props.chatImageGenerationModel}
         mcpEnabled={props.chatMcpEnabled}
         mcpServers={props.chatMcpServers}
+        webFetchEnabled={props.chatWebFetchEnabled}
+        browserToolsEnabled={props.chatBrowserToolsEnabled}
+        browserTools={props.chatBrowserTools}
         modelIds={props.modelIds}
         connections={props.connections}
         connectionId={props.chatConnectionId}
@@ -380,6 +387,7 @@
         onInputImageGenerationModel={props.onChangeImageGenerationModel}
         onInputMcpEnabled={props.onChangeMcpEnabled}
         onChangeMcpServers={props.onChangeMcpServers}
+        onPatchTools={props.onPatchChatTools}
         onSelectPreset={props.onSelectPreset}
       />
     </div>

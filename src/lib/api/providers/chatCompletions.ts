@@ -21,14 +21,16 @@ import {
   type ProviderRequestContext,
 } from '../core.js';
 import { ActivityLog } from '../activity.js';
-import type { ActivityStep, GenerationResponse, NativeTurn } from '../../types/index.js';
+import { browserToolNames, browserToolSpecs } from '../browserTools.js';
+import { runToolLoop, type BrowserToolCall, type ToolRound } from '../toolLoop.js';
+import type { ActivityStep, GenerationResponse, NativeTurn, WebSearchCitation, WebSearchResult, WebSearchSource } from '../../types/index.js';
 
 type ChatContentPart =
   | { type: 'text'; text: string }
   | { type: 'image_url'; image_url: { url: string } }
   | { type: 'file'; file: { file_data: string; filename: string } };
 
-type ChatMessage = { role: string; content: string | ChatContentPart[] } & Record<string, unknown>;
+type ChatMessage = { role: string; content: string | ChatContentPart[] | null } & Record<string, unknown>;
 
 /** Reasoning fields an assistant message can carry back, most complete first. */
 const REASONING_FIELDS = ['reasoning_details', 'reasoning_content', 'reasoning'] as const;
@@ -85,6 +87,21 @@ function nativeTurn(ctx: ProviderRequestContext, text: string, fields: Reasoning
     : undefined;
 }
 
+/** A stored reply: its reasoning fields, plus the tool-calling turns that led to it. */
+type StoredReply = ReasoningFields & { toolTurns?: ChatMessage[] };
+
+/**
+ * The browser tool turns of a stored reply, when every call in them is to a
+ * tool this request still offers; otherwise none go back.
+ */
+function replayToolTurns(stored: StoredReply | undefined, functions: ReadonlySet<string>): ChatMessage[] {
+  const turns = stored?.toolTurns;
+  if (!Array.isArray(turns) || !turns.length) return [];
+  const usable = turns.every(turn => !Array.isArray(turn?.tool_calls)
+    || (turn.tool_calls as Array<{ function?: { name?: unknown } }>).every(call => functions.has(String(call?.function?.name ?? ''))));
+  return usable ? turns : [];
+}
+
 /** Converts normalized provider input into Chat Completions messages. */
 function buildChatMessages(ctx: ProviderRequestContext): ChatMessage[] {
   const input = ctx.input;
@@ -93,15 +110,17 @@ function buildChatMessages(ctx: ProviderRequestContext): ChatMessage[] {
       ? [{ role: 'user', content: input }]
       : [];
   }
-  return input.map((message): ChatMessage => {
+  const functions = browserToolNames(ctx.tools.browserTools);
+  return input.flatMap((message): ChatMessage[] => {
     const { native: _native, ...msg } = message;
     const reasoning = msg.role === 'assistant'
-      ? nativeData(message, 'chat_completions', ctx.baseURL) as ReasoningFields | undefined
+      ? nativeData(message, 'chat_completions', ctx.baseURL) as StoredReply | undefined
       : undefined;
     const fields: Record<string, unknown> = {};
     for (const field of REASONING_FIELDS) {
       if (reasoning && reasoning[field] != null) fields[field] = reasoning[field];
     }
+    const before = replayToolTurns(reasoning, functions);
     // If content is an array (from Responses format), convert to Chat Completions format
     if (Array.isArray(msg.content)) {
       const contentArray: ChatContentPart[] = [];
@@ -139,15 +158,15 @@ function buildChatMessages(ctx: ProviderRequestContext): ChatMessage[] {
         }
       }
       if (contentArray.length > 0) {
-        return { role: msg.role, content: contentArray, ...fields };
+        return [...before, { role: msg.role, content: contentArray, ...fields }];
       }
     }
-    return { ...(msg as { role: string; content: string }), ...fields };
+    return [...before, { ...(msg as { role: string; content: string }), ...fields }];
   });
 }
 
-function buildChatRequest(ctx: ProviderRequestContext): Record<string, unknown> {
-  const chatRequest: Record<string, unknown> = { model: ctx.model, messages: buildChatMessages(ctx) };
+export function buildChatRequest(ctx: ProviderRequestContext, extra: ChatMessage[] = []): Record<string, unknown> {
+  const chatRequest: Record<string, unknown> = { model: ctx.model, messages: [...buildChatMessages(ctx), ...extra] };
   const tokens = toIntOrNull(ctx.params.maxOutputTokens, { belowMin: 'unset' });
   if (tokens != null) chatRequest.max_completion_tokens = tokens;
   const topPVal = toClampedNumber(ctx.params.topP, 0, 1);
@@ -167,7 +186,89 @@ function buildChatRequest(ctx: ProviderRequestContext): Record<string, unknown> 
   }
   const provider = buildOpenRouterProvider(ctx.params);
   if (provider) chatRequest.provider = provider;
+  // OpenRouter runs web search itself, for any model.
+  if (ctx.openRouter && ctx.tools.webSearch?.enabled) chatRequest.plugins = [{ id: 'web' }];
+  const tools = browserToolSpecs(ctx.tools.browserTools)
+    .map(spec => ({ type: 'function', function: { name: spec.name, description: spec.description, parameters: spec.parameters } }));
+  if (tools.length) chatRequest.tools = tools;
   return chatRequest;
+}
+
+// ============================================================================
+// Tool calls and web search citations
+// ============================================================================
+
+type ToolCallDelta = { index?: unknown; id?: unknown; type?: unknown; function?: { name?: unknown; arguments?: unknown } };
+type AssembledCall = { id: string; type: 'function'; function: { name: string; arguments: string } };
+
+/** Joins streamed tool call pieces: each delta adds to the call at its index. */
+export function mergeToolCallDeltas(target: AssembledCall[], deltas: unknown): void {
+  if (!Array.isArray(deltas)) return;
+  deltas.forEach((delta: ToolCallDelta, position) => {
+    if (!delta || typeof delta !== 'object') return;
+    const index = Number.isFinite(Number(delta.index)) ? Number(delta.index) : position;
+    const call = target[index] ??= { id: '', type: 'function', function: { name: '', arguments: '' } };
+    if (typeof delta.id === 'string' && delta.id) call.id = delta.id;
+    if (typeof delta.function?.name === 'string') call.function.name += delta.function.name;
+    if (typeof delta.function?.arguments === 'string') call.function.arguments += delta.function.arguments;
+  });
+}
+
+function assembledCalls(raw: unknown): AssembledCall[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((call): call is ToolCallDelta => !!call && typeof call === 'object')
+    .map((call, index) => ({
+      id: typeof call.id === 'string' && call.id ? call.id : `call_${index}`,
+      type: 'function' as const,
+      function: {
+        name: typeof call.function?.name === 'string' ? call.function.name : '',
+        arguments: typeof call.function?.arguments === 'string'
+          ? call.function.arguments
+          : JSON.stringify(call.function?.arguments ?? {}),
+      },
+    }))
+    .filter(call => call.function.name);
+}
+
+/** Web search citations (OpenRouter's web plugin) as sources and citations. */
+export function collectUrlCitations(annotations: unknown, result: WebSearchResult): void {
+  if (!Array.isArray(annotations)) return;
+  for (const annotation of annotations as Array<Record<string, unknown>>) {
+    if (annotation?.type !== 'url_citation') continue;
+    const cite = (annotation.url_citation && typeof annotation.url_citation === 'object'
+      ? annotation.url_citation
+      : annotation) as Record<string, unknown>;
+    const url = typeof cite.url === 'string' ? cite.url : '';
+    if (!url) continue;
+    const title = typeof cite.title === 'string' ? cite.title : '';
+    const citation: WebSearchCitation = {
+      type: 'url_citation',
+      url,
+      title,
+      start_index: typeof cite.start_index === 'number' ? cite.start_index : 0,
+      end_index: typeof cite.end_index === 'number' ? cite.end_index : 0,
+    };
+    if (!result.citations.some(c => c.url === url && c.start_index === citation.start_index)) result.citations.push(citation);
+    if (!result.sources.some(source => source.url === url)) result.sources.push({ url, title: title || undefined } as WebSearchSource);
+  }
+}
+
+const SEARCH_STEP_ID = 'web-search';
+
+function searchStep(result: WebSearchResult): Omit<ActivityStep, 'id'> {
+  return {
+    kind: 'search',
+    status: 'done',
+    output: result.sources.map(source => (source.title ? `${source.title}\n${source.url}` : source.url)).join('\n\n') || undefined,
+  };
+}
+
+interface RoundReply {
+  reply: GenerationResponse;
+  calls: AssembledCall[];
+  /** Reasoning fields of the reply, which go back with it. */
+  fields: ReasoningFields | undefined;
 }
 
 export function collectChatDeltaText(chunk: unknown): string {
@@ -258,8 +359,8 @@ export function extractChatReasoningSummary(res: unknown): string {
   return '';
 }
 
-async function respondStreaming(ctx: ProviderRequestContext): Promise<GenerationResponse> {
-  const { onEvent, onTextDelta, onActivity } = ctx.callbacks;
+async function respondStreaming(ctx: ProviderRequestContext, extra: ChatMessage[]): Promise<RoundReply> {
+  const { onEvent, onTextDelta, onActivity, onWebSearchResult } = ctx.callbacks;
   const abortController = createAbort(ctx.provideAbort);
 
   const response = await fetch(`${ctx.baseURL}/chat/completions`, {
@@ -268,7 +369,7 @@ async function respondStreaming(ctx: ProviderRequestContext): Promise<Generation
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${ctx.apiKey}`,
     },
-    body: JSON.stringify({ ...buildChatRequest(ctx), stream: true }),
+    body: JSON.stringify({ ...buildChatRequest(ctx, extra), stream: true }),
     signal: abortController.signal,
   });
   await ensureOkResponse(response, 'API error');
@@ -288,6 +389,13 @@ async function respondStreaming(ctx: ProviderRequestContext): Promise<Generation
   const details: Array<Record<string, unknown>> = [];
   const streamed: Record<'reasoning_content' | 'reasoning', string> = { reasoning_content: '', reasoning: '' };
   let finalMessage: Record<string, unknown> | undefined;
+  const toolCalls: AssembledCall[] = [];
+  const search: WebSearchResult = { citations: [], sources: [] };
+  const noteCitations = (annotations: unknown) => {
+    const before = search.sources.length;
+    collectUrlCitations(annotations, search);
+    if (search.sources.length !== before) log.set(SEARCH_STEP_ID, searchStep(search), -1);
+  };
 
   const processLine = createSseJsonLineProcessor((chunk) => {
     const first = (Array.isArray(chunk?.choices) ? chunk.choices : [])
@@ -297,8 +405,13 @@ async function respondStreaming(ctx: ProviderRequestContext): Promise<Generation
       for (const field of ['reasoning_content', 'reasoning'] as const) {
         if (typeof first.delta[field] === 'string') streamed[field] += first.delta[field];
       }
+      mergeToolCallDeltas(toolCalls, first.delta.tool_calls);
+      noteCitations(first.delta.annotations);
     }
-    if (first?.message && typeof first.message === 'object') finalMessage = first.message;
+    if (first?.message && typeof first.message === 'object') {
+      finalMessage = first.message;
+      noteCitations(first.message.annotations);
+    }
 
     const deltaText = collectChatDeltaText(chunk);
     if (deltaText) {
@@ -328,7 +441,16 @@ async function respondStreaming(ctx: ProviderRequestContext): Promise<Generation
 
   const fields = pickReasoningFields(finalMessage)
     ?? pickReasoningFields({ reasoning_details: details, ...streamed });
-  return { text: full, activity: log.settle(), native: nativeTurn(ctx, full, fields) };
+  const calls = assembledCalls(Array.isArray(finalMessage?.tool_calls) ? finalMessage.tool_calls : toolCalls.filter(Boolean));
+  const webSearchResult = search.sources.length ? search : undefined;
+  if (webSearchResult) {
+    try { onWebSearchResult?.(webSearchResult); } catch { /* ignore */ }
+  }
+  return {
+    reply: { text: full, activity: log.settle(), webSearchResult, native: nativeTurn(ctx, full, fields) },
+    calls,
+    fields,
+  };
 }
 
 /** A complete response's reasoning as a single thinking step. */
@@ -337,7 +459,7 @@ function reasoningActivity(res: unknown): ActivityStep[] {
   return text ? [{ id: 'reasoning-0', kind: 'thinking', status: 'done', text }] : [];
 }
 
-async function respondOnce(ctx: ProviderRequestContext): Promise<GenerationResponse> {
+async function respondOnce(ctx: ProviderRequestContext, extra: ChatMessage[]): Promise<RoundReply> {
   const abortController = createAbort(ctx.provideAbort);
 
   const response = await fetch(`${ctx.baseURL}/chat/completions`, {
@@ -346,7 +468,7 @@ async function respondOnce(ctx: ProviderRequestContext): Promise<GenerationRespo
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${ctx.apiKey}`,
     },
-    body: JSON.stringify(buildChatRequest(ctx)),
+    body: JSON.stringify(buildChatRequest(ctx, extra)),
     signal: abortController.signal,
   });
   await ensureOkResponse(response, 'API error');
@@ -355,7 +477,43 @@ async function respondOnce(ctx: ProviderRequestContext): Promise<GenerationRespo
   throwIfErrorBody(res);
   const text = extractOutputText(res);
   const message = Array.isArray(res?.choices) ? res.choices[0]?.message : undefined;
-  return { text, activity: reasoningActivity(res), native: nativeTurn(ctx, text, pickReasoningFields(message)) };
+  const fields = pickReasoningFields(message);
+  const search: WebSearchResult = { citations: [], sources: [] };
+  collectUrlCitations(message?.annotations, search);
+  const activity = reasoningActivity(res);
+  if (search.sources.length) {
+    activity.unshift({ id: SEARCH_STEP_ID, ...searchStep(search) });
+    try { ctx.callbacks.onWebSearchResult?.(search); } catch { /* ignore */ }
+  }
+  return {
+    reply: { text, activity, webSearchResult: search.sources.length ? search : undefined, native: nativeTurn(ctx, text, fields) },
+    calls: assembledCalls(message?.tool_calls),
+    fields,
+  };
+}
+
+function toLoopCalls(calls: AssembledCall[]): BrowserToolCall[] {
+  return calls.map(call => ({ id: call.id, name: call.function.name, arguments: call.function.arguments }));
+}
+
+function respond(ctx: ProviderRequestContext, stream: boolean): Promise<GenerationResponse> {
+  return runToolLoop<ChatMessage>(ctx, {
+    async send(roundCtx, extra) {
+      const round = await (stream ? respondStreaming(roundCtx, extra) : respondOnce(roundCtx, extra));
+      const turn: ChatMessage[] = round.calls.length
+        ? [{ role: 'assistant', content: round.reply.text || null, tool_calls: round.calls, ...(round.fields ?? {}) }]
+        : [];
+      return { reply: round.reply, calls: toLoopCalls(round.calls), turn } satisfies ToolRound<ChatMessage>;
+    },
+    answer: answers => answers.map(({ call, output }) => ({ role: 'tool', tool_call_id: call.id, content: output })),
+    native: (rounds, final, text) => ({
+      api: 'chat_completions',
+      endpoint: ctx.baseURL,
+      model: ctx.model,
+      text,
+      data: { ...((final.reply.native?.data as ReasoningFields | undefined) ?? {}), toolTurns: rounds } satisfies StoredReply,
+    }),
+  });
 }
 
 async function listModels({ apiKey, baseURL }: { apiKey: string; baseURL: string }): Promise<string[]> {
@@ -373,8 +531,6 @@ async function listModels({ apiKey, baseURL }: { apiKey: string; baseURL: string
 }
 
 export const chatCompletionsAdapter: ProviderAdapter = {
-  respond(ctx, stream) {
-    return stream ? respondStreaming(ctx) : respondOnce(ctx);
-  },
+  respond,
   listModels,
 };

@@ -7,6 +7,8 @@
 import { toIntOrNull, toClampedNumber } from '../../utils/numbers.js';
 import { parseMcpAllowedTools } from '../../utils/mcp.js';
 import { ActivityLog, prettyJson } from '../activity.js';
+import { browserToolNames, browserToolSpecs } from '../browserTools.js';
+import { runToolLoop, type ToolRound } from '../toolLoop.js';
 import {
   accountTag,
   ApiHttpError,
@@ -58,34 +60,41 @@ const DEFAULT_REQUEST_OPTIONS: ResponsesRequestOptions = { encryptedReasoning: t
 export function buildResponsesInput(
   ctx: ProviderRequestContext,
   options: ResponsesRequestOptions = DEFAULT_REQUEST_OPTIONS,
+  extra: Item[] = [],
 ): unknown {
-  if (!Array.isArray(ctx.input)) return ctx.input;
+  if (!Array.isArray(ctx.input)) {
+    return extra.length ? [{ role: 'user', content: ctx.input }, ...extra] : ctx.input;
+  }
   const account = accountTag(ctx.apiKey);
+  const functions = browserToolNames(ctx.tools.browserTools);
   const input: unknown[] = [];
   for (const message of ctx.input) {
     const data = message.role === 'assistant' ? nativeData(message, 'responses', ctx.baseURL) : undefined;
     const reasoningUsable = options.replayReasoning && message.native?.account === account;
-    const items = Array.isArray(data) ? turnItems(data as Item[], reasoningUsable) : [];
+    const items = Array.isArray(data) ? turnItems(data as Item[], reasoningUsable, functions) : [];
     if (items.length) {
       input.push(...items);
     } else {
       input.push({ role: message.role, content: message.content });
     }
   }
+  input.push(...extra);
   return input;
 }
 
 /**
  * One earlier reply's items as they can go back. Reasoning only decrypts for
  * the organization it was made for, and a reply stored before `store: false`
- * may hold reasoning without encrypted content; when its reasoning cannot go
- * back, only its messages do, without the ids that tie them to that reasoning.
+ * may hold reasoning without encrypted content; browser tool calls only go
+ * back while the request still offers those tools. Otherwise only the
+ * reply's messages go back, without the ids that tie them to the rest.
  */
-function turnItems(items: Item[], reasoningUsable: boolean): Item[] {
+function turnItems(items: Item[], reasoningUsable: boolean, functions: ReadonlySet<string> = new Set()): Item[] {
   const kept = items.filter(item => item && typeof item.type === 'string' && !isImageGenerationItemType(item.type));
   const reasoning = kept.filter(item => item.type === 'reasoning');
-  if (!reasoning.length) return kept;
-  if (reasoningUsable && reasoning.every(item => str(item.encrypted_content))) return kept;
+  const callsUsable = kept.every(item => item.type !== 'function_call' || functions.has(str(item.name)));
+  if (!reasoning.length && callsUsable) return kept;
+  if (callsUsable && reasoningUsable && reasoning.every(item => str(item.encrypted_content))) return kept;
   return kept
     .filter(item => item.type === 'message')
     .map(({ id: _id, ...item }) => item);
@@ -113,10 +122,11 @@ function nativeTurn(ctx: ProviderRequestContext, text: string, output: unknown):
 export function buildResponsesRequest(
   ctx: ProviderRequestContext,
   options: ResponsesRequestOptions = DEFAULT_REQUEST_OPTIONS,
+  extra: Item[] = [],
 ): Record<string, unknown> {
   const request: Record<string, unknown> = {
     model: ctx.model,
-    input: buildResponsesInput(ctx, options),
+    input: buildResponsesInput(ctx, options, extra),
     store: false,
   };
   if (options.encryptedReasoning) request.include = ['reasoning.encrypted_content'];
@@ -248,6 +258,11 @@ function buildTools(ctx: ProviderRequestContext): Record<string, unknown>[] {
     const allowedTools = parseMcpAllowedTools(server.allowedTools);
     if (allowedTools.length) tool.allowed_tools = allowedTools;
     tools.push(tool);
+  }
+
+  // Browser tools, which the app runs itself
+  for (const spec of browserToolSpecs(ctx.tools.browserTools)) {
+    tools.push({ type: 'function', name: spec.name, description: spec.description, parameters: spec.parameters, strict: false });
   }
 
   return tools;
@@ -571,7 +586,13 @@ function incompleteResponseError(response: unknown): Error | null {
 // Streaming
 // ============================================================================
 
-async function respondStreaming(ctx: ProviderRequestContext, options: ResponsesRequestOptions): Promise<GenerationResponse> {
+interface RoundReply {
+  reply: GenerationResponse;
+  /** The response's output items. */
+  output: unknown;
+}
+
+async function respondStreaming(ctx: ProviderRequestContext, options: ResponsesRequestOptions, extra: Item[]): Promise<RoundReply> {
   const { onEvent, onTextDelta, onActivity, onWebSearchResult, onImageGenerated } = ctx.callbacks;
 
   const abortController = createAbort(ctx.provideAbort);
@@ -582,7 +603,7 @@ async function respondStreaming(ctx: ProviderRequestContext, options: ResponsesR
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${ctx.apiKey}`,
     },
-    body: JSON.stringify({ ...buildResponsesRequest(ctx, options), stream: true }),
+    body: JSON.stringify({ ...buildResponsesRequest(ctx, options, extra), stream: true }),
     signal: abortController.signal,
   });
   await ensureOkResponse(response, 'API error');
@@ -776,13 +797,16 @@ async function respondStreaming(ctx: ProviderRequestContext, options: ResponsesR
     } catch { /* ignore */ }
   }
   return {
-    text: full,
-    activity: log.settle(),
-    webSearchResult: (webSearchCitations.length > 0 || webSearchSources.length > 0)
-      ? { citations: webSearchCitations, sources: webSearchSources }
-      : undefined,
-    generatedImages: generatedImages.length > 0 ? generatedImages : undefined,
-    native: nativeTurn(ctx, full, finalOutput),
+    reply: {
+      text: full,
+      activity: log.settle(),
+      webSearchResult: (webSearchCitations.length > 0 || webSearchSources.length > 0)
+        ? { citations: webSearchCitations, sources: webSearchSources }
+        : undefined,
+      generatedImages: generatedImages.length > 0 ? generatedImages : undefined,
+      native: nativeTurn(ctx, full, finalOutput),
+    },
+    output: finalOutput,
   };
 }
 
@@ -790,7 +814,7 @@ async function respondStreaming(ctx: ProviderRequestContext, options: ResponsesR
 // Non-streaming
 // ============================================================================
 
-async function respondOnce(ctx: ProviderRequestContext, options: ResponsesRequestOptions): Promise<GenerationResponse> {
+async function respondOnce(ctx: ProviderRequestContext, options: ResponsesRequestOptions, extra: Item[]): Promise<RoundReply> {
   const { onWebSearchResult, onImageGenerated } = ctx.callbacks;
   const abortController = createAbort(ctx.provideAbort);
 
@@ -800,7 +824,7 @@ async function respondOnce(ctx: ProviderRequestContext, options: ResponsesReques
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${ctx.apiKey}`,
     },
-    body: JSON.stringify(buildResponsesRequest(ctx, options)),
+    body: JSON.stringify(buildResponsesRequest(ctx, options, extra)),
     signal: abortController.signal,
   });
   await ensureOkResponse(response, 'API error');
@@ -821,7 +845,10 @@ async function respondOnce(ctx: ProviderRequestContext, options: ResponsesReques
     try { onImageGenerated?.(generatedImages); } catch { /* ignore */ }
   }
   const output = (res as Item)?.output ?? ((res as Item)?.response as Item | undefined)?.output;
-  return { text, activity: extractActivity(res), webSearchResult, generatedImages, native: nativeTurn(ctx, text, output) };
+  return {
+    reply: { text, activity: extractActivity(res), webSearchResult, generatedImages, native: nativeTurn(ctx, text, output) },
+    output,
+  };
 }
 
 async function listModels({ apiKey, baseURL }: { apiKey: string; baseURL: string }): Promise<string[]> {
@@ -842,8 +869,8 @@ async function listModels({ apiKey, baseURL }: { apiKey: string; baseURL: string
 const encryptedReasoningRefusedBy = new Set<string>();
 
 /** Whether the request sends any earlier reasoning back. */
-function replaysReasoning(ctx: ProviderRequestContext, options: ResponsesRequestOptions): boolean {
-  const input = buildResponsesInput(ctx, options);
+function replaysReasoning(ctx: ProviderRequestContext, options: ResponsesRequestOptions, extra: Item[]): boolean {
+  const input = buildResponsesInput(ctx, options, extra);
   return Array.isArray(input) && input.some(item => (item as Item)?.type === 'reasoning');
 }
 
@@ -853,7 +880,7 @@ function replaysReasoning(ctx: ProviderRequestContext, options: ResponsesRequest
  * encrypted-content request, and reasoning encrypted for another organization
  * (a key from a different org) cannot be decrypted. Anything else is thrown.
  */
-async function respond(ctx: ProviderRequestContext, stream: boolean): Promise<GenerationResponse> {
+async function respondRound(ctx: ProviderRequestContext, stream: boolean, extra: Item[]): Promise<RoundReply> {
   const modelKey = `${ctx.baseURL}|${ctx.model}`;
   let options: ResponsesRequestOptions = {
     encryptedReasoning: !encryptedReasoningRefusedBy.has(modelKey),
@@ -861,19 +888,45 @@ async function respond(ctx: ProviderRequestContext, stream: boolean): Promise<Ge
   };
   for (;;) {
     try {
-      return await (stream ? respondStreaming(ctx, options) : respondOnce(ctx, options));
+      return await (stream ? respondStreaming(ctx, options, extra) : respondOnce(ctx, options, extra));
     } catch (err) {
       if (!(err instanceof ApiHttpError) || err.status !== 400 || !/encrypt|reasoning/i.test(err.message)) throw err;
       if (options.encryptedReasoning && /not supported|unsupported|include/i.test(err.message)) {
         encryptedReasoningRefusedBy.add(modelKey);
         options = { ...options, encryptedReasoning: false };
-      } else if (options.replayReasoning && replaysReasoning(ctx, options)) {
+      } else if (options.replayReasoning && replaysReasoning(ctx, options, extra)) {
         options = { ...options, replayReasoning: false };
       } else {
         throw err;
       }
     }
   }
+}
+
+/** Browser tool calls among a response's output items. */
+export function functionCalls(output: unknown): ToolRound<Item>['calls'] {
+  if (!Array.isArray(output)) return [];
+  return (output as Item[])
+    .filter(item => item?.type === 'function_call')
+    .map(item => ({ id: str(item.call_id), name: str(item.name), arguments: item.arguments }));
+}
+
+function respond(ctx: ProviderRequestContext, stream: boolean): Promise<GenerationResponse> {
+  return runToolLoop<Item>(ctx, {
+    async send(roundCtx, extra) {
+      const { reply, output } = await respondRound(roundCtx, stream, extra);
+      return { reply, calls: functionCalls(output), turn: replayItems(output) ?? [] };
+    },
+    answer: answers => answers.map(({ call, output }) => ({ type: 'function_call_output', call_id: call.id, output })),
+    native: (rounds, final, text) => ({
+      api: 'responses',
+      endpoint: ctx.baseURL,
+      model: ctx.model,
+      account: accountTag(ctx.apiKey),
+      text,
+      data: [...rounds, ...final.turn],
+    }),
+  });
 }
 
 export const responsesAdapter: ProviderAdapter = {

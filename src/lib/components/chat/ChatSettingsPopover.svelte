@@ -5,7 +5,7 @@
   import { reasoningLevelOptions } from '../../utils/reasoningLevels'
   import { isOpenAiCompatible, unsupportedTools } from '../../utils/apiModes'
   import { IconTune, IconLayers } from '../../icons'
-  import type { Preset, ReasoningEffort, TextVerbosity, ReasoningSummary, ConnectionOption, McpServerConfig, DisabledTools, ToolId } from '../../types'
+  import type { Preset, ReasoningEffort, TextVerbosity, ReasoningSummary, ConnectionOption, McpServerConfig, DisabledTools, ToolId, BrowserToolName } from '../../types'
 
   interface Props {
     open?: boolean
@@ -39,6 +39,9 @@
     imageGenerationModel?: string
     mcpEnabled?: boolean
     mcpServers?: McpServerConfig[]
+    webFetchEnabled?: boolean
+    browserToolsEnabled?: boolean
+    browserTools?: BrowserToolName[]
     modelIds?: string[]
     connections?: ConnectionOption[]
     connectionId?: string | null
@@ -67,6 +70,8 @@
     onInputImageGenerationModel?: (val: string) => void
     onInputMcpEnabled?: (val: boolean) => void
     onChangeMcpServers?: (servers: McpServerConfig[]) => void
+    /** Changes to web fetch and browser tools. */
+    onPatchTools?: (patch: Pick<ToolsValue, 'webFetchEnabled' | 'browserToolsEnabled' | 'browserTools'>) => void
     onSelectPreset?: (preset: Preset) => void
   }
 
@@ -82,7 +87,10 @@
   const currentConnection = $derived((props.connections || []).find(c => c.id === props.connectionId) || (props.connections || [])[0])
   const supportsOpenRouter = $derived(currentConnection?.openRouterEnabled === true && isOpenAiCompatible(currentConnection.apiMode))
   // Tools the app has switched off, plus the ones this connection's API lacks.
-  const hiddenTools = $derived<DisabledTools>({ ...unsupportedTools(currentConnection?.apiMode), ...props.disabledTools })
+  const hiddenTools = $derived<DisabledTools>({
+    ...unsupportedTools(currentConnection?.apiMode, currentConnection?.openRouterEnabled === true),
+    ...props.disabledTools,
+  })
   // Only the Responses API takes per-tool container options.
   const plainTools = $derived<ToolId[]>(currentConnection?.apiMode === 'responses' ? [] : ['codeInterpreter'])
   const reasoningLevels = $derived(reasoningLevelOptions(currentConnection?.apiMode, {
@@ -104,6 +112,9 @@
     imageGenerationModel: props.imageGenerationModel,
     mcpEnabled: props.mcpEnabled,
     mcpServers: props.mcpServers,
+    webFetchEnabled: props.webFetchEnabled,
+    browserToolsEnabled: props.browserToolsEnabled,
+    browserTools: props.browserTools,
   })
 
   function patchTools(patch: ToolsValue) {
@@ -119,6 +130,11 @@
     if ('imageGenerationModel' in patch) props.onInputImageGenerationModel?.(patch.imageGenerationModel || '')
     if ('mcpEnabled' in patch) props.onInputMcpEnabled?.(!!patch.mcpEnabled)
     if (patch.mcpServers) props.onChangeMcpServers?.(patch.mcpServers)
+    const rest: Pick<ToolsValue, 'webFetchEnabled' | 'browserToolsEnabled' | 'browserTools'> = {}
+    if ('webFetchEnabled' in patch) rest.webFetchEnabled = !!patch.webFetchEnabled
+    if ('browserToolsEnabled' in patch) rest.browserToolsEnabled = !!patch.browserToolsEnabled
+    if ('browserTools' in patch) rest.browserTools = patch.browserTools
+    if (Object.keys(rest).length) props.onPatchTools?.(rest)
   }
 
   function togglePresetMenu() {

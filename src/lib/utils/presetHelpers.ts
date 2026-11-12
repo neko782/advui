@@ -15,6 +15,7 @@ import type {
 } from '../types/index.js';
 import { isPlainObject } from './objects.js';
 import { normalizeMcpServerList } from './mcp.js';
+import { normalizeBrowserTools } from './browserTools.js';
 
 export const DEFAULT_SYSTEM_PROMPT = 'You are a helpful assistant.';
 export const DEFAULT_MODEL = 'openai/gpt-6.1-sol';
@@ -56,6 +57,10 @@ export const DEFAULT_PRESET_FIELDS: PresetFields = {
   // MCP defaults
   mcpEnabled: false,
   mcpServers: [],
+  // Web fetch and browser tools
+  webFetchEnabled: false,
+  browserToolsEnabled: false,
+  browserTools: undefined,
   tavernOnly: false,
 };
 
@@ -154,6 +159,11 @@ export function normalizePreset(
   const mcpEnabled = typeof base.mcpEnabled === 'boolean' ? base.mcpEnabled : false;
   const mcpServers = normalizeMcpServerList(base.mcpServers);
 
+  // Web fetch and browser tools
+  const webFetchEnabled = base.webFetchEnabled === true;
+  const browserToolsEnabled = base.browserToolsEnabled === true;
+  const browserTools = normalizeBrowserTools(base.browserTools);
+
   // Tavern visibility
   const tavernOnly = base.tavernOnly === true;
 
@@ -195,6 +205,10 @@ export function normalizePreset(
     // MCP settings
     mcpEnabled,
     mcpServers,
+    // Web fetch and browser tools
+    webFetchEnabled,
+    browserToolsEnabled,
+    browserTools,
     tavernOnly,
   };
 
@@ -400,6 +414,10 @@ export function buildChatSettings(preset: Preset, settings: Partial<Settings> | 
     // MCP settings
     mcpEnabled: !!preset.mcpEnabled,
     mcpServers: normalizeMcpServerList(preset.mcpServers),
+    // Web fetch and browser tools
+    webFetchEnabled: !!preset.webFetchEnabled,
+    browserToolsEnabled: !!preset.browserToolsEnabled,
+    browserTools: normalizeBrowserTools(preset.browserTools),
   };
 }
 
@@ -463,6 +481,10 @@ export function loadChatSettings(
     // MCP settings
     mcpEnabled: has('mcpEnabled') ? !!s.mcpEnabled : !!preset.mcpEnabled,
     mcpServers: normalizeMcpServerList(has('mcpServers') ? s.mcpServers : preset.mcpServers),
+    // Web fetch and browser tools
+    webFetchEnabled: has('webFetchEnabled') ? !!s.webFetchEnabled : !!preset.webFetchEnabled,
+    browserToolsEnabled: has('browserToolsEnabled') ? !!s.browserToolsEnabled : !!preset.browserToolsEnabled,
+    browserTools: normalizeBrowserTools(has('browserTools') ? s.browserTools : preset.browserTools),
   };
 }
 
@@ -506,5 +528,9 @@ export function applyPresetToChatSettings(current: ChatSettings, preset: Partial
     // MCP settings
     mcpEnabled: typeof preset.mcpEnabled === 'boolean' ? preset.mcpEnabled : current.mcpEnabled,
     mcpServers: preset.mcpServers ?? current.mcpServers,
+    // Web fetch and browser tools
+    webFetchEnabled: typeof preset.webFetchEnabled === 'boolean' ? preset.webFetchEnabled : current.webFetchEnabled,
+    browserToolsEnabled: typeof preset.browserToolsEnabled === 'boolean' ? preset.browserToolsEnabled : current.browserToolsEnabled,
+    browserTools: 'browserTools' in preset ? normalizeBrowserTools(preset.browserTools) : current.browserTools,
   };
 }

@@ -167,6 +167,8 @@ const TOOL_VERBS: Record<Exclude<ActivityKind, 'thinking' | 'tool'>, { running: 
   image: { running: 'Generating an image', done: 'Generated an image', bare: '', join: ': ' },
   mcp: { running: 'Calling', done: 'Called', bare: ' a tool', join: ' ' },
   mcp_list: { running: 'Loading', done: 'Loaded', bare: ' tools', join: ' ' },
+  time: { running: 'Checking the time', done: 'Checked the time', bare: '', join: ' ' },
+  chats: { running: 'Searching your chats', done: 'Searched your chats', bare: '', join: ' for ' },
 };
 
 /** The one-line summary shown for a step. */
@@ -180,7 +182,7 @@ export function activityTitle(step: ActivityStep, live = true): string {
     title = subject || (running ? 'Using a tool' : 'Used a tool');
   } else {
     const verbs = TOOL_VERBS[step.kind];
-    const quoted = step.kind === 'search' && subject ? `“${subject}”` : subject;
+    const quoted = (step.kind === 'search' || step.kind === 'chats') && subject ? `“${subject}”` : subject;
     title = `${running ? verbs.running : verbs.done}${quoted ? `${verbs.join}${quoted}` : verbs.bare}`;
     if (step.server && (step.kind === 'mcp' || step.kind === 'mcp_list')) {
       title += ` ${step.kind === 'mcp' ? 'on' : 'from'} ${step.server}`;

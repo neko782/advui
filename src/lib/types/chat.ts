@@ -13,6 +13,7 @@ import type {
   GeneratedImage,
   ActivityStep,
   McpServerConfig,
+  BrowserToolName,
   HistoryMessage,
   NativeTurn,
 } from './api.js';
@@ -102,6 +103,11 @@ export interface ChatSettings {
   // MCP settings (Responses API only)
   mcpEnabled?: boolean;
   mcpServers?: McpServerConfig[];
+  // Web fetch (Anthropic, Gemini)
+  webFetchEnabled?: boolean;
+  // Browser tools (any API)
+  browserToolsEnabled?: boolean;
+  browserTools?: BrowserToolName[];
 }
 
 export interface Chat {

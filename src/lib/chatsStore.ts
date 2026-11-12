@@ -21,6 +21,7 @@ import { normalizeReasoning, normalizeVerbosity, normalizeReasoningSummary } fro
 import type { Chat, ChatListItem, ChatNode, ChatSettings, ChatSelection, MessageVariant } from './types/index.js';
 import { hasOwn } from './utils/objects.js';
 import { normalizeMcpServerList } from './utils/mcp.js';
+import { normalizeBrowserTools } from './utils/browserTools.js';
 
 export const SELECTED_KEY = 'openai.chats.selected.v1';
 export const INTERRUPTED_GENERATION_ERROR = 'The reply was interrupted before it finished. Regenerate to try again.';
@@ -326,6 +327,10 @@ export async function saveChatContent(
         // MCP settings
         mcpEnabled: !!pickSetting('mcpEnabled'),
         mcpServers: normalizeMcpServerList(pickSetting('mcpServers')),
+        // Web fetch and browser tools
+        webFetchEnabled: !!pickSetting('webFetchEnabled'),
+        browserToolsEnabled: !!pickSetting('browserToolsEnabled'),
+        browserTools: normalizeBrowserTools(pickSetting('browserTools')),
       };
       const nextNodesCandidate = Array.isArray(nodes) ? nodes : (existing?.nodes || []);
       const hasNodes = nextNodesCandidate.length > 0;
@@ -563,6 +568,10 @@ export async function createChat(initial: CreateChatOptions = {}): Promise<{ id:
       // MCP settings
       mcpEnabled: hasOwn(initial?.settings || {}, 'mcpEnabled') ? !!initial.settings!.mcpEnabled : !!preferredPreset.mcpEnabled,
       mcpServers: normalizeMcpServerList(hasOwn(initial?.settings || {}, 'mcpServers') ? initial.settings!.mcpServers : preferredPreset.mcpServers),
+      // Web fetch and browser tools
+      webFetchEnabled: hasOwn(initial?.settings || {}, 'webFetchEnabled') ? !!initial.settings!.webFetchEnabled : !!preferredPreset.webFetchEnabled,
+      browserToolsEnabled: hasOwn(initial?.settings || {}, 'browserToolsEnabled') ? !!initial.settings!.browserToolsEnabled : !!preferredPreset.browserToolsEnabled,
+      browserTools: normalizeBrowserTools(hasOwn(initial?.settings || {}, 'browserTools') ? initial.settings!.browserTools : preferredPreset.browserTools),
     },
     nodes: baseNodes,
     rootId,

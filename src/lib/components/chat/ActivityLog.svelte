@@ -7,7 +7,7 @@
   import MarkdownContent from './LazyMarkdownContent.svelte'
   import {
     IconLightbulb, IconTravelExplore, IconLanguage, IconCodeBlocks, IconTerminal,
-    IconImagesmode, IconExtension, IconBuild, IconExpandMore,
+    IconImagesmode, IconExtension, IconBuild, IconExpandMore, IconSchedule, IconForum,
   } from '../../icons'
 
   interface Props {
@@ -27,6 +27,8 @@
     image: IconImagesmode,
     mcp: IconExtension,
     mcp_list: IconExtension,
+    time: IconSchedule,
+    chats: IconForum,
     tool: IconBuild,
   }
 

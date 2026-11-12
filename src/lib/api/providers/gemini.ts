@@ -18,7 +18,9 @@ import {
   type ProviderRequestContext,
 } from '../core.js';
 import { ActivityLog } from '../activity.js';
-import type { ActivityStep, GenerationResponse, NativeTurn } from '../../types/index.js';
+import { browserToolNames, browserToolSpecs } from '../browserTools.js';
+import { runToolLoop, type BrowserToolCall, type ToolRound } from '../toolLoop.js';
+import type { GenerationResponse, NativeTurn, WebSearchResult } from '../../types/index.js';
 
 export const DEFAULT_GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta';
 const THOUGHT_STEP_ID = 'thoughts';
@@ -28,13 +30,14 @@ type GeminiPart =
   | { inlineData: { mimeType: string; data: string } }
   | Record<string, unknown>;
 
-interface GeminiContent {
+export interface GeminiContent {
   role: 'user' | 'model';
   parts: GeminiPart[];
 }
 
 interface GeminiRequest {
   contents: GeminiContent[];
+  tools?: Array<Record<string, unknown>>;
   systemInstruction?: { parts: Array<{ text: string }> };
   generationConfig?: {
     temperature?: number;
@@ -52,11 +55,34 @@ function inlineDataFromDataUrl(dataUrl: string): GeminiPart | null {
   return null;
 }
 
+/** Names of the functions a stored reply's contents call. */
+function calledFunctions(contents: GeminiContent[]): string[] {
+  return contents.flatMap(content => (Array.isArray(content?.parts) ? content.parts : [])
+    .map(part => (part as { functionCall?: { name?: unknown } }).functionCall?.name)
+    .filter((name): name is string => typeof name === 'string'));
+}
+
+/**
+ * A stored reply's contents as they go back: every turn of a reply that
+ * called browser tools while the request still offers them, otherwise just
+ * the final model turn. Older replies stored only that turn's parts.
+ */
+function replayContents(native: unknown, functions: ReadonlySet<string>): GeminiContent[] {
+  if (Array.isArray(native)) return native.length ? [{ role: 'model', parts: native as GeminiPart[] }] : [];
+  const contents = native && typeof native === 'object' ? (native as { contents?: unknown }).contents : undefined;
+  if (!Array.isArray(contents) || !contents.length) return [];
+  const list = contents as GeminiContent[];
+  if (calledFunctions(list).every(name => functions.has(name))) return list;
+  const last = list[list.length - 1];
+  return last?.role === 'model' ? [last] : [];
+}
+
 // Convert messages to Gemini format
 export function convertToGeminiFormat(
   messages: ProviderMessage[],
   prompt?: string,
   endpoint?: string,
+  functions: ReadonlySet<string> = new Set(),
 ): { contents: GeminiContent[]; systemInstruction?: { parts: Array<{ text: string }> } } {
   const contents: GeminiContent[] = [];
   let systemInstruction: { parts: Array<{ text: string }> } | undefined;
@@ -91,9 +117,9 @@ export function convertToGeminiFormat(
 
     // Earlier replies go back with every part as it was returned, thought
     // signatures in place. Models that cannot read them drop them.
-    const native = geminiRole === 'model' && endpoint != null ? nativeData(msg, 'gemini', endpoint) : undefined;
-    if (Array.isArray(native) && native.length) {
-      contents.push({ role: 'model', parts: native as GeminiPart[] });
+    const native = geminiRole === 'model' && endpoint != null ? replayContents(nativeData(msg, 'gemini', endpoint), functions) : [];
+    if (native.length) {
+      contents.push(...native);
       continue;
     }
 
@@ -209,15 +235,34 @@ function nativeTurn(ctx: ProviderRequestContext, text: string, parts: Array<Reco
     : undefined;
 }
 
-function buildGeminiRequest(ctx: ProviderRequestContext): GeminiRequest {
+function buildGeminiTools(ctx: ProviderRequestContext): Array<Record<string, unknown>> {
+  const tools: Array<Record<string, unknown>> = [];
+  const functions = browserToolSpecs(ctx.tools.browserTools).map(spec => {
+    const declaration: Record<string, unknown> = { name: spec.name, description: spec.description };
+    const properties = (spec.parameters as { properties?: Record<string, unknown> }).properties;
+    // A function without parameters leaves the schema out.
+    if (properties && Object.keys(properties).length) declaration.parametersJsonSchema = spec.parameters;
+    return declaration;
+  });
+  if (functions.length) tools.push({ functionDeclarations: functions });
+  if (ctx.tools.webSearch?.enabled) tools.push({ googleSearch: {} });
+  if (ctx.tools.webFetch) tools.push({ urlContext: {} });
+  if (ctx.tools.codeInterpreter?.enabled) tools.push({ codeExecution: {} });
+  return tools;
+}
+
+export function buildGeminiRequest(ctx: ProviderRequestContext, extra: GeminiContent[] = []): GeminiRequest {
   const input: ProviderInput = ctx.input;
   const { contents, systemInstruction } = convertToGeminiFormat(
     Array.isArray(input) ? input : [],
     typeof input === 'string' ? input : undefined,
     geminiBaseUrlFor(ctx),
+    browserToolNames(ctx.tools.browserTools),
   );
 
-  const geminiRequest: GeminiRequest = { contents };
+  const geminiRequest: GeminiRequest = { contents: [...contents, ...extra] };
+  const tools = buildGeminiTools(ctx);
+  if (tools.length) geminiRequest.tools = tools;
   if (systemInstruction) {
     geminiRequest.systemInstruction = systemInstruction;
   }
@@ -253,8 +298,119 @@ function geminiBaseUrlFor(ctx: ProviderRequestContext): string {
   return normalizeGeminiBaseUrl(ctx.apiBaseUrl);
 }
 
-async function respondStreaming(ctx: ProviderRequestContext): Promise<GenerationResponse> {
-  const { onEvent, onTextDelta, onActivity } = ctx.callbacks;
+// ============================================================================
+// Built-in tools and function calls -> activity steps
+// ============================================================================
+
+type Json = Record<string, unknown>;
+
+function str(value: unknown): string {
+  return typeof value === 'string' ? value : '';
+}
+
+function firstCandidate(source: unknown): Json | undefined {
+  const candidates = (source as Json | undefined)?.candidates;
+  return Array.isArray(candidates) && candidates[0] && typeof candidates[0] === 'object' ? candidates[0] as Json : undefined;
+}
+
+function candidateParts(source: unknown): Json[] {
+  const content = firstCandidate(source)?.content as Json | undefined;
+  return Array.isArray(content?.parts) ? (content.parts as Json[]).filter(part => part && typeof part === 'object') : [];
+}
+
+const GENERATED_CALL_ID = 'gemini-call-';
+
+/**
+ * Follows one reply's built-in tool use (code execution, Google Search, URL
+ * context) and collects its function calls.
+ */
+export class GeminiToolReader {
+  readonly calls: BrowserToolCall[] = [];
+  readonly search: WebSearchResult = { citations: [], sources: [] };
+  private codeSteps = 0;
+
+  constructor(private log: ActivityLog) {}
+
+  read(chunk: unknown): void {
+    for (const part of candidateParts(chunk)) {
+      const code = part.executableCode as Json | undefined;
+      const result = part.codeExecutionResult as Json | undefined;
+      const call = part.functionCall as Json | undefined;
+      if (code) {
+        this.codeSteps++;
+        this.log.set(`code-${this.codeSteps}`, { kind: 'code', status: 'running', input: str(code.code) || undefined });
+      } else if (result) {
+        const id = `code-${Math.max(1, this.codeSteps)}`;
+        const ok = str(result.outcome) === 'OUTCOME_OK' || !str(result.outcome);
+        this.log.set(id, ok
+          ? { kind: 'code', status: 'done', output: str(result.output) || undefined }
+          : { kind: 'code', status: 'failed', output: str(result.output) || undefined, error: str(result.outcome) });
+      } else if (call && str(call.name)) {
+        this.calls.push({
+          id: str(call.id) || `${GENERATED_CALL_ID}${this.calls.length}`,
+          name: str(call.name),
+          arguments: call.args ?? {},
+        });
+      }
+    }
+
+    const candidate = firstCandidate(chunk);
+    const grounding = candidate?.groundingMetadata as Json | undefined;
+    if (grounding) this.readGrounding(grounding);
+    const urlContext = (candidate?.urlContextMetadata ?? candidate?.url_context_metadata) as Json | undefined;
+    if (urlContext) this.readUrlContext(urlContext);
+  }
+
+  private readGrounding(grounding: Json): void {
+    const queries = Array.isArray(grounding.webSearchQueries) ? grounding.webSearchQueries.filter((q): q is string => typeof q === 'string' && !!q) : [];
+    const chunks = Array.isArray(grounding.groundingChunks) ? grounding.groundingChunks as Json[] : [];
+    for (const chunk of chunks) {
+      const web = chunk?.web as Json | undefined;
+      const url = str(web?.uri);
+      if (url && !this.search.sources.some(source => source.url === url)) {
+        this.search.sources.push({ url, title: str(web?.title) || undefined });
+      }
+    }
+    if (!queries.length && !this.search.sources.length) return;
+    this.log.set('google-search', {
+      kind: 'search',
+      status: 'done',
+      subject: queries[0] || undefined,
+      input: queries.length > 1 ? queries.join('\n') : undefined,
+      output: this.search.sources.map(source => (source.title ? `${source.title}\n${source.url}` : source.url)).join('\n\n') || undefined,
+    }, -1);
+  }
+
+  private readUrlContext(metadata: Json): void {
+    const entries = (metadata.urlMetadata ?? metadata.url_metadata) as Json[] | undefined;
+    if (!Array.isArray(entries)) return;
+    entries.forEach((entry, index) => {
+      const url = str(entry?.retrievedUrl ?? entry?.retrieved_url);
+      const status = str(entry?.urlRetrievalStatus ?? entry?.url_retrieval_status);
+      const ok = !status || status === 'URL_RETRIEVAL_STATUS_SUCCESS';
+      this.log.set(`url-${index}`, ok
+        ? { kind: 'fetch', status: 'done', subject: url || undefined }
+        : { kind: 'fetch', status: 'failed', subject: url || undefined, error: status.replace(/^URL_RETRIEVAL_STATUS_/, '').toLowerCase().replace(/_/g, ' ') }, -0.5);
+    });
+  }
+
+  webSearchResult(): WebSearchResult | undefined {
+    return this.search.sources.length ? this.search : undefined;
+  }
+}
+
+// ============================================================================
+// Requests
+// ============================================================================
+
+interface RoundReply {
+  reply: GenerationResponse;
+  calls: BrowserToolCall[];
+  parts: Array<Record<string, unknown>>;
+}
+
+async function respondStreaming(ctx: ProviderRequestContext, extra: GeminiContent[]): Promise<RoundReply> {
+  const { onEvent, onTextDelta, onActivity, onWebSearchResult } = ctx.callbacks;
   const abortController = createAbort(ctx.provideAbort);
   const endpoint = `${geminiBaseUrlFor(ctx)}/models/${ctx.model}:streamGenerateContent?alt=sse&key=${ctx.apiKey}`;
 
@@ -263,7 +419,7 @@ async function respondStreaming(ctx: ProviderRequestContext): Promise<Generation
     headers: {
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify(buildGeminiRequest(ctx)),
+    body: JSON.stringify(buildGeminiRequest(ctx, extra)),
     signal: abortController.signal,
   });
   await ensureOkResponse(response, 'Gemini API error');
@@ -271,16 +427,18 @@ async function respondStreaming(ctx: ProviderRequestContext): Promise<Generation
   let full = '';
   // Thought summaries stream as one run of text, read as a single thinking step.
   const log = new ActivityLog(onActivity);
+  const tools = new GeminiToolReader(log);
   let stopMessage: string | null = null;
   const parts: Array<Record<string, unknown>> = [];
 
   const processLine = createSseJsonLineProcessor((chunk) => {
     stopMessage = describeGeminiStop(chunk) ?? stopMessage;
     appendGeminiParts(parts, chunk);
+    tools.read(chunk);
     const { text: delta, reasoningSummary: reasoningDelta } = extractGeminiParts(chunk);
     if (reasoningDelta) log.append(THOUGHT_STEP_ID, 'text', reasoningDelta, { kind: 'thinking', status: 'running' });
     if (delta) {
-      log.settle();
+      if (log.get(THOUGHT_STEP_ID)?.status === 'running') log.set(THOUGHT_STEP_ID, { status: 'done' });
       full += delta;
       try { onTextDelta?.(full, delta, chunk); } catch { /* ignore */ }
     }
@@ -288,12 +446,20 @@ async function respondStreaming(ctx: ProviderRequestContext): Promise<Generation
 
   await readSseLines(response, processLine);
   // Partial text is still a usable reply; only an empty one is an error.
-  if (!full && stopMessage) throw new Error(stopMessage);
+  if (!full && !tools.calls.length && stopMessage) throw new Error(stopMessage);
 
-  return { text: full, activity: log.settle(), native: nativeTurn(ctx, full, parts) };
+  const webSearchResult = tools.webSearchResult();
+  if (webSearchResult) {
+    try { onWebSearchResult?.(webSearchResult); } catch { /* ignore */ }
+  }
+  return {
+    reply: { text: full, activity: log.settle(), webSearchResult, native: nativeTurn(ctx, full, parts) },
+    calls: tools.calls,
+    parts,
+  };
 }
 
-async function respondOnce(ctx: ProviderRequestContext): Promise<GenerationResponse> {
+async function respondOnce(ctx: ProviderRequestContext, extra: GeminiContent[]): Promise<RoundReply> {
   const abortController = createAbort(ctx.provideAbort);
   const endpoint = `${geminiBaseUrlFor(ctx)}/models/${ctx.model}:generateContent?key=${ctx.apiKey}`;
 
@@ -302,23 +468,57 @@ async function respondOnce(ctx: ProviderRequestContext): Promise<GenerationRespo
     headers: {
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify(buildGeminiRequest(ctx)),
+    body: JSON.stringify(buildGeminiRequest(ctx, extra)),
     signal: abortController.signal,
   });
   await ensureOkResponse(response, 'Gemini API error');
 
   const res = await response.json();
   const { text, reasoningSummary: summary } = extractGeminiParts(res);
-  if (!text) {
+  const log = new ActivityLog();
+  if (summary) log.set(THOUGHT_STEP_ID, { kind: 'thinking', status: 'done', text: summary });
+  const tools = new GeminiToolReader(log);
+  tools.read(res);
+  if (!text && !tools.calls.length) {
     const stopMessage = describeGeminiStop(res);
     if (stopMessage) throw new Error(stopMessage);
   }
-  const activity: ActivityStep[] = summary
-    ? [{ id: THOUGHT_STEP_ID, kind: 'thinking', status: 'done', text: summary }]
-    : [];
+  const webSearchResult = tools.webSearchResult();
+  if (webSearchResult) {
+    try { ctx.callbacks.onWebSearchResult?.(webSearchResult); } catch { /* ignore */ }
+  }
   const parts: Array<Record<string, unknown>> = [];
   appendGeminiParts(parts, res);
-  return { text, activity, native: nativeTurn(ctx, text, parts) };
+  return {
+    reply: { text, activity: log.settle(), webSearchResult, native: nativeTurn(ctx, text, parts) },
+    calls: tools.calls,
+    parts,
+  };
+}
+
+function respond(ctx: ProviderRequestContext, stream: boolean): Promise<GenerationResponse> {
+  return runToolLoop<GeminiContent>(ctx, {
+    async send(roundCtx, extra) {
+      const round = await (stream ? respondStreaming(roundCtx, extra) : respondOnce(roundCtx, extra));
+      const turn: GeminiContent[] = round.parts.length ? [{ role: 'model', parts: round.parts }] : [];
+      return { reply: round.reply, calls: round.calls, turn } satisfies ToolRound<GeminiContent>;
+    },
+    answer: answers => [{
+      role: 'user',
+      parts: answers.map(({ call, output, isError }) => {
+        const functionResponse: Json = { name: call.name, response: isError ? { error: output } : { result: output } };
+        if (!call.id.startsWith(GENERATED_CALL_ID)) functionResponse.id = call.id;
+        return { functionResponse };
+      }),
+    }],
+    native: (rounds, final, text) => ({
+      api: 'gemini',
+      endpoint: geminiBaseUrlFor(ctx),
+      model: ctx.model,
+      text,
+      data: { contents: [...rounds, ...final.turn] },
+    }),
+  });
 }
 
 async function listModels({ apiKey, baseURL }: { apiKey: string; baseURL: string }): Promise<string[]> {
@@ -346,8 +546,6 @@ async function listModels({ apiKey, baseURL }: { apiKey: string; baseURL: string
 }
 
 export const geminiAdapter: ProviderAdapter = {
-  respond(ctx, stream) {
-    return stream ? respondStreaming(ctx) : respondOnce(ctx);
-  },
+  respond,
   listModels,
 };

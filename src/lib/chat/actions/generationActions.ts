@@ -3,6 +3,7 @@ import { respond } from '../../openaiClient.js';
 import { buildVisible as _buildVisible } from '../../branching.js';
 import { isAbortError } from '../../utils/errors.js';
 import { normalizeMcpServerList } from '../../utils/mcp.js';
+import { activeBrowserTools } from '../../utils/browserTools.js';
 import { settleActivity } from '../../api/activity.js';
 import { updateVariantById } from './variantActions.js';
 import { findNodeByMessageId } from '../../utils/treeUtils.js';
@@ -526,6 +527,8 @@ export async function generateResponse(options: GenerateResponseOptions): Promis
     shell,
     imageGeneration,
     mcpServers,
+    webFetch: !!chatSettings.webFetchEnabled,
+    browserTools: activeBrowserTools(chatSettings.browserToolsEnabled, chatSettings.browserTools),
   };
 
   if (streaming && typingVariantId != null) {

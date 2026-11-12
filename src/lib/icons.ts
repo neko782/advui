@@ -42,3 +42,6 @@ export { default as IconExpandMore } from '~icons/material-symbols/expand-more-r
 export { default as IconLightbulb } from '~icons/material-symbols/lightbulb-outline-rounded'
 export { default as IconBuild } from '~icons/material-symbols/build-rounded'
 export { default as IconLanguage } from '~icons/material-symbols/language'
+export { default as IconSchedule } from '~icons/material-symbols/schedule-rounded'
+export { default as IconForum } from '~icons/material-symbols/forum-rounded'
+export { default as IconWebAsset } from '~icons/material-symbols/web-asset-rounded'

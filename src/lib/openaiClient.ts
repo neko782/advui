@@ -146,7 +146,10 @@ export async function respond(options: RespondOptions): Promise<GenerationRespon
       shell: off.shell ? undefined : options.shell,
       imageGeneration: off.imageGeneration ? undefined : options.imageGeneration,
       mcpServers: off.mcp ? [] : options.mcpServers,
+      webFetch: off.webFetch ? undefined : options.webFetch,
+      browserTools: off.browser ? undefined : options.browserTools,
     },
+    openRouter: resolvedConnection.openRouterEnabled === true,
     callbacks: {
       onEvent: options.onEvent,
       onTextDelta: options.onTextDelta,

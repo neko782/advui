@@ -2,7 +2,7 @@
   import OpenRouterProviderInput from '../OpenRouterProviderInput.svelte'
   import ModelInput from '../ModelInput.svelte'
   import ToolsPicker, { TOOLS } from '../ToolsPicker.svelte'
-  import { isOpenAiCompatible } from '../../utils/apiModes'
+  import { isOpenAiCompatible, unsupportedTools } from '../../utils/apiModes'
   import { onMount } from 'svelte'
   import { IconAdd, IconDelete, IconDragHandle } from '../../icons'
   import { DEFAULT_SYSTEM_PROMPT } from '../../utils/presetHelpers'
@@ -10,6 +10,7 @@
   import { parseTopP, parseTemperature, parseThinkingBudgetTokens } from '../../utils/validation'
   import { reasoningLevelOptions } from '../../utils/reasoningLevels'
   import type { SettingsDraft } from './settingsDraft.svelte'
+  import type { ToolId } from '../../types'
 
   interface Props {
     draft: SettingsDraft
@@ -29,7 +30,13 @@
     selected: activePreset?.reasoningEffort,
   }))
   const activePresetModels = $derived(draft.activePresetModels)
-  const activePresetSupportsResponsesApiFeatures = $derived(draft.activePresetSupportsResponsesApiFeatures)
+  // Tools switched off app-wide, plus the ones the preset's API lacks.
+  const presetHiddenTools = $derived({
+    ...unsupportedTools(draft.activePresetConnection?.apiMode, draft.activePresetConnection?.openRouterEnabled === true),
+    ...draft.disabledTools,
+  })
+  // Only the Responses API takes per-tool container options.
+  const presetPlainTools = $derived<ToolId[]>(draft.activePresetConnection?.apiMode === 'responses' ? [] : ['codeInterpreter'])
 
   const selectPreset = (id: string) => draft.selectPreset(id)
   const addPreset = () => draft.addPreset()
@@ -62,7 +69,7 @@
     }
   }
 
-  const anyToolAvailable = $derived(TOOLS.some(tool => !draft.disabledTools[tool.id]))
+  const anyToolAvailable = $derived(TOOLS.some(tool => !presetHiddenTools[tool.id]))
 
   onMount(() => {
     // Model suggestions come from the shared cache; hydrate it lazily
@@ -284,11 +291,7 @@
 
                   {#if anyToolAvailable}
                     <div class="ui-subhead">Tools</div>
-                    {#if activePresetSupportsResponsesApiFeatures}
-                      <ToolsPicker value={activePreset} onChange={updateActivePreset} hidden={draft.disabledTools} />
-                    {:else}
-                      <p class="ui-hint">Tools are available on Responses API connections.</p>
-                    {/if}
+                    <ToolsPicker value={activePreset} onChange={updateActivePreset} hidden={presetHiddenTools} plain={presetPlainTools} />
                   {/if}
 
                   <div class="ui-subhead">Generation</div>
