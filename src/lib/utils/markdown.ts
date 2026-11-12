@@ -208,11 +208,33 @@ let allowLatex = false;
 export type LatexRenderer = (text: string, displayMode: boolean) => string;
 let latexRenderer: LatexRenderer | undefined;
 
-const inlineDollarLatexRule = /^(\${1,2})(?!\$)((?:\\.|[^\\\n])*?(?:\\.|[^\\\n\$]))\1(?=[\s?!\.,:？！。，：]|$)/;
-const blockDollarLatexRule = /^(\${1,2})\n((?:\\[^]|[^\\])+?)\n\1(?:\n|$)/;
+const LATEX_TRAILING_BOUNDARY = String.raw`(?=[\s?!\.,:;)？！。，：；）]|$)`;
+const inlineDollarLatexRule = new RegExp(String.raw`^\$(?!\$)((?:\\.|[^\\\n])*?(?:\\.|[^\\\n\$]))\$` + LATEX_TRAILING_BOUNDARY);
+// $$...$$ is display math and may span lines (but never a `$$` inside).
+const inlineDisplayDollarLatexRule = new RegExp(String.raw`^\$\$(?!\$)((?:\\[^]|\$(?!\$)|[^\\$])+?)\$\$` + LATEX_TRAILING_BOUNDARY);
+const blockDollarLatexRule = /^ {0,3}\$\$((?:\\[^]|\$(?!\$)|[^\\$])+?)\$\$[ \t]*(?:\n|$)/;
+const blockSingleDollarLatexRule = /^ {0,3}\$\n((?:\\[^]|[^\\])+?)\n\$[ \t]*(?:\n|$)/;
 const inlineParenLatexRule = /^\\\(((?:\\.|[^\\\n])*?)\\\)/;
-const inlineBracketLatexRule = /^\\\[([^\n]+?)\\\]/;
-const blockBracketLatexRule = /^\\\[\s*\n?([\s\S]+?)\n?\s*\\\](?:\n|$)/;
+const inlineBracketLatexRule = /^\\\[([\s\S]+?)\\\]/;
+const blockBracketLatexRule = /^ {0,3}\\\[([\s\S]+?)\\\][ \t]*(?:\n|$)/;
+const blockLatexLineStart = /(?:^|\n)(?= {0,3}(?:\$|\\\[))/g;
+
+function matchBlockLatex(src: string): { raw: string; text: string } | undefined {
+  const match = src.match(blockDollarLatexRule)
+    ?? src.match(blockSingleDollarLatexRule)
+    ?? src.match(blockBracketLatexRule);
+  return match ? { raw: match[0], text: match[1] ?? '' } : undefined;
+}
+
+// Lets display math that starts on its own line interrupt a paragraph,
+// so "Text:\n$$\n...\n$$" doesn't need a blank line before the math.
+function findBlockLatexStart(src: string): number | undefined {
+  for (const match of src.matchAll(blockLatexLineStart)) {
+    const index = match.index + match[0].length;
+    if (matchBlockLatex(src.slice(index))) return index;
+  }
+  return undefined;
+}
 
 function renderLatex(text: string, displayMode: boolean): string {
   return latexRenderer?.(text.trim(), displayMode) ?? escapeHtml(text);
@@ -228,13 +250,14 @@ const latexExtension = {
       },
       tokenizer(src: string) {
         if (!allowLatex) return undefined;
-        const match = src.match(inlineDollarLatexRule);
+        const display = src.match(inlineDisplayDollarLatexRule);
+        const match = display ?? src.match(inlineDollarLatexRule);
         if (!match) return undefined;
         return {
           type: 'inlineDollarLatex',
           raw: match[0],
-          text: match[2],
-          displayMode: (match[1] ?? '').length === 2,
+          text: match[1],
+          displayMode: !!display,
         };
       },
       renderer(token: { text: string; displayMode: boolean }) {
@@ -242,18 +265,16 @@ const latexExtension = {
       },
     },
     {
-      name: 'blockDollarLatex',
+      name: 'blockLatex',
       level: 'block' as const,
+      start(src: string) {
+        return allowLatex ? findBlockLatexStart(src) : undefined;
+      },
       tokenizer(src: string) {
         if (!allowLatex) return undefined;
-        const match = src.match(blockDollarLatexRule);
+        const match = matchBlockLatex(src);
         if (!match) return undefined;
-        return {
-          type: 'blockDollarLatex',
-          raw: match[0],
-          text: match[2],
-          displayMode: true,
-        };
+        return { type: 'blockLatex', raw: match.raw, text: match.text };
       },
       renderer(token: { text: string }) {
         return `${renderLatex(token.text, true)}\n`;
@@ -273,19 +294,6 @@ const latexExtension = {
       },
       renderer(token: { text: string }) {
         return renderLatex(token.text, false);
-      },
-    },
-    {
-      name: 'blockBracketLatex',
-      level: 'block' as const,
-      tokenizer(src: string) {
-        if (!allowLatex) return undefined;
-        const match = src.match(blockBracketLatexRule);
-        if (!match) return undefined;
-        return { type: 'blockBracketLatex', raw: match[0], text: match[1] };
-      },
-      renderer(token: { text: string }) {
-        return `${renderLatex(token.text, true)}\n`;
       },
     },
     {

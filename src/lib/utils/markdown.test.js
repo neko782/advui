@@ -70,6 +70,34 @@ describe('renderMarkdown LaTeX', () => {
     expect(display).toContain('class="katex-display"')
   })
 
+  it.each([
+    ['content on the $$ lines', '$$a \\\\\nb$$'],
+    ['$$ right after a text line', 'Text:\n$$\na \\\\\nb\n$$\nmore'],
+    ['\\[ right after a text line', 'Text:\n\\[\na \\\\\nb\n\\]\nmore'],
+    ['\\[ spanning lines mid-sentence', 'so \\[ a \\\\\n b \\] ok'],
+    ['$$ followed by punctuation', '$$\na \\\\\nb\n$$.'],
+  ])('renders multiline display math with %s', (_label, src) => {
+    const html = renderMarkdown(src, mathOptions)
+
+    expect(html).toContain('class="katex-display"')
+    expect(html).not.toContain('katex-error')
+    expect(html).not.toContain('$$')
+  })
+
+  it('keeps surrounding text when display math interrupts a paragraph', () => {
+    const html = renderMarkdown('Text:\n$$\nx\n$$\nmore', mathOptions)
+
+    expect(html).toContain('<p>Text:</p>')
+    expect(html).toContain('more')
+  })
+
+  it('does not treat dollar amounts on separate lines as math', () => {
+    const html = renderMarkdown('It costs $5\nor maybe $10 total', mathOptions)
+
+    expect(html).not.toContain('class="katex"')
+    expect(html).toContain('$5')
+  })
+
   it('leaves LaTeX delimiters as text when rendering is disabled', () => {
     const html = renderMarkdown('Math: $x^2$ and \\(y^2\\)', { renderLatex: false })
 
