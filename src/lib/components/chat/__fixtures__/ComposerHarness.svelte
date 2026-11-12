@@ -2,6 +2,7 @@
   import Composer from '../Composer.svelte'
   import type { Image } from '../../../types'
   let { initialInput = '', locked = false, onFilesSelected = (_files: File[]) => {} } = $props()
+  // svelte-ignore state_referenced_locally -- seeds the draft once
   let input = $state(initialInput)
   let sent = $state('')
   let attachedImages = $state<Image[]>([])

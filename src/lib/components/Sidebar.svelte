@@ -39,7 +39,8 @@
   let suppressBlur = $state(false)
   let presetMenuOpen = $state(false)
   let presetMenuEl = $state<HTMLDivElement | null>(null)
-  let lastSidebarOpen = $state(props.open ?? true)
+  // Plain bookkeeping for the effect below; nothing renders from it.
+  let lastSidebarOpen = true
   let chatMenuOpen = $state<string | null>(null) // Track which chat's menu is open
 
   // Modal state

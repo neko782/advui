@@ -16,7 +16,7 @@
   let open = $state(false)
   let groupEl = $state<HTMLDivElement | null>(null)
   let triggerEl = $state<HTMLButtonElement | null>(null)
-  const menuId = `role-menu-${props.messageId ?? 'unknown'}`
+  const menuId = $derived(`role-menu-${props.messageId ?? 'unknown'}`)
 
   function toggleMenu() {
     if (props.locked || props.disabled) return
