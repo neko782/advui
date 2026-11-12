@@ -48,9 +48,13 @@ export interface ResponsesRequestOptions {
   encryptedReasoning: boolean;
   /** Send earlier replies' reasoning back. */
   replayReasoning: boolean;
+  /** Ask for the sources each web search found (some endpoints refuse it). */
+  searchSources: boolean;
 }
 
-const DEFAULT_REQUEST_OPTIONS: ResponsesRequestOptions = { encryptedReasoning: true, replayReasoning: true };
+const DEFAULT_REQUEST_OPTIONS: ResponsesRequestOptions = { encryptedReasoning: true, replayReasoning: true, searchSources: true };
+
+const SEARCH_SOURCES_INCLUDE = 'web_search_call.action.sources';
 
 /**
  * Request input: earlier replies go back as the output items they came as
@@ -71,7 +75,7 @@ export function buildResponsesInput(
   for (const message of ctx.input) {
     const data = message.role === 'assistant' ? nativeData(message, 'responses', ctx.baseURL) : undefined;
     const reasoningUsable = options.replayReasoning && message.native?.account === account;
-    const items = Array.isArray(data) ? turnItems(data as Item[], reasoningUsable, functions) : [];
+    const items = Array.isArray(data) ? withSearchNote(turnItems(data as Item[], reasoningUsable, functions)) : [];
     if (items.length) {
       input.push(...items);
     } else {
@@ -98,6 +102,52 @@ function turnItems(items: Item[], reasoningUsable: boolean, functions: ReadonlyS
   return kept
     .filter(item => item.type === 'message')
     .map(({ id: _id, ...item }) => item);
+}
+
+/** A web search call that went back without the sources it found. */
+function isSourcelessSearch(item: Item): boolean {
+  if (item.type !== 'web_search_call') return false;
+  const action = item.action && typeof item.action === 'object' ? item.action as Item : {};
+  // Opening a page or searching in one names its page; only searches lose their results.
+  if (action.type === 'open_page' || action.type === 'find_in_page') return false;
+  return !(Array.isArray(action.sources) && action.sources.length);
+}
+
+/**
+ * Web search results stay on the provider's side, and a search call holds
+ * them only when its sources were asked for. A call without them reads to
+ * the model as a search that found nothing, so the model takes the answer
+ * built on it for a guess. Such calls go back as a note naming the searches
+ * and the pages the reply cited instead.
+ */
+export function withSearchNote(items: Item[]): Item[] {
+  const searches = items.filter(isSourcelessSearch);
+  if (!searches.length) return items;
+  const queries = new Set<string>();
+  for (const call of searches) {
+    const action = call.action && typeof call.action === 'object' ? call.action as Item : {};
+    const list = Array.isArray(action.queries) ? action.queries : [action.query];
+    for (const query of list) if (typeof query === 'string' && query.trim()) queries.add(query.trim());
+  }
+  const cited = new Set<string>();
+  for (const item of items) {
+    if (item.type !== 'message' || !Array.isArray(item.content)) continue;
+    for (const part of item.content as Item[]) {
+      if (!Array.isArray(part?.annotations)) continue;
+      for (const note of part.annotations as Item[]) {
+        if (note?.type === 'url_citation' && str(note.url)) cited.add(str(note.url));
+      }
+    }
+  }
+  const lines = [
+    `Your next reply used web search${queries.size ? ` (${[...queries].map(q => JSON.stringify(q)).join(', ')})` : ''}, and the searches completed.`,
+    'Their results are not kept in this history, so their absence does not mean they found nothing.',
+  ];
+  if (cited.size) lines.push(`Pages it cited from the results: ${[...cited].join(', ')}`);
+  return [
+    { role: 'developer', content: lines.join(' ') },
+    ...items.filter(item => !isSourcelessSearch(item)),
+  ];
 }
 
 /**
@@ -129,7 +179,10 @@ export function buildResponsesRequest(
     input: buildResponsesInput(ctx, options, extra),
     store: false,
   };
-  if (options.encryptedReasoning) request.include = ['reasoning.encrypted_content'];
+  const include: string[] = [];
+  if (options.encryptedReasoning) include.push('reasoning.encrypted_content');
+  if (options.searchSources && ctx.tools.webSearch?.enabled) include.push(SEARCH_SOURCES_INCLUDE);
+  if (include.length) request.include = include;
 
   const tokens = toIntOrNull(ctx.params.maxOutputTokens, { belowMin: 'unset' });
   if (tokens != null) request.max_output_tokens = tokens;
@@ -867,6 +920,8 @@ async function listModels({ apiKey, baseURL }: { apiKey: string; baseURL: string
 
 /** Endpoint and model pairs that refused encrypted reasoning this session (models without reasoning). */
 const encryptedReasoningRefusedBy = new Set<string>();
+/** Endpoint and model pairs that refused to include web search sources this session. */
+const searchSourcesRefusedBy = new Set<string>();
 
 /** Whether the request sends any earlier reasoning back. */
 function replaysReasoning(ctx: ProviderRequestContext, options: ResponsesRequestOptions, extra: Item[]): boolean {
@@ -885,12 +940,19 @@ async function respondRound(ctx: ProviderRequestContext, stream: boolean, extra:
   let options: ResponsesRequestOptions = {
     encryptedReasoning: !encryptedReasoningRefusedBy.has(modelKey),
     replayReasoning: true,
+    searchSources: !searchSourcesRefusedBy.has(modelKey),
   };
   for (;;) {
     try {
       return await (stream ? respondStreaming(ctx, options, extra) : respondOnce(ctx, options, extra));
     } catch (err) {
-      if (!(err instanceof ApiHttpError) || err.status !== 400 || !/encrypt|reasoning/i.test(err.message)) throw err;
+      if (!(err instanceof ApiHttpError) || err.status !== 400) throw err;
+      if (options.searchSources && ctx.tools.webSearch?.enabled && /web_search_call|sources/i.test(err.message)) {
+        searchSourcesRefusedBy.add(modelKey);
+        options = { ...options, searchSources: false };
+        continue;
+      }
+      if (!/encrypt|reasoning/i.test(err.message)) throw err;
       if (options.encryptedReasoning && /not supported|unsupported|include/i.test(err.message)) {
         encryptedReasoningRefusedBy.add(modelKey);
         options = { ...options, encryptedReasoning: false };

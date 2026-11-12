@@ -129,7 +129,7 @@ describe('Anthropic replay', () => {
 describe('Responses replay', () => {
   const items = [
     { type: 'reasoning', id: 'rs_1', summary: [], encrypted_content: 'enc' },
-    { type: 'web_search_call', id: 'ws_1', status: 'completed', action: { type: 'search', query: 'x' } },
+    { type: 'web_search_call', id: 'ws_1', status: 'completed', action: { type: 'search', query: 'x', sources: [{ type: 'url', url: 'https://a.test/' }] } },
     { type: 'message', id: 'msg_1', role: 'assistant', phase: 'final_answer', content: [{ type: 'output_text', text: 'answer', annotations: [] }] },
   ]
   const native: NativeTurn = { api: 'responses', endpoint: BASE, model: 'gpt', account: accountTag('key'), text: 'answer', data: items }
@@ -155,6 +155,45 @@ describe('Responses replay', () => {
     vi.stubGlobal('fetch', fetcher)
     await responsesAdapter.respond(ctx(), false)
     expect(sentBody(fetcher)).toMatchObject({ store: false, include: ['reasoning.encrypted_content'] })
+  })
+
+  it('asks for web search sources only when web search is on', async () => {
+    const fetcher = vi.fn(async () => ok())
+    vi.stubGlobal('fetch', fetcher)
+    await responsesAdapter.respond(ctx({ tools: { webSearch: { enabled: true } } }), false)
+    expect(sentBody(fetcher).include).toEqual(['reasoning.encrypted_content', 'web_search_call.action.sources'])
+  })
+
+  it('stops asking for web search sources from an endpoint that refuses them', async () => {
+    const fetcher = vi.fn()
+      .mockResolvedValueOnce(refused("Invalid value: 'web_search_call.action.sources'. Supported values are: 'reasoning.encrypted_content'."))
+      .mockImplementation(async () => ok())
+    vi.stubGlobal('fetch', fetcher)
+    const search = ctx({ model: 'no-sources', tools: { webSearch: { enabled: true } } })
+    await responsesAdapter.respond(search, false)
+    await responsesAdapter.respond(search, false)
+    expect(fetcher).toHaveBeenCalledTimes(3)
+    expect(sentBody(fetcher, 1).include).toEqual(['reasoning.encrypted_content'])
+    expect(sentBody(fetcher, 2).include).toEqual(['reasoning.encrypted_content'])
+  })
+
+  it('replaces searches stored without their sources with a note naming them and the cited pages', () => {
+    const cited = { type: 'message', id: 'msg_1', role: 'assistant', phase: 'final_answer', content: [{ type: 'output_text', text: 'answer', annotations: [
+      { type: 'url_citation', url: 'https://www.anthropic.com/news/models', title: 'Models', start_index: 0, end_index: 6 },
+    ] }] }
+    const stored = { ...native, data: [
+      { type: 'web_search_call', id: 'ws_1', status: 'completed', action: { type: 'search', query: 'latest claude model' } },
+      { type: 'web_search_call', id: 'ws_2', status: 'completed', action: { type: 'search', query: '' } },
+      { type: 'web_search_call', id: 'ws_3', status: 'completed', action: { type: 'open_page', url: 'https://www.anthropic.com/news/models' } },
+      cited,
+    ] }
+    const input = buildResponsesInput(ctx({ input: turn(stored) })) as Array<Record<string, unknown>>
+    expect(input).toHaveLength(5)
+    expect(input[1]).toMatchObject({ role: 'developer' })
+    expect(input[1]!.content).toContain('"latest claude model"')
+    expect(input[1]!.content).toContain('https://www.anthropic.com/news/models')
+    expect(input.slice(2, 4)).toEqual([stored.data[2], cited])
+    expect(input.some(item => item.type === 'web_search_call' && item.id !== 'ws_3')).toBe(false)
   })
 
   it('sends only the messages of a reply made under another API key', () => {
