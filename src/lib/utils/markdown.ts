@@ -109,7 +109,8 @@ interface HighlightedCodeBlock {
 }
 
 function highlightCodeBlock(rawCode: string, specifiedLang = ''): HighlightedCodeBlock {
-  const requestedLang = specifiedLang.trim();
+  // A fence info string may carry more than the language ("js title=app.js").
+  const requestedLang = specifiedLang.trim().split(/\s+/)[0] ?? '';
   const skipHighlight = (
     rawCode.length > MAX_HIGHLIGHT_CHARS ||
     rawCode.split(/\r?\n/).length > MAX_HIGHLIGHT_LINES

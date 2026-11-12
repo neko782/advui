@@ -14,6 +14,7 @@ import {
   normalizeReasoningText,
   readSseLines,
   sortModels,
+  throwIfErrorBody,
   type ContentPart,
   type ProviderAdapter,
   type ProviderRequestContext,
@@ -301,6 +302,7 @@ async function respondOnce(ctx: ProviderRequestContext): Promise<GenerationRespo
   await ensureOkResponse(response, 'API error');
 
   const res = await response.json();
+  throwIfErrorBody(res);
   const text = extractOutputText(res);
   const summary = extractChatReasoningSummary(res);
   try { onReasoningSummaryDone?.(summary || '', null); } catch { /* ignore */ }

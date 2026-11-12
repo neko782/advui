@@ -7,6 +7,7 @@ import { DEFAULT_MODEL } from './utils/presetHelpers.js';
 import {
   buildClientOptions,
   buildProviderInput,
+  normalizeBaseUrl,
   pickActivePreset,
   resolveConnection,
   type ProviderAdapter,
@@ -167,7 +168,7 @@ export async function listModels(options: {
     });
     if (!connection.apiKey) throw new Error('Missing API key. Set it in Settings.');
     apiKey = connection.apiKey;
-    baseURL = connection.apiBaseUrl || 'https://api.openai.com/v1';
+    baseURL = normalizeBaseUrl(connection.apiBaseUrl) || 'https://api.openai.com/v1';
     apiMode = connection.apiMode;
   }
 

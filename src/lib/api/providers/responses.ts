@@ -18,6 +18,7 @@ import {
   readSseLines,
   sanitizeMcpLabel,
   sortModels,
+  throwIfErrorBody,
   type ProviderAdapter,
   type ProviderRequestContext,
 } from '../core.js';
@@ -435,6 +436,27 @@ export function buildInterleavedFromOutput(output: unknown[]): string {
   return normalizeReasoningText(parts.join('\n\n'));
 }
 
+/**
+ * A response that stops early (token limit, content filter) ends with status
+ * "incomplete". Partial text is still a usable reply, so this only becomes an
+ * error when there is nothing to show.
+ */
+function incompleteResponseError(response: unknown): Error | null {
+  const obj = response && typeof response === 'object' ? response as Record<string, unknown> : null;
+  if (obj?.status !== 'incomplete') return null;
+  const details = obj.incomplete_details && typeof obj.incomplete_details === 'object'
+    ? obj.incomplete_details as Record<string, unknown>
+    : null;
+  const reason = typeof details?.reason === 'string' ? details.reason : '';
+  if (reason === 'max_output_tokens') {
+    return new Error('The reply hit the max output tokens limit before any text was produced. Raise the limit and regenerate.');
+  }
+  if (reason === 'content_filter') {
+    return new Error('The reply was blocked by the provider\'s content filter.');
+  }
+  return new Error(reason ? `The reply was incomplete (${reason}).` : 'The reply was incomplete.');
+}
+
 // ============================================================================
 // Streaming
 // ============================================================================
@@ -504,6 +526,7 @@ async function respondStreaming(ctx: ProviderRequestContext): Promise<Generation
     });
   };
   let completed = false;
+  let incompleteError: Error | null = null;
   // Web search tracking
   const webSearchCitations: WebSearchCitation[] = [];
   const webSearchSources: WebSearchSource[] = [];
@@ -732,8 +755,9 @@ async function respondStreaming(ctx: ProviderRequestContext): Promise<Generation
       upsertToolActivity(event, `**${formatMcpLabel(d.serverLabel)}** ${d.name ? `\`${d.name}\`` : ''} \u2014 *failed*${error ? ` (${error})` : ''}`);
       emitToolActivityDelta(event);
     // ---- Response completion ----
-    } else if (t === 'response.completed' || t === 'response.text.done' || t === 'response.done') {
+    } else if (t === 'response.completed' || t === 'response.incomplete' || t === 'response.text.done' || t === 'response.done') {
       completed = true;
+      incompleteError = incompleteResponseError(event?.response);
       // Extract citations and sources from completed response
       const response = event?.response as Record<string, unknown> | undefined;
       const output = response?.output as Array<Record<string, unknown>> | undefined;
@@ -794,6 +818,7 @@ async function respondStreaming(ctx: ProviderRequestContext): Promise<Generation
   const processLine = createSseJsonLineProcessor(processEvent, onEvent);
   await readSseLines(response, processLine, () => completed);
   if (!completed) throw new Error('The reply stream was interrupted before it finished. Regenerate to try again.');
+  if (incompleteError && !full) throw incompleteError;
 
   const finalCombined = buildCombinedSummary();
   if (!summaryDelivered && finalCombined) {
@@ -846,7 +871,12 @@ async function respondOnce(ctx: ProviderRequestContext): Promise<GenerationRespo
   await ensureOkResponse(response, 'API error');
 
   const res = await response.json();
+  throwIfErrorBody(res);
   const text = extractOutputText(res);
+  if (!text) {
+    const incompleteError = incompleteResponseError(res);
+    if (incompleteError) throw incompleteError;
+  }
   const webSearchResult = extractWebSearchResult(res);
   const generatedImages = extractGeneratedImages(res);
   const mcpItems = extractMcpItems(res);

@@ -98,6 +98,13 @@ describe('buildMarkdownBlocks', () => {
     expect(blocks[2].rows[0][1].html).toBe('2')
   })
 
+  it('highlights by the first word of a fence info string', () => {
+    const [block] = buildMarkdownBlocks('```js title="app.js"\nconst x = 1\n```')
+
+    expect(block.langLabel).toBe('js')
+    expect(block.codeHtml).toContain('hljs-keyword')
+  })
+
   it('defers inline html rendering for the streaming tail block', () => {
     const blocks = buildMarkdownBlocks('hello <span>world</span>', {
       allowInlineHtml: true,

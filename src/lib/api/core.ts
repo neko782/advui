@@ -76,10 +76,18 @@ export interface ClientOptions {
   dangerouslyAllowBrowser?: boolean;
 }
 
+/**
+ * Trims a user-entered base URL and drops trailing slashes, so that
+ * "https://host/v1/" does not produce "https://host/v1//responses".
+ */
+export function normalizeBaseUrl(value: unknown): string {
+  return typeof value === 'string' ? value.trim().replace(/\/+$/, '') : '';
+}
+
 export function buildClientOptions(options: { apiKey: string; apiBaseUrl?: string }): ClientOptions | null {
   const { apiKey, apiBaseUrl } = options;
   if (!apiKey) return null;
-  const baseURL = typeof apiBaseUrl === 'string' && apiBaseUrl.trim() ? apiBaseUrl.trim() : '';
+  const baseURL = normalizeBaseUrl(apiBaseUrl);
   const clientOptions: ClientOptions = { apiKey, dangerouslyAllowBrowser: true };
   if (baseURL) clientOptions.baseURL = baseURL;
   return clientOptions;
@@ -406,10 +414,58 @@ export function createAbort(provideAbort: (fn: () => void) => void): AbortContro
   return abortController;
 }
 
+const MAX_ERROR_BODY_CHARS = 600;
+
+/**
+ * Pulls the human-readable message out of an error response body.
+ * Providers wrap it differently: `{ error: { message } }` (OpenAI, Gemini,
+ * OpenRouter), `{ error: "..." }`, `{ message }` or `{ detail }`. Anything
+ * else (HTML error pages, plain text) is returned as is, truncated.
+ */
+export function describeErrorBody(body: string): string {
+  const text = body.trim();
+  if (!text) return '';
+  try {
+    let parsed: unknown = JSON.parse(text);
+    // Gemini wraps non-streaming errors of streaming endpoints in an array.
+    if (Array.isArray(parsed)) parsed = parsed[0];
+    if (parsed && typeof parsed === 'object') {
+      const obj = parsed as Record<string, unknown>;
+      const error = obj.error;
+      const candidates = [
+        error && typeof error === 'object' ? (error as Record<string, unknown>).message : error,
+        obj.message,
+        obj.detail,
+      ];
+      for (const candidate of candidates) {
+        if (typeof candidate === 'string' && candidate.trim()) return candidate.trim();
+      }
+    }
+  } catch { /* not JSON */ }
+  return text.length > MAX_ERROR_BODY_CHARS ? `${text.slice(0, MAX_ERROR_BODY_CHARS)}…` : text;
+}
+
 export async function ensureOkResponse(response: Response, errorPrefix: string): Promise<void> {
   if (response.ok) return;
-  const errorText = await response.text().catch(() => '');
-  throw new Error(`${errorPrefix} ${response.status}: ${errorText}`);
+  const detail = describeErrorBody(await response.text().catch(() => ''));
+  const status = `${errorPrefix} ${response.status}`;
+  throw new Error(detail ? `${status}: ${detail}` : (response.statusText ? `${status}: ${response.statusText}` : status));
+}
+
+/**
+ * Throws when a successful (2xx) JSON body actually carries an error, which
+ * some OpenAI-compatible gateways do instead of returning an HTTP error.
+ */
+export function throwIfErrorBody(res: unknown): void {
+  const streamError = extractStreamError(res);
+  if (streamError) throw new Error(streamError.message);
+  const obj = res && typeof res === 'object' ? res as Record<string, unknown> : null;
+  const error = obj?.error && typeof obj.error === 'object' ? obj.error as Record<string, unknown> : null;
+  if (obj?.status === 'failed' && error) {
+    throw new Error(typeof error.message === 'string' && error.message.trim()
+      ? error.message.trim()
+      : 'The response failed.');
+  }
 }
 
 // ============================================================================

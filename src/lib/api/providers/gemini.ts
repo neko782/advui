@@ -33,10 +33,6 @@ interface GeminiRequest {
     temperature?: number;
     topP?: number;
     maxOutputTokens?: number;
-    thinkingConfig?: {
-      thinkingMode?: string;
-      thinkingBudget?: number;
-    };
   };
 }
 
@@ -84,12 +80,13 @@ export function convertToGeminiFormat(
     const geminiRole: 'user' | 'model' = msg.role === 'assistant' ? 'model' : 'user';
     const parts: GeminiPart[] = [];
 
+    // Gemini rejects empty text parts, so blank messages are left out.
     if (typeof msg.content === 'string') {
-      parts.push({ text: msg.content });
+      if (msg.content) parts.push({ text: msg.content });
     } else if (Array.isArray(msg.content)) {
       for (const part of msg.content as ContentPart[]) {
         if (part.type === 'input_text') {
-          parts.push({ text: (part as { text: string }).text });
+          if (part.text) parts.push({ text: part.text });
         } else if (part.type === 'input_image') {
           const inline = inlineDataFromDataUrl((part as { image_url: string }).image_url);
           if (inline) parts.push(inline);
@@ -139,6 +136,30 @@ export function extractGeminiParts(source: unknown): { text: string; reasoningSu
   } catch { /* ignore */ }
 
   return { text, reasoningSummary };
+}
+
+/**
+ * Gemini reports refusals inside a successful response: a blocked prompt has
+ * no candidates and a `promptFeedback.blockReason`, and a blocked or truncated
+ * reply carries a non-STOP `finishReason`. Returns a message for those, or
+ * null for a normal response.
+ */
+export function describeGeminiStop(source: unknown): string | null {
+  const obj = source && typeof source === 'object' ? source as Record<string, unknown> : null;
+  if (!obj) return null;
+  const feedback = obj.promptFeedback && typeof obj.promptFeedback === 'object'
+    ? obj.promptFeedback as Record<string, unknown>
+    : null;
+  if (typeof feedback?.blockReason === 'string' && feedback.blockReason) {
+    return `Gemini blocked the prompt (${feedback.blockReason}).`;
+  }
+  const candidates = Array.isArray(obj.candidates) ? obj.candidates as Array<Record<string, unknown>> : [];
+  const finishReason = candidates[0]?.finishReason;
+  if (typeof finishReason !== 'string' || !finishReason || finishReason === 'STOP') return null;
+  if (finishReason === 'MAX_TOKENS') {
+    return 'The reply hit the max output tokens limit before any text was produced. Raise the limit and regenerate.';
+  }
+  return `Gemini stopped without a reply (${finishReason}).`;
 }
 
 function buildGeminiRequest(ctx: ProviderRequestContext): GeminiRequest {
@@ -196,8 +217,10 @@ async function respondStreaming(ctx: ProviderRequestContext): Promise<Generation
 
   let full = '';
   let summary = '';
+  let stopMessage: string | null = null;
 
   const processLine = createSseJsonLineProcessor((chunk) => {
+    stopMessage = describeGeminiStop(chunk) ?? stopMessage;
     const { text: delta, reasoningSummary: reasoningDelta } = extractGeminiParts(chunk);
     if (reasoningDelta) {
       summary += reasoningDelta;
@@ -210,6 +233,8 @@ async function respondStreaming(ctx: ProviderRequestContext): Promise<Generation
   }, onEvent);
 
   await readSseLines(response, processLine);
+  // Partial text is still a usable reply; only an empty one is an error.
+  if (!full && stopMessage) throw new Error(stopMessage);
 
   try { onReasoningSummaryDone?.(summary || '', null); } catch { /* ignore */ }
   return { text: full, reasoningSummary: summary };
@@ -232,6 +257,10 @@ async function respondOnce(ctx: ProviderRequestContext): Promise<GenerationRespo
 
   const res = await response.json();
   const { text, reasoningSummary: summary } = extractGeminiParts(res);
+  if (!text) {
+    const stopMessage = describeGeminiStop(res);
+    if (stopMessage) throw new Error(stopMessage);
+  }
   try { onReasoningSummaryDone?.(summary || '', res); } catch { /* ignore */ }
   return { text, reasoningSummary: summary };
 }
