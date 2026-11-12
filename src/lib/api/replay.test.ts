@@ -177,23 +177,16 @@ describe('Responses replay', () => {
     expect(sentBody(fetcher, 2).include).toEqual(['reasoning.encrypted_content'])
   })
 
-  it('replaces searches stored without their sources with a note naming them and the cited pages', () => {
-    const cited = { type: 'message', id: 'msg_1', role: 'assistant', phase: 'final_answer', content: [{ type: 'output_text', text: 'answer', annotations: [
-      { type: 'url_citation', url: 'https://www.anthropic.com/news/models', title: 'Models', start_index: 0, end_index: 6 },
-    ] }] }
+  it('follows each search stored without its sources with a results-omitted note', () => {
+    const answer = { type: 'message', id: 'msg_1', role: 'assistant', phase: 'final_answer', content: [{ type: 'output_text', text: 'answer', annotations: [] }] }
     const stored = { ...native, data: [
       { type: 'web_search_call', id: 'ws_1', status: 'completed', action: { type: 'search', query: 'latest claude model' } },
-      { type: 'web_search_call', id: 'ws_2', status: 'completed', action: { type: 'search', query: '' } },
-      { type: 'web_search_call', id: 'ws_3', status: 'completed', action: { type: 'open_page', url: 'https://www.anthropic.com/news/models' } },
-      cited,
+      { type: 'web_search_call', id: 'ws_2', status: 'completed', action: { type: 'open_page', url: 'https://www.anthropic.com/news/models' } },
+      answer,
     ] }
+    const note = { role: 'developer', content: '<search results omitted next turn>' }
     const input = buildResponsesInput(ctx({ input: turn(stored) })) as Array<Record<string, unknown>>
-    expect(input).toHaveLength(5)
-    expect(input[1]).toMatchObject({ role: 'developer' })
-    expect(input[1]!.content).toContain('"latest claude model"')
-    expect(input[1]!.content).toContain('https://www.anthropic.com/news/models')
-    expect(input.slice(2, 4)).toEqual([stored.data[2], cited])
-    expect(input.some(item => item.type === 'web_search_call' && item.id !== 'ws_3')).toBe(false)
+    expect(input.slice(1, 5)).toEqual([stored.data[0], note, stored.data[1], answer])
   })
 
   it('sends only the messages of a reply made under another API key', () => {

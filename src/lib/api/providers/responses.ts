@@ -118,37 +118,15 @@ function isSourcelessSearch(item: Item): boolean {
  * Web search results stay on the provider's side, and a search call holds
  * them only when its sources were asked for. A call without them reads to
  * the model as a search that found nothing, so the model takes the answer
- * built on it for a guess. Such calls go back as a note naming the searches
- * and the pages the reply cited instead.
+ * built on it for a guess. Each such call is followed by a developer note
+ * saying its results were left out.
  */
+export const SEARCH_RESULTS_OMITTED = '<search results omitted next turn>';
+
 export function withSearchNote(items: Item[]): Item[] {
-  const searches = items.filter(isSourcelessSearch);
-  if (!searches.length) return items;
-  const queries = new Set<string>();
-  for (const call of searches) {
-    const action = call.action && typeof call.action === 'object' ? call.action as Item : {};
-    const list = Array.isArray(action.queries) ? action.queries : [action.query];
-    for (const query of list) if (typeof query === 'string' && query.trim()) queries.add(query.trim());
-  }
-  const cited = new Set<string>();
-  for (const item of items) {
-    if (item.type !== 'message' || !Array.isArray(item.content)) continue;
-    for (const part of item.content as Item[]) {
-      if (!Array.isArray(part?.annotations)) continue;
-      for (const note of part.annotations as Item[]) {
-        if (note?.type === 'url_citation' && str(note.url)) cited.add(str(note.url));
-      }
-    }
-  }
-  const lines = [
-    `Your next reply used web search${queries.size ? ` (${[...queries].map(q => JSON.stringify(q)).join(', ')})` : ''}, and the searches completed.`,
-    'Their results are not kept in this history, so their absence does not mean they found nothing.',
-  ];
-  if (cited.size) lines.push(`Pages it cited from the results: ${[...cited].join(', ')}`);
-  return [
-    { role: 'developer', content: lines.join(' ') },
-    ...items.filter(item => !isSourcelessSearch(item)),
-  ];
+  return items.flatMap(item => isSourcelessSearch(item)
+    ? [item, { role: 'developer', content: SEARCH_RESULTS_OMITTED }]
+    : [item]);
 }
 
 /**
