@@ -14,6 +14,7 @@ import type {
   ActivityStep,
   McpServerConfig,
   HistoryMessage,
+  NativeTurn,
 } from './api.js';
 import type { Connection, Settings } from './settings.js';
 
@@ -33,6 +34,8 @@ export interface MessageVariant {
   generatedImages?: GeneratedImage[];
   /** Thinking and tool steps behind this reply. */
   activity?: ActivityStep[];
+  /** The reply as the provider returned it, sent back on later turns. */
+  native?: NativeTurn;
   locked?: boolean;
 }
 

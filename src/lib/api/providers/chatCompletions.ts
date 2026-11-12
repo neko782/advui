@@ -11,6 +11,7 @@ import {
   createSseJsonLineProcessor,
   ensureOkResponse,
   extractOutputText,
+  nativeData,
   normalizeReasoningText,
   readSseLines,
   sortModels,
@@ -20,22 +21,87 @@ import {
   type ProviderRequestContext,
 } from '../core.js';
 import { ActivityLog } from '../activity.js';
-import type { ActivityStep, GenerationResponse } from '../../types/index.js';
+import type { ActivityStep, GenerationResponse, NativeTurn } from '../../types/index.js';
 
 type ChatContentPart =
   | { type: 'text'; text: string }
   | { type: 'image_url'; image_url: { url: string } }
   | { type: 'file'; file: { file_data: string; filename: string } };
 
+type ChatMessage = { role: string; content: string | ChatContentPart[] } & Record<string, unknown>;
+
+/** Reasoning fields an assistant message can carry back, most complete first. */
+const REASONING_FIELDS = ['reasoning_details', 'reasoning_content', 'reasoning'] as const;
+type ReasoningFields = Partial<Record<(typeof REASONING_FIELDS)[number], unknown>>;
+
+/**
+ * The reasoning a reply came with, in the one field the server used for it:
+ * OpenRouter's `reasoning_details` (which keeps signatures and encrypted
+ * reasoning, and has to go back unchanged and in order), else
+ * `reasoning_content` (DeepSeek, Kimi, Qwen, vLLM; required back on later
+ * turns once tools are involved), else plain `reasoning`.
+ */
+export function pickReasoningFields(message: Record<string, unknown> | undefined): ReasoningFields | undefined {
+  if (!message) return undefined;
+  const details = message.reasoning_details;
+  if (Array.isArray(details) && details.length) return { reasoning_details: details };
+  for (const field of ['reasoning_content', 'reasoning'] as const) {
+    const value = message[field];
+    if (typeof value === 'string' && value) return { [field]: value };
+  }
+  return undefined;
+}
+
+/**
+ * Joins streamed `reasoning_details` entries: each delta carries pieces of
+ * the entry at its `index`, whose text, summary, encrypted data and
+ * signature arrive in parts.
+ */
+export function mergeReasoningDetails(target: Array<Record<string, unknown>>, deltas: unknown): void {
+  if (!Array.isArray(deltas)) return;
+  deltas.forEach((delta, position) => {
+    if (!delta || typeof delta !== 'object') return;
+    const piece = delta as Record<string, unknown>;
+    const index = Number.isFinite(Number(piece.index)) ? Number(piece.index) : target.length + position;
+    const entry = target.find(item => item.index === index);
+    if (!entry) {
+      target.push({ ...piece, index });
+      return;
+    }
+    for (const [key, value] of Object.entries(piece)) {
+      if (value == null) continue;
+      if (typeof value === 'string' && ['text', 'summary', 'data', 'signature'].includes(key) && typeof entry[key] === 'string') {
+        entry[key] = `${entry[key] as string}${value}`;
+      } else if (entry[key] == null) {
+        entry[key] = value;
+      }
+    }
+  });
+}
+
+function nativeTurn(ctx: ProviderRequestContext, text: string, fields: ReasoningFields | undefined): NativeTurn | undefined {
+  return fields
+    ? { api: 'chat_completions', endpoint: ctx.baseURL, model: ctx.model, text, data: fields }
+    : undefined;
+}
+
 /** Converts normalized provider input into Chat Completions messages. */
-function buildChatMessages(ctx: ProviderRequestContext): Array<{ role: string; content: string | ChatContentPart[] }> {
+function buildChatMessages(ctx: ProviderRequestContext): ChatMessage[] {
   const input = ctx.input;
   if (!Array.isArray(input)) {
     return typeof input === 'string' && input
       ? [{ role: 'user', content: input }]
       : [];
   }
-  return input.map(msg => {
+  return input.map((message): ChatMessage => {
+    const { native: _native, ...msg } = message;
+    const reasoning = msg.role === 'assistant'
+      ? nativeData(message, 'chat_completions', ctx.baseURL) as ReasoningFields | undefined
+      : undefined;
+    const fields: Record<string, unknown> = {};
+    for (const field of REASONING_FIELDS) {
+      if (reasoning && reasoning[field] != null) fields[field] = reasoning[field];
+    }
     // If content is an array (from Responses format), convert to Chat Completions format
     if (Array.isArray(msg.content)) {
       const contentArray: ChatContentPart[] = [];
@@ -73,10 +139,10 @@ function buildChatMessages(ctx: ProviderRequestContext): Array<{ role: string; c
         }
       }
       if (contentArray.length > 0) {
-        return { role: msg.role, content: contentArray };
+        return { role: msg.role, content: contentArray, ...fields };
       }
     }
-    return msg as { role: string; content: string };
+    return { ...(msg as { role: string; content: string }), ...fields };
   });
 }
 
@@ -218,7 +284,22 @@ async function respondStreaming(ctx: ProviderRequestContext): Promise<Generation
     log.set(`reasoning-${idx}`, { kind: 'thinking', status: 'running', text: normalizeReasoningText(text) }, idx);
   };
 
+  // The reply's reasoning as the server sent it, for replay on later turns.
+  const details: Array<Record<string, unknown>> = [];
+  const streamed: Record<'reasoning_content' | 'reasoning', string> = { reasoning_content: '', reasoning: '' };
+  let finalMessage: Record<string, unknown> | undefined;
+
   const processLine = createSseJsonLineProcessor((chunk) => {
+    const first = (Array.isArray(chunk?.choices) ? chunk.choices : [])
+      .find((choice: { index?: number }) => (Number(choice?.index) || 0) === 0) as Record<string, Record<string, unknown> | undefined> | undefined;
+    if (first?.delta) {
+      mergeReasoningDetails(details, first.delta.reasoning_details);
+      for (const field of ['reasoning_content', 'reasoning'] as const) {
+        if (typeof first.delta[field] === 'string') streamed[field] += first.delta[field];
+      }
+    }
+    if (first?.message && typeof first.message === 'object') finalMessage = first.message;
+
     const deltaText = collectChatDeltaText(chunk);
     if (deltaText) {
       full += deltaText;
@@ -245,7 +326,9 @@ async function respondStreaming(ctx: ProviderRequestContext): Promise<Generation
 
   await readSseLines(response, processLine);
 
-  return { text: full, activity: log.settle() };
+  const fields = pickReasoningFields(finalMessage)
+    ?? pickReasoningFields({ reasoning_details: details, ...streamed });
+  return { text: full, activity: log.settle(), native: nativeTurn(ctx, full, fields) };
 }
 
 /** A complete response's reasoning as a single thinking step. */
@@ -271,7 +354,8 @@ async function respondOnce(ctx: ProviderRequestContext): Promise<GenerationRespo
   const res = await response.json();
   throwIfErrorBody(res);
   const text = extractOutputText(res);
-  return { text, activity: reasoningActivity(res) };
+  const message = Array.isArray(res?.choices) ? res.choices[0]?.message : undefined;
+  return { text, activity: reasoningActivity(res), native: nativeTurn(ctx, text, pickReasoningFields(message)) };
 }
 
 async function listModels({ apiKey, baseURL }: { apiKey: string; baseURL: string }): Promise<string[]> {

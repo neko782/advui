@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 vi.mock('../../openaiClient.js', () => ({ respond: vi.fn(async () => ({ text: 'reply' })) }));
 import { respond } from '../../openaiClient.js';
-import { generateResponse, prepareRefreshAfterUser } from './generationActions';
+import { generateResponse, handleGenerationSuccess, prepareRefreshAfterUser } from './generationActions';
 
 describe('generation history at an insertion point', () => {
   it.each([false, true])('excludes later conversation while preserving prompt injections (streaming=%s)', async (streaming) => {
@@ -16,5 +16,23 @@ describe('generation history at an insertion point', () => {
     });
     expect(vi.mocked(respond).mock.lastCall?.[0].messages?.map(m => m.content)).toEqual(['character prompt', 'first user', 'post-history instructions']);
     expect(prepared.nodes.find(n => n.id === 4)?.variants[0]?.next).toBe(2);
+  });
+});
+
+describe('replies as the provider returned them', () => {
+  const native = { api: 'anthropic' as const, endpoint: 'https://api.anthropic.com/v1', model: 'm', text: 'answer', data: [{ type: 'text', text: 'answer' }] };
+
+  it('are stored with the reply and sent back with it', async () => {
+    const nodes = [
+      { id: 1, active: 0, variants: [{ id: 1, role: 'user', content: 'q', time: 0, typing: false, next: 2 }] },
+      { id: 2, active: 0, variants: [{ id: 2, role: 'assistant', content: 'typing', time: 0, typing: true, next: null }] },
+    ] as any;
+    const done = handleGenerationSuccess(nodes, 2, { text: 'answer', native });
+    expect(done[1]?.variants[0]?.native).toBe(native);
+
+    const withNext = [...done.map((n: any) => (n.id === 2 ? { ...n, variants: [{ ...n.variants[0], next: 3 }] } : n)),
+      { id: 3, active: 0, variants: [{ id: 3, role: 'user', content: 'more', time: 0, typing: false, next: null }] }];
+    await generateResponse({ nodes: withNext, rootId: 1, chatSettings: {} as any, connectionId: null, streaming: false, typingVariantId: null });
+    expect(vi.mocked(respond).mock.lastCall?.[0].messages?.[1]).toEqual({ role: 'assistant', content: 'answer', native });
   });
 });

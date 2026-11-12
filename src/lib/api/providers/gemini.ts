@@ -9,21 +9,24 @@ import {
   createAbort,
   createSseJsonLineProcessor,
   ensureOkResponse,
+  nativeData,
   readSseLines,
   type ContentPart,
   type ProviderAdapter,
   type ProviderInput,
+  type ProviderMessage,
   type ProviderRequestContext,
 } from '../core.js';
 import { ActivityLog } from '../activity.js';
-import type { ActivityStep, GenerationResponse } from '../../types/index.js';
+import type { ActivityStep, GenerationResponse, NativeTurn } from '../../types/index.js';
 
 export const DEFAULT_GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta';
 const THOUGHT_STEP_ID = 'thoughts';
 
 type GeminiPart =
-  | { text: string; thought?: boolean }
-  | { inlineData: { mimeType: string; data: string } };
+  | { text: string; thought?: boolean; thoughtSignature?: string }
+  | { inlineData: { mimeType: string; data: string } }
+  | Record<string, unknown>;
 
 interface GeminiContent {
   role: 'user' | 'model';
@@ -51,8 +54,9 @@ function inlineDataFromDataUrl(dataUrl: string): GeminiPart | null {
 
 // Convert messages to Gemini format
 export function convertToGeminiFormat(
-  messages: Array<{ role: string; content: string | ContentPart[] }>,
-  prompt?: string
+  messages: ProviderMessage[],
+  prompt?: string,
+  endpoint?: string,
 ): { contents: GeminiContent[]; systemInstruction?: { parts: Array<{ text: string }> } } {
   const contents: GeminiContent[] = [];
   let systemInstruction: { parts: Array<{ text: string }> } | undefined;
@@ -84,6 +88,14 @@ export function convertToGeminiFormat(
     // Map roles: user -> user, assistant -> model
     const geminiRole: 'user' | 'model' = msg.role === 'assistant' ? 'model' : 'user';
     const parts: GeminiPart[] = [];
+
+    // Earlier replies go back with every part as it was returned, thought
+    // signatures in place. Models that cannot read them drop them.
+    const native = geminiRole === 'model' && endpoint != null ? nativeData(msg, 'gemini', endpoint) : undefined;
+    if (Array.isArray(native) && native.length) {
+      contents.push({ role: 'model', parts: native as GeminiPart[] });
+      continue;
+    }
 
     // Gemini rejects empty text parts, so blank messages are left out.
     if (typeof msg.content === 'string') {
@@ -167,11 +179,42 @@ export function describeGeminiStop(source: unknown): string | null {
   return `Gemini stopped without a reply (${finishReason}).`;
 }
 
+/**
+ * Collects a reply's parts for replay. Streamed text is joined back into one
+ * part per run, but a part carrying a thought signature is never merged with
+ * another: the signature belongs to its position. A signature can arrive on
+ * a part with empty text, which is kept as it came.
+ */
+export function appendGeminiParts(target: Array<Record<string, unknown>>, source: unknown): void {
+  const candidates = (source as Record<string, unknown>)?.candidates;
+  const content = Array.isArray(candidates) ? (candidates[0] as Record<string, unknown> | undefined)?.content : undefined;
+  const parts = (content as Record<string, unknown> | undefined)?.parts;
+  if (!Array.isArray(parts)) return;
+  const isPlainText = (part: Record<string, unknown>) =>
+    typeof part.text === 'string' && Object.keys(part).every(key => key === 'text' || key === 'thought');
+  for (const part of parts as Array<Record<string, unknown>>) {
+    if (!part || typeof part !== 'object') continue;
+    const last = target[target.length - 1];
+    if (last && isPlainText(last) && isPlainText(part) && !!last.thought === !!part.thought) {
+      last.text = `${last.text as string}${part.text as string}`;
+    } else {
+      target.push({ ...part });
+    }
+  }
+}
+
+function nativeTurn(ctx: ProviderRequestContext, text: string, parts: Array<Record<string, unknown>>): NativeTurn | undefined {
+  return parts.length
+    ? { api: 'gemini', endpoint: geminiBaseUrlFor(ctx), model: ctx.model, text, data: parts }
+    : undefined;
+}
+
 function buildGeminiRequest(ctx: ProviderRequestContext): GeminiRequest {
   const input: ProviderInput = ctx.input;
   const { contents, systemInstruction } = convertToGeminiFormat(
     Array.isArray(input) ? input : [],
-    typeof input === 'string' ? input : undefined
+    typeof input === 'string' ? input : undefined,
+    geminiBaseUrlFor(ctx),
   );
 
   const geminiRequest: GeminiRequest = { contents };
@@ -229,9 +272,11 @@ async function respondStreaming(ctx: ProviderRequestContext): Promise<Generation
   // Thought summaries stream as one run of text, read as a single thinking step.
   const log = new ActivityLog(onActivity);
   let stopMessage: string | null = null;
+  const parts: Array<Record<string, unknown>> = [];
 
   const processLine = createSseJsonLineProcessor((chunk) => {
     stopMessage = describeGeminiStop(chunk) ?? stopMessage;
+    appendGeminiParts(parts, chunk);
     const { text: delta, reasoningSummary: reasoningDelta } = extractGeminiParts(chunk);
     if (reasoningDelta) log.append(THOUGHT_STEP_ID, 'text', reasoningDelta, { kind: 'thinking', status: 'running' });
     if (delta) {
@@ -245,7 +290,7 @@ async function respondStreaming(ctx: ProviderRequestContext): Promise<Generation
   // Partial text is still a usable reply; only an empty one is an error.
   if (!full && stopMessage) throw new Error(stopMessage);
 
-  return { text: full, activity: log.settle() };
+  return { text: full, activity: log.settle(), native: nativeTurn(ctx, full, parts) };
 }
 
 async function respondOnce(ctx: ProviderRequestContext): Promise<GenerationResponse> {
@@ -271,7 +316,9 @@ async function respondOnce(ctx: ProviderRequestContext): Promise<GenerationRespo
   const activity: ActivityStep[] = summary
     ? [{ id: THOUGHT_STEP_ID, kind: 'thinking', status: 'done', text: summary }]
     : [];
-  return { text, activity };
+  const parts: Array<Record<string, unknown>> = [];
+  appendGeminiParts(parts, res);
+  return { text, activity, native: nativeTurn(ctx, text, parts) };
 }
 
 async function listModels({ apiKey, baseURL }: { apiKey: string; baseURL: string }): Promise<string[]> {

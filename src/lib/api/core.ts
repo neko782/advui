@@ -35,6 +35,7 @@ import type {
   GeneratedImage,
   McpServerConfig,
   ActivityStep,
+  NativeTurn,
 } from '../types/index.js';
 
 // ============================================================================
@@ -152,7 +153,14 @@ export type ContentPart =
   | { type: 'input_audio'; audio_url: string; mimeType: string }
   | { type: 'input_file'; file_data: string; filename: string };
 
-export type ProviderInput = string | Array<{ role: string; content: string | ContentPart[] }>;
+export interface ProviderMessage {
+  role: string;
+  content: string | ContentPart[];
+  /** An assistant reply as the provider returned it (see nativeData). */
+  native?: NativeTurn;
+}
+
+export type ProviderInput = string | ProviderMessage[];
 
 export interface ProviderParams {
   openRouterProvider?: string;
@@ -227,7 +235,12 @@ export function buildProviderInput(messages: HistoryMessage[] | undefined, promp
   const allowed = new Set(['system', 'user', 'assistant']);
   return messages
     .filter(m => m && (typeof m.content === 'string' || (m.images && Array.isArray(m.images))) && allowed.has(m.role))
-    .map(({ role, content, images }) => {
+    .map(({ role, content, images, native }): ProviderMessage => {
+      // A reply edited after it was generated no longer matches what the
+      // provider returned, so it goes back as the edited text.
+      if (role === 'assistant' && native && typeof native === 'object' && native.text === content) {
+        return { role, content, native };
+      }
       // If there are images, convert content to array format
       if (images && Array.isArray(images) && images.length > 0) {
         const contentArray: ContentPart[] = [];
@@ -288,6 +301,48 @@ export function buildProviderInput(messages: HistoryMessage[] | undefined, promp
       }
       return { role, content: content as string };
     });
+}
+
+// ============================================================================
+// Native replay
+// Each provider wants earlier replies back the way it returned them:
+// reasoning with its signatures, tool calls with their results. Replies are
+// only sent back to the API and endpoint that produced them; models on that
+// endpoint drop what they cannot read.
+// ============================================================================
+
+/** The stored provider payload of a message, when it can go back to `endpoint` of `api`. */
+export function nativeData(message: ProviderMessage, api: ApiMode, endpoint: string): unknown {
+  const native = message.native;
+  if (!native || native.api !== api || normalizeBaseUrl(native.endpoint) !== normalizeBaseUrl(endpoint)) return undefined;
+  return native.data ?? undefined;
+}
+
+/**
+ * A short tag for an API key, so data tied to one account is not sent under
+ * another. A 53-bit hash: it identifies the key without revealing it.
+ */
+export function accountTag(apiKey: string): string {
+  let h1 = 0xdeadbeef;
+  let h2 = 0x41c6ce57;
+  for (let i = 0; i < apiKey.length; i++) {
+    const c = apiKey.charCodeAt(i);
+    h1 = Math.imul(h1 ^ c, 2654435761);
+    h2 = Math.imul(h2 ^ c, 1597334677);
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36);
+}
+
+export function hasNativeInput(input: ProviderInput): boolean {
+  return Array.isArray(input) && input.some(message => message.native);
+}
+
+/** The same input with every reply as plain text. */
+export function withoutNative(input: ProviderInput): ProviderInput {
+  if (!Array.isArray(input)) return input;
+  return input.map(({ native: _native, ...message }) => message);
 }
 
 // ============================================================================
@@ -459,11 +514,22 @@ export function describeErrorBody(body: string): string {
   return text.length > MAX_ERROR_BODY_CHARS ? `${text.slice(0, MAX_ERROR_BODY_CHARS)}…` : text;
 }
 
+/** A request the API turned down, with the HTTP status it answered. */
+export class ApiHttpError extends Error {
+  constructor(message: string, readonly status: number) {
+    super(message);
+    this.name = 'ApiHttpError';
+  }
+}
+
 export async function ensureOkResponse(response: Response, errorPrefix: string): Promise<void> {
   if (response.ok) return;
   const detail = describeErrorBody(await response.text().catch(() => ''));
   const status = `${errorPrefix} ${response.status}`;
-  throw new Error(detail ? `${status}: ${detail}` : (response.statusText ? `${status}: ${response.statusText}` : status));
+  throw new ApiHttpError(
+    detail ? `${status}: ${detail}` : (response.statusText ? `${status}: ${response.statusText}` : status),
+    response.status,
+  );
 }
 
 /**

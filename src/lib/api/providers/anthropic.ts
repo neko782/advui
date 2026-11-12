@@ -14,18 +14,21 @@ import {
   createSseJsonLineProcessor,
   ensureOkResponse,
   labelMcpServers,
+  nativeData,
   readSseLines,
   throwIfErrorBody,
   type ContentPart,
   type ProviderAdapter,
   type ProviderRequestContext,
 } from '../core.js';
-import type { ActivityStep, GenerationResponse } from '../../types/index.js';
+import type { ActivityStep, GenerationResponse, NativeTurn } from '../../types/index.js';
 
 export const DEFAULT_ANTHROPIC_BASE_URL = 'https://api.anthropic.com/v1';
 const ANTHROPIC_VERSION = '2023-06-01';
 const MCP_BETA = 'mcp-client-2025-11-20';
 const LEGACY_CODE_EXECUTION_BETA = 'code-execution-2025-08-25';
+/** Lets a request ask for invalidated thinking blocks to be dropped instead of refused. */
+const THINKING_BINDING_BETA = 'thinking-binding-controls-2026-08-01';
 const DEFAULT_MAX_TOKENS = 32000;
 const DEFAULT_THINKING_BUDGET = 8000;
 /** How often a turn paused by the server-side tool loop is resumed. */
@@ -115,12 +118,50 @@ function toContentBlocks(parts: ContentPart[]): Json[] {
   return [...blocks.filter(b => b.type !== 'text'), ...blocks.filter(b => b.type === 'text')];
 }
 
-export function convertToAnthropicFormat(input: ProviderRequestContext['input']): { system: string; messages: Json[] } {
+/** What the request offers, which decides which stored tool blocks can go back. */
+export interface ReplayScope {
+  endpoint: string;
+  /** Whether web search or code execution is declared. */
+  serverTools: boolean;
+  /** Names of the MCP servers declared. */
+  mcpServers: ReadonlySet<string>;
+}
+
+const TOOL_USE_TYPES = new Set(['server_tool_use', 'mcp_tool_use']);
+
+/**
+ * A stored reply's content blocks, ready to send back unchanged, or null
+ * when they cannot be: a block the API would reject (thinking cut off before
+ * its signature) or a tool call whose tool this request no longer declares.
+ * Thinking blocks go back on every request, whichever model reads them; the
+ * API drops, unbilled, those the current model cannot use.
+ */
+export function replayBlocks(data: unknown, scope: Omit<ReplayScope, 'endpoint'>): Json[] | null {
+  if (!Array.isArray(data) || !data.length) return null;
+  const blocks = data.filter((block): block is Json => !!block && typeof block === 'object');
+  for (const block of blocks) {
+    const type = str(block.type);
+    if (type === 'thinking' && !str(block.signature)) return null;
+    if (type === 'redacted_thinking' && !str(block.data)) return null;
+    if (type === 'mcp_tool_use' && !scope.mcpServers.has(str(block.server_name))) return null;
+    if ((type === 'server_tool_use' || (type.endsWith('_tool_result') && type !== 'mcp_tool_result')) && !scope.serverTools) return null;
+  }
+  // A tool call has to be followed by its result.
+  const answered = new Set(blocks.filter(b => str(b.type).endsWith('_tool_result')).map(b => str(b.tool_use_id)));
+  if (blocks.some(b => TOOL_USE_TYPES.has(str(b.type)) && !answered.has(str(b.id)))) return null;
+  return blocks;
+}
+
+export function convertToAnthropicFormat(
+  input: ProviderRequestContext['input'],
+  scope?: ReplayScope,
+): { system: string; messages: Json[]; replayedThinking: boolean } {
   if (!Array.isArray(input)) {
-    return { system: '', messages: input ? [{ role: 'user', content: input }] : [] };
+    return { system: '', messages: input ? [{ role: 'user', content: input }] : [], replayedThinking: false };
   }
   const systemTexts: string[] = [];
   const messages: Json[] = [];
+  let replayedThinking = false;
   for (const msg of input) {
     if (msg.role === 'system') {
       const text = typeof msg.content === 'string'
@@ -130,7 +171,13 @@ export function convertToAnthropicFormat(input: ProviderRequestContext['input'])
       continue;
     }
     const role = msg.role === 'assistant' ? 'assistant' : 'user';
-    if (typeof msg.content === 'string') {
+    const native = role === 'assistant' && scope
+      ? replayBlocks(nativeData(msg, 'anthropic', scope.endpoint), scope)
+      : null;
+    if (native) {
+      messages.push({ role, content: native });
+      if (native.some(block => block.type === 'thinking' || block.type === 'redacted_thinking')) replayedThinking = true;
+    } else if (typeof msg.content === 'string') {
       // Empty text blocks are rejected.
       if (msg.content.trim()) messages.push({ role, content: msg.content });
     } else {
@@ -140,7 +187,7 @@ export function convertToAnthropicFormat(input: ProviderRequestContext['input'])
   }
   // A conversation has to open with the user (character greetings do not).
   if (messages[0]?.role === 'assistant') messages.unshift({ role: 'user', content: '[Start]' });
-  return { system: systemTexts.join('\n\n'), messages };
+  return { system: systemTexts.join('\n\n'), messages, replayedThinking };
 }
 
 function buildTools(ctx: ProviderRequestContext, legacy: boolean): { tools: Json[]; mcpServers: Json[] } {
@@ -188,7 +235,12 @@ function buildTools(ctx: ProviderRequestContext, legacy: boolean): { tools: Json
 
 export function buildAnthropicRequest(ctx: ProviderRequestContext): { body: Json; betas: string[] } {
   const legacy = isLegacyClaudeModel(ctx.model);
-  const { system, messages } = convertToAnthropicFormat(ctx.input);
+  const endpoint = anthropicBaseUrl(ctx.apiBaseUrl);
+  const { system, messages, replayedThinking } = convertToAnthropicFormat(ctx.input, {
+    endpoint,
+    serverTools: !!(ctx.tools.webSearch?.enabled || ctx.tools.codeInterpreter?.enabled),
+    mcpServers: new Set(labelMcpServers(ctx.tools.mcpServers).map(({ label }) => label)),
+  });
   const { reasoningEffort, reasoningSummary, thinkingEnabled, thinkingBudgetTokens } = ctx.params;
 
   let maxTokens = toIntOrNull(ctx.params.maxOutputTokens, { belowMin: 'unset' })
@@ -233,12 +285,21 @@ export function buildAnthropicRequest(ctx: ProviderRequestContext): { body: Json
   if (mcpServers.length) body.mcp_servers = mcpServers;
 
   const betas: string[] = [];
+  // Editing or branching earlier turns, or changing the system prompt or
+  // tools, invalidates the thinking blocks that came after; the API is asked
+  // to drop those rather than refuse the request. Only the official API is
+  // known to accept this, and only alongside adaptive thinking.
+  const thinking = body.thinking as Json | undefined;
+  if (replayedThinking && thinking?.type === 'adaptive' && endpoint === DEFAULT_ANTHROPIC_BASE_URL) {
+    body.thinking = { ...thinking, block_binding: { prefix_mismatch_behavior: 'drop_block' } };
+    betas.push(THINKING_BINDING_BETA);
+  }
   if (mcpServers.length) betas.push(MCP_BETA);
   if (legacy && ctx.tools.codeInterpreter?.enabled) betas.push(LEGACY_CODE_EXECUTION_BETA);
   return { body, betas };
 }
 
-function anthropicBaseUrl(baseURL?: string): string {
+export function anthropicBaseUrl(baseURL?: string): string {
   const configured = baseURL?.trim().replace(/\/+$/, '');
   // Connections store the app's default URL for every API mode; neither it
   // nor the OpenAI one is an Anthropic endpoint.
@@ -534,6 +595,7 @@ async function respond(ctx: ProviderRequestContext, stream: boolean): Promise<Ge
   // A long run of server-side tool calls ends its turn with "pause_turn";
   // sending the reply so far back as the assistant turn resumes it.
   const paused: Json[] = [];
+  let native: NativeTurn | undefined;
   let turn: TurnResult;
   for (let attempt = 0; ; attempt++) {
     const request = paused.length
@@ -546,13 +608,19 @@ async function respond(ctx: ProviderRequestContext, stream: boolean): Promise<Ge
     if (turn.stopReason !== 'pause_turn' || attempt >= MAX_CONTINUATIONS) break;
     paused.push(...turn.blocks);
   }
+  // The whole reply, every continuation included, is one assistant turn.
+  // A reply still paused mid-tool cannot be followed by a user turn.
+  if (turn.stopReason !== 'pause_turn') {
+    const blocks = [...paused, ...turn.blocks];
+    if (blocks.length) native = { api: 'anthropic', endpoint: url.slice(0, -'/messages'.length), model: ctx.model, text: reader.text, data: blocks };
+  }
 
   // Partial text is still a usable reply; only an empty one is an error.
   if (!reader.text) {
     const error = stopError(turn.stopReason, turn.stopDetails);
     if (error) throw error;
   }
-  return { text: reader.text, activity: reader.log.settle() };
+  return { text: reader.text, activity: reader.log.settle(), native };
 }
 
 async function listModels({ apiKey, baseURL }: { apiKey: string; baseURL: string }): Promise<string[]> {

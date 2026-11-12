@@ -63,7 +63,7 @@ it.each([
   ['', 'API error 401'],
 ])('shows the provider message for an error response (%s)', async (body, message) => {
   vi.stubGlobal('fetch', async () => new Response(body, { status: 401 }));
-  await expect(chatCompletionsAdapter.respond(ctx, false)).rejects.toThrow(new Error(message));
+  await expect(chatCompletionsAdapter.respond(ctx, false)).rejects.toMatchObject({ message, status: 401 });
 });
 it('requests the same endpoint whether or not the base URL ends with a slash', async () => {
   expect(buildClientOptions({ apiKey: 'k', apiBaseUrl: ' https://example.test/v1// ' }).baseURL).toBe('https://example.test/v1');

@@ -190,16 +190,44 @@ export interface ActivityStep {
 // Request / Response Types
 // ============================================================================
 
+/**
+ * A reply exactly as the provider returned it (reasoning, signatures, tool
+ * calls and results), so later turns can send it back the way the provider
+ * expects instead of as plain text.
+ */
+export interface NativeTurn {
+  api: ApiMode;
+  /** Base URL that produced it; other endpoints get the plain text. */
+  endpoint: string;
+  model: string;
+  /** The reply text it goes with; once the reply is edited it is sent as plain text. */
+  text: string;
+  /**
+   * Tag of the API key it was made with (a hash, not the key). Responses
+   * reasoning is encrypted for one organization, so under another key it is
+   * left out.
+   */
+  account?: string;
+  /**
+   * Anthropic: content blocks. Responses: output items. Gemini: parts.
+   * Chat Completions: the assistant message's reasoning fields.
+   */
+  data: unknown;
+}
+
 export interface HistoryMessage {
   role: MessageRole;
   content: string;
   images?: ImageData[];
+  native?: NativeTurn;
 }
 
 export interface GenerationResponse {
   text: string;
   /** Thinking and tool steps, in the order they happened. */
   activity?: ActivityStep[];
+  /** The reply as the provider returned it, for replay on later turns. */
+  native?: NativeTurn;
   webSearchResult?: WebSearchResult;
   generatedImages?: GeneratedImage[];
 }

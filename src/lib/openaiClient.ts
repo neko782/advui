@@ -6,8 +6,11 @@ import { DEFAULT_API_BASE_URL } from './constants/index.js';
 import { loadSettings } from './settingsStore.js';
 import { DEFAULT_MODEL } from './utils/presetHelpers.js';
 import {
+  ApiHttpError,
   buildClientOptions,
   buildProviderInput,
+  hasNativeInput,
+  withoutNative,
   normalizeBaseUrl,
   pickActivePreset,
   resolveConnection,
@@ -33,6 +36,16 @@ const ADAPTERS: Record<ApiMode, ProviderAdapter> = {
   gemini: geminiAdapter,
   anthropic: anthropicAdapter,
 };
+
+/**
+ * Endpoints that turned down replayed replies this session (an
+ * OpenAI-compatible server that rejects unknown message fields, stored
+ * items that expired). They get plain-text history from then on.
+ */
+const nativeRejectedBy = new Set<string>();
+
+/** Statuses that mean the request body was refused, not that the service failed. */
+const REJECTED_BODY_STATUSES = new Set([400, 404, 422]);
 
 interface FetchClientConfig {
   apiKey: string;
@@ -145,7 +158,34 @@ export async function respond(options: RespondOptions): Promise<GenerationRespon
   };
 
   const adapter = ADAPTERS[resolvedConnection.apiMode] || responsesAdapter;
-  return adapter.respond(ctx, stream);
+  const endpointKey = `${resolvedConnection.apiMode}|${clientConfig.baseURL}|${resolvedConnection.apiBaseUrl ?? ''}`;
+  if (!hasNativeInput(ctx.input)) return adapter.respond(ctx, stream);
+  if (nativeRejectedBy.has(endpointKey)) return adapter.respond({ ...ctx, input: withoutNative(ctx.input) }, stream);
+
+  // Earlier replies go back as the provider returned them. If the request is
+  // refused before anything streamed, it is sent once more as plain text.
+  let started = false;
+  const mark = <A extends unknown[]>(fn?: (...args: A) => void) => (fn
+    ? (...args: A) => { started = true; fn(...args); }
+    : undefined);
+  const tracked: ProviderRequestContext = {
+    ...ctx,
+    callbacks: {
+      onEvent: mark(ctx.callbacks.onEvent),
+      onTextDelta: mark(ctx.callbacks.onTextDelta),
+      onActivity: mark(ctx.callbacks.onActivity),
+      onWebSearchResult: mark(ctx.callbacks.onWebSearchResult),
+      onImageGenerated: mark(ctx.callbacks.onImageGenerated),
+    },
+  };
+  try {
+    return await adapter.respond(tracked, stream);
+  } catch (err) {
+    if (started || !(err instanceof ApiHttpError) || !REJECTED_BODY_STATUSES.has(err.status)) throw err;
+    const reply = await adapter.respond({ ...ctx, input: withoutNative(ctx.input) }, stream);
+    nativeRejectedBy.add(endpointKey);
+    return reply;
+  }
 }
 
 // List available models for a connection (or explicit key)

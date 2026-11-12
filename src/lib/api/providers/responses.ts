@@ -8,12 +8,15 @@ import { toIntOrNull, toClampedNumber } from '../../utils/numbers.js';
 import { parseMcpAllowedTools } from '../../utils/mcp.js';
 import { ActivityLog, prettyJson } from '../activity.js';
 import {
+  accountTag,
+  ApiHttpError,
   buildOpenRouterProvider,
   createAbort,
   createSseJsonLineProcessor,
   ensureOkResponse,
   extractOutputText,
   labelMcpServers,
+  nativeData,
   readSseLines,
   sortModels,
   throwIfErrorBody,
@@ -26,14 +29,97 @@ import type {
   WebSearchSource,
   GeneratedImage,
   ActivityStep,
+  NativeTurn,
 } from '../../types/index.js';
 
 // ============================================================================
 // Request building
 // ============================================================================
 
-function buildResponsesRequest(ctx: ProviderRequestContext): Record<string, unknown> {
-  const request: Record<string, unknown> = { model: ctx.model, input: ctx.input };
+/**
+ * Requests are made with `store: false`, so nothing is kept on OpenAI's side
+ * and earlier replies go back in full: reasoning carries its encrypted
+ * content instead of pointing at a stored item.
+ */
+export interface ResponsesRequestOptions {
+  /** Ask for reasoning's encrypted content (models without reasoning refuse it). */
+  encryptedReasoning: boolean;
+  /** Send earlier replies' reasoning back. */
+  replayReasoning: boolean;
+}
+
+const DEFAULT_REQUEST_OPTIONS: ResponsesRequestOptions = { encryptedReasoning: true, replayReasoning: true };
+
+/**
+ * Request input: earlier replies go back as the output items they came as
+ * (reasoning, tool calls, messages with their phase), in their original
+ * order; the API leaves out reasoning a different model family cannot use.
+ */
+export function buildResponsesInput(
+  ctx: ProviderRequestContext,
+  options: ResponsesRequestOptions = DEFAULT_REQUEST_OPTIONS,
+): unknown {
+  if (!Array.isArray(ctx.input)) return ctx.input;
+  const account = accountTag(ctx.apiKey);
+  const input: unknown[] = [];
+  for (const message of ctx.input) {
+    const data = message.role === 'assistant' ? nativeData(message, 'responses', ctx.baseURL) : undefined;
+    const reasoningUsable = options.replayReasoning && message.native?.account === account;
+    const items = Array.isArray(data) ? turnItems(data as Item[], reasoningUsable) : [];
+    if (items.length) {
+      input.push(...items);
+    } else {
+      input.push({ role: message.role, content: message.content });
+    }
+  }
+  return input;
+}
+
+/**
+ * One earlier reply's items as they can go back. Reasoning only decrypts for
+ * the organization it was made for, and a reply stored before `store: false`
+ * may hold reasoning without encrypted content; when its reasoning cannot go
+ * back, only its messages do, without the ids that tie them to that reasoning.
+ */
+function turnItems(items: Item[], reasoningUsable: boolean): Item[] {
+  const kept = items.filter(item => item && typeof item.type === 'string' && !isImageGenerationItemType(item.type));
+  const reasoning = kept.filter(item => item.type === 'reasoning');
+  if (!reasoning.length) return kept;
+  if (reasoningUsable && reasoning.every(item => str(item.encrypted_content))) return kept;
+  return kept
+    .filter(item => item.type === 'message')
+    .map(({ id: _id, ...item }) => item);
+}
+
+/**
+ * A finished response's output items as they are kept for later turns.
+ * Nothing is stored on OpenAI's side, so generated images (kept with the
+ * chat) have no item to point back at and are left out.
+ */
+export function replayItems(output: unknown): Item[] | undefined {
+  if (!Array.isArray(output)) return undefined;
+  const items = (output as Item[]).filter(item => item && typeof item === 'object'
+    && typeof item.type === 'string' && !isImageGenerationItemType(item.type));
+  return items.length ? items : undefined;
+}
+
+function nativeTurn(ctx: ProviderRequestContext, text: string, output: unknown): NativeTurn | undefined {
+  const items = replayItems(output);
+  return items
+    ? { api: 'responses', endpoint: ctx.baseURL, model: ctx.model, account: accountTag(ctx.apiKey), text, data: items }
+    : undefined;
+}
+
+export function buildResponsesRequest(
+  ctx: ProviderRequestContext,
+  options: ResponsesRequestOptions = DEFAULT_REQUEST_OPTIONS,
+): Record<string, unknown> {
+  const request: Record<string, unknown> = {
+    model: ctx.model,
+    input: buildResponsesInput(ctx, options),
+    store: false,
+  };
+  if (options.encryptedReasoning) request.include = ['reasoning.encrypted_content'];
 
   const tokens = toIntOrNull(ctx.params.maxOutputTokens, { belowMin: 'unset' });
   if (tokens != null) request.max_output_tokens = tokens;
@@ -485,7 +571,7 @@ function incompleteResponseError(response: unknown): Error | null {
 // Streaming
 // ============================================================================
 
-async function respondStreaming(ctx: ProviderRequestContext): Promise<GenerationResponse> {
+async function respondStreaming(ctx: ProviderRequestContext, options: ResponsesRequestOptions): Promise<GenerationResponse> {
   const { onEvent, onTextDelta, onActivity, onWebSearchResult, onImageGenerated } = ctx.callbacks;
 
   const abortController = createAbort(ctx.provideAbort);
@@ -496,7 +582,7 @@ async function respondStreaming(ctx: ProviderRequestContext): Promise<Generation
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${ctx.apiKey}`,
     },
-    body: JSON.stringify({ ...buildResponsesRequest(ctx), stream: true }),
+    body: JSON.stringify({ ...buildResponsesRequest(ctx, options), stream: true }),
     signal: abortController.signal,
   });
   await ensureOkResponse(response, 'API error');
@@ -504,6 +590,7 @@ async function respondStreaming(ctx: ProviderRequestContext): Promise<Generation
   let full = '';
   let completed = false;
   let incompleteError: Error | null = null;
+  let finalOutput: unknown;
   const log = new ActivityLog(onActivity);
   // Web search tracking
   const webSearchCitations: WebSearchCitation[] = [];
@@ -628,6 +715,7 @@ async function respondStreaming(ctx: ProviderRequestContext): Promise<Generation
       // Extract citations and sources from completed response
       const response = event?.response as Record<string, unknown> | undefined;
       const output = response?.output as Array<Record<string, unknown>> | undefined;
+      if (Array.isArray(output)) finalOutput = output;
       if (Array.isArray(output)) {
         for (const outItem of output) {
           collectCitationsFromMessageItem(outItem, webSearchCitations);
@@ -694,6 +782,7 @@ async function respondStreaming(ctx: ProviderRequestContext): Promise<Generation
       ? { citations: webSearchCitations, sources: webSearchSources }
       : undefined,
     generatedImages: generatedImages.length > 0 ? generatedImages : undefined,
+    native: nativeTurn(ctx, full, finalOutput),
   };
 }
 
@@ -701,7 +790,7 @@ async function respondStreaming(ctx: ProviderRequestContext): Promise<Generation
 // Non-streaming
 // ============================================================================
 
-async function respondOnce(ctx: ProviderRequestContext): Promise<GenerationResponse> {
+async function respondOnce(ctx: ProviderRequestContext, options: ResponsesRequestOptions): Promise<GenerationResponse> {
   const { onWebSearchResult, onImageGenerated } = ctx.callbacks;
   const abortController = createAbort(ctx.provideAbort);
 
@@ -711,7 +800,7 @@ async function respondOnce(ctx: ProviderRequestContext): Promise<GenerationRespo
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${ctx.apiKey}`,
     },
-    body: JSON.stringify(buildResponsesRequest(ctx)),
+    body: JSON.stringify(buildResponsesRequest(ctx, options)),
     signal: abortController.signal,
   });
   await ensureOkResponse(response, 'API error');
@@ -731,7 +820,8 @@ async function respondOnce(ctx: ProviderRequestContext): Promise<GenerationRespo
   if (generatedImages && generatedImages.length > 0) {
     try { onImageGenerated?.(generatedImages); } catch { /* ignore */ }
   }
-  return { text, activity: extractActivity(res), webSearchResult, generatedImages };
+  const output = (res as Item)?.output ?? ((res as Item)?.response as Item | undefined)?.output;
+  return { text, activity: extractActivity(res), webSearchResult, generatedImages, native: nativeTurn(ctx, text, output) };
 }
 
 async function listModels({ apiKey, baseURL }: { apiKey: string; baseURL: string }): Promise<string[]> {
@@ -748,9 +838,45 @@ async function listModels({ apiKey, baseURL }: { apiKey: string; baseURL: string
   return sortModels(items).map(m => m.id);
 }
 
+/** Endpoint and model pairs that refused encrypted reasoning this session (models without reasoning). */
+const encryptedReasoningRefusedBy = new Set<string>();
+
+/** Whether the request sends any earlier reasoning back. */
+function replaysReasoning(ctx: ProviderRequestContext, options: ResponsesRequestOptions): boolean {
+  const input = buildResponsesInput(ctx, options);
+  return Array.isArray(input) && input.some(item => (item as Item)?.type === 'reasoning');
+}
+
+/**
+ * Sends the request, stepping back when the API refuses the reasoning parts
+ * (a 400 before anything streamed): a model without reasoning refuses the
+ * encrypted-content request, and reasoning encrypted for another organization
+ * (a key from a different org) cannot be decrypted. Anything else is thrown.
+ */
+async function respond(ctx: ProviderRequestContext, stream: boolean): Promise<GenerationResponse> {
+  const modelKey = `${ctx.baseURL}|${ctx.model}`;
+  let options: ResponsesRequestOptions = {
+    encryptedReasoning: !encryptedReasoningRefusedBy.has(modelKey),
+    replayReasoning: true,
+  };
+  for (;;) {
+    try {
+      return await (stream ? respondStreaming(ctx, options) : respondOnce(ctx, options));
+    } catch (err) {
+      if (!(err instanceof ApiHttpError) || err.status !== 400 || !/encrypt|reasoning/i.test(err.message)) throw err;
+      if (options.encryptedReasoning && /not supported|unsupported|include/i.test(err.message)) {
+        encryptedReasoningRefusedBy.add(modelKey);
+        options = { ...options, encryptedReasoning: false };
+      } else if (options.replayReasoning && replaysReasoning(ctx, options)) {
+        options = { ...options, replayReasoning: false };
+      } else {
+        throw err;
+      }
+    }
+  }
+}
+
 export const responsesAdapter: ProviderAdapter = {
-  respond(ctx, stream) {
-    return stream ? respondStreaming(ctx) : respondOnce(ctx);
-  },
+  respond,
   listModels,
 };

@@ -730,3 +730,44 @@ describe('OpenRouter provider routing', () => {
     expect(JSON.parse(fetchMock.mock.lastCall![1].body)).not.toHaveProperty('provider')
   })
 })
+
+describe('respond with replayed replies', () => {
+  const history = (api: ApiMode, data: unknown) => [
+    { role: 'user' as const, content: 'q' },
+    { role: 'assistant' as const, content: 'answer', native: { api, endpoint: 'https://example.test/v1', model: 'm', text: 'answer', data } },
+    { role: 'user' as const, content: 'next' },
+  ]
+  const ok = () => new Response(JSON.stringify({ choices: [{ message: { content: 'fine' } }] }))
+  const bodyOf = (fetcher: ReturnType<typeof vi.fn>, call: number) => JSON.parse(fetcher.mock.calls[call]![1].body)
+
+  beforeEach(() => {
+    localStorage.clear()
+    vi.unstubAllGlobals()
+  })
+
+  it('does not resend after a refusal that is not about the request body', async () => {
+    configureConnection('responses')
+    const fetcher = vi.fn(async () => new Response('{"error":"bad key"}', { status: 401 }))
+    vi.stubGlobal('fetch', fetcher)
+    await expect(respond({ model: 'm', connectionId, messages: history('responses', [{ type: 'reasoning', id: 'rs' }]) })).rejects.toMatchObject({ status: 401 })
+    expect(fetcher).toHaveBeenCalledTimes(1)
+  })
+
+  it('resends as plain text when the endpoint refuses the replayed reply, then keeps to plain text', async () => {
+    configureConnection('chat_completions')
+    const fetcher = vi.fn()
+      .mockResolvedValueOnce(new Response('{"error":{"message":"property \'reasoning\' is unsupported"}}', { status: 400 }))
+      .mockResolvedValueOnce(ok())
+      .mockResolvedValueOnce(ok())
+    vi.stubGlobal('fetch', fetcher)
+    const messages = history('chat_completions', { reasoning: 'because' })
+
+    expect((await respond({ model: 'm', connectionId, messages })).text).toBe('fine')
+    expect(bodyOf(fetcher, 0).messages[1]).toEqual({ role: 'assistant', content: 'answer', reasoning: 'because' })
+    expect(bodyOf(fetcher, 1).messages[1]).toEqual({ role: 'assistant', content: 'answer' })
+
+    await respond({ model: 'm', connectionId, messages })
+    expect(fetcher).toHaveBeenCalledTimes(3)
+    expect(bodyOf(fetcher, 2).messages[1]).toEqual({ role: 'assistant', content: 'answer' })
+  })
+})

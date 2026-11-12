@@ -428,12 +428,13 @@ export async function generateResponse(options: GenerateResponseOptions): Promis
   let history: HistoryMessage[] = historyPath
     .map(vm => vm.m)
     .filter(m => !m.typing)
-    .map(({ role, content, images }) => {
+    .map(({ role, content, images, native }) => {
       const msg: HistoryMessage = { role, content };
       const normalized = normalizeImages(images);
       if (normalized.length > 0) {
         msg.images = normalized as ImageData[];
       }
+      if (role === 'assistant' && native) msg.native = native;
       return msg;
     });
 
@@ -559,6 +560,7 @@ export function handleGenerationSuccess(
   const replyImages = (reply && typeof reply === 'object' && Array.isArray(reply.generatedImages))
     ? reply.generatedImages
     : undefined;
+  const replyNative = (reply && typeof reply === 'object' && reply.native) || undefined;
   return updateVariantById(nodes, typingVariantId, (prev) => ({
     ...prev,
     content: replyText,
@@ -566,6 +568,7 @@ export function handleGenerationSuccess(
     error: undefined,
     activity: settleActivity(replyActivity?.length ? replyActivity : prev.activity),
     generatedImages: replyImages,
+    native: replyNative,
   }));
 }
 
